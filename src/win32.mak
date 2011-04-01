@@ -8,12 +8,13 @@
 #   http://www.digitalmars.com/ctg/make.html
 # which should be in \dm\bin or in \dmd\windows\bin 
 
-D=
+D=c:\l\dmc
 DMDSVN=\svnproj\dmd\trunk\src
 #DMDSVN=\svnproj\dmd\branches\dmd-1.x\src
 SCROOT=$D\dm
 INCLUDE=$(SCROOT)\include
-CC=dmc
+CC=$D\bin\dmc
+LIB=$D\bin\lib
 LIBNT=$(SCROOT)\lib
 SNN=$(SCROOT)\lib\snn
 DIR=\dmd2
@@ -23,13 +24,13 @@ C=backend
 TK=tk
 ROOT=root
 
-MAKE=make -fwin32.mak C=$C TK=$(TK) ROOT=$(ROOT)
+MAKE=$D\bin\make -fwin32.mak C=$C TK=$(TK) ROOT=$(ROOT)
 
 TARGET=dmd
 XFLG=
 MODEL=n
 OPT=
-DEBUG=-gl -D -DUNITTEST
+DEBUG=-g -D -DUNITTEST
 #PREC=-H -HItotal.h -HO
 PREC=
 LFLAGS=
@@ -63,6 +64,9 @@ trace:
 dmd:
 	$(MAKE) OPT=-o "DEBUG=" LFLAGS=-L/delexe dmd.exe
 #	$(MAKE) OPT=-o "DEBUG=" LFLAGS=-L/ma/co/delexe dmd.exe
+
+lib:
+	$(MAKE) OPT=-o "DEBUG=" LFLAGS=-L/delexe dmd.lib
 
 ################ NT COMMAND LINE DEBUG #########################
 
@@ -171,7 +175,11 @@ MAKEFILES=win32.mak posix.mak
 #########################################
 
 $(TARGET).exe : $(OBJS) win32.mak
-	dmc -o$(TARGET).exe $(OBJS) -cpp -mn -Ar $(LFLAGS)
+	$(CC) -o$(TARGET).exe $(OBJS) -cpp -mn -Ar $(LFLAGS)
+
+$(TARGET).lib : $(OBJS) win32.mak
+	$(LIB) -c -p128 $(TARGET).lib $(OBJ8) $(ROOTOBJS) msc.obj tk.obj util.obj entity.obj ph.obj eh.obj
+	$(LIB) -d $(TARGET).lib iasm.obj
 
 
 ##################### INCLUDE MACROS #####################
@@ -187,11 +195,11 @@ msgs.h msgs.c sj1041.msg sj1036.msg sj1031.msg : msgsx.exe
 	msgsx
 
 msgsx.exe : msgsx.c
-	dmc msgsx -mn -D$(TARGET) $(DEFINES) $(WINLIBS)
+	$(CC) msgsx -mn -D$(TARGET) $(DEFINES) $(WINLIBS)
 
 elxxx.c cdxxx.c optab.c debtab.c fltables.c tytab.c : \
 	$C\cdef.h $C\cc.h $C\oper.h $C\ty.h $C\optabgen.c
-	dmc -cpp -ooptabgen.exe $C\optabgen -DMARS -I$(TK) $(WINLIBS) #-L$(LINKS)
+	$(CC) -cpp -ooptabgen.exe $C\optabgen -DMARS -I$(TK) $(WINLIBS) #-L$(LINKS)
 	optabgen
 
 impcnvtab.c : impcnvgen.c
@@ -199,7 +207,7 @@ impcnvtab.c : impcnvgen.c
 	impcnvgen
 
 id.h id.c : idgen.c
-	dmc -cpp idgen
+	$(CC) -cpp idgen
 	idgen
 
 ##################### SPECIAL BUILDS #####################
