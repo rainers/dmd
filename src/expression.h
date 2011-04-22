@@ -137,6 +137,7 @@ struct Expression : Object
     void checkPurity(Scope *sc, FuncDeclaration *f);
     void checkSafety(Scope *sc, FuncDeclaration *f);
     virtual Expression *checkToBoolean(Scope *sc);
+    virtual Expression *addDtorHook(Scope *sc);
     Expression *checkToPointer();
     Expression *addressOf(Scope *sc);
     Expression *deref();
@@ -149,7 +150,10 @@ struct Expression : Object
     virtual Expression *optimize(int result);
     #define WANTflags   1
     #define WANTvalue   2
+    // A compile-time result is required. Give an error if not possible
     #define WANTinterpret 4
+    // Same as WANTvalue, but also expand variables as far as possible
+    #define WANTexpand  8
 
     virtual Expression *interpret(InterState *istate, CtfeGoal goal = ctfeNeedRvalue);
 
@@ -951,6 +955,7 @@ struct CallExp : UnaExp
     int isLvalue();
     Expression *toLvalue(Scope *sc, Expression *e);
     int canThrow(bool mustNotThrow);
+    Expression *addDtorHook(Scope *sc);
 
     int inlineCost(InlineCostState *ics);
     Expression *doInline(InlineDoState *ids);
@@ -1167,6 +1172,7 @@ struct CommaExp : BinExp
     int isBool(int result);
     int checkSideEffect(int flag);
     MATCH implicitConvTo(Type *t);
+    Expression *addDtorHook(Scope *sc);
     Expression *castTo(Scope *sc, Type *t);
     Expression *optimize(int result);
     Expression *interpret(InterState *istate, CtfeGoal goal = ctfeNeedRvalue);

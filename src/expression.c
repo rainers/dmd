@@ -1488,6 +1488,17 @@ Expression *Expression::isTemp()
     return NULL;
 }
 
+/************************************************
+ * Destructors are attached to VarDeclarations.
+ * Hence, if expression returns a temp that needs a destructor,
+ * make sure and create a VarDeclaration for that temp.
+ */
+
+Expression *Expression::addDtorHook(Scope *sc)
+{
+    return this;
+}
+
 /******************************** IntegerExp **************************/
 
 IntegerExp::IntegerExp(Loc loc, dinteger_t value, Type *type)
@@ -5769,7 +5780,7 @@ Expression *FileExp::semantic(Scope *sc)
 #endif
     UnaExp::semantic(sc);
     e1 = resolveProperties(sc, e1);
-    e1 = e1->optimize(WANTvalue);
+    e1 = e1->optimize(WANTvalue | WANTinterpret);
     if (e1->op != TOKstring)
     {   error("file name argument must be a string, not (%s)", e1->toChars());
         goto Lerror;
@@ -6295,6 +6306,7 @@ Expression *DotVarExp::semantic(Scope *sc)
         }
 
         e1 = e1->semantic(sc);
+        e1 = e1->addDtorHook(sc);
         type = var->type;
         if (!type && global.errors)
         {   // var is goofed up, just return 0
@@ -7439,6 +7451,51 @@ Expression *CallExp::toLvalue(Scope *sc, Expression *e)
     return Expression::toLvalue(sc, e);
 }
 
+Expression *CallExp::addDtorHook(Scope *sc)
+{
+    /* Only need to add dtor hook if it's a type that needs destruction.
+     * Use same logic as VarDeclaration::callScopeDtor()
+     */
+
+    if (e1->type && e1->type->ty == Tfunction)
+    {
+        TypeFunction *tf = (TypeFunction *)e1->type;
+        if (tf->isref)
+            return this;
+    }
+
+    Type *tv = type->toBasetype();
+    while (tv->ty == Tsarray)
+    {   TypeSArray *ta = (TypeSArray *)tv;
+        tv = tv->nextOf()->toBasetype();
+    }
+    if (tv->ty == Tstruct)
+    {   TypeStruct *ts = (TypeStruct *)tv;
+        StructDeclaration *sd = ts->sym;
+        if (sd->dtor)
+        {   /* Type needs destruction, so declare a tmp
+             * which the back end will recognize and call dtor on
+             */
+            if (e1->op == TOKdotvar)
+            {
+                DotVarExp* dve = (DotVarExp*)e1;
+                if (dve->e1->isTemp() != NULL)
+                    goto Lnone;                 // already got a tmp
+            }
+
+            Identifier *idtmp = Lexer::uniqueId("__tmpfordtor");
+            VarDeclaration *tmp = new VarDeclaration(loc, type, idtmp, new ExpInitializer(loc, this));
+            tmp->storage_class |= STCctfe;
+            Expression *ae = new DeclarationExp(loc, tmp);
+            Expression *e = new CommaExp(loc, ae, new VarExp(loc, tmp));
+            e = e->semantic(sc);
+            return e;
+        }
+    }
+Lnone:
+    return this;
+}
+
 void CallExp::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 {
     if (e1->op == TOKtype)
@@ -8581,6 +8638,7 @@ Expression *CommaExp::semantic(Scope *sc)
 {
     if (!type)
     {   BinExp::semanticp(sc);
+        e1 = e1->addDtorHook(sc);
         type = e2->type;
     }
     return this;
@@ -8644,6 +8702,12 @@ int CommaExp::checkSideEffect(int flag)
         // Don't check e1 until we cast(void) the a,b code generation
         return e2->checkSideEffect(flag);
     }
+}
+
+Expression *CommaExp::addDtorHook(Scope *sc)
+{
+    e2 = e2->addDtorHook(sc);
+    return this;
 }
 
 /************************** IndexExp **********************************/
@@ -10431,6 +10495,35 @@ Expression *PowExp::semantic(Scope *sc)
             e = e->semantic(sc);
             return e;
         }
+        // Replace x ^^ 0 or x^^0.0 by (x, 1)
+        if ((e2->op == TOKint64 && e2->toInteger() == 0) ||
+                (e2->op == TOKfloat64 && e2->toReal() == 0.0))
+        {
+            if (e1->op == TOKint64)
+                e = new IntegerExp(loc, 1, e1->type);
+            else
+                e = new RealExp(loc, 1.0, e1->type);
+
+            typeCombine(sc);
+            e = new CommaExp(loc, e1, e);
+            e = e->semantic(sc);
+            return e;
+        }
+        // Replace x ^^ 1 or x^^1.0 by (x)
+        if ((e2->op == TOKint64 && e2->toInteger() == 1) ||
+                (e2->op == TOKfloat64 && e2->toReal() == 1.0))
+        {
+            typeCombine(sc);
+            return e1;
+        }
+        // Replace x ^^ -1.0 by (1.0 / x)
+        if ((e2->op == TOKfloat64 && e2->toReal() == -1.0))
+        {
+            typeCombine(sc);
+            e = new DivExp(loc, new RealExp(loc, 1.0, e2->type), e1);
+            e = e->semantic(sc);
+            return e;
+        }
         // All other negative integral powers are illegal
         if ((e1->type->isintegral()) && (e2->op == TOKint64) && (sinteger_t)e2->toInteger() < 0)
         {
@@ -10724,9 +10817,13 @@ Expression *OrOrExp::semantic(Scope *sc)
     e2 = resolveProperties(sc, e2);
     e2 = e2->checkToPointer();
 
-    type = Type::tboolean;
     if (e2->type->ty == Tvoid)
         type = Type::tvoid;
+    else
+    {
+        e2 = e2->checkToBoolean(sc);
+        type = Type::tboolean;
+    }
     if (e2->op == TOKtype || e2->op == TOKimport)
     {   error("%s is not an expression", e2->toChars());
         return new ErrorExp();
@@ -10795,9 +10892,13 @@ Expression *AndAndExp::semantic(Scope *sc)
     e2 = resolveProperties(sc, e2);
     e2 = e2->checkToPointer();
 
-    type = Type::tboolean;
     if (e2->type->ty == Tvoid)
         type = Type::tvoid;
+    else
+    {
+        e2 = e2->checkToBoolean(sc);
+        type = Type::tboolean;
+    }
     if (e2->op == TOKtype || e2->op == TOKimport)
     {   error("%s is not an expression", e2->toChars());
         return new ErrorExp();
