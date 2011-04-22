@@ -778,7 +778,8 @@ void obj_term()
         //mem_free(obj.farseg);
 
 #ifdef DEBUG
-        printf("Max # of fixups = %d\n",obj.fixup_count);
+	if(obj.fixup_count > 16384)
+		printf("Max # of fixups = %d\n",obj.fixup_count);
 #endif
 
         obj.buf->setsize(size);

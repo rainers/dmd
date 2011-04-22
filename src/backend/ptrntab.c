@@ -217,6 +217,7 @@ PTRNTAB1 aptb1JMP[] = /* JMP */ {
         { 0xea, _cd,_p1616 },
         { 0xff, _5,     _m1616 },
         { 0xff, _4 | _32_bit,   _rm32 },
+        { 0xff, _4 | _64_bit,   _rm64 },
         { 0xea, _cp,_p1632 },
         { 0xff, _5,     _m1632 },
         { ASM_END, 0, 0 }
@@ -741,6 +742,8 @@ PTRNTAB2  aptb2XCHG[] = /* XCHG */ {
         { 0x87, _r|_16_bit|_mod2,               _r16, _rm16 },
         { 0x87, _r|_32_bit|_mod2,               _rm32,  _r32 },
         { 0x87, _r|_32_bit|_mod2,               _r32, _rm32 },
+        { 0x87, _r|_64_bit|_mod2,               _rm64,  _r64 },
+        { 0x87, _r|_64_bit|_mod2,               _r64, _rm64 },
         { ASM_END, 0, 0, 0 }
 };
 

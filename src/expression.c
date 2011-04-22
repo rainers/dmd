@@ -1236,6 +1236,7 @@ void Expression::checkPurity(Scope *sc, FuncDeclaration *f)
         // If the caller has a pure parent, then either the called func must be pure,
         // OR, they must have the same pure parent.
         if (outerfunc->isPure() && !sc->intypeof &&
+            !(sc->flags & SCOPEdebug) &&
             !(f->isPure() || (calledparent == outerfunc)))
         {
             error("pure function '%s' cannot call impure function '%s'",
@@ -3507,7 +3508,7 @@ Expression *StructLiteralExp::getField(Type *type, unsigned offset)
             /* If type is a static array, and e is an initializer for that array,
              * then the field initializer should be an array literal of e.
              */
-            if (e->type != type && type->ty == Tsarray)
+            if (e->type->castMod(0) != type->castMod(0) && type->ty == Tsarray)
             {   TypeSArray *tsa = (TypeSArray *)type;
                 uinteger_t length = tsa->dim->toInteger();
                 Expressions *z = new Expressions;
@@ -4370,7 +4371,7 @@ Expression *VarExp::semantic(Scope *sc)
         v->checkNestedReference(sc, loc);
 #if DMDV2
 #if 1
-        if (sc->func && !sc->intypeof)
+        if (sc->func && !sc->intypeof && !(sc->flags & SCOPEdebug))
         {
             /* Given:
              * void f()
@@ -5077,8 +5078,8 @@ Expression *IsExp::semantic(Scope *sc)
      */
 
     //printf("IsExp::semantic(%s)\n", toChars());
-    if (id && !(sc->flags & SCOPEstaticif))
-    {   error("can only declare type aliases within static if conditionals");
+    if (id && !(sc->flags & (SCOPEstaticif | SCOPEstaticassert)))
+    {   error("can only declare type aliases within static if conditionals or static asserts");
         return new ErrorExp();
     }
 
@@ -7240,7 +7241,7 @@ Lagain:
         {   TypeDelegate *td = (TypeDelegate *)t1;
             assert(td->next->ty == Tfunction);
             tf = (TypeFunction *)(td->next);
-            if (sc->func && sc->func->isPure() && !tf->purity)
+            if (sc->func && sc->func->isPure() && !tf->purity && !(sc->flags & SCOPEdebug))
             {
                 error("pure function '%s' cannot call impure delegate '%s'", sc->func->toChars(), e1->toChars());
             }
@@ -7254,7 +7255,7 @@ Lagain:
         {
             Expression *e = new PtrExp(loc, e1);
             t1 = ((TypePointer *)t1)->next;
-            if (sc->func && sc->func->isPure() && !((TypeFunction *)t1)->purity)
+            if (sc->func && sc->func->isPure() && !((TypeFunction *)t1)->purity && !(sc->flags & SCOPEdebug))
             {
                 error("pure function '%s' cannot call impure function pointer '%s'", sc->func->toChars(), e1->toChars());
             }
@@ -10730,6 +10731,10 @@ Expression *OrOrExp::semantic(Scope *sc)
     {   error("%s is not an expression", e2->toChars());
         return new ErrorExp();
     }
+    if (e1->op == TOKerror)
+        return e1;
+    if (e2->op == TOKerror)
+        return e2;
     return this;
 }
 
@@ -10797,6 +10802,10 @@ Expression *AndAndExp::semantic(Scope *sc)
     {   error("%s is not an expression", e2->toChars());
         return new ErrorExp();
     }
+    if (e1->op == TOKerror)
+        return e1;
+    if (e2->op == TOKerror)
+        return e2;
     return this;
 }
 
