@@ -88,7 +88,16 @@ Expression *expandVar(int result, VarDeclaration *v)
                     }
                     else if (ei->isConst() != 1 && ei->op != TOKstring)
                         goto L1;
-                    if (ei->type != v->type)
+
+                    if (ei->type == v->type)
+                    {   // const variable initialized with const expression
+                    }
+                    else if (ei->implicitConvTo(v->type) >= MATCHconst)
+                    {   // const var initialized with non-const expression
+                        ei = ei->implicitCastTo(0, v->type);
+                        ei = ei->semantic(0);
+                    }
+                    else
                         goto L1;
                 }
                 if (v->scope)
@@ -915,8 +924,10 @@ Expression *IdentityExp::optimize(int result)
  */
 void setLengthVarIfKnown(VarDeclaration *lengthVar, Expression *arr)
 {
-    if (!lengthVar || lengthVar->init)
+    if (!lengthVar)
         return;
+    if (lengthVar->init && !lengthVar->init->isVoidInitializer())
+        return; // we have previously calculated the length
     size_t len;
     if (arr->op == TOKstring)
         len = ((StringExp *)arr)->len;
