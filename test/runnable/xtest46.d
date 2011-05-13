@@ -2580,6 +2580,143 @@ static assert(is(T4097 X : X*) && is(X == function));
 static assert(!is(X));
 
 /***************************************************/
+// 5798
+
+void assign9(ref int lhs) pure {
+    lhs = 9;
+}
+
+void assign8(ref int rhs) pure {
+    rhs = 8;
+}
+
+int test137(){
+    int a=1,b=2;
+    assign8(b),assign9(a);
+    assert(a == 9);
+    assert(b == 8);   // <-- fail
+
+    assign9(b),assign8(a);
+    assert(a == 8);
+    assert(b == 9);   // <-- fail
+
+    return 0;
+}
+
+/***************************************************/
+
+struct Size138
+{
+    union
+    {
+        struct
+        {
+            int width;
+            int height;
+        }
+       
+        long size;
+    }
+}
+
+enum Size138 foo138 = {2 ,5};
+    
+Size138 bar138 = foo138;
+
+void test138()
+{
+    assert(bar138.width == 2);
+    assert(bar138.height == 5);
+}
+
+/***************************************************/
+
+// 5939, 5940
+
+template map(fun...)
+{
+    auto map(double[] r)
+    {
+        struct Result
+        {
+            this(double[] input)
+            {
+            }
+        }
+
+        return Result(r);
+    }
+}
+
+
+void test139()
+{
+    double[] x;
+    alias typeof(map!"a"(x)) T;
+    T a = void;
+    auto b = map!"a"(x);
+    auto c = [map!"a"(x)];
+    T[3] d;
+}
+
+
+/***************************************************/
+// 5966
+
+string[] foo5966(string[] a)
+{
+    a[0] = a[0][0..$];
+    return a;
+}
+
+enum var5966 = foo5966([""]);
+
+/***************************************************/
+// 5975
+
+int foo5975(wstring replace)
+{
+  wstring value = "";
+  value ~= replace;
+  return 1;
+}
+
+enum X5975 = foo5975("X"w);
+
+/***************************************************/
+// 5965
+
+template mapx(fun...) if (fun.length >= 1)
+{
+    int mapx(Range)(Range r)
+    {
+        return 1;
+    }
+}
+
+void test140()
+{
+   int foo(int i) { return i; }
+
+   int[] arr;
+   auto x = mapx!( function(int a){return foo(a);} )(arr);
+}
+
+/***************************************************/
+
+void bug5976()
+{
+    int[] barr;
+    int * k;
+    foreach (ref b; barr)
+    {
+        scope(failure)
+            k = &b;
+        k = &b;
+    }
+} 
+
+/***************************************************/
 
 int main()
 {
@@ -2719,6 +2856,10 @@ int main()
     test134();
     test135();
     test136();
+    test137();
+    test138();
+    test139();
+    test140();
 
     printf("Success\n");
     return 0;
