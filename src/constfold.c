@@ -27,10 +27,6 @@
 #include "declaration.h"
 #include "utf.h"
 
-#if __FreeBSD__
-#define fmodl fmod      // hack for now, fix later
-#endif
-
 #define LOG 0
 
 Expression *expType(Type *type, Expression *e)
@@ -486,22 +482,22 @@ Expression *Mod(Type *type, Expression *e1, Expression *e2)
         {   real_t r2 = e2->toReal();
 
 #ifdef __DMC__
-            c = fmodl(e1->toReal(), r2) + fmodl(e1->toImaginary(), r2) * I;
+            c = Port::fmodl(e1->toReal(), r2) + Port::fmodl(e1->toImaginary(), r2) * I;
 #elif defined(IN_GCC)
             c = complex_t(e1->toReal() % r2, e1->toImaginary() % r2);
 #else
-            c = complex_t(fmodl(e1->toReal(), r2), fmodl(e1->toImaginary(), r2));
+            c = complex_t(Port::fmodl(e1->toReal(), r2), Port::fmodl(e1->toImaginary(), r2));
 #endif
         }
         else if (e2->type->isimaginary())
         {   real_t i2 = e2->toImaginary();
 
 #ifdef __DMC__
-            c = fmodl(e1->toReal(), i2) + fmodl(e1->toImaginary(), i2) * I;
+            c = Port::fmodl(e1->toReal(), i2) + Port::fmodl(e1->toImaginary(), i2) * I;
 #elif defined(IN_GCC)
             c = complex_t(e1->toReal() % i2, e1->toImaginary() % i2);
 #else
-            c = complex_t(fmodl(e1->toReal(), i2), fmodl(e1->toImaginary(), i2));
+            c = complex_t(Port::fmodl(e1->toReal(), i2), Port::fmodl(e1->toImaginary(), i2));
 #endif
         }
         else
@@ -1235,17 +1231,19 @@ Expression *Index(Type *type, Expression *e1, Expression *e2)
         if (i >= length)
         {   e2->error("array index %ju is out of bounds %s[0 .. %ju]", i, e1->toChars(), length);
         }
-        else if (e1->op == TOKarrayliteral && !e1->checkSideEffect(2))
+        else if (e1->op == TOKarrayliteral)
         {   ArrayLiteralExp *ale = (ArrayLiteralExp *)e1;
             e = (Expression *)ale->elements->data[i];
             e->type = type;
+            if (e->checkSideEffect(2))
+                e = EXP_CANT_INTERPRET;
         }
     }
     else if (e1->type->toBasetype()->ty == Tarray && e2->op == TOKint64)
     {
         uinteger_t i = e2->toInteger();
 
-        if (e1->op == TOKarrayliteral && !e1->checkSideEffect(2))
+        if (e1->op == TOKarrayliteral)
         {   ArrayLiteralExp *ale = (ArrayLiteralExp *)e1;
             if (i >= ale->elements->dim)
             {   e2->error("array index %ju is out of bounds %s[0 .. %u]", i, e1->toChars(), ale->elements->dim);
@@ -1253,10 +1251,12 @@ Expression *Index(Type *type, Expression *e1, Expression *e2)
             else
             {   e = (Expression *)ale->elements->data[i];
                 e->type = type;
+                if (e->checkSideEffect(2))
+                    e = EXP_CANT_INTERPRET;
             }
         }
     }
-    else if (e1->op == TOKassocarrayliteral && !e1->checkSideEffect(2))
+    else if (e1->op == TOKassocarrayliteral)
     {
         AssocArrayLiteralExp *ae = (AssocArrayLiteralExp *)e1;
         /* Search the keys backwards, in case there are duplicate keys
@@ -1271,6 +1271,8 @@ Expression *Index(Type *type, Expression *e1, Expression *e2)
             if (ex->isBool(TRUE))
             {   e = (Expression *)ae->values->data[i];
                 e->type = type;
+                if (e->checkSideEffect(2))
+                    e = EXP_CANT_INTERPRET;
                 break;
             }
         }

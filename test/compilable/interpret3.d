@@ -793,3 +793,311 @@ void oddity4001(int q)
 *******************************************/
 
 static const bug3779 = ["123"][0][$-1];
+
+
+/*******************************************
+    non-Cow struct literals
+*******************************************/
+
+struct Zadok
+{
+    int [3] z;
+    char [4] s = void;
+    ref int[] fog(ref int [] q) { return q; }
+    int bfg()
+    {
+        z[0] = 56;
+        fog(z[]) = [56, 6, 8];
+        assert(z[1] == 6);
+        assert(z[0] == 56);
+        return z[2];
+    }
+}
+
+struct Vug
+{
+    Zadok p;
+    int [] other;
+}
+
+int quop()
+{
+    int [] heap = new int[5];
+    heap[] = 738;
+    Zadok pong;
+    pong.z = 3;
+    int [] w = pong.z;
+    assert(w[0]==3);
+    Zadok phong;
+    phong.z = 61;
+    pong = phong;
+    assert(w[0]==61);
+    Vug b = Vug(Zadok(17, "abcd"));
+    b = Vug(Zadok(17, "abcd"), heap);
+    b.other[2] = 78;
+    assert(heap[2]==78);
+    char [] y = b.p.s;
+    assert(y[2]=='c');
+    phong.s = ['z','x','f', 'g'];
+    w = b.p.z;
+    assert(y[2]=='c');
+    assert(w[0]==17);
+    b.p = phong;
+    assert(y[2]=='f');
+
+    Zadok wok = Zadok(6, "xyzw");
+    b.p = wok;
+    assert(y[2]=='z');
+    b.p = phong;
+    assert(w[0] == 61);
+    Vug q;
+    q.p = pong;
+    return pong.bfg();
+}
+
+static assert(quop()==8);
+static assert(quop()==8); // check for clobbering
+
+/**************************************************
+   Bug 5682 Wrong CTFE with operator overloading
+**************************************************/
+
+struct A {
+    int n;
+    auto opBinary(string op : "*")(A rhs) {
+        return A(n * rhs.n);
+    }
+}
+
+A foo(A[] lhs, A[] rhs) {
+    A current;
+    for (size_t k = 0; k < rhs.length; ++k) {
+        current = lhs[k] * rhs[k];
+    }
+    return current;
+}
+
+auto test() {
+    return foo([A(1), A(2)], [A(3), A(4)]);
+}
+
+static assert(test().n == 8);
+
+
+/**************************************************
+   Attempt to modify a read-only string literal
+**************************************************/
+struct Xarg
+{
+   char [] s;
+}
+int zfs()
+{
+    auto q = Xarg(cast(char[])"abc");
+    assert(q.s[1]=='b');
+    q.s[1] = 'p';
+    return 76;
+}
+
+static assert(!is(typeof(compiles!(zfs()))));
+
+/**************************************************
+   Variation of 5972 which caused segfault
+**************************************************/
+
+int bug5972crash()
+{
+  char [] z = "abc".dup;
+  char[] [] a = [null, null];
+  a[0]  = z[0..2];
+  a[0][1] = 'q';
+  return 56;
+}
+static assert(bug5972crash()==56);
+
+/**************************************************
+   String slice assignment through ref parameter
+**************************************************/
+
+void popft(A)(ref A a)
+{
+    a = a[1 .. $];
+}
+
+int sdfgasf()
+{
+    auto scp = "abc".dup;
+    popft(scp);
+    return 1;
+}
+static assert(sdfgasf() == 1);
+
+/**************************************************
+   Bug 6015
+**************************************************/
+
+struct Foo6015 {
+    string field;
+}
+
+bool func6015(string input){
+    Foo6015 foo;
+    foo.field = input[0..$];
+    assert(foo.field == "test");
+    foo.field = "test2";
+    assert(foo.field != "test");
+    assert(foo.field == "test2");
+    return true;
+}
+
+static assert(func6015("test"));
+
+/**************************************************
+   Bug 6001
+**************************************************/
+
+void bug6001e(ref int[] s) {
+    int[] r = s;
+    s ~= 0;
+}
+bool bug6001f() {
+    int[] s;
+    bug6001e(s);
+    return true;
+}
+static assert(bug6001f());
+
+// Assignment to AAs
+
+version(X86)
+{
+    void blah(int[char] as)
+    {
+        auto k = [6: as];
+        as = k[6];
+    }
+    int blaz()
+    {
+        int[char] q;
+        blah(q);
+        return 67;
+    }
+    static assert(blaz()==67);
+}
+
+void bug6001g(ref int[] w)
+{
+    w = [88];
+    bug6001e(w);
+    w[0] = 23;
+}
+
+bool bug6001h() {
+    int[] s;
+    bug6001g(s);
+    assert(s.length == 2);
+    assert(s[1]== 0);
+    assert(s[0]==23);
+    return true;
+}
+static assert(bug6001h());
+
+/**************************************************
+   Bug 4910
+**************************************************/
+
+int bug4910(int a)
+{
+    return a;
+}
+
+static int var4910;
+static assert(!is(typeof(Compiles!(bug4910(var4910)))));
+
+static assert(bug4910(123));
+
+/**************************************************
+    Bug 5845 - Regression(2.041)
+**************************************************/
+
+void test5845(ulong cols) {}
+
+uint solve(bool niv, ref ulong cols) {
+    if (niv)
+        solve(false, cols);
+    else
+        test5845(cols);
+    return 65;
+}
+
+ulong nqueen(int n) {
+    ulong cols    = 0;
+    return solve(true, cols);
+}
+
+static assert(nqueen(2) == 65);
+
+/**************************************************
+    Bug 5258
+**************************************************/
+
+struct Foo5258 { int x; }
+void bar5258(int n, ref Foo5258 fong) {
+    if (n)
+        bar5258(n - 1, fong);
+    else
+        fong.x++;
+}
+int bug5258() {
+    bar5258(1, Foo5258());
+    return 45;
+}
+static assert(bug5258()==45);
+
+
+struct Foo5258b  { int[2] r; }
+void baqopY(int n, ref int[2] fongo) {
+    if (n)
+        baqopY(n - 1, fongo);
+    else
+        fongo[0]++;
+}
+int bug5258b() {
+    Foo5258b qq;
+    baqopY(1, qq.r);
+    return 618;
+}
+static assert(bug5258b()==618);
+
+// Notice that this case involving reassigning the dynamic array
+struct Foo5258c { int[] r; }
+void baqop(int n, ref int[] fongo) {
+    if (n)
+        baqop(n - 1, fongo);
+    else
+    {
+        fongo = new int[20];
+        fongo[0]++;
+    }
+}
+size_t bug5258c() {
+    Foo5258c qq;
+    qq.r = new int[30];
+    baqop(1, qq.r);
+    return qq.r.length;
+}
+static assert(bug5258c() == 20);
+
+/**************************************************
+    Bug 6049
+**************************************************/
+
+struct Bug6049 {
+    int m;
+    this(int x)  {  m = x; }
+    invariant() { }
+}
+
+const Bug6049[] foo6049 = [Bug6049(6),  Bug6049(17)];
+
+static assert(foo6049[0].m == 6);
