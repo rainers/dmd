@@ -248,7 +248,7 @@ void fatal()
  */
 void halt()
 {
-#ifdef DEBUG
+#if 0 //def DEBUG
     *(char*)0=0;
 #endif
 }
