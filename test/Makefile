@@ -77,7 +77,9 @@ export DMD=../src/dmd.exe
 export EXE=.exe
 export OBJ=.obj
 export DSEP=\\
-export SEP=$(shell echo '\')
+export SEP=$(subst /,\,/)
+export MKDIR=c:\u\unix\usr\local\wbin\mkdir -p
+export TOUCH=c:\u\unix\usr\local\wbin\touch
 # bug in vim syntax hilighting, needed to kick it back into life: ')
 else
 export ARGS=-inline -release -gc -O -unittest -fPIC
@@ -86,6 +88,8 @@ export EXE=
 export OBJ=.o
 export DSEP=/
 export SEP=/
+export MKDIR=mkdir -p
+export TOUCH=touch
 endif
 
 ifeq ($(OS),freebsd)
@@ -146,11 +150,11 @@ clean:
 
 $(RESULTS_DIR)/.created:
 	@echo Creating output directory: $(RESULTS_DIR) 
-	$(QUIET)if [ ! -d $(RESULTS_DIR) ]; then mkdir $(RESULTS_DIR); fi
-	$(QUIET)if [ ! -d $(RESULTS_DIR)/runnable ]; then mkdir $(RESULTS_DIR)/runnable; fi
-	$(QUIET)if [ ! -d $(RESULTS_DIR)/compilable ]; then mkdir $(RESULTS_DIR)/compilable; fi
-	$(QUIET)if [ ! -d $(RESULTS_DIR)/fail_compilation ]; then mkdir $(RESULTS_DIR)/fail_compilation; fi
-	$(QUIET)touch $(RESULTS_DIR)/.created
+	$(QUIET)$(MKDIR) $(RESULTS_DIR)
+	$(QUIET)$(MKDIR) $(RESULTS_DIR)/runnable
+	$(QUIET)$(MKDIR) $(RESULTS_DIR)/compilable
+	$(QUIET)$(MKDIR) $(RESULTS_DIR)/fail_compilation
+	$(QUIET)$(TOUCH) $(RESULTS_DIR)/.created
 
 run_tests: start_runnable_tests start_compilable_tests start_fail_compilation_tests
 
