@@ -108,6 +108,12 @@ DISABLED_TESTS += test17
 DISABLED_SH_TESTS += test39
 endif
 
+ifeq ($(OS),win32)
+DISABLED_SH_TESTS += test2 test35 test39 test44
+endif
+
+d_do_test = ./$(RESULTS_DIR)/d_do_test$(EXE)
+
 runnable_tests=$(wildcard runnable/*.d) $(wildcard runnable/*.html) $(wildcard runnable/*.sh)
 runnable_test_results=$(addsuffix .out,$(addprefix $(RESULTS_DIR)/,$(runnable_tests)))
 
@@ -125,28 +131,28 @@ $(addsuffix .d.out,$(addprefix $(RESULTS_DIR)/runnable/,$(DISABLED_TESTS))): $(R
 $(addsuffix .sh.out,$(addprefix $(RESULTS_DIR)/runnable/,$(DISABLED_SH_TESTS))): $(RESULTS_DIR)/.created
 	$(QUIET) echo " ... $@ - disabled"
 
-$(RESULTS_DIR)/runnable/%.d.out: runnable/%.d $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test $(DMD)
-	$(QUIET) ./$(RESULTS_DIR)/d_do_test $(<D) $* d
+$(RESULTS_DIR)/runnable/%.d.out: runnable/%.d $(RESULTS_DIR)/.created $(d_do_test) $(DMD)
+	$(QUIET) $(d_do_test) $(<D) $* d
 
-$(RESULTS_DIR)/runnable/%.html.out: runnable/%.html $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test $(DMD)
-	$(QUIET) ./$(RESULTS_DIR)/d_do_test $(<D) $* html
+$(RESULTS_DIR)/runnable/%.html.out: runnable/%.html $(RESULTS_DIR)/.created $(d_do_test) $(DMD)
+	$(QUIET) $(d_do_test) $(<D) $* html
 
-$(RESULTS_DIR)/runnable/%.sh.out: runnable/%.sh $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test $(DMD)
+$(RESULTS_DIR)/runnable/%.sh.out: runnable/%.sh $(RESULTS_DIR)/.created $(d_do_test) $(DMD)
 	$(QUIET) echo " ... $(<D)/$*.sh"
 	$(QUIET) ./$(<D)/$*.sh
 
-$(RESULTS_DIR)/compilable/%.d.out: compilable/%.d $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test $(DMD)
-	$(QUIET) ./$(RESULTS_DIR)/d_do_test $(<D) $* d
+$(RESULTS_DIR)/compilable/%.d.out: compilable/%.d $(RESULTS_DIR)/.created $(d_do_test) $(DMD)
+	$(QUIET) $(d_do_test) $(<D) $* d
 
-$(RESULTS_DIR)/fail_compilation/%.d.out: fail_compilation/%.d $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test $(DMD)
-	$(QUIET) ./$(RESULTS_DIR)/d_do_test $(<D) $* d
+$(RESULTS_DIR)/fail_compilation/%.d.out: fail_compilation/%.d $(RESULTS_DIR)/.created $(d_do_test) $(DMD)
+	$(QUIET) $(d_do_test) $(<D) $* d
 
 quick:
 	$(MAKE) ARGS="" run_tests
 
 clean:
 	@echo "Removing output directory: $(RESULTS_DIR)"
-	$(QUIET)if [ -e $(RESULTS_DIR) ]; then rm -rf $(RESULTS_DIR); fi
+	$(QUIET)rm -rf $(RESULTS_DIR)
 
 $(RESULTS_DIR)/.created:
 	@echo Creating output directory: $(RESULTS_DIR) 
@@ -160,23 +166,23 @@ run_tests: start_runnable_tests start_compilable_tests start_fail_compilation_te
 
 run_runnable_tests: $(runnable_test_results)
 
-start_runnable_tests: $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test
+start_runnable_tests: $(RESULTS_DIR)/.created $(d_do_test)
 	@echo "Running runnable tests"
 	$(QUIET)$(MAKE) --no-print-directory run_runnable_tests
 
 run_compilable_tests: $(compilable_test_results)
 
-start_compilable_tests: $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test
+start_compilable_tests: $(RESULTS_DIR)/.created $(d_do_test)
 	@echo "Running compilable tests"
 	$(QUIET)$(MAKE) --no-print-directory run_compilable_tests
 
 run_fail_compilation_tests: $(fail_compilation_test_results)
 
-start_fail_compilation_tests: $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test
+start_fail_compilation_tests: $(RESULTS_DIR)/.created $(d_do_test)
 	@echo "Running fail compilation tests"
 	$(QUIET)$(MAKE) --no-print-directory run_fail_compilation_tests
 
-$(RESULTS_DIR)/d_do_test: d_do_test.d $(RESULTS_DIR)/.created
+$(d_do_test): d_do_test.d $(RESULTS_DIR)/.created
 	@echo "Building d_do_test tool"
 	$(QUIET)$(DMD) -m$(MODEL) -od$(RESULTS_DIR) -of$(RESULTS_DIR)$(DSEP)d_do_test d_do_test.d
 
