@@ -8528,6 +8528,13 @@ void SliceExp::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
     buf->writeByte(']');
 }
 
+int SliceExp::canThrow(bool mustNotThrow)
+{
+    return UnaExp::canThrow(mustNotThrow)
+        || (lwr != NULL && lwr->canThrow(mustNotThrow))
+        || (upr != NULL && upr->canThrow(mustNotThrow));
+}
+
 /********************** ArrayLength **************************************/
 
 ArrayLengthExp::ArrayLengthExp(Loc loc, Expression *e1)
