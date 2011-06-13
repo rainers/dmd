@@ -547,7 +547,6 @@ int main(int argc, char *argv[])
                         goto Lerror;
                 }
             }
-#ifdef _DH
             else if (p[1] == 'H')
             {   global.params.doHdrGeneration = 1;
                 switch (p[2])
@@ -571,7 +570,6 @@ int main(int argc, char *argv[])
                         goto Lerror;
                 }
             }
-#endif
             else if (p[1] == 'X')
             {   global.params.doXGeneration = 1;
                 switch (p[2])
@@ -1157,7 +1155,6 @@ int main(int argc, char *argv[])
     }
     if (global.errors)
         fatal();
-#ifdef _DH
     if (global.params.doHdrGeneration)
     {
         /* Generate 'header' import files.
@@ -1175,7 +1172,6 @@ int main(int argc, char *argv[])
     }
     if (global.errors)
         fatal();
-#endif
 
     // load all unconditional imports for better symbol resolving
     for (i = 0; i < modules.dim; i++)
