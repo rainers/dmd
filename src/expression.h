@@ -1540,6 +1540,7 @@ struct InExp : BinExp
 {
     InExp(Loc loc, Expression *e1, Expression *e2);
     Expression *semantic(Scope *sc);
+    Expression *interpret(InterState *istate, CtfeGoal goal = ctfeNeedRvalue);
     int isBit();
 
     // For operator overloading
