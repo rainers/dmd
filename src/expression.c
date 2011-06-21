@@ -9262,6 +9262,7 @@ Expression *AssignExp::semantic(Scope *sc)
                 e = e->semantic(sc);
                 return e;
             }
+#if 0   // Masked to allow rewriting to a.opIndex(i) = value
             else
             {
                 // Rewrite (a[i] = value) to (a.opIndex(i, value))
@@ -9278,6 +9279,7 @@ Expression *AssignExp::semantic(Scope *sc)
                     return e;
                 }
             }
+#endif
         }
     }
     /* Look for operator overloading of a[i..j]=value.
@@ -9376,8 +9378,12 @@ Expression *AssignExp::semantic(Scope *sc)
     if (t1->ty == Tfunction)
     {   // Rewrite f=value to f(value)
         Expression *e = new CallExp(loc, e1, e2);
-        e = e->semantic(sc);
-        return e;
+        e = e->trySemantic(sc);
+        if (e)
+            return e;
+
+        // Rewrite e1 = e2 to e1() = e2
+        e1 = resolveProperties(sc, e1);
     }
 
     /* If it is an assignment from a 'foreign' type,
