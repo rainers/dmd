@@ -348,6 +348,7 @@ Expression *FuncDeclaration::interpret(InterState *istate, Expressions *argument
         else
             break;
     }
+    assert(e != EXP_CONTINUE_INTERPRET && e != EXP_BREAK_INTERPRET);
 
     /* Restore the parameter values
      */
@@ -466,7 +467,11 @@ Expression *UnrolledLoopStatement::interpret(InterState *istate)
             if (e == EXP_CANT_INTERPRET)
                 break;
             if (e == EXP_CONTINUE_INTERPRET)
-            {   e = NULL;
+            {
+                if (istate->gotoTarget && istate->gotoTarget != this)
+                    break; // continue at higher level
+                istate->gotoTarget = NULL;
+                e = NULL;
                 continue;
             }
             if (e == EXP_BREAK_INTERPRET)
@@ -649,6 +654,8 @@ Expression *BreakStatement::interpret(InterState *istate)
         Statement *s = label->statement;
         if (s->isLabelStatement())
             s = s->isLabelStatement()->statement;
+        if (s->isScopeStatement())
+            s = s->isScopeStatement()->statement;
         istate->gotoTarget = s;
         return EXP_BREAK_INTERPRET;
     }
@@ -666,7 +673,16 @@ Expression *ContinueStatement::interpret(InterState *istate)
 #endif
     START()
     if (ident)
-        return EXP_CANT_INTERPRET;
+    {   LabelDsymbol *label = istate->fd->searchLabel(ident);
+        assert(label && label->statement);
+        Statement *s = label->statement;
+        if (s->isLabelStatement())
+            s = s->isLabelStatement()->statement;
+        if (s->isScopeStatement())
+            s = s->isScopeStatement()->statement;
+        istate->gotoTarget = s;
+        return EXP_CONTINUE_INTERPRET;
+    }
     else
         return EXP_CONTINUE_INTERPRET;
 }
@@ -706,7 +722,12 @@ Expression *DoStatement::interpret(InterState *istate)
             return e;
         }
         if (e == EXP_CONTINUE_INTERPRET)
-            goto Lcontinue;
+            if (!istate->gotoTarget || istate->gotoTarget == this)
+            {
+                goto Lcontinue;
+            }
+            else // else continue at a higher level
+                return e;
         if (e)
             return e;
     }
@@ -727,8 +748,11 @@ Expression *DoStatement::interpret(InterState *istate)
         }
         if (e && e != EXP_CONTINUE_INTERPRET)
             break;
+        if (istate->gotoTarget && istate->gotoTarget != this)
+            break; // continue at a higher level
 
     Lcontinue:
+        istate->gotoTarget = NULL;
         e = condition->interpret(istate);
         if (e == EXP_CANT_INTERPRET)
             break;
@@ -782,7 +806,13 @@ Expression *ForStatement::interpret(InterState *istate)
             } // else break at a higher level
         }
         if (e == EXP_CONTINUE_INTERPRET)
-            goto Lcontinue;
+        {
+            if (!istate->gotoTarget || istate->gotoTarget == this)
+            {
+                istate->gotoTarget = NULL;
+                goto Lcontinue;
+            } // else continue at a higher level
+        }
         if (e)
             return e;
     }
@@ -815,7 +845,10 @@ Expression *ForStatement::interpret(InterState *istate)
             }
             if (e && e != EXP_CONTINUE_INTERPRET)
                 break;
+            if (istate->gotoTarget && istate->gotoTarget != this)
+                break; // continue at a higher level
         Lcontinue:
+            istate->gotoTarget = NULL;
             if (increment)
             {
                 e = increment->interpret(istate);
@@ -892,7 +925,12 @@ Expression *ForeachStatement::interpret(InterState *istate)
                 break;
             }
             if (e == EXP_CONTINUE_INTERPRET)
+            {
+                if (istate->gotoTarget && istate->gotoTarget != this)
+                    break; // continue at higher level
+                istate->gotoTarget = NULL;
                 e = NULL;
+            }
             else if (e)
                 break;
         }
@@ -922,7 +960,12 @@ Expression *ForeachStatement::interpret(InterState *istate)
                 break;
             }
             if (e == EXP_CONTINUE_INTERPRET)
+            {
+                if (istate->gotoTarget && istate->gotoTarget != this)
+                    break; // continue at higher level
+                istate->gotoTarget = NULL;
                 e = NULL;
+            }
             else if (e)
                 break;
         }
@@ -986,8 +1029,12 @@ Expression *ForeachRangeStatement::interpret(InterState *istate)
                 } // else break at a higher level
                 break;
             }
+            if (e == EXP_CONTINUE_INTERPRET
+                && istate->gotoTarget && istate->gotoTarget != this)
+                break; // continue at higher level
             if (e == NULL || e == EXP_CONTINUE_INTERPRET)
             {   e = Add(key->value->type, key->value, new IntegerExp(loc, 1, key->value->type));
+                istate->gotoTarget = NULL;
                 if (e == EXP_CANT_INTERPRET)
                     break;
                 key->value = e;
@@ -1026,6 +1073,12 @@ Expression *ForeachRangeStatement::interpret(InterState *istate)
                     e = NULL;
                 } // else break at a higher level
                 break;
+            }
+            if (e == EXP_CONTINUE_INTERPRET)
+            {
+                if (istate->gotoTarget && istate->gotoTarget != this)
+                    break; // continue at higher level
+                istate->gotoTarget = NULL;
             }
         } while (e == NULL || e == EXP_CONTINUE_INTERPRET);
     }
