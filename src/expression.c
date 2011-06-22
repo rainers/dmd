@@ -1283,10 +1283,13 @@ void Expression::checkPurity(Scope *sc, FuncDeclaration *f)
 
 void Expression::checkSafety(Scope *sc, FuncDeclaration *f)
 {
-    if (sc->func && sc->func->isSafe() && !sc->intypeof &&
+    if (sc->func && !sc->intypeof &&
         !f->isSafe() && !f->isTrusted())
-        error("safe function '%s' cannot call system function '%s'",
-            sc->func->toChars(), f->toChars());
+    {
+        if (sc->func->setUnsafe())
+            error("safe function '%s' cannot call system function '%s'",
+                sc->func->toChars(), f->toChars());
+    }
 }
 #endif
 
@@ -4444,7 +4447,6 @@ Expression *VarExp::semantic(Scope *sc)
                     if (ff->setImpure() && !msg)
                     {   error("pure function '%s' cannot access mutable static data '%s'",
                             sc->func->toChars(), v->toChars());
-printf("test1\n");
                         msg = TRUE;                     // only need the innermost message
                     }
                 }
@@ -4479,7 +4481,6 @@ printf("test1\n");
                     if (ff->setImpure())
                     {   error("pure nested function '%s' cannot access mutable data '%s'",
                             ff->toChars(), v->toChars());
-printf("test2\n");
                         break;
                     }
                 }
@@ -4487,9 +4488,12 @@ printf("test2\n");
 
             /* Do not allow safe functions to access __gshared data
              */
-            if (sc->func->isSafe() && v->storage_class & STCgshared)
-                error("safe function '%s' cannot access __gshared data '%s'",
-                    sc->func->toChars(), v->toChars());
+            if (v->storage_class & STCgshared)
+            {
+                if (sc->func->setUnsafe())
+                    error("safe function '%s' cannot access __gshared data '%s'",
+                        sc->func->toChars(), v->toChars());
+            }
         }
 #else
         if (sc->func && !sc->intypeof && !(sc->flags & SCOPEdebug))
@@ -4554,9 +4558,12 @@ printf("test2\n");
 
             /* Do not allow safe functions to access __gshared data
              */
-            if (sc->func->isSafe() && v->storage_class & STCgshared)
-                error("safe function '%s' cannot access __gshared data '%s'",
-                    sc->func->toChars(), v->toChars());
+            if (v->storage_class & STCgshared)
+            {
+                if (sc->func->setUnsafe())
+                    error("safe function '%s' cannot access __gshared data '%s'",
+                        sc->func->toChars(), v->toChars());
+            }
         }
 #endif
 #endif
@@ -7436,9 +7443,10 @@ Lagain:
                 if (sc->func->setImpure())
                     error("pure function '%s' cannot call impure delegate '%s'", sc->func->toChars(), e1->toChars());
             }
-            if (sc->func && sc->func->isSafe() && tf->trust <= TRUSTsystem)
+            if (sc->func && tf->trust <= TRUSTsystem)
             {
-                error("safe function '%s' cannot call system delegate '%s'", sc->func->toChars(), e1->toChars());
+                if (sc->func->setUnsafe())
+                    error("safe function '%s' cannot call system delegate '%s'", sc->func->toChars(), e1->toChars());
             }
             goto Lcheckargs;
         }
@@ -7451,9 +7459,10 @@ Lagain:
                 if (sc->func->setImpure())
                     error("pure function '%s' cannot call impure function pointer '%s'", sc->func->toChars(), e1->toChars());
             }
-            if (sc->func && sc->func->isSafe() && !((TypeFunction *)t1)->trust <= TRUSTsystem)
+            if (sc->func && !((TypeFunction *)t1)->trust <= TRUSTsystem)
             {
-                error("safe function '%s' cannot call system function pointer '%s'", sc->func->toChars(), e1->toChars());
+                if (sc->func->setUnsafe())
+                    error("safe function '%s' cannot call system function pointer '%s'", sc->func->toChars(), e1->toChars());
             }
             e->type = t1;
             e1 = e;
@@ -8250,9 +8259,7 @@ Expression *CastExp::semantic(Scope *sc)
     }
 
 #if 1
-    if (sc->func && sc->func->isSafe() && !sc->intypeof)
-#else
-    if (global.params.safe && !sc->module->safe && !sc->intypeof)
+    if (sc->func && !sc->intypeof)
 #endif
     {   // Disallow unsafe casts
         Type *tob = to->toBasetype();
@@ -8261,8 +8268,12 @@ Expression *CastExp::semantic(Scope *sc)
         if (!t1b->isMutable() && tob->isMutable())
         {   // Cast not mutable to mutable
           Lunsafe:
-            error("cast from %s to %s not allowed in safe code", e1->type->toChars(), to->toChars());
-            return new ErrorExp();
+            if (sc->func->setUnsafe())
+            {   error("cast from %s to %s not allowed in safe code", e1->type->toChars(), to->toChars());
+                return new ErrorExp();
+            }
+            else
+                goto Lok;
         }
         else if (t1b->isShared() && !tob->isShared())
             // Cast away shared
@@ -8285,7 +8296,9 @@ Expression *CastExp::semantic(Scope *sc)
                 // Cast wild to anything but const | wild
                 goto Lunsafe;
 
-            if (tobn->isTypeBasic() && tobn->size() < t1bn->size())
+            if (tobn->isTypeBasic() && t1bn->isTypeBasic() &&
+                tobn->ty != Tvoid && t1bn->ty != Tvoid &&
+                tobn->size() < t1bn->size())
                 // Allow things like casting a long* to an int*
                 ;
             else if (tobn->ty != Tvoid)
@@ -8294,6 +8307,8 @@ Expression *CastExp::semantic(Scope *sc)
         }
 
         // BUG: Check for casting array types, such as void[] to int*[]
+    Lok:
+        ;
     }
 
     e = e1->castTo(sc, to);
