@@ -2480,7 +2480,6 @@ Lagain:
     FuncDeclaration *f;
     FuncLiteralDeclaration *fld;
     OverloadSet *o;
-    Declaration *d;
     ClassDeclaration *cd;
     ClassDeclaration *thiscd = NULL;
     Import *imp;
@@ -2707,7 +2706,6 @@ ThisExp::ThisExp(Loc loc)
 Expression *ThisExp::semantic(Scope *sc)
 {   FuncDeclaration *fd;
     FuncDeclaration *fdthis;
-    int nested = 0;
 
 #if LOGSEMANTIC
     printf("ThisExp::semantic()\n");
@@ -3429,7 +3427,7 @@ Expression *AssocArrayLiteralExp::syntaxCopy()
 }
 
 Expression *AssocArrayLiteralExp::semantic(Scope *sc)
-{   Expression *e;
+{
 
 #if LOGSEMANTIC
     printf("AssocArrayLiteralExp::semantic('%s')\n", toChars());
@@ -3965,7 +3963,7 @@ Expression *NewExp::syntaxCopy()
 
 
 Expression *NewExp::semantic(Scope *sc)
-{   int i;
+{
     Type *tb;
     ClassDeclaration *cdthis = NULL;
 
@@ -4316,7 +4314,7 @@ int NewExp::canThrow(bool mustNotThrow)
 #endif
 
 void NewExp::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
-{   int i;
+{
 
     if (thisexp)
     {   expToCBuffer(buf, hgs, thisexp, PREC_primary);
@@ -4391,7 +4389,7 @@ int NewAnonClassExp::canThrow(bool mustNotThrow)
 #endif
 
 void NewAnonClassExp::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
-{   int i;
+{
 
     if (thisexp)
     {   expToCBuffer(buf, hgs, thisexp, PREC_primary);
@@ -4507,7 +4505,7 @@ int VarExp::equals(Object *o)
 }
 
 Expression *VarExp::semantic(Scope *sc)
-{   FuncLiteralDeclaration *fd;
+{
 
 #if LOGSEMANTIC
     printf("VarExp::semantic(%s)\n", toChars());
@@ -4699,7 +4697,7 @@ TupleExp::TupleExp(Loc loc, TupleDeclaration *tup)
 }
 
 int TupleExp::equals(Object *o)
-{   TupleExp *ne;
+{
 
     if (this == o)
         return 1;
@@ -4912,7 +4910,7 @@ Expression *DeclarationExp::semantic(Scope *sc)
         if (!sc->insert(s))
             error("declaration %s is already defined", s->toPrettyChars());
         else if (sc->func)
-        {   VarDeclaration *v = s->isVarDeclaration();
+        {
             if ( (s->isFuncDeclaration() || s->isTypedefDeclaration() ||
                 s->isAggregateDeclaration() || s->isEnumDeclaration() ||
                 s->isInterfaceDeclaration()) &&
@@ -6849,7 +6847,6 @@ Expression *CallExp::semantic(Scope *sc)
 {
     TypeFunction *tf;
     FuncDeclaration *f;
-    int i;
     Type *t1;
     int istemp;
     Objects *targsi = NULL;     // initial list of template arguments
@@ -7655,7 +7652,7 @@ Expression *CallExp::addDtorHook(Scope *sc)
 
     Type *tv = type->toBasetype();
     while (tv->ty == Tsarray)
-    {   TypeSArray *ta = (TypeSArray *)tv;
+    {
         tv = tv->nextOf()->toBasetype();
     }
     if (tv->ty == Tstruct)
@@ -8196,8 +8193,6 @@ Expression *CastExp::syntaxCopy()
 
 Expression *CastExp::semantic(Scope *sc)
 {   Expression *e;
-    BinExp *b;
-    UnaExp *u;
 
 #if LOGSEMANTIC
     printf("CastExp::semantic('%s')\n", toChars());
@@ -8937,8 +8932,6 @@ IndexExp::IndexExp(Loc loc, Expression *e1, Expression *e2)
 
 Expression *IndexExp::semantic(Scope *sc)
 {   Expression *e;
-    BinExp *b;
-    UnaExp *u;
     Type *t1;
     ScopeDsymbol *sym;
 
@@ -8991,10 +8984,10 @@ Expression *IndexExp::semantic(Scope *sc)
         {
             e2 = e2->implicitCastTo(sc, Type::tsize_t);
 
-            TypeSArray *tsa = (TypeSArray *)t1;
 
 #if 0   // Don't do now, because it might be short-circuit evaluated
             // Do compile time array bounds checking if possible
+            TypeSArray *tsa = (TypeSArray *)t1;
             e2 = e2->optimize(WANTvalue);
             if (e2->op == TOKint64)
             {
@@ -9098,7 +9091,7 @@ Expression *IndexExp::modifiableLvalue(Scope *sc, Expression *e)
         error("%s isn't mutable", e->toChars());
     Type *t1 = e1->type->toBasetype();
     if (t1->ty == Taarray)
-    {   TypeAArray *taa = (TypeAArray *)t1;
+    {
         Type *t2b = e2->type->toBasetype();
         if (t2b->ty == Tarray && t2b->nextOf()->isMutable())
             error("associative arrays can only be assigned values with immutable keys, not %s", e2->type->toChars());
@@ -9267,7 +9260,6 @@ Expression *AssignExp::semantic(Scope *sc)
     {
         ArrayExp *ae = (ArrayExp *)e1;
         AggregateDeclaration *ad;
-        Identifier *id = Id::index;
 
         ae->e1 = ae->e1->semantic(sc);
         Type *t1 = ae->e1->type->toBasetype();
@@ -9318,7 +9310,6 @@ Expression *AssignExp::semantic(Scope *sc)
     {   Type *t1;
         SliceExp *ae = (SliceExp *)e1;
         AggregateDeclaration *ad;
-        Identifier *id = Id::index;
 
         ae->e1 = ae->e1->semantic(sc);
         ae->e1 = resolveProperties(sc, ae->e1);
@@ -10725,7 +10716,6 @@ Expression *PowExp::semantic(Scope *sc)
         // For built-in numeric types, there are several cases.
         // TODO: backend support, especially for  e1 ^^ 2.
 
-        bool wantSqrt = false;
         e1 = e1->optimize(0);
         e2 = e2->optimize(0);
 
