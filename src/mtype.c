@@ -5706,6 +5706,7 @@ void TypeQualified::resolveHelper(Loc loc, Scope *sc,
             return;
         }
 #if 0
+        FuncDeclaration *fd;
         fd = s->isFuncDeclaration();
         if (fd)
         {

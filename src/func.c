@@ -375,6 +375,11 @@ void FuncDeclaration::semantic(Scope *sc)
     cd = parent->isClassDeclaration();
     if (cd)
     {   int vi;
+#if 0
+        CtorDelclaration *ctor;
+        DtorDeclaration *dtor;
+        InvariantDeclaration *inv;
+#endif
 
         if (isCtorDeclaration())
         {

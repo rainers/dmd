@@ -2872,6 +2872,7 @@ L2:
         {
             Expression *constraint = NULL;
 #if 0
+            TypeFunction *tf = (TypeFunction *)t;
             if (Parameter::isTPL(tf->parameters))
             {
                 if (!tpl)

@@ -3428,7 +3428,6 @@ Expression *AssocArrayLiteralExp::syntaxCopy()
 
 Expression *AssocArrayLiteralExp::semantic(Scope *sc)
 {
-
 #if LOGSEMANTIC
     printf("AssocArrayLiteralExp::semantic('%s')\n", toChars());
 #endif
@@ -4390,7 +4389,6 @@ int NewAnonClassExp::canThrow(bool mustNotThrow)
 
 void NewAnonClassExp::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 {
-
     if (thisexp)
     {   expToCBuffer(buf, hgs, thisexp, PREC_primary);
         buf->writeByte('.');
@@ -4506,7 +4504,6 @@ int VarExp::equals(Object *o)
 
 Expression *VarExp::semantic(Scope *sc)
 {
-
 #if LOGSEMANTIC
     printf("VarExp::semantic(%s)\n", toChars());
 #endif
@@ -4542,11 +4539,15 @@ Expression *VarExp::semantic(Scope *sc)
 #endif
     }
 #if 0
-    else if ((fd = var->isFuncLiteralDeclaration()) != NULL)
-    {   Expression *e;
-        e = new FuncExp(loc, fd);
-        e->type = type;
-        return e;
+    else
+    {
+        FuncLiteralDeclaration *fd;
+        if ((fd = var->isFuncLiteralDeclaration()) != NULL)
+        {   Expression *e;
+            e = new FuncExp(loc, fd);
+            e->type = type;
+            return e;
+        }
     }
 #endif
 
@@ -4698,7 +4699,6 @@ TupleExp::TupleExp(Loc loc, TupleDeclaration *tup)
 
 int TupleExp::equals(Object *o)
 {
-
     if (this == o)
         return 1;
     if (((Expression *)o)->op == TOKtuple)
@@ -9285,6 +9285,7 @@ Expression *AssignExp::semantic(Scope *sc)
 #if 0 // Turned off to allow rewriting (a[i]=value) to (a.opIndex(i)=value)
             else
             {
+                Identifier *id = Id::index;
                 // Rewrite (a[i] = value) to (a.opIndex(i, value))
                 if (search_function(ad, id))
                 {   Expression *e = new DotIdExp(loc, ae->e1, id);
