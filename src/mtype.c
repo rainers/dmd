@@ -168,6 +168,7 @@ char Type::needThisPrefix()
 
 void Type::init()
 {   int i;
+    int j;
 
     Lexer::initKeywords();
 
@@ -5608,7 +5609,9 @@ void TypeQualified::resolveHelper(Loc loc, Scope *sc,
         Expression **pe, Type **pt, Dsymbol **ps)
 {
     VarDeclaration *v;
+    FuncDeclaration *fd;
     EnumMember *em;
+    TupleDeclaration *td;
     Expression *e;
 
 #if 0
@@ -5706,7 +5709,6 @@ void TypeQualified::resolveHelper(Loc loc, Scope *sc,
             return;
         }
 #if 0
-        FuncDeclaration *fd;
         fd = s->isFuncDeclaration();
         if (fd)
         {
@@ -6105,7 +6107,7 @@ void TypeTypeof::toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod)
 }
 
 Type *TypeTypeof::semantic(Loc loc, Scope *sc)
-{
+{   Expression *e;
     Type *t;
 
     //printf("TypeTypeof::semantic() %s\n", toChars());
@@ -6925,7 +6927,8 @@ void TypeStruct::toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod)
 }
 
 Expression *TypeStruct::dotExp(Scope *sc, Expression *e, Identifier *ident)
-{
+{   unsigned offset;
+
     VarDeclaration *v;
     Dsymbol *s;
     DotVarExp *de;
@@ -7405,7 +7408,9 @@ void TypeClass::toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod)
 }
 
 Expression *TypeClass::dotExp(Scope *sc, Expression *e, Identifier *ident)
-{
+{   unsigned offset;
+
+    Expression *b;
     VarDeclaration *v;
     Dsymbol *s;
 
