@@ -954,6 +954,21 @@ int zfs()
 static assert(!is(typeof(compiles!(zfs()))));
 
 /**************************************************
+        Use $ in a slice of a dotvar slice
+**************************************************/
+
+int sliceDollar()
+{
+    Xarg z;
+    z.s = new char[20];
+    z.s[] = 'b';
+    z.s = z.s[2..$-2];
+    z.s[$-2] = 'c';
+    return z.s[$-2];
+}
+static assert(sliceDollar()=='c');
+
+/**************************************************
    Variation of 5972 which caused segfault
 **************************************************/
 
@@ -1286,6 +1301,7 @@ int keyAssign()
     return 5;
 }
 static assert(keyAssign()==5);
+
 
 /**************************************************
     Bug 6054 -- AA literals
