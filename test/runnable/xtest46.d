@@ -3120,6 +3120,23 @@ static assert(!is(typeof(Bar156.init += 1)));
 static assert(!is(typeof(1 + Baz156.init)));
 
 /***************************************************/
+// 5962
+
+struct S156
+{
+          auto g()(){ return 1; }
+    const auto g()(){ return 2; }
+}
+
+void test156()
+{
+    auto ms = S156();
+    assert(ms.g() == 1);
+    auto cs = const(S156)();
+    assert(cs.g() == 2);
+}
+
+/***************************************************/
 
 int main()
 {
