@@ -6035,9 +6035,6 @@ Type *TypeInstance::semantic(Loc loc, Scope *sc)
 
     if (!t)
     {
-#ifdef DEBUG
-        printf("2: ");
-#endif
         error(loc, "%s is used as a type", toChars());
         t = terror;
     }
