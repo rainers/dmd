@@ -1458,6 +1458,19 @@ void test79()
 
 /***************************************************/
 
+void test6317()
+{
+    int b = 12345;
+    struct nested { int a; int fun() { return b; } }
+    static assert(!__traits(compiles, { nested x = { 3, null }; }));
+    nested g = { 7 };
+    auto h = nested(7);
+    assert(g.fun() == 12345);
+    assert(h.fun() == 12345);
+}
+
+/***************************************************/
+
 void test80()
 {
     auto array = new int[10];
@@ -3067,57 +3080,32 @@ void test155()
 }
 
 /***************************************************/
-// 4258
+// 2521
 
-struct Vec {
-    Vec opOpAssign(string Op)(auto ref Vec other) if (Op == "+") {
-        return this;
-    }
-    Vec opBinary(string Op:"+")(Vec other) {
-        Vec result;
-        return result += other;
-    }
+immutable int val = 23;
+const int val2 = 23;
+
+ref immutable(int) func2521_() {
+    return val;
 }
-void test156() {
-    Vec v;
-    v += Vec() + Vec(); // line 12
+ref immutable(int) func2521_2() {
+    return *&val;
 }
-
-// regression fix test
-
-struct Foo156 {
-    // binary ++/--
-    int opPostInc()() if (false) { return 0; }
-
-    // binary 1st
-    int opAdd(R)(R rhs) if (false) { return 0; }
-    int opAdd_r(R)(R rhs) if (false) { return 0; }
-
-    // compare
-    int opCmp(R)(R rhs) if (false) { return 0; }
-
-    // binary-op assign
-    int opAddAssign(R)(R rhs) if (false) { return 0; }
+ref immutable(int) func2521_3() {
+    return func2521_;
 }
-struct Bar156 {
-    // binary commutive 1
-    int opAdd_r(R)(R rhs) if (false) { return 0; }
-
-    // binary-op assign
-    int opOpAssign(string op, R)(R rhs) if (false) { return 0; }
+ref const(int) func2521_4() {
+    return val2;
 }
-struct Baz156 {
-    // binary commutive 2
-    int opAdd(R)(R rhs) if (false) { return 0; }
+ref const(int) func2521_5() {
+    return val;
 }
-static assert(!is(typeof(Foo156.init++)));
-static assert(!is(typeof(Foo156.init + 1)));
-static assert(!is(typeof(1 + Foo156.init)));
-static assert(!is(typeof(Foo156.init < Foo156.init)));
-static assert(!is(typeof(Foo156.init += 1)));
-static assert(!is(typeof(Bar156.init + 1)));
-static assert(!is(typeof(Bar156.init += 1)));
-static assert(!is(typeof(1 + Baz156.init)));
+auto ref func2521_6() {
+    return val;
+}
+ref func2521_7() {
+    return val;
+}
 
 /***************************************************/
 // 5962
@@ -3134,6 +3122,158 @@ void test156()
     assert(ms.g() == 1);
     auto cs = const(S156)();
     assert(cs.g() == 2);
+}
+
+/***************************************************/
+// 4258
+
+struct Vec4258 {
+    Vec4258 opOpAssign(string Op)(auto ref Vec4258 other) if (Op == "+") {
+        return this;
+    }
+    Vec4258 opBinary(string Op:"+")(Vec4258 other) {
+        Vec4258 result;
+        return result += other;
+    }
+}
+void test4258() {
+    Vec4258 v;
+    v += Vec4258() + Vec4258(); // line 12
+}
+
+// regression fix test
+
+struct Foo4258 {
+    // binary ++/--
+    int opPostInc()() if (false) { return 0; }
+
+    // binary 1st
+    int opAdd(R)(R rhs) if (false) { return 0; }
+    int opAdd_r(R)(R rhs) if (false) { return 0; }
+
+    // compare
+    int opCmp(R)(R rhs) if (false) { return 0; }
+
+    // binary-op assign
+    int opAddAssign(R)(R rhs) if (false) { return 0; }
+}
+struct Bar4258 {
+    // binary commutive 1
+    int opAdd_r(R)(R rhs) if (false) { return 0; }
+
+    // binary-op assign
+    int opOpAssign(string op, R)(R rhs) if (false) { return 0; }
+}
+struct Baz4258 {
+    // binary commutive 2
+    int opAdd(R)(R rhs) if (false) { return 0; }
+}
+static assert(!is(typeof(Foo4258.init++)));
+static assert(!is(typeof(Foo4258.init + 1)));
+static assert(!is(typeof(1 + Foo4258.init)));
+static assert(!is(typeof(Foo4258.init < Foo4258.init)));
+static assert(!is(typeof(Foo4258.init += 1)));
+static assert(!is(typeof(Bar4258.init + 1)));
+static assert(!is(typeof(Bar4258.init += 1)));
+static assert(!is(typeof(1 + Baz4258.init)));
+
+/***************************************************/
+
+void test4963()
+{
+    struct Value {
+        byte a;
+    };
+    Value single()
+    {
+        return Value();
+    }
+
+    Value[] list;
+    auto x = single() ~ list;
+}
+
+/***************************************************/
+
+/***************************************************/ 
+
+pure int test4031() 
+{ 
+    static const int x = 8; 
+    return x; 
+} 
+ 
+/***************************************************/
+
+struct S6230 {
+    int p;
+    int q() const pure {
+        return p;
+    }
+    void r() pure {
+        p = 231;
+    }
+}
+class C6230 {
+    int p;
+    int q() const pure {
+        return p;
+    }
+    void r() pure {
+        p = 552;
+    }
+}
+int q6230(ref const S6230 s) pure {    // <-- Currently OK
+    return s.p;
+}
+int q6230(ref const C6230 c) pure {    // <-- Currently OK
+    return c.p;
+}
+void r6230(ref S6230 s) pure {
+    s.p = 244;
+}
+void r6230(ref C6230 c) pure {
+    c.p = 156;
+}
+bool test6230pure() pure {
+    auto s = S6230(4);
+    assert(s.p == 4);
+    assert(q6230(s) == 4);
+    assert(s.q == 4);
+
+    auto c = new C6230;
+    c.p = 6;
+    assert(q6230(c) == 6);
+    assert(c.q == 6);
+
+    r6230(s);
+    assert(s.p == 244);
+    s.r();
+    assert(s.p == 231);
+
+    r6230(c);
+    assert(c.p == 156);
+    c.r();
+    assert(c.p == 552);
+
+    return true;
+}
+void test6230() {
+    assert(test6230pure());
+}
+
+/***************************************************/
+
+void test6264()
+{
+    struct S { auto opSlice() { return this; } }
+    int[] a;
+    S s;
+    static assert(!is(typeof(a[] = s[])));
+    int*[] b;
+    static assert(!is(typeof(b[] = [new immutable(int)])));
+    char[] c = new char[](5);
+    c[] = "hello";
 }
 
 /***************************************************/
@@ -3281,6 +3421,7 @@ int main()
     test139();
     test140();
     test141();
+    test6317();
     test142();
     test143();
     test144();
@@ -3296,6 +3437,11 @@ int main()
     test154();
     test155();
     test156();
+    test4258();
+    test4963();
+    test4031();
+    test6230();
+    test6264();
 
     printf("Success\n");
     return 0;

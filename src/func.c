@@ -274,9 +274,6 @@ void FuncDeclaration::semantic(Scope *sc)
     if (isAbstract() && !isVirtual())
         error("non-virtual functions cannot be abstract");
 
-    if (isOverride() && !isVirtual())
-        error("cannot override a non-virtual function");
-
     if ((f->isConst() || f->isImmutable()) && !isThis())
         error("without 'this' cannot be const/immutable");
 
@@ -840,9 +837,6 @@ void FuncDeclaration::semantic3(Scope *sc)
     }
 #endif
 
-    frequire = mergeFrequire(frequire);
-    fensure = mergeFensure(fensure);
-
     if (frequire)
     {
         for (int i = 0; i < foverrides.dim; i++)
@@ -856,6 +850,9 @@ void FuncDeclaration::semantic3(Scope *sc)
             }
         }
     }
+
+    frequire = mergeFrequire(frequire);
+    fensure = mergeFensure(fensure);
 
     if (fbody || frequire || fensure)
     {
@@ -2679,9 +2676,9 @@ enum PURE FuncDeclaration::isPure()
     TypeFunction *tf = (TypeFunction *)type;
     if (flags & FUNCFLAGpurityInprocess)
         setImpure();
-    enum PURE purity = tf->purity;
-    if (purity == PUREfwdref)
+    if (tf->purity == PUREfwdref)
         tf->purityLevel();
+    enum PURE purity = tf->purity;
     if (purity > PUREweak && needThis())
     {   // The attribute of the 'this' reference affects purity strength
         if (type->mod & (MODimmutable | MODwild))
@@ -2691,6 +2688,9 @@ enum PURE FuncDeclaration::isPure()
         else
             purity = PUREweak;
     }
+    tf->purity = purity;
+    // ^ This rely on the current situation that every FuncDeclaration has a
+    //   unique TypeFunction.
     return purity;
 }
 
