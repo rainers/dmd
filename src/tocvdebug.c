@@ -127,7 +127,7 @@ unsigned cv4_Denum(EnumDeclaration *e)
 
     //dbg_printf("cv4_Denum(%s)\n", e->toChars());
     property = 0;
-    if (!e->members || !e->memtype)
+    if (!e->members || !e->memtype || !e->memtype->isintegral())
         property |= 0x80;               // enum is forward referenced
 
     id = e->toPrettyChars();
