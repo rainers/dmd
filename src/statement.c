@@ -674,7 +674,7 @@ int CompoundStatement::blockExit(bool mustNotThrow)
                     else if (sd && sd->statement->isEmpty())
                         ;
                     else
-                        s->error("switch case fallthrough - use 'goto %s;' if intended",
+                        s->warning("switch case fallthrough - use 'goto %s;' if intended",
                             s->isCaseStatement() ? "case" : "default");
                 }
             }
