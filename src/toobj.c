@@ -355,7 +355,7 @@ void ClassDeclaration::toObjFile(int multiobj)
     }
 
     if (global.params.symdebug)
-        toDebug();
+        type->toCtype(); // calls toDebug() only once
 
     assert(!scope);     // semantic() should have been run to completion
 
@@ -1090,7 +1090,7 @@ void StructDeclaration::toObjFile(int multiobj)
     if (!isAnonymous() && members)
     {
         if (global.params.symdebug)
-            toDebug();
+            type->toCtype(); // calls toDebug() only once
 
         type->getTypeInfo(NULL);        // generate TypeInfo
 
@@ -1336,7 +1336,7 @@ void EnumDeclaration::toObjFile(int multiobj)
 #endif
 
     if (global.params.symdebug)
-        toDebug();
+        type->toCtype(); // calls toDebug() only once
 
     type->getTypeInfo(NULL);    // generate TypeInfo
 
