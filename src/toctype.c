@@ -386,6 +386,9 @@ type *TypeStruct::toCtype()
             }
     }
 
+    if (global.params.symdebug)
+        sym->toDebug();
+
     //printf("t = %p, Tflags = x%x\n", t, t->Tflags);
     return t;
 }
@@ -455,6 +458,9 @@ type *TypeEnum::toCtype()
         t = ctype = sym->memtype->toCtype();
     }
 
+    if (global.params.symdebug)
+        sym->toDebug();
+
     //printf("t = %p, Tflags = x%x\n", t, t->Tflags);
     return t;
 }
@@ -511,6 +517,9 @@ type *TypeClass::toCtype()
             s2->Smemoff = v->offset;
             list_append(&s->Sstruct->Sfldlst, s2);
         }
+
+    if (global.params.symdebug)
+        sym->toDebug();
 
     return t;
 }

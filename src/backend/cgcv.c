@@ -1750,7 +1750,7 @@ L1:
 #if 1
             // This is a hack to duplicate bugs in VC, so that the VC
             // debugger will work.
-            tymnext = t->Tnext->Tty;
+            tymnext = t->Tnext ? t->Tnext->Tty : 0;
             if (tymnext & (mTYconst | mTYimmutable | mTYvolatile) &&
                 !tycv &&
                 tyarithmetic(tymnext) &&
