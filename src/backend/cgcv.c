@@ -1747,7 +1747,7 @@ L1:
         case TYhptr:    attribute |= 2; goto L2;
 
         L2:
-#if 1
+#if 0
             // This is a hack to duplicate bugs in VC, so that the VC
             // debugger will work.
             tymnext = t->Tnext ? t->Tnext->Tty : 0;
