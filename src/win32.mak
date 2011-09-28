@@ -104,8 +104,8 @@ OBJ8= go.obj gdag.obj gother.obj gflow.obj gloop.obj var.obj el.obj \
 
 # from ROOT
 
-#GCOBJS=rmem.obj
-GCOBJS=dmgcmem.obj bits.obj win32.obj gc.obj
+GCOBJS=rmem.obj
+#GCOBJS=dmgcmem.obj bits.obj win32.obj gc.obj
 
 ROOTOBJS= lstring.obj array.obj gnuc.obj man.obj root.obj port.obj \
 	stringtable.obj dchar.obj response.obj async.obj speller.obj aav.obj \
