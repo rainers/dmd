@@ -2233,7 +2233,13 @@ STATIC void cv4_outsym(symbol *s)
                 u = S_LDATA16;
             L2:
                 if (I32)
+				{
                     u += S_GDATA32 - S_GDATA16;
+#if 0 //  ot supported by optlink
+					if (s->Sseg == obj_tlsseg()->seg)
+						u += S_LTHREAD32 - S_GPROC32;
+#endif
+				}
                 TOWORD(debsym + 2,u);
                 if (config.fulltypes == CV4)
                 {

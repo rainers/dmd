@@ -46,6 +46,9 @@
 #define S_LABEL32       0x209
 #define S_CEXMODEL32    0x20A
 #define S_VFTPATH32     0x20B
+#define S_REGREL32      0x20C
+#define S_LTHREAD32     0x20D
+#define S_GTHREAD32     0x20E
 
 // Leaf Indices
 #define LF_MODIFIER     1
