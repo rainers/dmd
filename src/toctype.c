@@ -435,7 +435,7 @@ type *TypeEnum::toCtype()
         }
         ctype = t;
     }
-    else if (sym->memtype->toBasetype()->ty == Tint32)
+    else if (sym->memtype && sym->memtype->toBasetype()->ty == Tint32)
     {
         Symbol *s = symbol_calloc(sym->toPrettyChars());
         s->Sclass = SCenum;
@@ -453,9 +453,13 @@ type *TypeEnum::toCtype()
         tm->ctype = t;
         ctype = t;
     }
-    else
+    else if(sym->memtype)
     {
         t = ctype = sym->memtype->toCtype();
+    }
+    else
+    {
+        t = ctype = type_alloc(Tint32);
     }
 
     if (global.params.symdebug)
