@@ -123,7 +123,6 @@ code *opdouble(elem *e,regm_t *pretregs,unsigned clib)
 }
 #endif
 
-
 /*****************************
  * Handle operators which are more or less orthogonal
  * ( + - & | ^ )
@@ -151,12 +150,16 @@ code *cdorth(elem *e,regm_t *pretregs)
 
   ty1 = tybasic(e1->Ety);
   if (tyfloating(ty1))
+  {
+        if (*pretregs & XMMREGS)
+            return orthxmm(e,pretregs);
 #if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
         return orth87(e,pretregs);
 #else
         return opdouble(e,pretregs,(e->Eoper == OPadd) ? CLIBdadd
                                                        : CLIBdsub);
 #endif
+  }
   tym_t ty2 = tybasic(e2->Ety);
   int e2oper = e2->Eoper;
   tym_t ty = tybasic(e->Ety);
@@ -834,11 +837,15 @@ code *cdmul(elem *e,regm_t *pretregs)
     unsigned grex = rex << 16;
 
     if (tyfloating(tyml))
+    {
+        if (*pretregs & XMMREGS && oper != OPmod)
+            return orthxmm(e,pretregs);
 #if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
         return orth87(e,pretregs);
 #else
         return opdouble(e,pretregs,(oper == OPmul) ? CLIBdmul : CLIBddiv);
 #endif
+    }
 
     opunslng = I16 ? OPu16_32 : OPu32_64;
     switch (oper)

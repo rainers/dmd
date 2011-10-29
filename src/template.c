@@ -1676,6 +1676,11 @@ FuncDeclaration *TemplateDeclaration::deduceFunctionTemplate(Scope *sc, Loc loc,
     return NULL;
 }
 
+bool TemplateDeclaration::hasStaticCtorOrDtor()
+{
+    return FALSE;               // don't scan uninstantiated templates
+}
+
 void TemplateDeclaration::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 {
 #if 0 // Should handle template functions for doc generation
@@ -4398,7 +4403,7 @@ void TemplateInstance::semanticTiargs(Loc loc, Scope *sc, Objects *tiargs, int f
             ea = ea->semantic(sc);
             if (flags & 1) // only used by __traits, must not interpret the args
                 ea = ea->optimize(WANTvalue);
-            else if (ea->op != TOKvar)
+            else if (ea->op != TOKvar && ea->op != TOKtuple)
                 ea = ea->optimize(WANTvalue | WANTinterpret);
             tiargs->tdata()[j] = ea;
             if (ea->op == TOKtype)
@@ -4975,7 +4980,7 @@ int TemplateInstance::needsTypeInference(Scope *sc)
         //printf("tp = %p, td->parameters->dim = %d, tiargs->dim = %d\n", tp, td->parameters->dim, tiargs->dim);
         TypeFunction *fdtype = (TypeFunction *)fd->type;
         if (Parameter::dim(fdtype->parameters) &&
-            (tp || tiargs->dim < td->parameters->dim))
+            ((tp && td->parameters->dim > 1) || tiargs->dim < td->parameters->dim))
             return TRUE;
         /* If there is more than one function template which matches, we may
          * need type inference (see Bugzilla 4430)

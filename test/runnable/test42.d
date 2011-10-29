@@ -4325,6 +4325,53 @@ void test6563()
 
 /***************************************************/
 
+ubyte foo241(ubyte[] data)
+{
+    ubyte a, b, c, d;
+
+    a = data[0];
+    b = data[1];
+    c = data[2];
+    d = data[3];
+
+    c <<= 1;
+    if (c & 0x80)
+        c >>= 1;
+    d <<= 1;
+    if (d & 0x80)
+        d >>= 1;
+
+    return d;
+}
+
+void test241()
+{
+    ubyte[4] data;
+    data[3] = 0x40;
+    assert(foo241(data[]) == 0x40);
+    data[3] = 0x20;
+    assert(foo241(data[]) == 0x40);
+}
+
+/***************************************************/
+
+struct Foo6665
+{
+    double[2][2] dat;
+
+    double foo(size_t i, size_t j)
+    {
+        return dat[i][j] = 0;
+    }
+}
+
+void test6665()
+{
+    Foo6665 a;
+}
+
+/***************************************************/
+
 int main()
 {
     test1();
@@ -4554,6 +4601,8 @@ int main()
     test6506();
     test240();
     test6563();
+    test241();
+    test6665();
 
     writefln("Success");
     return 0;

@@ -149,6 +149,12 @@ int Dsymbol::hasPointers()
     return 0;
 }
 
+bool Dsymbol::hasStaticCtorOrDtor()
+{
+    //printf("Dsymbol::hasStaticCtorOrDtor() %s\n", toChars());
+    return FALSE;
+}
+
 char *Dsymbol::toChars()
 {
     return ident ? ident->toChars() : (char *)"__anonymous";
@@ -959,6 +965,25 @@ Dsymbol *ScopeDsymbol::symtabInsert(Dsymbol *s)
     return symtab->insert(s);
 }
 
+/****************************************
+ * Return true if any of the members are static ctors or static dtors, or if
+ * any members have members that are.
+ */
+
+bool ScopeDsymbol::hasStaticCtorOrDtor()
+{
+    if (members)
+    {
+        for (size_t i = 0; i < members->dim; i++)
+        {   Dsymbol *member = (*members)[i];
+
+            if (member->hasStaticCtorOrDtor())
+                return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 /***************************************
  * Determine number of Dsymbols, folding in AttribDeclaration members.
  */
@@ -1210,7 +1235,9 @@ Dsymbol *ArrayScopeSymbol::search(Loc loc, Identifier *ident, int flags)
                  * or a variable (in which case an expression is created in
                  * toir.c).
                  */
-                v->init = new VoidInitializer(0);
+                VoidInitializer *e = new VoidInitializer(0);
+                e->type = Type::tsize_t;
+                v->init = e;
             }
             *pvar = v;
         }

@@ -3130,6 +3130,15 @@ void test152() {
     foo.front = 2;
 }
 
+/***************************************************/
+// 6733
+
+void bug6733(int a, int b) pure nothrow { }
+void test6733() {
+   int z = 1;
+   bug6733(z++, z++);
+   assert(z==3);
+}
 
 /***************************************************/
 // 3799
@@ -3867,6 +3876,43 @@ void test6488()
 
 /***************************************************/
 
+struct Foo6813(T)
+{
+    Foo6813 Bar()
+    {
+        return Foo6813(_indices.abc());
+    }
+
+    T _indices;
+}
+
+struct SortedRange(alias pred)
+{
+    SortedRange abc()
+    {
+        return SortedRange();
+    }
+}
+
+void test6813() {
+    auto ind = SortedRange!({ })();
+    auto a = Foo6813!(typeof(ind))();
+}
+
+/***************************************************/
+
+struct Interval6753{ int a,b; }
+@safe struct S6753
+{
+    int[] arr;
+    @trusted @property auto byInterval() const
+    {
+        return cast(const(Interval6753)[])arr;
+    }
+}
+
+/***************************************************/
+
 int main()
 {
     test1();
@@ -4056,6 +4102,8 @@ int main()
     test6084();
     test4237();
     test6488();
+    test6733();
+    test6813();
 
     printf("Success\n");
     return 0;
