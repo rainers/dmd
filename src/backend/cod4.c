@@ -49,7 +49,7 @@ STATIC int intree(symbol *s,elem *e)
  *      0       can't
  */
 
-STATIC int doinreg(symbol *s, elem *e)
+int doinreg(symbol *s, elem *e)
 {   int in = 0;
     int op;
 
@@ -337,6 +337,9 @@ code *cdeq(elem *e,regm_t *pretregs)
 
   if (tyfloating(tyml) && config.inline8087)
   {
+        if (tyxmmreg(tyml) && config.fpxmmregs)
+            return xmmeq(e, pretregs);
+
         if (tycomplex(tyml))
             return complex_eq87(e, pretregs);
 
@@ -720,7 +723,7 @@ Lp:
             if (cs.Irex & REX_B)
                 rm |= 8;
             c = genc1(c,0x8D,buildModregrm(2,reg,rm),FLconst,postinc);
-            if (sz == 8)
+            if (tysize(e11->E1->Ety) == 8)
                 code_orrex(c, REX_W);
         }
         else if (I64)
@@ -775,6 +778,9 @@ code *cdaddass(elem *e,regm_t *pretregs)
   byte = (sz == 1);                     // 1 for byte operation, else 0
   if (tyfloating(tyml))
   {
+        // See if evaluate in XMM registers
+        if (config.fpxmmregs && tyxmmreg(tyml) && op != OPnegass && !(*pretregs & mST0))
+            return xmmopass(e,pretregs);
 #if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
       if (op == OPnegass)
             c = cdnegass87(e,pretregs);
@@ -1235,12 +1241,17 @@ code *cdmulass(elem *e,regm_t *pretregs)
     unsigned grex = rex << 16;          // 64 bit operands
 
 
-  if (tyfloating(tyml))
+    if (tyfloating(tyml))
+    {
+        // See if evaluate in XMM registers
+        if (config.fpxmmregs && tyxmmreg(tyml) && op != OPmodass && !(*pretregs & mST0))
+            return xmmopass(e,pretregs);
 #if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
         return opass87(e,pretregs);
 #else
         return opassdbl(e,pretregs,op);
 #endif
+    }
 
   if (sz <= REGSIZE)                    /* if word or byte              */
   {     byte = (sz == 1);               /* 1 for byte operation         */
