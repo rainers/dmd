@@ -804,14 +804,12 @@ Type *functionParameters(Loc loc, Scope *sc, TypeFunction *tf,
         L1:
             if (!(p->storageClass & STClazy && p->type->ty == Tvoid))
             {
-                if (p->type->hasWild())
-                {   unsigned mod = p->type->wildMatch(arg->type);
-                    if (mod)
-                    {
-                        wildmatch |= mod;
-                        arg = arg->implicitCastTo(sc, p->type->substWildTo(mod));
-                        arg = arg->optimize(WANTvalue);
-                    }
+                unsigned mod = arg->type->wildConvTo(p->type);
+                if (mod)
+                {
+                    wildmatch |= mod;
+                    arg = arg->implicitCastTo(sc, p->type->substWildTo(mod));
+                    arg = arg->optimize(WANTvalue);
                 }
                 else if (p->type != arg->type)
                 {
@@ -2917,8 +2915,7 @@ SuperExp::SuperExp(Loc loc)
 }
 
 Expression *SuperExp::semantic(Scope *sc)
-{   FuncDeclaration *fd;
-    FuncDeclaration *fdthis;
+{
     ClassDeclaration *cd;
     Dsymbol *s;
 
@@ -2928,22 +2925,22 @@ Expression *SuperExp::semantic(Scope *sc)
     if (type)
         return this;
 
+    FuncDeclaration *fd = hasThis(sc);
+
     /* Special case for typeof(this) and typeof(super) since both
      * should work even if they are not inside a non-static member function
      */
-    if (sc->intypeof)
+    if (!fd && sc->intypeof)
     {
         // Find enclosing class
-        for (Dsymbol *s = sc->parent; 1; s = s->parent)
+        for (Dsymbol *s = sc->getStructClassScope(); 1; s = s->parent)
         {
-            ClassDeclaration *cd;
-
             if (!s)
             {
                 error("%s is not in a class scope", toChars());
                 goto Lerr;
             }
-            cd = s->isClassDeclaration();
+            ClassDeclaration *cd = s->isClassDeclaration();
             if (cd)
             {
                 cd = cd->baseClass;
@@ -2956,11 +2953,9 @@ Expression *SuperExp::semantic(Scope *sc)
             }
         }
     }
-
-    fdthis = sc->parent->isFuncDeclaration();
-    fd = hasThis(sc);
     if (!fd)
         goto Lerr;
+
     assert(fd->vthis);
     var = fd->vthis;
     assert(var->parent);
@@ -2981,6 +2976,7 @@ Expression *SuperExp::semantic(Scope *sc)
     else
     {
         type = cd->baseClass->type;
+        type = type->castMod(var->type->mod);
     }
 
     var->isVarDeclaration()->checkNestedReference(sc, loc);
@@ -8072,6 +8068,8 @@ Expression *PtrExp::semantic(Scope *sc)
 
             case Tsarray:
             case Tarray:
+                if (!global.params.useDeprecated)
+                    error("using * on an array is deprecated; use *(%s).ptr instead", e1->toChars());
                 type = ((TypeArray *)tb)->next;
                 e1 = e1->castTo(sc, type->pointerTo());
                 break;

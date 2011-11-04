@@ -27,6 +27,27 @@
 static char __file__[] = __FILE__;      /* for tassert.h                */
 #include        "tassert.h"
 
+/*******************************************
+ * Move constant value into xmm register xreg.
+ */
+
+code *movxmmconst(unsigned xreg, unsigned sz, targ_size_t value, regm_t flags)
+{
+    /* Generate:
+     *    MOV reg,value
+     *    MOV xreg,reg
+     * Not so efficient. We should at least do a PXOR for 0.
+     */
+    assert(mask[xreg] & XMMREGS);
+    assert(sz == 4 || sz == 8);
+    unsigned reg;
+    code *c = regwithvalue(CNIL,ALLREGS,value,&reg,(sz == 8) ? 64 : 0);
+    c = gen2(c,0x660F6E,modregxrmx(3,xreg-XMM0,reg));     // MOVD/MOVQ xreg,reg
+    if (sz == 8)
+        code_orrex(c, REX_W);
+    return c;
+}
+
 /***********************************************
  * Do simple orthogonal operators for XMM registers.
  */
@@ -38,6 +59,8 @@ code *orthxmm(elem *e, regm_t *pretregs)
     unsigned sz1 = tysize[ty1];
     assert(sz1 == 4 || sz1 == 8);       // float or double
     regm_t retregs = *pretregs & XMMREGS;
+    if (!retregs)
+        retregs = XMMREGS;
     code *c = codelem(e1,&retregs,FALSE); // eval left leaf
     unsigned reg = findreg(retregs);
     regm_t rretregs = XMMREGS & ~retregs;
@@ -71,7 +94,44 @@ code *orthxmm(elem *e, regm_t *pretregs)
                 op = 0xF30F5E;                  // DIVSS
             break;
 
+        case OPlt:
+        case OPle:
+        case OPgt:
+        case OPge:
+        case OPne:
+        case OPeqeq:
+        case OPunord:        /* !<>=         */
+        case OPlg:           /* <>           */
+        case OPleg:          /* <>=          */
+        case OPule:          /* !>           */
+        case OPul:           /* !>=          */
+        case OPuge:          /* !<           */
+        case OPug:           /* !<=          */
+        case OPue:           /* !<>          */
+        case OPngt:
+        case OPnge:
+        case OPnlt:
+        case OPnle:
+        case OPord:
+        case OPnlg:
+        case OPnleg:
+        case OPnule:
+        case OPnul:
+        case OPnuge:
+        case OPnug:
+        case OPnue:
+        {   retregs = mPSW;
+            op = 0x660F2E;                      // UCOMISD
+            if (sz1 == 4)                       // float
+                op = 0x0F2E;                    // UCIMISS
+            code *cc = gen2(CNIL,op,modregxrmx(3,rreg-XMM0,reg-XMM0));
+            return cat4(c,cr,cg,cc);
+        }
+
         default:
+#ifdef DEBUG
+            elem_print(e);
+#endif
             assert(0);
     }
     code *co = gen2(CNIL,op,modregxrmx(3,reg-XMM0,rreg-XMM0));
@@ -311,6 +371,45 @@ code *xmmopass(elem *e,regm_t *pretregs)
     co = cat(co,fixresult(e,retregs,pretregs));
     freenode(e1);
     return cat4(cr,cl,cg,co);
+}
+
+/******************
+ * Negate operator
+ */
+
+code *xmmneg(elem *e,regm_t *pretregs)
+{
+    //printf("xmmneg()\n");
+    //elem_print(e);
+    assert(*pretregs);
+    tym_t tyml = tybasic(e->E1->Ety);
+    int sz = tysize[tyml];
+
+    regm_t retregs = *pretregs & XMMREGS;
+    if (!retregs)
+        retregs = XMMREGS;
+
+    /* Generate:
+     *    MOV reg,e1
+     *    MOV rreg,signbit
+     *    XOR reg,rreg
+     */
+    code *cl = codelem(e->E1,&retregs,FALSE);
+    cl = cat(cl,getregs(retregs));
+    unsigned reg = findreg(retregs);
+    regm_t rretregs = XMMREGS & ~retregs;
+    unsigned rreg;
+    cl = cat(cl,allocreg(&rretregs,&rreg,tyml));
+    targ_size_t signbit = 0x80000000;
+    if (sz == 8)
+        signbit = 0x8000000000000000LL;
+    code *c = movxmmconst(rreg, sz, signbit, 0);
+
+    code *cg = getregs(retregs);
+    unsigned op = (sz == 8) ? 0x660F57 : 0x0F57 ;       // XORPD/S reg,rreg
+    code *co = gen2(CNIL,op,modregxrmx(3,reg-XMM0,rreg-XMM0));
+    co = cat(co,fixresult(e,retregs,pretregs));
+    return cat4(cl,c,cg,co);
 }
 
 
