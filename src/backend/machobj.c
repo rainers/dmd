@@ -104,7 +104,8 @@ static Outbuffer *symtab_strings;
 
 // Section Headers
 Outbuffer  *SECbuf;             // Buffer to build section table in
-#define SecHdrTab ((section *)SECbuf->buf)
+#define SecHdrTab   ((struct section *)SECbuf->buf)
+#define SecHdrTab64 ((struct section_64 *)SECbuf->buf)
 
 // The relocation for text and data seems to get lost.
 // Try matching the order gcc output them
@@ -161,8 +162,16 @@ static IDXSTR extdef;
 
 int seg_data::isCode()
 {
-    //printf("SDshtidx = %d, x%x\n", SDshtidx, SecHdrTab[SDshtidx].flags);
-    return strcmp(SecHdrTab[SDshtidx].segname, "__TEXT") == 0;
+    if (I64)
+    {
+        //printf("SDshtidx = %d, x%x\n", SDshtidx, SecHdrTab64[SDshtidx].flags);
+        return strcmp(SecHdrTab64[SDshtidx].segname, "__TEXT") == 0;
+    }
+    else
+    {
+        //printf("SDshtidx = %d, x%x\n", SDshtidx, SecHdrTab[SDshtidx].flags);
+        return strcmp(SecHdrTab[SDshtidx].segname, "__TEXT") == 0;
+    }
 }
 
 
@@ -343,7 +352,7 @@ symbol * elf_sym_cdata(tym_t ty,char *p,int len)
     symbol *s;
 
 #if 0
-    if (OPT_IS_SET(OPTfwritable_strings))
+    if (I64)
     {
         alignOffset(DATA, tysize(ty));
         s = symboldata(Doffset, ty);
@@ -375,7 +384,7 @@ symbol * elf_sym_cdata(tym_t ty,char *p,int len)
 int elf_data_cdata(char *p, int len, int *pseg)
 {
     int oldoff;
-    /*if (OPT_IS_SET(OPTfwritable_strings))
+    if (I64)
     {
         oldoff = Doffset;
         SegData[DATA]->SDbuf->reserve(len);
@@ -383,7 +392,7 @@ int elf_data_cdata(char *p, int len, int *pseg)
         Doffset += len;
         *pseg = DATA;
     }
-    else*/
+    else
     {
         oldoff = CDoffset;
         SegData[CDATA]->SDbuf->reserve(len);
@@ -453,17 +462,17 @@ void obj_init(Outbuffer *objbuf, const char *filename, const char *csegname)
     pointersSeg = 0;
 
     // Initialize segments for CODE, DATA, UDATA and CDATA
-
+    size_t struct_section_size = I64 ? sizeof(struct section_64) : sizeof(struct section);
     if (SECbuf)
     {
-        SECbuf->setsize(sizeof(struct section));
+        SECbuf->setsize(struct_section_size);
     }
     else
     {
-        SECbuf = new Outbuffer(SYM_TAB_INC * sizeof(struct section));
-        SECbuf->reserve(SEC_TAB_INIT * sizeof(struct section));
+        SECbuf = new Outbuffer(SYM_TAB_INC * struct_section_size);
+        SECbuf->reserve(SEC_TAB_INIT * struct_section_size);
         // Ignore the first section - section numbers start at 1
-        SECbuf->writezeros(sizeof(struct section));
+        SECbuf->writezeros(struct_section_size);
     }
     section_cnt = 1;
 
@@ -495,6 +504,7 @@ void obj_initfile(const char *filename, const char *csegname, const char *modnam
         IDXSEC newsecidx;
         Elf32_Shdr *newtextsec;
         IDXSYM newsymidx;
+        assert(!I64);      // fix later
         SegData[cseg]->SDshtidx = newsecidx =
             elf_newsection(csegname,0,SHT_PROGDEF,SHF_ALLOC|SHF_EXECINSTR);
         newtextsec = &SecHdrTab[newsecidx];
@@ -517,20 +527,42 @@ int32_t *patchAddr(int seg, targ_size_t offset)
     return(int32_t *)(fobjbuf->buf + SecHdrTab[SegData[seg]->SDshtidx].offset + offset);
 }
 
+int32_t *patchAddr64(int seg, targ_size_t offset)
+{
+    return(int32_t *)(fobjbuf->buf + SecHdrTab64[SegData[seg]->SDshtidx].offset + offset);
+}
+
 void patch(seg_data *pseg, targ_size_t offset, int seg, targ_size_t value)
 {
-    //printf("patch(offset = x%04x, seg = %d)\n", (unsigned)offset, seg);
-    int32_t *p = (int32_t *)(fobjbuf->buf + SecHdrTab[pseg->SDshtidx].offset + offset);
+    //printf("patch(offset = x%04x, seg = %d, value = x%llx)\n", (unsigned)offset, seg, value);
+    if (I64)
+    {
+        int32_t *p = (int32_t *)(fobjbuf->buf + SecHdrTab64[pseg->SDshtidx].offset + offset);
 #if 0
-    printf("\taddr1 = x%x\n\taddr2 = x%x\n\t*p = x%x\n\tdelta = x%x\n",
-        SecHdrTab[pseg->SDshtidx].addr,
-        SecHdrTab[SegData[seg]->SDshtidx].addr,
-        *p,
-        SecHdrTab[SegData[seg]->SDshtidx].addr -
-        (SecHdrTab[pseg->SDshtidx].addr + offset));
+        printf("\taddr1 = x%llx\n\taddr2 = x%llx\n\t*p = x%llx\n\tdelta = x%llx\n",
+            SecHdrTab64[pseg->SDshtidx].addr,
+            SecHdrTab64[SegData[seg]->SDshtidx].addr,
+            *p,
+            SecHdrTab64[SegData[seg]->SDshtidx].addr -
+            (SecHdrTab64[pseg->SDshtidx].addr + offset));
 #endif
-    *p += SecHdrTab[SegData[seg]->SDshtidx].addr -
-          (SecHdrTab[pseg->SDshtidx].addr - value);
+        *p += SecHdrTab64[SegData[seg]->SDshtidx].addr -
+              (SecHdrTab64[pseg->SDshtidx].addr - value);
+    }
+    else
+    {
+        int32_t *p = (int32_t *)(fobjbuf->buf + SecHdrTab[pseg->SDshtidx].offset + offset);
+#if 0
+        printf("\taddr1 = x%x\n\taddr2 = x%x\n\t*p = x%x\n\tdelta = x%x\n",
+            SecHdrTab[pseg->SDshtidx].addr,
+            SecHdrTab[SegData[seg]->SDshtidx].addr,
+            *p,
+            SecHdrTab[SegData[seg]->SDshtidx].addr -
+            (SecHdrTab[pseg->SDshtidx].addr + offset));
+#endif
+        *p += SecHdrTab[SegData[seg]->SDshtidx].addr -
+              (SecHdrTab[pseg->SDshtidx].addr - value);
+    }
 }
 
 /***************************
@@ -679,19 +711,33 @@ void obj_term()
     }
 
     struct segment_command segment_cmd;
+    struct segment_command_64 segment_cmd64;
     struct symtab_command symtab_cmd;
     struct dysymtab_command dysymtab_cmd;
 
     memset(&segment_cmd, 0, sizeof(segment_cmd));
+    memset(&segment_cmd64, 0, sizeof(segment_cmd64));
     memset(&symtab_cmd, 0, sizeof(symtab_cmd));
     memset(&dysymtab_cmd, 0, sizeof(dysymtab_cmd));
 
-    segment_cmd.cmd = LC_SEGMENT;
-    segment_cmd.cmdsize = sizeof(segment_cmd) +
-                                (section_cnt - 1) * sizeof(struct section);
-    segment_cmd.nsects = section_cnt - 1;
-    segment_cmd.maxprot = 7;
-    segment_cmd.initprot = 7;
+    if (I64)
+    {
+        segment_cmd64.cmd = LC_SEGMENT_64;
+        segment_cmd64.cmdsize = sizeof(segment_cmd64) +
+                                    (section_cnt - 1) * sizeof(struct section_64);
+        segment_cmd64.nsects = section_cnt - 1;
+        segment_cmd64.maxprot = 7;
+        segment_cmd64.initprot = 7;
+    }
+    else
+    {
+        segment_cmd.cmd = LC_SEGMENT;
+        segment_cmd.cmdsize = sizeof(segment_cmd) +
+                                    (section_cnt - 1) * sizeof(struct section);
+        segment_cmd.nsects = section_cnt - 1;
+        segment_cmd.maxprot = 7;
+        segment_cmd.initprot = 7;
+    }
 
     symtab_cmd.cmd = LC_SYMTAB;
     symtab_cmd.cmdsize = sizeof(symtab_cmd);
@@ -706,10 +752,20 @@ void obj_term()
     if (pointersSeg)
     {
         seg_data *pseg = SegData[pointersSeg];
-        struct section *psechdr = &SecHdrTab[pseg->SDshtidx]; // corresponding section
-        psechdr->reserved1 = indirectsymbuf1
+        if (I64)
+        {
+            struct section_64 *psechdr = &SecHdrTab64[pseg->SDshtidx]; // corresponding section
+            psechdr->reserved1 = indirectsymbuf1
                 ? indirectsymbuf1->size() / sizeof(Symbol *)
                 : 0;
+        }
+        else
+        {
+            struct section *psechdr = &SecHdrTab[pseg->SDshtidx]; // corresponding section
+            psechdr->reserved1 = indirectsymbuf1
+                ? indirectsymbuf1->size() / sizeof(Symbol *)
+                : 0;
+        }
     }
 
     // Walk through sections determining size and file offsets
@@ -719,7 +775,10 @@ void obj_term()
     //  code and data
     //
     foffset = elf_align(I64 ? 8 : 4, foffset);
-    segment_cmd.fileoff = foffset;
+    if (I64)
+        segment_cmd64.fileoff = foffset;
+    else
+        segment_cmd.fileoff = foffset;
     unsigned vmaddr = 0;
 
     //printf("Setup offsets and sizes foffset %d\n\tsection_cnt %d, seg_count %d\n",foffset,section_cnt,seg_count);
@@ -729,54 +788,113 @@ void obj_term()
         for (int seg = 1; seg <= seg_count; seg++)
         {
             seg_data *pseg = SegData[seg];
-            struct section *psechdr = &SecHdrTab[pseg->SDshtidx]; // corresponding section
-
-            // Do zero-fill the second time through this loop
-            if (i ^ (psechdr->flags == S_ZEROFILL))
-                continue;
-
-            int align = 1 << psechdr->align;
-            foffset = elf_align(align, foffset);
-            vmaddr = (vmaddr + align - 1) & ~(align - 1);
-            if (psechdr->flags == S_ZEROFILL)
+            if (I64)
             {
-                psechdr->offset = 0;
-                psechdr->size = pseg->SDoffset; // accumulated size
+                struct section_64 *psechdr = &SecHdrTab64[pseg->SDshtidx]; // corresponding section
+
+                // Do zero-fill the second time through this loop
+                if (i ^ (psechdr->flags == S_ZEROFILL))
+                    continue;
+
+                int align = 1 << psechdr->align;
+                foffset = elf_align(align, foffset);
+                vmaddr = (vmaddr + align - 1) & ~(align - 1);
+                if (psechdr->flags == S_ZEROFILL)
+                {
+                    psechdr->offset = 0;
+                    psechdr->size = pseg->SDoffset; // accumulated size
+                }
+                else
+                {
+                    psechdr->offset = foffset;
+                    psechdr->size = 0;
+                    //printf("\tsection name %s,", psechdr->sectname);
+                    if (pseg->SDbuf && pseg->SDbuf->size())
+                    {
+                        //printf("\tsize %d\n", pseg->SDbuf->size());
+                        psechdr->size = pseg->SDbuf->size();
+                        fobjbuf->write(pseg->SDbuf->buf, psechdr->size);
+                        foffset += psechdr->size;
+                    }
+                }
+                psechdr->addr = vmaddr;
+                vmaddr += psechdr->size;
+                //printf(" assigned offset %d, size %d\n", foffset, psechdr->sh_size);
             }
             else
             {
-                psechdr->offset = foffset;
-                psechdr->size = 0;
-                //printf("\tsection name %s,", psechdr->sectname);
-                if (pseg->SDbuf && pseg->SDbuf->size())
+                struct section *psechdr = &SecHdrTab[pseg->SDshtidx]; // corresponding section
+
+                // Do zero-fill the second time through this loop
+                if (i ^ (psechdr->flags == S_ZEROFILL))
+                    continue;
+
+                int align = 1 << psechdr->align;
+                foffset = elf_align(align, foffset);
+                vmaddr = (vmaddr + align - 1) & ~(align - 1);
+                if (psechdr->flags == S_ZEROFILL)
                 {
-                    //printf("\tsize %d\n", pseg->SDbuf->size());
-                    psechdr->size = pseg->SDbuf->size();
-                    fobjbuf->write(pseg->SDbuf->buf, psechdr->size);
-                    foffset += psechdr->size;
+                    psechdr->offset = 0;
+                    psechdr->size = pseg->SDoffset; // accumulated size
                 }
+                else
+                {
+                    psechdr->offset = foffset;
+                    psechdr->size = 0;
+                    //printf("\tsection name %s,", psechdr->sectname);
+                    if (pseg->SDbuf && pseg->SDbuf->size())
+                    {
+                        //printf("\tsize %d\n", pseg->SDbuf->size());
+                        psechdr->size = pseg->SDbuf->size();
+                        fobjbuf->write(pseg->SDbuf->buf, psechdr->size);
+                        foffset += psechdr->size;
+                    }
+                }
+                psechdr->addr = vmaddr;
+                vmaddr += psechdr->size;
+                //printf(" assigned offset %d, size %d\n", foffset, psechdr->sh_size);
             }
-            psechdr->addr = vmaddr;
-            vmaddr += psechdr->size;
-            //printf(" assigned offset %d, size %d\n", foffset, psechdr->sh_size);
         }
     }
 
-    segment_cmd.vmsize = vmaddr;
-    segment_cmd.filesize = foffset - segment_cmd.fileoff;
-    /* Bugzilla 5331: Apparently having the filesize field greater than the vmsize field is an
-     * error, and is happening sometimes.
-     */
-    if (segment_cmd.filesize > vmaddr)
-        segment_cmd.vmsize = segment_cmd.filesize;
+    if (I64)
+    {
+        segment_cmd64.vmsize = vmaddr;
+        segment_cmd64.filesize = foffset - segment_cmd64.fileoff;
+        /* Bugzilla 5331: Apparently having the filesize field greater than the vmsize field is an
+         * error, and is happening sometimes.
+         */
+        if (segment_cmd64.filesize > vmaddr)
+            segment_cmd64.vmsize = segment_cmd64.filesize;
+    }
+    else
+    {
+        segment_cmd.vmsize = vmaddr;
+        segment_cmd.filesize = foffset - segment_cmd.fileoff;
+        /* Bugzilla 5331: Apparently having the filesize field greater than the vmsize field is an
+         * error, and is happening sometimes.
+         */
+        if (segment_cmd.filesize > vmaddr)
+            segment_cmd.vmsize = segment_cmd.filesize;
+    }
 
     // Put out relocation data
     mach_numbersyms();
     for (int seg = 1; seg <= seg_count; seg++)
     {
         seg_data *pseg = SegData[seg];
-        struct section *psechdr = &SecHdrTab[pseg->SDshtidx];   // corresponding section
-        //printf("psechdr->addr = x%x\n", psechdr->addr);
+        struct section *psechdr = NULL;
+        struct section_64 *psechdr64 = NULL;
+        if (I64)
+        {
+            psechdr64 = &SecHdrTab64[pseg->SDshtidx];   // corresponding section
+            //printf("psechdr->addr = x%llx\n", psechdr64->addr);
+        }
+        else
+        {
+            psechdr = &SecHdrTab[pseg->SDshtidx];   // corresponding section
+            //printf("psechdr->addr = x%x\n", psechdr->addr);
+        }
         foffset = elf_align(I64 ? 8 : 4, foffset);
         unsigned reloff = foffset;
         unsigned nreloc = 0;
@@ -784,10 +902,9 @@ void obj_term()
         {   Relocation *r = (Relocation *)pseg->SDrel->buf;
             Relocation *rend = (Relocation *)(pseg->SDrel->buf + pseg->SDrel->size());
             for (; r != rend; r++)
-            {//   const char *rs = r->rtype == RELaddr ? "addr" : "rel";
-                symbol *s = r->targsym;
-                //printf("%d:x%04x : tseg %d tsym %p REL%s\n",
-                    //seg, r->offset, r->targseg, s, rs);
+            {   symbol *s = r->targsym;
+                const char *rs = r->rtype == RELaddr ? "addr" : "rel";
+                //printf("%d:x%04llx : tseg %d tsym %p REL%s\n", seg, r->offset, r->targseg, s, rs);
                 relocation_info rel;
                 scattered_relocation_info srel;
                 if (s)
@@ -796,6 +913,49 @@ void obj_term()
                     //symbol_print(s);
                     if (pseg->isCode())
                     {
+                        if (I64)
+                        {
+                            if (s->Sclass == SCextern ||
+                                s->Sclass == SCcomdef ||
+                                s->Sclass == SCcomdat ||
+                                s->Sclass == SCglobal)
+                            {
+                                rel.r_address = r->offset;
+                                rel.r_symbolnum = s->Sxtrnnum;
+                                rel.r_pcrel = 1;
+                                rel.r_length = 2;
+                                rel.r_extern = 1;
+                                rel.r_type = (r->rtype == RELrel) ? GENERIC_RELOC_SECTDIFF : GENERIC_RELOC_PAIR;
+                                if ((s->Sfl == FLfunc || s->Sfl == FLextern || s->Sclass == SCglobal) && r->rtype == RELaddr)
+                                    rel.r_type = GENERIC_RELOC_PB_LA_PTR;
+                                fobjbuf->write(&rel, sizeof(rel));
+                                foffset += sizeof(rel);
+                                nreloc++;
+                                continue;
+                            }
+                            else
+                            {
+                                rel.r_address = r->offset;
+                                rel.r_symbolnum = s->Sseg;
+                                rel.r_pcrel = 1;
+                                rel.r_length = 2;
+                                rel.r_extern = 0;
+                                rel.r_type = GENERIC_RELOC_SECTDIFF;
+                                fobjbuf->write(&rel, sizeof(rel));
+                                foffset += sizeof(rel);
+                                nreloc++;
+
+                                int32_t *p = patchAddr64(seg, r->offset);
+                                // Absolute address; add in addr of start of targ seg
+//printf("*p = x%x, .addr = x%x, Soffset = x%x\n", *p, (int)SecHdrTab64[SegData[s->Sseg]->SDshtidx].addr, (int)s->Soffset);
+//printf("pseg = x%x, r->offset = x%x\n", (int)SecHdrTab64[pseg->SDshtidx].addr, (int)r->offset);
+                                *p += SecHdrTab64[SegData[s->Sseg]->SDshtidx].addr;
+                                *p += s->Soffset;
+                                *p -= SecHdrTab64[pseg->SDshtidx].addr + r->offset + 4;
+                                //patch(pseg, r->offset, s->Sseg, s->Soffset);
+                                continue;
+                            }
+                        }
                     }
                     else
                     {
@@ -809,6 +969,10 @@ void obj_term()
                             rel.r_length = 2;
                             rel.r_extern = 1;
                             rel.r_type = GENERIC_RELOC_VANILLA;
+                            if (I64)
+                            {
+                                rel.r_length = 3;
+                            }
                             fobjbuf->write(&rel, sizeof(rel));
                             foffset += sizeof(rel);
                             nreloc++;
@@ -822,27 +986,57 @@ void obj_term()
                             rel.r_length = 2;
                             rel.r_extern = 0;
                             rel.r_type = GENERIC_RELOC_VANILLA;
+                            if (I64)
+                            {
+                                rel.r_length = 3;
+                                if (0 && s->Sseg != seg)
+                                    rel.r_type = GENERIC_RELOC_SECTDIFF;
+                            }
                             fobjbuf->write(&rel, sizeof(rel));
                             foffset += sizeof(rel);
                             nreloc++;
-                            int32_t *p = patchAddr(seg, r->offset);
-                            // Absolute address; add in addr of start of targ seg
-                            *p += SecHdrTab[SegData[s->Sseg]->SDshtidx].addr + s->Soffset;
-                            //patch(pseg, r->offset, s->Sseg, s->Soffset);
+                            if (I64)
+                            {
+                                rel.r_length = 3;
+                                int32_t *p = patchAddr64(seg, r->offset);
+                                // Absolute address; add in addr of start of targ seg
+                                *p += SecHdrTab64[SegData[s->Sseg]->SDshtidx].addr + s->Soffset;
+                                //patch(pseg, r->offset, s->Sseg, s->Soffset);
+                            }
+                            else
+                            {
+                                int32_t *p = patchAddr(seg, r->offset);
+                                // Absolute address; add in addr of start of targ seg
+                                *p += SecHdrTab[SegData[s->Sseg]->SDshtidx].addr + s->Soffset;
+                                //patch(pseg, r->offset, s->Sseg, s->Soffset);
+                            }
                             continue;
                         }
                     }
                 }
                 else if (r->rtype == RELaddr && pseg->isCode())
-                {   int32_t *p = patchAddr(seg, r->offset);
+                {
+                    int32_t *p = NULL;
+                    int32_t *p64 = NULL;
+                    if (I64)
+                        p64 = patchAddr64(seg, r->offset);
+                    else
+                        p = patchAddr(seg, r->offset);
                     srel.r_scattered = 1;
 
                     srel.r_address = r->offset;
                     srel.r_type = GENERIC_RELOC_LOCAL_SECTDIFF;
                     srel.r_length = 2;
-                    srel.r_value = SecHdrTab[SegData[r->targseg]->SDshtidx].addr +
-                        *p;
-                    //printf("SECTDIFF: x%x + x%x = x%x\n", SecHdrTab[SegData[r->targseg]->SDshtidx].addr, *p, srel.r_value);
+                    if (I64)
+                    {
+                        srel.r_value = SecHdrTab64[SegData[r->targseg]->SDshtidx].addr + *p64;
+                        //printf("SECTDIFF: x%llx + x%llx = x%x\n", SecHdrTab[SegData[r->targseg]->SDshtidx].addr, *p, srel.r_value);
+                    }
+                    else
+                    {
+                        srel.r_value = SecHdrTab[SegData[r->targseg]->SDshtidx].addr + *p;
+                        //printf("SECTDIFF: x%x + x%x = x%x\n", SecHdrTab[SegData[r->targseg]->SDshtidx].addr, *p, srel.r_value);
+                    }
                     srel.r_pcrel = 0;
                     fobjbuf->write(&srel, sizeof(srel));
                     foffset += sizeof(srel);
@@ -851,7 +1045,11 @@ void obj_term()
                     srel.r_address = 0;
                     srel.r_type = GENERIC_RELOC_PAIR;
                     srel.r_length = 2;
-                    srel.r_value = SecHdrTab[pseg->SDshtidx].addr +
+                    if (I64)
+                        srel.r_value = SecHdrTab64[pseg->SDshtidx].addr +
+                                r->funcsym->Slocalgotoffset + NPTRSIZE;
+                    else
+                        srel.r_value = SecHdrTab[pseg->SDshtidx].addr +
                                 r->funcsym->Slocalgotoffset + NPTRSIZE;
                     srel.r_pcrel = 0;
                     fobjbuf->write(&srel, sizeof(srel));
@@ -859,10 +1057,20 @@ void obj_term()
                     nreloc++;
 
                     // Recalc due to possible realloc of fobjbuf->buf
-                    p = patchAddr(seg, r->offset);
-                    //printf("address = x%x, p = %p *p = x%x\n", r->offset, p, *p);
-                    *p += SecHdrTab[SegData[r->targseg]->SDshtidx].addr -
-                          (SecHdrTab[pseg->SDshtidx].addr + r->funcsym->Slocalgotoffset + NPTRSIZE);
+                    if (I64)
+                    {
+                        p64 = patchAddr64(seg, r->offset);
+                        //printf("address = x%x, p64 = %p *p64 = x%llx\n", r->offset, p64, *p64);
+                        *p64 += SecHdrTab64[SegData[r->targseg]->SDshtidx].addr -
+                              (SecHdrTab64[pseg->SDshtidx].addr + r->funcsym->Slocalgotoffset + NPTRSIZE);
+                    }
+                    else
+                    {
+                        p = patchAddr(seg, r->offset);
+                        //printf("address = x%x, p = %p *p = x%x\n", r->offset, p, *p);
+                        *p += SecHdrTab[SegData[r->targseg]->SDshtidx].addr -
+                              (SecHdrTab[pseg->SDshtidx].addr + r->funcsym->Slocalgotoffset + NPTRSIZE);
+                    }
                     continue;
                 }
                 else
@@ -873,26 +1081,59 @@ void obj_term()
                     rel.r_length = 2;
                     rel.r_extern = 0;
                     rel.r_type = GENERIC_RELOC_VANILLA;
+                    if (I64)
+                    {
+                        rel.r_length = 3;
+                        if (0 && r->targseg != seg)
+                            rel.r_type = GENERIC_RELOC_SECTDIFF;
+                    }
                     fobjbuf->write(&rel, sizeof(rel));
                     foffset += sizeof(rel);
                     nreloc++;
-                    int32_t *p = patchAddr(seg, r->offset);
-//int32_t before = *p;
-                    if (rel.r_pcrel)
-                        // Relative address
-                        patch(pseg, r->offset, r->targseg, 0);
+                    if (I64)
+                    {
+                        int32_t *p64 = patchAddr64(seg, r->offset);
+                        //int64_t before = *p64;
+                        if (rel.r_pcrel)
+                            // Relative address
+                            patch(pseg, r->offset, r->targseg, 0);
+                        else
+                        {   // Absolute address; add in addr of start of targ seg
+//printf("*p = x%x, targ.addr = x%x\n", *p64, (int)SecHdrTab64[SegData[r->targseg]->SDshtidx].addr);
+//printf("pseg = x%x, r->offset = x%x\n", (int)SecHdrTab64[pseg->SDshtidx].addr, (int)r->offset);
+                            *p64 += SecHdrTab64[SegData[r->targseg]->SDshtidx].addr;
+                            //*p64 -= SecHdrTab64[pseg->SDshtidx].addr;
+                        }
+                        //printf("%d:x%04x before = x%04llx, after = x%04llx pcrel = %d\n", seg, r->offset, before, *p64, rel.r_pcrel);
+                    }
                     else
-                        // Absolute address; add in addr of start of targ seg
-                        *p += SecHdrTab[SegData[r->targseg]->SDshtidx].addr;
-//printf("%d:x%04x before = x%04x, after = x%04x pcrel = %d\n", seg, r->offset, before, *p, rel.r_pcrel);
+                    {
+                        int32_t *p = patchAddr(seg, r->offset);
+                        //int32_t before = *p;
+                        if (rel.r_pcrel)
+                            // Relative address
+                            patch(pseg, r->offset, r->targseg, 0);
+                        else
+                            // Absolute address; add in addr of start of targ seg
+                            *p += SecHdrTab[SegData[r->targseg]->SDshtidx].addr;
+                        //printf("%d:x%04x before = x%04x, after = x%04x pcrel = %d\n", seg, r->offset, before, *p, rel.r_pcrel);
+                    }
                     continue;
                 }
             }
         }
         if (nreloc)
         {
-            psechdr->reloff = reloff;
-            psechdr->nreloc = nreloc;
+            if (I64)
+            {
+                psechdr64->reloff = reloff;
+                psechdr64->nreloc = nreloc;
+            }
+            else
+            {
+                psechdr->reloff = reloff;
+                psechdr->nreloc = nreloc;
+            }
         }
     }
 
@@ -910,47 +1151,84 @@ void obj_term()
     symtab_cmd.nsyms =  dysymtab_cmd.nlocalsym +
                         dysymtab_cmd.nextdefsym +
                         dysymtab_cmd.nundefsym;
-    fobjbuf->reserve(symtab_cmd.nsyms * sizeof(struct nlist));
+    fobjbuf->reserve(symtab_cmd.nsyms * (I64 ? sizeof(struct nlist_64) : sizeof(struct nlist)));
     for (int i = 0; i < dysymtab_cmd.nlocalsym; i++)
     {   symbol *s = ((symbol **)local_symbuf->buf)[i];
-        struct nlist sym;
+        struct nlist_64 sym;
         sym.n_un.n_strx = elf_addmangled(s);
-        sym.n_value = s->Soffset + SecHdrTab[SegData[s->Sseg]->SDshtidx].addr;
         sym.n_type = N_SECT;
         sym.n_desc = 0;
         if (s->Sclass == SCcomdat)
             sym.n_desc = N_WEAK_DEF;
         sym.n_sect = s->Sseg;
-        fobjbuf->write(&sym, sizeof(sym));
+        if (I64)
+        {
+            sym.n_value = s->Soffset + SecHdrTab64[SegData[s->Sseg]->SDshtidx].addr;
+            fobjbuf->write(&sym, sizeof(sym));
+        }
+        else
+        {
+            struct nlist sym32;
+            sym32.n_un.n_strx = sym.n_un.n_strx;
+            sym32.n_value = s->Soffset + SecHdrTab[SegData[s->Sseg]->SDshtidx].addr;
+            sym32.n_type = sym.n_type;
+            sym32.n_desc = sym.n_desc;
+            sym32.n_sect = sym.n_sect;
+            fobjbuf->write(&sym32, sizeof(sym32));
+        }
     }
     for (int i = 0; i < dysymtab_cmd.nextdefsym; i++)
     {   symbol *s = ((symbol **)public_symbuf->buf)[i];
 
         //printf("Writing public symbol %d:x%x %s\n", s->Sseg, s->Soffset, s->Sident);
-        struct nlist sym;
+        struct nlist_64 sym;
         sym.n_un.n_strx = elf_addmangled(s);
-        sym.n_value = s->Soffset + SecHdrTab[SegData[s->Sseg]->SDshtidx].addr;
         sym.n_type = N_EXT | N_SECT;
         sym.n_desc = 0;
         if (s->Sclass == SCcomdat)
             sym.n_desc = N_WEAK_DEF;
         sym.n_sect = s->Sseg;
-        fobjbuf->write(&sym, sizeof(sym));
+        if (I64)
+        {
+            sym.n_value = s->Soffset + SecHdrTab64[SegData[s->Sseg]->SDshtidx].addr;
+            fobjbuf->write(&sym, sizeof(sym));
+        }
+        else
+        {
+            struct nlist sym32;
+            sym32.n_un.n_strx = sym.n_un.n_strx;
+            sym32.n_value = s->Soffset + SecHdrTab[SegData[s->Sseg]->SDshtidx].addr;
+            sym32.n_type = sym.n_type;
+            sym32.n_desc = sym.n_desc;
+            sym32.n_sect = sym.n_sect;
+            fobjbuf->write(&sym32, sizeof(sym32));
+        }
     }
     for (int i = 0; i < nexterns; i++)
     {   symbol *s = ((symbol **)extern_symbuf->buf)[i];
-        struct nlist sym;
+        struct nlist_64 sym;
         sym.n_un.n_strx = elf_addmangled(s);
         sym.n_value = s->Soffset;
         sym.n_type = N_EXT | N_UNDF;
         sym.n_desc = tyfunc(s->ty()) ? REFERENCE_FLAG_UNDEFINED_LAZY
                                      : REFERENCE_FLAG_UNDEFINED_NON_LAZY;
         sym.n_sect = 0;
-        fobjbuf->write(&sym, sizeof(sym));
+        if (I64)
+            fobjbuf->write(&sym, sizeof(sym));
+        else
+        {
+            struct nlist sym32;
+            sym32.n_un.n_strx = sym.n_un.n_strx;
+            sym32.n_value = sym.n_value;
+            sym32.n_type = sym.n_type;
+            sym32.n_desc = sym.n_desc;
+            sym32.n_sect = sym.n_sect;
+            fobjbuf->write(&sym32, sizeof(sym32));
+        }
     }
     for (int i = 0; i < ncomdefs; i++)
     {   Comdef *c = ((Comdef *)comdef_symbuf->buf) + i;
-        struct nlist sym;
+        struct nlist_64 sym;
         sym.n_un.n_strx = elf_addmangled(c->sym);
         sym.n_value = c->size * c->count;
         sym.n_type = N_EXT | N_UNDF;
@@ -967,20 +1245,42 @@ void obj_term()
             align = 4;
         sym.n_desc = align << 8;
         sym.n_sect = 0;
-        fobjbuf->write(&sym, sizeof(sym));
+        if (I64)
+            fobjbuf->write(&sym, sizeof(sym));
+        else
+        {
+            struct nlist sym32;
+            sym32.n_un.n_strx = sym.n_un.n_strx;
+            sym32.n_value = sym.n_value;
+            sym32.n_type = sym.n_type;
+            sym32.n_desc = sym.n_desc;
+            sym32.n_sect = sym.n_sect;
+            fobjbuf->write(&sym32, sizeof(sym32));
+        }
     }
     if (extdef)
     {
-        struct nlist sym;
+        struct nlist_64 sym;
         sym.n_un.n_strx = extdef;
         sym.n_value = 0;
         sym.n_type = N_EXT | N_UNDF;
         sym.n_desc = 0;
         sym.n_sect = 0;
-        fobjbuf->write(&sym, sizeof(sym));
+        if (I64)
+            fobjbuf->write(&sym, sizeof(sym));
+        else
+        {
+            struct nlist sym32;
+            sym32.n_un.n_strx = sym.n_un.n_strx;
+            sym32.n_value = sym.n_value;
+            sym32.n_type = sym.n_type;
+            sym32.n_desc = sym.n_desc;
+            sym32.n_sect = sym.n_sect;
+            fobjbuf->write(&sym32, sizeof(sym32));
+        }
         symtab_cmd.nsyms++;
     }
-    foffset += symtab_cmd.nsyms * sizeof(struct nlist);
+    foffset += symtab_cmd.nsyms * (I64 ? sizeof(struct nlist_64) : sizeof(struct nlist));
 
     // Put out string table
     foffset = elf_align(I64 ? 8 : 4, foffset);
@@ -1013,8 +1313,16 @@ void obj_term()
      * rewind and fix the header.
      */
     fobjbuf->position(headersize, sizeofcmds);
-    fobjbuf->write(&segment_cmd, sizeof(segment_cmd));
-    fobjbuf->write(SECbuf->buf + sizeof(struct section), (section_cnt - 1) * sizeof(struct section));
+    if (I64)
+    {
+        fobjbuf->write(&segment_cmd64, sizeof(segment_cmd64));
+        fobjbuf->write(SECbuf->buf + sizeof(struct section_64), (section_cnt - 1) * sizeof(struct section_64));
+    }
+    else
+    {
+        fobjbuf->write(&segment_cmd, sizeof(segment_cmd));
+        fobjbuf->write(SECbuf->buf + sizeof(struct section), (section_cnt - 1) * sizeof(struct section));
+    }
     fobjbuf->write(&symtab_cmd, sizeof(symtab_cmd));
     fobjbuf->write(&dysymtab_cmd, sizeof(dysymtab_cmd));
     fobjbuf->position(foffset, 0);
@@ -1394,9 +1702,18 @@ int mach_getsegment(const char *sectname, const char *segname,
     assert(strlen(segname)  <= 16);
     for (int seg = 1; seg <= seg_count; seg++)
     {   seg_data *pseg = SegData[seg];
-        if (strncmp(SecHdrTab[pseg->SDshtidx].sectname, sectname, 16) == 0 &&
-            strncmp(SecHdrTab[pseg->SDshtidx].segname, segname, 16) == 0)
-            return seg;         // return existing segment
+        if (I64)
+        {
+            if (strncmp(SecHdrTab64[pseg->SDshtidx].sectname, sectname, 16) == 0 &&
+                strncmp(SecHdrTab64[pseg->SDshtidx].segname, segname, 16) == 0)
+                return seg;         // return existing segment
+        }
+        else
+        {
+            if (strncmp(SecHdrTab[pseg->SDshtidx].sectname, sectname, 16) == 0 &&
+                strncmp(SecHdrTab[pseg->SDshtidx].segname, segname, 16) == 0)
+                return seg;         // return existing segment
+        }
     }
 
     int seg = ++seg_count;
@@ -1435,12 +1752,24 @@ int mach_getsegment(const char *sectname, const char *segname,
     pseg->SDseg = seg;
     pseg->SDoffset = 0;
 
-    struct section *sec = (struct section *)
-        SECbuf->writezeros(sizeof(struct section));
-    strncpy(sec->sectname, sectname, 16);
-    strncpy(sec->segname, segname, 16);
-    sec->align = align;
-    sec->flags = flags;
+    if (I64)
+    {
+        struct section_64 *sec = (struct section_64 *)
+            SECbuf->writezeros(sizeof(struct section_64));
+        strncpy(sec->sectname, sectname, 16);
+        strncpy(sec->segname, segname, 16);
+        sec->align = align;
+        sec->flags = flags;
+    }
+    else
+    {
+        struct section *sec = (struct section *)
+            SECbuf->writezeros(sizeof(struct section));
+        strncpy(sec->sectname, sectname, 16);
+        strncpy(sec->segname, segname, 16);
+        sec->align = align;
+        sec->flags = flags;
+    }
 
     pseg->SDshtidx = section_cnt++;
     pseg->SDaranges_offset = 0;
@@ -1875,7 +2204,8 @@ void obj_write_zeros(seg_data *pseg, targ_size_t count)
 void obj_lidata(int seg,targ_size_t offset,targ_size_t count)
 {
     //printf("obj_lidata(%d,%x,%d)\n",seg,offset,count);
-    if (SecHdrTab[SegData[seg]->SDshtidx].flags == S_ZEROFILL)
+    size_t idx = SegData[seg]->SDshtidx;
+    if ((I64 ? SecHdrTab64[idx].flags : SecHdrTab[idx].flags) == S_ZEROFILL)
     {   // Use SDoffset to record size of bss section
         SegData[seg]->SDoffset += count;
     }
@@ -2045,7 +2375,7 @@ void reftodatseg(int seg,targ_size_t offset,targ_size_t val,
     int save = buf->size();
     buf->setsize(offset);
 #if 0
-    printf("reftodatseg(seg:offset=%d:x%lx, val=x%lx, targetdatum %x, flags %x )\n",
+    printf("reftodatseg(seg:offset=%d:x%llx, val=x%llx, targetdatum %x, flags %x )\n",
         seg,offset,val,targetdatum,flags);
 #endif
     if (SegData[seg]->isCode() && SegData[targetdatum]->isCode())
@@ -2054,10 +2384,17 @@ void reftodatseg(int seg,targ_size_t offset,targ_size_t val,
     }
     mach_addrel(seg, offset, NULL, targetdatum, RELaddr);
     if (I64)
-        buf->write64(val);
-    else
-        buf->write32(val);
-    if (save > offset + NPTRSIZE)
+    {
+        if (flags & CFoffset64)
+        {
+            buf->write64(val);
+            if (save > offset + 8)
+                buf->setsize(save);
+            return;
+        }
+    }
+    buf->write32(val);
+    if (save > offset + 4)
         buf->setsize(save);
 }
 
@@ -2073,18 +2410,18 @@ void reftodatseg(int seg,targ_size_t offset,targ_size_t val,
 
 void reftocodseg(int seg,targ_size_t offset,targ_size_t val)
 {
-    printf("reftocodseg(seg=%d, offset=x%lx, val=x%lx )\n",seg,(unsigned long)offset,(unsigned long)val);
+    //printf("reftocodseg(seg=%d, offset=x%lx, val=x%lx )\n",seg,(unsigned long)offset,(unsigned long)val);
     assert(seg > 0);
     Outbuffer *buf = SegData[seg]->SDbuf;
     int save = buf->size();
     buf->setsize(offset);
     val -= funcsym_p->Soffset;
     mach_addrel(seg, offset, funcsym_p, 0, RELaddr);
-    if (I64)
-        buf->write64(val);
-    else
+//    if (I64)
+//        buf->write64(val);
+//    else
         buf->write32(val);
-    if (save > offset + NPTRSIZE)
+    if (save > offset + 4)
         buf->setsize(save);
 }
 
@@ -2099,15 +2436,17 @@ void reftocodseg(int seg,targ_size_t offset,targ_size_t val)
  *                      CFseg: get segment
  *                      CFoff: get offset
  * Returns:
- *      number of bytes in reference (2 or 4 or 8)
+ *      number of bytes in reference (4 or 8)
  */
 
 int reftoident(int seg, targ_size_t offset, Symbol *s, targ_size_t val,
         int flags)
 {
+    int retsize = (flags & CFoffset64) ? 8 : 4;
 #if 0
-    dbg_printf("\nreftoident('%s' seg %d, offset x%lx, val x%lx, flags x%x)\n",
-        s->Sident,seg,offset,val,flags);
+    dbg_printf("\nreftoident('%s' seg %d, offset x%llx, val x%llx, flags x%x)\n",
+        s->Sident,seg,(unsigned long long)offset,(unsigned long long)val,flags);
+    printf("retsize = %d\n", retsize);
     //dbg_printf("Sseg = %d, Sxtrnnum = %d\n",s->Sseg,s->Sxtrnnum);
     symbol_print(s);
 #endif
@@ -2118,97 +2457,117 @@ int reftoident(int seg, targ_size_t offset, Symbol *s, targ_size_t val,
     }
     else
     {
-        if (SegData[seg]->isCode() && flags & CFselfrel)
+        if (I64)
         {
-            if (!jumpTableSeg)
+            //if (s->Sclass != SCcomdat)
+                //val += s->Soffset;
+            if (flags & CFselfrel)
             {
-                jumpTableSeg =
-                    mach_getsegment("__jump_table", "__IMPORT",  0, S_SYMBOL_STUBS | S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS | S_ATTR_SELF_MODIFYING_CODE);
+                mach_addrel(seg, offset, s, 0, RELrel);
             }
-            seg_data *pseg = SegData[jumpTableSeg];
-            SecHdrTab[pseg->SDshtidx].reserved2 = 5;
-
-            if (!indirectsymbuf1)
-                indirectsymbuf1 = new Outbuffer();
             else
-            {   // Look through indirectsym to see if it is already there
-                int n = indirectsymbuf1->size() / sizeof(Symbol *);
-                Symbol **psym = (Symbol **)indirectsymbuf1->buf;
-                for (int i = 0; i < n; i++)
-                {   // Linear search, pretty pathetic
-                    if (s == psym[i])
-                    {   val = i * 5;
-                        goto L1;
-                    }
-                }
-            }
-
-            val = pseg->SDbuf->size();
-            static char halts[5] = { 0xF4,0xF4,0xF4,0xF4,0xF4 };
-            pseg->SDbuf->write(halts, 5);
-
-            // Add symbol s to indirectsymbuf1
-            indirectsymbuf1->write(&s, sizeof(Symbol *));
-         L1:
-            val -= offset + 4;
-            mach_addrel(seg, offset, NULL, jumpTableSeg, RELrel);
-        }
-        else if (SegData[seg]->isCode() &&
-                ((s->Sclass != SCextern && SegData[s->Sseg]->isCode()) || s->Sclass == SClocstat || s->Sclass == SCstatic))
-        {
-            val += s->Soffset;
-            mach_addrel(seg, offset, NULL, s->Sseg, RELaddr);
-        }
-        else if (SegData[seg]->isCode() && !tyfunc(s->ty()))
-        {
-            if (!pointersSeg)
             {
-                pointersSeg =
-                    mach_getsegment("__pointers", "__IMPORT",  0, S_NON_LAZY_SYMBOL_POINTERS);
+                mach_addrel(seg, offset, s, 0, RELaddr);
             }
-            seg_data *pseg = SegData[pointersSeg];
-
-            if (!indirectsymbuf2)
-                indirectsymbuf2 = new Outbuffer();
-            else
-            {   // Look through indirectsym to see if it is already there
-                int n = indirectsymbuf2->size() / sizeof(Symbol *);
-                Symbol **psym = (Symbol **)indirectsymbuf2->buf;
-                for (int i = 0; i < n; i++)
-                {   // Linear search, pretty pathetic
-                    if (s == psym[i])
-                    {   val = i * 4;
-                        goto L2;
-                    }
-                }
-            }
-
-            val = pseg->SDbuf->size();
-            pseg->SDbuf->writezeros(NPTRSIZE);
-
-            // Add symbol s to indirectsymbuf2
-            indirectsymbuf2->write(&s, sizeof(Symbol *));
-
-         L2:
-            //printf("reftoident: seg = %d, offset = x%x, s = %s, val = x%x, pointersSeg = %d\n", seg, offset, s->Sident, val, pointersSeg);
-            mach_addrel(seg, offset, NULL, pointersSeg, RELaddr);
         }
         else
-        {   //val -= s->Soffset;
-            mach_addrel(seg, offset, s, 0, RELaddr);
+        {
+            if (SegData[seg]->isCode() && flags & CFselfrel)
+            {
+                if (!jumpTableSeg)
+                {
+                    jumpTableSeg =
+                        mach_getsegment("__jump_table", "__IMPORT",  0, S_SYMBOL_STUBS | S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS | S_ATTR_SELF_MODIFYING_CODE);
+                }
+                seg_data *pseg = SegData[jumpTableSeg];
+                if (I64)
+                    SecHdrTab64[pseg->SDshtidx].reserved2 = 5;
+                else
+                    SecHdrTab[pseg->SDshtidx].reserved2 = 5;
+
+                if (!indirectsymbuf1)
+                    indirectsymbuf1 = new Outbuffer();
+                else
+                {   // Look through indirectsym to see if it is already there
+                    int n = indirectsymbuf1->size() / sizeof(Symbol *);
+                    Symbol **psym = (Symbol **)indirectsymbuf1->buf;
+                    for (int i = 0; i < n; i++)
+                    {   // Linear search, pretty pathetic
+                        if (s == psym[i])
+                        {   val = i * 5;
+                            goto L1;
+                        }
+                    }
+                }
+
+                val = pseg->SDbuf->size();
+                static char halts[5] = { 0xF4,0xF4,0xF4,0xF4,0xF4 };
+                pseg->SDbuf->write(halts, 5);
+
+                // Add symbol s to indirectsymbuf1
+                indirectsymbuf1->write(&s, sizeof(Symbol *));
+             L1:
+                val -= offset + 4;
+                mach_addrel(seg, offset, NULL, jumpTableSeg, RELrel);
+            }
+            else if (SegData[seg]->isCode() &&
+                    ((s->Sclass != SCextern && SegData[s->Sseg]->isCode()) || s->Sclass == SClocstat || s->Sclass == SCstatic))
+            {
+                val += s->Soffset;
+                mach_addrel(seg, offset, NULL, s->Sseg, RELaddr);
+            }
+            else if (SegData[seg]->isCode() && !tyfunc(s->ty()))
+            {
+                if (!pointersSeg)
+                {
+                    pointersSeg =
+                        mach_getsegment("__pointers", "__IMPORT",  0, S_NON_LAZY_SYMBOL_POINTERS);
+                }
+                seg_data *pseg = SegData[pointersSeg];
+
+                if (!indirectsymbuf2)
+                    indirectsymbuf2 = new Outbuffer();
+                else
+                {   // Look through indirectsym to see if it is already there
+                    int n = indirectsymbuf2->size() / sizeof(Symbol *);
+                    Symbol **psym = (Symbol **)indirectsymbuf2->buf;
+                    for (int i = 0; i < n; i++)
+                    {   // Linear search, pretty pathetic
+                        if (s == psym[i])
+                        {   val = i * 4;
+                            goto L2;
+                        }
+                    }
+                }
+
+                val = pseg->SDbuf->size();
+                pseg->SDbuf->writezeros(NPTRSIZE);
+
+                // Add symbol s to indirectsymbuf2
+                indirectsymbuf2->write(&s, sizeof(Symbol *));
+
+             L2:
+                //printf("reftoident: seg = %d, offset = x%x, s = %s, val = x%x, pointersSeg = %d\n", seg, offset, s->Sident, val, pointersSeg);
+                mach_addrel(seg, offset, NULL, pointersSeg, RELaddr);
+            }
+            else
+            {   //val -= s->Soffset;
+                mach_addrel(seg, offset, s, 0, RELaddr);
+            }
         }
 
         Outbuffer *buf = SegData[seg]->SDbuf;
         int save = buf->size();
         buf->setsize(offset);
-        if (I64)
+        //printf("offset = x%llx, val = x%llx\n", offset, val);
+        if (retsize == 8)
             buf->write64(val);
         else
             buf->write32(val);
-        if (save > offset + NPTRSIZE)
+        if (save > offset + retsize)
             buf->setsize(save);
     }
-    return NPTRSIZE;
+    return retsize;
 }
 
 /*****************************************

@@ -672,7 +672,7 @@ VarDeclaration::VarDeclaration(Loc loc, Type *type, Identifier *id, Initializer 
     aliassym = NULL;
     onstack = 0;
     canassign = 0;
-    setValueNull();
+    ctfeAdrOnStack = (size_t)(-1);
 #if DMDV2
     rundtor = NULL;
     edtor = NULL;
@@ -1652,8 +1652,12 @@ void VarDeclaration::checkNestedReference(Scope *sc, Loc loc)
         // The current function
         FuncDeclaration *fdthis = sc->parent->isFuncDeclaration();
 
-        if (fdv && fdthis && fdv != fdthis)
+        if (fdv && fdthis && fdv != fdthis && fdthis->ident != Id::ensure)
         {
+            /* __ensure is always called directly,
+             * so it never becomes closure.
+             */
+
             if (loc.filename)
                 fdthis->getLevel(loc, fdv);
 
@@ -1671,7 +1675,6 @@ void VarDeclaration::checkNestedReference(Scope *sc, Loc loc)
                 if (s == this)
                     goto L2;
             }
-
             fdv->closureVars.push(this);
           L2: ;
 
