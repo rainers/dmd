@@ -356,7 +356,7 @@ Symbol *FuncDeclaration::toSymbol()
             func_t *f = s->Sfunc;
             if (isVirtual())
                 f->Fflags |= Fvirtual;
-            else if (isMember2())
+            else if ((storage_class & STCstatic) && isMember2())
                 f->Fflags |= Fstatic;
             f->Fstartline.Slinnum = loc.linnum;
             f->Fstartline.Sfilename = (char *)loc.filename;
@@ -406,11 +406,15 @@ Symbol *FuncDeclaration::toSymbol()
 #endif
                     s->Sflags |= SFLpublic;
                     Dsymbol *parent = toParent();
-                    ClassDeclaration *cd = parent->isClassDeclaration();
-                    if (cd)
+                    if (ClassDeclaration *cd = parent->isClassDeclaration())
                     {
                         ::type *tc = cd->type->toCtype();
                         s->Sscope = tc->Tnext->Ttag;
+                    }
+                    else if (StructDeclaration *sd = parent->isStructDeclaration())
+                    {
+                        ::type *tc = sd->type->toCtype();
+                        s->Sscope = tc->Ttag;
                     }
                     break;
                 }
