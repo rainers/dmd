@@ -73,7 +73,12 @@ export MODEL=32
 
 ifeq ($(OS),win32)
 export ARGS=-inline -release -g -O -unittest
-export DMD=../src/dmd.exe
+export DMD=../../windows/bin/dmd.exe
+# export DMD=../../windows/bin/dmd_msc.exe
+# export DMD=../../lib/dmd/x64/Release/dmd_msc.exe
+# export DMD=../../lib/dmd/x64/Debug/dmd_msc.exe
+# export DMD=../../lib/dmd/win32/Release/dmd_msc.exe
+# export DMD=/opt/gdc/bin/gdmd
 export EXE=.exe
 export OBJ=.obj
 export DSEP=\\
@@ -182,7 +187,7 @@ start_fail_compilation_tests: $(RESULTS_DIR)/.created $(d_do_test)
 	@echo "Running fail compilation tests"
 	$(QUIET)$(MAKE) --no-print-directory run_fail_compilation_tests
 
-$(d_do_test): d_do_test.d $(RESULTS_DIR)/.created
+$(d_do_test): d_do_test.d $(RESULTS_DIR)/.created $(DMD)
 	@echo "Building d_do_test tool"
 	$(QUIET)$(DMD) -m$(MODEL) -od$(RESULTS_DIR) -of$(RESULTS_DIR)$(DSEP)d_do_test d_do_test.d
 
