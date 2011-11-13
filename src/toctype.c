@@ -251,8 +251,11 @@ type *TypeFunction::toCtype()
         if (varargs != 1)
             t->Tflags |= TFfixed;
         ctype = t;
-        assert(next);           // function return type should exist
-        t->Tnext = next->toCtype();
+        //assert(next);           // function return type should exist
+        if(!next)
+            t->Tnext = type_alloc(TYvoid);
+        else
+            t->Tnext = next->toCtype();
         t->Tnext->Tcount++;
         t->Tparamtypes = paramtypes;
     }

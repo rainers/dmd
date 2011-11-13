@@ -38,7 +38,7 @@ LFLAGS=
 LINKN=$(SCROOT)\bin\link /de
 
 CFLAGS=-I$(ROOT);$(INCLUDE) $(XFLG) $(OPT) $(DEBUG) -cpp
-MFLAGS=-I$C;$(TK) -DMARS -cpp $(DEBUG) -e -wx
+MFLAGS=-I$C;$(TK) -DMARS -cpp $(OPT) $(DEBUG) -e -wx
 
 # Makerules:
 .c.obj:
