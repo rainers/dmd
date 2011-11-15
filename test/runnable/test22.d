@@ -1,7 +1,5 @@
-// REQUIRED_ARGS: -d
+// REQUIRED_ARGS:
 
-import core.stdc.math: isnan;
-import std.random: rand;
 import std.math: poly;
 import std.c.stdarg;
 
@@ -19,68 +17,70 @@ extern(C)
 
 /*************************************/
 
+// http://www.digitalmars.com/d/archives/digitalmars/D/bugs/4766.html
+// Only with -O
+
+real randx()
+{
+    return 1.2;
+}
+
 void test1()
 {
-    float x10=rand();
-    float x11=rand();
-    float x20=rand();
-    float x21=rand();
-    float y10=rand();
-    float y11=rand();
-    float y20=rand();
-    float y21=rand();
+    float x10=randx();
+    float x11=randx();
+    float x20=randx();
+    float x21=randx();
+    float y10=randx();
+    float y11=randx();
+    float y20=randx();
+    float y21=randx();
 
     float tmp=(
     x20*x21 + y10*y10 + y10*y11 + y11*y11 + 
     y11*y20 + y20*y20 + y10*y21 + y11*y21 +
     y21*y21);
-
-    printf("%f\n", tmp);
-    assert(!isnan(tmp));
+    assert(tmp > 0);
 }
 
 /*************************************/
 
 void test2()
 {
-    double x10=rand();
-    double x11=rand();
-    double x20=rand();
-    double x21=rand();
-    double y10=rand();
-    double y11=rand();
-    double y20=rand();
-    double y21=rand();
+	double x10=randx();
+	double x11=randx();
+	double x20=randx();
+	double x21=randx();
+	double y10=randx();
+	double y11=randx();
+	double y20=randx();
+	double y21=randx();
 
     double tmp=(
     x20*x21 + y10*y10 + y10*y11 + y11*y11 + 
     y11*y20 + y20*y20 + y10*y21 + y11*y21 +
     y21*y21);
-
-    printf("%f\n", tmp);
-    assert(!isnan(tmp));
+    assert(tmp > 0);
 }
 
 /*************************************/
 
 void test3()
 {
-    real x10=rand();
-    real x11=rand();
-    real x20=rand();
-    real x21=rand();
-    real y10=rand();
-    real y11=rand();
-    real y20=rand();
-    real y21=rand();
+    real x10=randx();
+    real x11=randx();
+    real x20=randx();
+    real x21=randx();
+    real y10=randx();
+    real y11=randx();
+    real y20=randx();
+    real y21=randx();
 
     real tmp=(
     x20*x21 + y10*y10 + y10*y11 + y11*y11 + 
     y11*y20 + y20*y20 + y10*y21 + y11*y21 +
     y21*y21);
-
-    printf("%Lf\n", tmp);
-    assert(!isnan(tmp));
+    assert(tmp > 0);
 }
 
 /*************************************/
@@ -564,7 +564,7 @@ string toString26(cdouble z)
 {
     char[ulong.sizeof*8] buf;
 
-    auto len = snprintf(buf, buf.sizeof, "%f+%fi", z.re, z.im);
+    auto len = snprintf(buf.ptr, buf.sizeof, "%f+%fi", z.re, z.im);
     return buf[0 .. len].idup;
 }
 
@@ -596,7 +596,8 @@ void test27()
     string s = (int*function(int ...)[]).mangleof;
     printf("%.*s\n", s.length, s.ptr);
     assert((int*function(int ...)[]).mangleof == "APFiXPi");
-    assert(x.mangleof == "i");
+    assert(typeof(x).mangleof == "i");
+    assert(x.mangleof == "_D6test226test27FZv1xi");
 }
 
 /*************************************/
@@ -605,9 +606,6 @@ void test28()
 {
     alias cdouble X;
     X four = cast(X) (4.0i + 0.4);
-   
-    typedef cdouble Y;
-    Y five = cast(Y) (4.0i + 0.4);
 }
 
 /*************************************/
@@ -648,7 +646,7 @@ void test30()
 
 template dog31(string sheep)
 {
-  invariant string dog31 = "daschund";
+  immutable string dog31 = "daschund";
 }
 
 void test31()
@@ -1160,7 +1158,7 @@ void test51()
 
 /*************************************/
 
-typedef int function (int) x52;
+alias int function (int) x52;
 
 template T52(string str){
 	const int T52 = 1;

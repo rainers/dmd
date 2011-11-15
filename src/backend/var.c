@@ -16,7 +16,6 @@
 #include        <time.h>
 
 #include        "cc.h"
-#include        "parser.h"
 #include        "global.h"
 #include        "oper.h"
 #include        "type.h"
@@ -41,7 +40,6 @@ char PARSER;                    // indicate we're in the parser
 char OPTIMIZER;                 // indicate we're in the optimizer
 int structalign;                /* alignment for members of structures  */
 char dbcs;                      // current double byte character set
-linkage_t linkage;
 
 int TYptrdiff = TYint;
 int TYsize = TYuint;
@@ -51,6 +49,8 @@ int TYsize_t = TYuint;
 char debuga,debugb,debugc,debugd,debuge,debugf,debugr,debugs,debugt,debugu,debugw,debugx,debugy;
 #endif
 
+#if !MARS
+linkage_t linkage;
 int linkage_spec = 0;           /* using the default                    */
 
 /* Function types       */
@@ -86,7 +86,6 @@ tym_t functypetab[LINK_MAXDIM][MEMMODELS] =
 /* LINK_MAXDIM = C,C++,Pascal,FORTRAN,syscall,stdcall */
 mangle_t funcmangletab[LINK_MAXDIM] =
 {
-#if TX86
     mTYman_c,
     mTYman_cpp,
     mTYman_pas,
@@ -94,7 +93,6 @@ mangle_t funcmangletab[LINK_MAXDIM] =
     mTYman_sys,
     mTYman_std,
     mTYman_d,
-#endif
 };
 
 /* Name mangling for global variables   */
@@ -108,6 +106,7 @@ mangle_t varmangletab[LINK_MAXDIM] =
 #endif
     mTYman_pas,mTYman_for,mTYman_sys,mTYman_std,mTYman_d
 };
+#endif
 
 targ_size_t     dsout = 0;      /* # of bytes actually output to data   */
                                 /* segment, used to pad for alignment   */
@@ -156,7 +155,7 @@ int level = 0;                  /* declaration level                    */
                                 /* 3+: compound statement decls         */
 
 param_t *paramlst = NULL;       /* function parameter list              */
-tym_t pointertype;              /* default data pointer type            */
+tym_t pointertype = TYnptr;     /* default data pointer type            */
 
 /************************
  * Bit masks

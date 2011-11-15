@@ -74,6 +74,7 @@ enum PURE;
                                         // but not typed as "shared"
 #define STCwild         0x80000000LL    // for "wild" type constructor
 #define STC_TYPECTOR    (STCconst | STCimmutable | STCshared | STCwild)
+#define STC_FUNCATTR    (STCref | STCnothrow | STCpure | STCproperty | STCsafe | STCtrusted | STCsystem)
 
 #define STCproperty     0x100000000LL
 #define STCsafe         0x200000000LL
@@ -82,6 +83,7 @@ enum PURE;
 #define STCctfe         0x1000000000LL  // can be used in CTFE, even if it is static
 #define STCdisable      0x2000000000LL  // for functions that are not callable
 #define STCresult       0x4000000000LL  // for result variables passed to out contracts
+#define STCnodefaultctor 0x8000000000LL  // must be set inside constructor
 
 struct Match
 {
@@ -140,13 +142,14 @@ struct Declaration : Dsymbol
     int isAbstract()     { return storage_class & STCabstract; }
     int isConst()        { return storage_class & STCconst; }
     int isImmutable()    { return storage_class & STCimmutable; }
+    int isWild()         { return storage_class & STCwild; }
     int isAuto()         { return storage_class & STCauto; }
     int isScope()        { return storage_class & STCscope; }
     int isSynchronized() { return storage_class & STCsynchronized; }
     int isParameter()    { return storage_class & STCparameter; }
     int isDeprecated()   { return storage_class & STCdeprecated; }
     int isOverride()     { return storage_class & STCoverride; }
-    int isResult()       { return storage_class & STCresult; }
+    StorageClass isResult()       { return storage_class & STCresult; }
 
     int isIn()    { return storage_class & STCin; }
     int isOut()   { return storage_class & STCout; }
@@ -505,9 +508,18 @@ enum BUILTIN
     BUILTINtan,                 // std.math.tan
     BUILTINsqrt,                // std.math.sqrt
     BUILTINfabs,                // std.math.fabs
+    BUILTINatan2,               // std.math.atan2
+    BUILTINrndtol,              // std.math.rndtol
+    BUILTINexpm1,               // std.math.expm1
+    BUILTINexp2,                // std.math.exp2
+    BUILTINyl2x,                // std.math.yl2x
+    BUILTINyl2xp1,              // std.math.yl2xp1
+    BUILTINbsr,                 // core.bitop.bsr
+    BUILTINbsf,                 // core.bitop.bsf
+    BUILTINbswap,               // core.bitop.bswap
 };
 
-Expression *eval_builtin(enum BUILTIN builtin, Expressions *arguments);
+Expression *eval_builtin(Loc loc, enum BUILTIN builtin, Expressions *arguments);
 
 #else
 enum BUILTIN { };
@@ -515,7 +527,7 @@ enum BUILTIN { };
 
 struct FuncDeclaration : Declaration
 {
-    Array *fthrows;                     // Array of Type's of exceptions (not used)
+    Types *fthrows;                     // Array of Type's of exceptions (not used)
     Statement *frequire;
     Statement *fensure;
     Statement *fbody;
@@ -536,7 +548,7 @@ struct FuncDeclaration : Declaration
     VarDeclaration *v_argptr;           // '_argptr' variable
 #endif
     VarDeclaration *v_argsave;          // save area for args passed in registers for variadic functions
-    Dsymbols *parameters;               // Array of VarDeclaration's for parameters
+    VarDeclarations *parameters;        // Array of VarDeclaration's for parameters
     DsymbolTable *labtab;               // statement label symbol table
     Declaration *overnext;              // next in overload list
     Loc endloc;                         // location of closing curly bracket
@@ -554,6 +566,7 @@ struct FuncDeclaration : Declaration
                                         // of the 'introducing' function
                                         // this one is overriding
     int inferRetType;                   // !=0 if return type is to be inferred
+    StorageClass storage_class2;        // storage class for template onemember's
 
     // Things that should really go into Scope
     int hasReturnExp;                   // 1 if there's a return exp; statement
@@ -573,7 +586,7 @@ struct FuncDeclaration : Declaration
 
     int tookAddressOf;                  // set if someone took the address of
                                         // this function
-    Dsymbols closureVars;               // local variables in this function
+    VarDeclarations closureVars;        // local variables in this function
                                         // which are referenced by nested
                                         // functions
 
@@ -597,7 +610,7 @@ struct FuncDeclaration : Declaration
     void toCBuffer(OutBuffer *buf, HdrGenState *hgs);
     void bodyToCBuffer(OutBuffer *buf, HdrGenState *hgs);
     int overrides(FuncDeclaration *fd);
-    int findVtblIndex(Array *vtbl, int dim);
+    int findVtblIndex(Dsymbols *vtbl, int dim);
     int overloadInsert(Dsymbol *s);
     FuncDeclaration *overloadExactMatch(Type *t);
     FuncDeclaration *overloadResolve(Loc loc, Expression *ethis, Expressions *arguments, int flags = 0);
@@ -620,6 +633,7 @@ struct FuncDeclaration : Declaration
     int isCodeseg();
     int isOverloadable();
     enum PURE isPure();
+    enum PURE isPureBypassingInference();
     bool setImpure();
     int isSafe();
     int isTrusted();
@@ -633,7 +647,7 @@ struct FuncDeclaration : Declaration
     Expression *interpret(InterState *istate, Expressions *arguments, Expression *thisexp = NULL);
     void inlineScan();
     int canInline(int hasthis, int hdrscan = 0);
-    Expression *doInline(InlineScanState *iss, Expression *ethis, Array *arguments);
+    Expression *doInline(InlineScanState *iss, Expression *ethis, Expressions *arguments);
     const char *kind();
     void toDocBuffer(OutBuffer *buf);
     FuncDeclaration *isUnique();
@@ -693,7 +707,6 @@ struct CtorDeclaration : FuncDeclaration
     CtorDeclaration(Loc loc, Loc endloc, StorageClass stc, Type *type);
     Dsymbol *syntaxCopy(Dsymbol *);
     void semantic(Scope *sc);
-    void toCBuffer(OutBuffer *buf, HdrGenState *hgs);
     const char *kind();
     char *toChars();
     int isVirtual();
@@ -706,7 +719,7 @@ struct CtorDeclaration : FuncDeclaration
 #if DMDV2
 struct PostBlitDeclaration : FuncDeclaration
 {
-    PostBlitDeclaration(Loc loc, Loc endloc);
+    PostBlitDeclaration(Loc loc, Loc endloc, StorageClass stc = STCundefined);
     PostBlitDeclaration(Loc loc, Loc endloc, Identifier *id);
     Dsymbol *syntaxCopy(Dsymbol *);
     void semantic(Scope *sc);
@@ -751,6 +764,7 @@ struct StaticCtorDeclaration : FuncDeclaration
     int isVirtual();
     int addPreInvariant();
     int addPostInvariant();
+    bool hasStaticCtorOrDtor();
     void emitComment(Scope *sc);
     void toJsonBuffer(OutBuffer *buf);
     void toCBuffer(OutBuffer *buf, HdrGenState *hgs);
@@ -778,6 +792,7 @@ struct StaticDtorDeclaration : FuncDeclaration
     void semantic(Scope *sc);
     AggregateDeclaration *isThis();
     int isVirtual();
+    bool hasStaticCtorOrDtor();
     int addPreInvariant();
     int addPostInvariant();
     void emitComment(Scope *sc);

@@ -877,7 +877,7 @@ code *fixresult87(elem *e,regm_t retregs,regm_t *pretregs)
     {   if (*pretregs & mPSW)
         {   if (!(retregs & mPSW))
             {   assert(retregs & mST0);
-                c1 = genftst(c1,e,!(*pretregs & mST0)); // FTST
+                c1 = genftst(c1,e,!(*pretregs & (mST0 | XMMREGS))); // FTST
             }
         }
         if (*pretregs & mST0 && retregs & XMMREGS)
@@ -935,7 +935,7 @@ code *orth87(elem *e,regm_t *pretregs)
     int e2oper;
     int eoper;
     unsigned sz2;
-    int clib;
+    int clib = CLIBMAX;         // initialize to invalid value
     int reverse = 0;
 
     //printf("orth87(+e = %p, *pretregs = %s)\n", e, regm_str(*pretregs));
@@ -1986,7 +1986,7 @@ code *eq87(elem *e,regm_t *pretregs)
         cs.Irex = 0;
         cs.Iflags = 0;
         cs.Iop = op1;
-        if (*pretregs & (mST0 | ALLREGS | mBP)) // if want result on stack too
+        if (*pretregs & (mST0 | ALLREGS | mBP | XMMREGS)) // if want result on stack too
         {   // Make sure it's still there
             elem *e2 = e->E2;
             while (e2->Eoper == OPcomma)

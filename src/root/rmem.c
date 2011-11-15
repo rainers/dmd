@@ -79,9 +79,12 @@ void *Mem::realloc(void *p, size_t size)
     }
     else
     {
-        p = ::realloc(p, size);
+        void *psave = p;
+        p = ::realloc(psave, size);
         if (!p)
+        {   free(psave);
             error();
+        }
     }
     return p;
 }
@@ -122,6 +125,15 @@ void Mem::mark(void *pointer)
 {
     (void) pointer;             // necessary for VC /W4
 }
+
+void Mem::setStackBottom(void *bottom)
+{
+}
+
+void Mem::addroots(char* pStart, char* pEnd)
+{
+}
+
 
 /* =================================================== */
 

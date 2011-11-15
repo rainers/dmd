@@ -1,5 +1,5 @@
 // Copyright (C) 1984-1998 by Symantec
-// Copyright (C) 2000-2009 by Digital Mars
+// Copyright (C) 2000-2011 by Digital Mars
 // All Rights Reserved
 // http://www.digitalmars.com
 // Written by Walter Bright
@@ -18,7 +18,6 @@
 #include        <time.h>
 
 #include        "cc.h"
-#include        "parser.h"
 #include        "global.h"
 #include        "type.h"
 #include        "dt.h"
@@ -27,9 +26,13 @@
 #endif
 
 #include        "el.h"
-#include        "cpp.h"
 #include        "oper.h"                /* for OPMAX            */
 #include        "token.h"
+
+#if SCPP
+#include        "parser.h"
+#include        "cpp.h"
+#endif
 
 static char __file__[] = __FILE__;      /* for tassert.h                */
 #include        "tassert.h"
@@ -222,11 +225,7 @@ symbol * symbol_calloc(const char *id)
 
     len = strlen(id);
     //printf("sizeof(symbol)=%d, sizeof(s->Sident)=%d, len=%d\n",sizeof(symbol),sizeof(s->Sident),len);
-#if TX86
     s = (symbol *) mem_fmalloc(sizeof(symbol) - sizeof(s->Sident) + len + 1 + 5);
-#else
-    s = (symbol *) MEM_PH_MALLOC(sizeof(symbol) - sizeof(s->Sident) + len + 1);
-#endif
     memset(s,0,sizeof(symbol) - sizeof(s->Sident));
 #if SCPP
     s->Ssequence = pstate.STsequence;
@@ -965,11 +964,7 @@ void symbol_free(symbol *s)
 #ifdef DEBUG
             s->id = 0;
 #endif
-#if TX86
             mem_ffree(s);
-#else
-            MEM_PH_FREE(s);
-#endif
         }
         s = sr;
     }
@@ -1000,7 +995,9 @@ SYMIDX symbol_add(symbol *s)
     //printf("symbol_add('%s')\n", s->Sident);
 #ifdef DEBUG
     if (!s || !s->Sident[0])
-        dbg_printf("bad symbol\n");
+    {   dbg_printf("bad symbol\n");
+        assert(0);
+    }
 #endif
     symbol_debug(s);
     if (pstate.STinsizeof)

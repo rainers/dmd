@@ -2766,6 +2766,15 @@ struct S5117b
 }
 
 /************************************************/
+// from tests/fail_compilation/fail147
+
+static assert(!is(typeof(Compileable!(
+    (int i){
+        int x = void;
+        ++x; // used before initialization
+        return i + x;
+    }(3)
+))));
 
 int main()
 {

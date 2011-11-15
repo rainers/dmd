@@ -91,20 +91,6 @@ void test2()
 
 /************************************************/
 
-typedef int foo3;
-
-foo3 [foo3] list3;
-
-void test3()
-{
-    list3[cast(foo3)5] = cast(foo3)2;
-    foo3 x = list3.keys[0]; // This line fails.
-    assert(x == cast(foo3)5);
-}
-
-
-/************************************************/
-
 void test4()
 {
     int[const(ubyte)[]] b;
@@ -806,12 +792,29 @@ void test35() {
 }
 
 /************************************************/
+// 6433
+
+void test36() {
+    int[int] aa;
+    static assert(aa.sizeof != 0);
+    static assert(aa.alignof != 0);
+    static assert(is(typeof(aa.init) == int[int]));
+    static assert(typeof(aa).mangleof == "Hii");
+    static assert(typeof(aa).stringof == "int[int]");
+    static struct AA { int[int] aa; }
+    static assert(AA.aa.offsetof == 0);
+
+    aa = aa.init;
+    aa[0] = 1;
+    assert(aa.length == 1 && aa[0] == 1);
+}
+
+/************************************************/
 
 int main()
 {
 printf("before test 1\n");   test1();
 printf("before test 2\n");   test2();
-printf("before test 3\n");   test3();
 printf("before test 4\n");   test4();
 printf("before test 5\n");   test5();
 printf("before test 6\n");   test6();
@@ -844,6 +847,7 @@ printf("before test 32\n");   test32();
 
     test34();
     test35();
+    test36();
 
     printf("Success\n");
     return 0;

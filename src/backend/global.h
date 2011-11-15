@@ -83,6 +83,11 @@ CEXTERN block *block_last;
 CEXTERN int errcnt;
 CEXTERN regm_t fregsaved;
 
+#if SCPP
+CEXTERN targ_size_t dsout;              /* # of bytes actually output to data */
+#endif
+CEXTERN tym_t pointertype;              /* default data pointer type */
+
 // cg.c
 extern symbol *localgot;
 extern symbol *tls_get_addr_sym;
@@ -106,15 +111,28 @@ void eecontext_parse();
         /* doesn't belong here, but func to OPxxx is in exp2 */
 void exp2_setstrthis(elem *e,Symbol *s,targ_size_t offset,type *t);
 symbol *exp2_qualified_lookup(Classsym *sclass, int flags, int *pflags);
+elem *exp2_copytotemp(elem *e);
 
 /* util.c */
-void util_progress();
+#if __clang__
+void util_exit(int) __attribute__((analyzer_noreturn));
+void util_assert(char *, int) __attribute__((analyzer_noreturn));
+#else
 void util_exit(int);
-void util_set386(void);
+void util_assert(char *, int);
+#if __DMC__
+#pragma ZTC noreturn(util_exit)
+#pragma ZTC noreturn(util_assert)
+#endif
+#endif
+
+void util_progress();
+void util_set16(void);
+void util_set32(void);
 void util_set64(void);
 int ispow2(targ_ullong);
+
 #if TX86
-void util_assert(char *, int);
 #if __GNUC__
 #define util_malloc(n,size) mem_malloc((n)*(size))
 #define util_calloc(n,size) mem_calloc((n)*(size))
@@ -137,6 +155,7 @@ char *parc_strdup(const char *s);
 void parc_free(void *p);
 #endif
 #endif
+
 void swap(int *,int *);
 void crlf(FILE *);
 char *unsstr(unsigned);
@@ -173,9 +192,22 @@ void dll_printf(const char *format,...);
 void cmderr(unsigned,...);
 int synerr(unsigned,...);
 void preerr(unsigned,...);
+
+#if __clang__
+void err_exit(void) __attribute__((analyzer_noreturn));
+void err_nomem(void) __attribute__((analyzer_noreturn));
+void err_fatal(unsigned,...) __attribute__((analyzer_noreturn));
+#else
 void err_exit(void);
 void err_nomem(void);
-#pragma noreturn(err_nomem)
+void err_fatal(unsigned,...);
+#if __DMC__
+#pragma ZTC noreturn(err_exit)
+#pragma ZTC noreturn(err_nomem)
+#pragma ZTC noreturn(err_fatal)
+#endif
+#endif
+
 int cpperr(unsigned,...);
 #if TX86
 int tx86err(unsigned,...);
@@ -184,8 +216,7 @@ extern int errmsgs_tx86idx;
 void warerr(unsigned,...);
 void err_warning_enable(unsigned warnum, int on);
 CEXTERN void lexerr(unsigned,...);
-CEXTERN void err_fatal(unsigned,...);
-#pragma noreturn(err_fatal)
+
 int typerr(int,type *,type *,...);
 void err_noctor(Classsym *stag,list_t arglist);
 void err_nomatch(const char *, list_t);
@@ -295,6 +326,7 @@ void symbol_keep(Symbol *s);
 #endif
 void symbol_print(Symbol *s);
 void symbol_term(void);
+char *symbol_ident(symbol *s);
 Symbol *symbol_calloc(const char *id);
 Symbol *symbol_name(const char *name, int sclass, type *t);
 Symbol *symbol_generate(int sclass, type *t);
@@ -479,6 +511,7 @@ int go_flag(char *cp);
 void optfunc(void);
 
 /* filename.c */
+#if !MARS
 extern Srcfiles srcfiles;
 Sfile **filename_indirect(Sfile *sf);
 Sfile *filename_search( const char *name );
@@ -492,14 +525,6 @@ void filename_free( void );
 int filename_cmp(const char *f1,const char *f2);
 void srcpos_hydrate(Srcpos *);
 void srcpos_dehydrate(Srcpos *);
-
-// Mark functions that never return
-#if __SC__ >= 0x324 && TX86
-#pragma ZTC noreturn(util_assert)
-#pragma ZTC noreturn(err_exit)
-#pragma ZTC noreturn(util_exit)
-#pragma ZTC noreturn(err_nomem)
-#pragma ZTC noreturn(err_fatal)
 #endif
 
 // tdb.c
@@ -528,7 +553,7 @@ void elf_addrel(int seg, targ_size_t offset, unsigned type,
 int mach_getsegment(const char *sectname, const char *segname,
         int align, int flags, int flags2 = 0);
 void mach_addrel(int seg, targ_size_t offset, symbol *targsym,
-        unsigned targseg, int rtype);
+        unsigned targseg, int rtype, int val = 0);
 #endif
 void elf_func_start(Symbol *sfunc);
 int elf_data_start(Symbol *sdata, targ_size_t datasize, int seg);

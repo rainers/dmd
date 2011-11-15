@@ -133,17 +133,17 @@ int elemisone(elem *e)
             case TYllong:
             case TYullong:
             case TYnullptr:
-#if TX86
 #if JHANDLE
             case TYjhandle:
 #endif
-            case TYnptr:
+#if TARGET_SEGMENTED
             case TYsptr:
             case TYcptr:
             case TYhptr:
-#endif
             case TYfptr:
             case TYvptr:
+#endif
+            case TYnptr:
             case TYbool:
             case TYwchar_t:
             case TYdchar:
@@ -198,17 +198,17 @@ int elemisnegone(elem *e)
             case TYllong:
             case TYullong:
             case TYnullptr:
-#if TX86
+            case TYnptr:
 #if JHANDLE
             case TYjhandle:
 #endif
-            case TYnptr:
+#if TARGET_SEGMENTED
             case TYsptr:
             case TYcptr:
             case TYhptr:
-#endif
             case TYfptr:
             case TYvptr:
+#endif
             case TYbool:
             case TYwchar_t:
             case TYdchar:
@@ -339,7 +339,7 @@ STATIC elem *fixconvop(elem *e)
         elem **pe;
         unsigned cop,icop,op;
         tym_t tycop,tym,tyme;
-        static char invconvtab[] =
+        static unsigned char invconvtab[] =
         {
                 OPbool,         // OPb_8
                 OPs32_d,        // OPd_s32
@@ -356,8 +356,8 @@ STATIC elem *fixconvop(elem *e)
                 OPd_u64,        // OPu64_d
                 OPf_d,          // OPd_f
                 OPd_f,          // OPf_d
-                0,              /* OPvptrfptr   */
-                0,              /* OPcvptrfptr  */
+                0,              /* OPvp_fp      */
+                0,              /* OPcvp_fp     */
                 OP32_16,        // OPs16_32
                 OP32_16,        // OPu16_32
                 OPs16_32,       // OP32_16
@@ -370,10 +370,10 @@ STATIC elem *fixconvop(elem *e)
                 OP128_64,       // OPu64_128
                 OP128_64,       // OPs64_128
                 OPs64_128,      // OP128_64
-                OPptrlptr,      /* OPoffset     */
-                OPoffset,       /* OPptrlptr    */
-                OPfromfar16,    /* OPtofar16    */
-                OPtofar16,      /* OPfromfar16  */
+                OPnp_fp,        /* OPoffset     */
+                OPoffset,       /* OPnp_fp      */
+                OPf16p_np,      /* OPnp_f16p    */
+                OPnp_f16p,      /* OPf16p_np    */
                 OPd_ld,         // OPld_d
                 OPld_d,         // OPd_ld
                 OPu64_d,        // OPld_u64
@@ -413,8 +413,8 @@ STATIC elem *fixconvop(elem *e)
         /* First, let's see if we can just throw it away.       */
         /* (unslng or shtlng) e op= e2  => e op= (lngsht) e2    */
         if (OTwid(e->Eoper) &&
-                (cop == OPshtlng || cop == OPu16_32 ||
-                 cop == OPu8int || cop == OPs8int))
+                (cop == OPs16_32 || cop == OPu16_32 ||
+                 cop == OPu8_16 || cop == OPs8_16))
         {   if (e->Eoper != OPshlass && e->Eoper != OPshrass && e->Eoper != OPashrass)
                 e->E2 = el_una(icop,tym,e2);
 //dbg_printf("after1\n");
@@ -569,7 +569,7 @@ STATIC elem * elstrcpy(elem *e)
     switch (e->E2->Eoper)
     {
 #if TX86
-        case OPptrlptr:
+        case OPnp_fp:
             if (OPTIMIZER)
             {
                 eltonear(&e->E2);
@@ -612,11 +612,11 @@ STATIC elem * elstrcmp(elem *e)
     elem_debug(e);
     if (OPTIMIZER)
     {
-        if (e->E1->Eoper == OPptrlptr)
+        if (e->E1->Eoper == OPnp_fp)
             eltonear(&e->E1);
         switch (e->E2->Eoper)
         {
-            case OPptrlptr:
+            case OPnp_fp:
                 eltonear(&e->E2);
                 break;
 
@@ -644,14 +644,14 @@ STATIC elem * elmemxxx(elem *e)
         ex = e->E1;
         switch (e->Eoper)
         {   case OPmemcmp:
-                if (ex->E1->Eoper == OPptrlptr)
+                if (ex->E1->Eoper == OPnp_fp)
                     eltonear(&ex->E1);
-                if (ex->E2->Eoper == OPptrlptr)
+                if (ex->E2->Eoper == OPnp_fp)
                     eltonear(&ex->E2);
                 break;
 
             case OPmemset:
-                if (ex->Eoper == OPptrlptr)
+                if (ex->Eoper == OPnp_fp)
                     eltonear(&ex);
                 else
                 {
@@ -711,10 +711,10 @@ STATIC elem * elmemxxx(elem *e)
                 break;
 
             case OPmemcpy:
-                if (ex->Eoper == OPptrlptr)
+                if (ex->Eoper == OPnp_fp)
                     eltonear(&e->E1);
                 ex = e->E2;
-                if (ex->E1->Eoper == OPptrlptr)
+                if (ex->E1->Eoper == OPnp_fp)
                     eltonear(&ex->E1);
                 if (ex->E2->Eoper == OPconst)
                 {
@@ -740,7 +740,7 @@ STATIC elem * elmemxxx(elem *e)
                     el_free(ex);
                     ex = el_copytree(e->E1->E1);
                     if (tysize(e->Ety) > tysize(ex->Ety))
-                        ex = el_una(OPptrlptr,e->Ety,ex);
+                        ex = el_una(OPnp_fp,e->Ety,ex);
                     e = el_bin(OPcomma,e->Ety,e,ex);
                     if (el_sideeffect(e->E2))
                         fixside(&e->E1->E1->E1,&e->E2);
@@ -771,6 +771,9 @@ STATIC elem * eladd(elem *e)
   int sz;
 
   //printf("eladd(%p)\n",e);
+  targ_size_t ptrmask = ~(targ_size_t)0;
+  if (NPTRSIZE <= 4)
+        ptrmask = 0xFFFFFFFF;
 L1:
   e1 = e->E1;
   e2 = e->E2;
@@ -784,7 +787,8 @@ L1:
             || e1->Eoper == OPstring
            )
         {
-                e1->EV.sp.Voffset += e2->EV.Vuns;
+                e1->EV.sp.Voffset += e2->EV.Vpointer;
+                e1->EV.sp.Voffset &= ptrmask;
                 e = el_selecte1(e);
                 goto ret;
         }
@@ -799,7 +803,8 @@ L1:
             || e2->Eoper == OPstring
            )
         {
-                e2->EV.sp.Voffset += e1->EV.Vuns;
+                e2->EV.sp.Voffset += e1->EV.Vpointer;
+                e2->EV.sp.Voffset &= ptrmask;
                 e = el_selecte2(e);
                 goto ret;
         }
@@ -812,7 +817,8 @@ L1:
   if (e2->Eoper == OPconst && e1->Eoper == OPadd &&
         (e1->E2->Eoper == OPrelconst || e1->E2->Eoper == OPstring))
   {
-        e1->E2->EV.sp.Voffset += e2->EV.Vuns;
+        e1->E2->EV.sp.Voffset += e2->EV.Vpointer;
+        e1->E2->EV.sp.Voffset &= ptrmask;
         e = el_selecte1(e);
         goto L1;
   }
@@ -820,7 +826,8 @@ L1:
   else if ((e2->Eoper == OPrelconst || e2->Eoper == OPstring) &&
            e1->Eoper == OPadd && cnst(e1->E2))
   {
-        e2->EV.sp.Voffset += e1->E2->EV.Vuns;
+        e2->EV.sp.Voffset += e1->E2->EV.Vpointer;
+        e2->EV.sp.Voffset &= ptrmask;
         e->E1 = el_selecte1(e1);
         goto L1;                        /* try and find some more       */
   }
@@ -869,7 +876,7 @@ L1:
             if (typtr(ety) && typtr(e11ty) &&
                 tysize[ety] != tysize[e11ty])
             {
-                e = el_una((tysize[ety] > tysize[e11ty]) ? OPptrlptr : OPoffset,
+                e = el_una((tysize[ety] > tysize[e11ty]) ? OPnp_fp : OPoffset,
                             e->Ety,e);
                 e->E1->Ety = e1->Ety;
             }
@@ -1050,8 +1057,8 @@ L1:
 
   /* Convert subtraction of long pointers to subtraction of integers    */
   if (tyfv(e2->Ety) && tyfv(e1->Ety))
-  {     e->E1 = el_una(OPlngsht,tym,e1);
-        e->E2 = el_una(OPlngsht,tym,e2);
+  {     e->E1 = el_una(OP32_16,tym,e1);
+        e->E2 = el_una(OP32_16,tym,e2);
         return optelem(e,TRUE);
   }
 
@@ -1077,7 +1084,11 @@ L1:
   /* for floating or far or huge pointers!                              */
   if (e1->Eoper == OPadd && e2->Eoper == OPadd &&
       cnst(e1->E2) && cnst(e2->E2) &&
-      (tyintegral(tym) || tybasic(tym) == TYjhandle || tybasic(tym) == TYnptr || tybasic(tym) == TYsptr ))
+      (tyintegral(tym) || tybasic(tym) == TYjhandle || tybasic(tym) == TYnptr
+#if TARGET_SEGMENTED
+       || tybasic(tym) == TYsptr
+#endif
+      ))
   {     elem *tmp;
 
         e->Eoper = OPadd;
@@ -1115,7 +1126,7 @@ L1:
   }
   return e;
 }
-
+
 /*****************************
  * Attempt to 'shrink' bitwise expressions.
  * Good for & | ^.
@@ -1178,8 +1189,8 @@ STATIC elem * elbitwise(elem *e)
                     e->Eoper == OPand &&
                     ul <= SHORTMASK)
                 {       tym = e->Ety;
-                        e->E1 = el_una(OPlngsht,TYushort,e->E1);
-                        e->E2 = el_una(OPlngsht,TYushort,e->E2);
+                        e->E1 = el_una(OP32_16,TYushort,e->E1);
+                        e->E2 = el_una(OP32_16,TYushort,e->E2);
                         e->Ety = TYushort;
                         e = el_una(OPu16_32,tym,e);
                         goto Lopt;
@@ -1187,10 +1198,10 @@ STATIC elem * elbitwise(elem *e)
 
                 // Replace ((s8sht)L & 0xFF) with (u8sht)L
                 if (ul == 0xFF && intsize == LONGSIZE && e->Eoper == OPand &&
-                    (op == OPs8int || op == OPu8int)
+                    (op == OPs8_16 || op == OPu8_16)
                    )
                 {
-                    e1->Eoper = OPu8int;
+                    e1->Eoper = OPu8_16;
                     e = el_selecte1(e);
                     goto Lopt;
                 }
@@ -1222,9 +1233,9 @@ STATIC elem * elbitwise(elem *e)
 
                 if (
                     /* OK for unsigned if AND or high bits of i are 0   */
-                    op == OPu8int && (e->Eoper == OPand || !(i & ~0xFF)) ||
+                    op == OPu8_16 && (e->Eoper == OPand || !(i & ~0xFF)) ||
                     /* OK for signed if i is 'sign-extended'    */
-                    op == OPs8int && (targ_short)(targ_schar)i == i
+                    op == OPs8_16 && (targ_short)(targ_schar)i == i
                    )
                 {
                         /* Convert ((u8int) e) & i) to (u8int)(e & (int8) i) */
@@ -1232,7 +1243,7 @@ STATIC elem * elbitwise(elem *e)
                         e = el_una(e1->Eoper,e->Ety,e);
                         e->E1->Ety = e1->Ety = e1->E1->Ety;
                         e->E1->E1 = el_selecte1(e1);
-                        e->E1->E2 = el_una(OPint8,e->E1->Ety,e->E1->E2);
+                        e->E1->E2 = el_una(OP16_8,e->E1->Ety,e->E1->E2);
                         goto Lopt;
                 }
                 break;
@@ -1286,27 +1297,27 @@ STATIC elem * elbitwise(elem *e)
             }
 
 #if __INTSIZE == 4
-            if (op == OPshtlng  && (ul & 0xFFFFFFFFFFFF8000LL) == 0 ||
+            if (op == OPs16_32 && (ul & 0xFFFFFFFFFFFF8000LL) == 0 ||
                 op == OPu16_32 && (ul & 0xFFFFFFFFFFFF0000LL) == 0 ||
-                op == OPs8int   && (ul & 0xFFFFFFFFFFFFFF80LL) == 0 ||
-                op == OPu8int   && (ul & 0xFFFFFFFFFFFFFF00LL) == 0 ||
-                op == OPlngllng && (ul & 0xFFFFFFFF80000000LL) == 0 ||
-                op == OPu32_64&& (ul & 0xFFFFFFFF00000000LL) == 0
+                op == OPs8_16  && (ul & 0xFFFFFFFFFFFFFF80LL) == 0 ||
+                op == OPu8_16  && (ul & 0xFFFFFFFFFFFFFF00LL) == 0 ||
+                op == OPs32_64 && (ul & 0xFFFFFFFF80000000LL) == 0 ||
+                op == OPu32_64 && (ul & 0xFFFFFFFF00000000LL) == 0
                )
 #else
-            if (op == OPshtlng  && (ul & 0xFFFF8000) == 0 ||
+            if (op == OPs16_32 && (ul & 0xFFFF8000) == 0 ||
                 op == OPu16_32 && (ul & 0xFFFF0000) == 0 ||
-                op == OPs8int   && (ul & 0xFFFFFF80) == 0 ||
-                op == OPu8int   && (ul & 0xFFFFFF00) == 0)
+                op == OPs8_16  && (ul & 0xFFFFFF80) == 0 ||
+                op == OPu8_16  && (ul & 0xFFFFFF00) == 0)
 #endif
             {
                 if (e->Eoper == OPand)
-                {   if (op == OPshtlng && (ul & 0x8000) == 0)
+                {   if (op == OPs16_32 && (ul & 0x8000) == 0)
                         e1->Eoper = OPu16_32;
-                    else if (op == OPs8int  && (ul & 0x80) == 0)
-                        e1->Eoper = OPu8int;
+                    else if (op == OPs8_16  && (ul & 0x80) == 0)
+                        e1->Eoper = OPu8_16;
 #if __INTSIZE == 4
-                    else if (op == OPlngllng  && (ul & 0x80000000) == 0)
+                    else if (op == OPs32_64 && (ul & 0x80000000) == 0)
                         e1->Eoper = OPu32_64;
 #endif
                 }
@@ -1346,6 +1357,80 @@ Lopt:
     return e;
 #endif
     return optelem(e,TRUE);
+}
+
+
+/*************************************
+ * Replace shift|shift with rotate.
+ */
+
+STATIC elem *elor(elem *e)
+{
+    /* ROL:     (a << shift) | (a >> (sizeof(a) * 8 - shift))
+     * ROR:     (a >> shift) | (a << (sizeof(a) * 8 - shift))
+     */
+    elem *e1 = e->E1;
+    elem *e2 = e->E2;
+    unsigned sz = tysize(e->Ety);
+    if (sz <= intsize)
+    {
+        if (e1->Eoper == OPshl && e2->Eoper == OPshr &&
+            tyuns(e2->E1->Ety) && e2->E2->Eoper == OPmin &&
+            e2->E2->E1->Eoper == OPconst &&
+            el_tolong(e2->E2->E1) == sz * 8 &&
+            el_match5(e1->E1, e2->E1) &&
+            el_match5(e1->E2, e2->E2->E2) &&
+            !el_sideeffect(e)
+           )
+        {
+            e1->Eoper = OProl;
+            return el_selecte1(e);
+        }
+        if (e1->Eoper == OPshr && e2->Eoper == OPshl &&
+            tyuns(e1->E1->Ety) && e2->E2->Eoper == OPmin &&
+            e2->E2->E1->Eoper == OPconst &&
+            el_tolong(e2->E2->E1) == sz * 8 &&
+            el_match5(e1->E1, e2->E1) &&
+            el_match5(e1->E2, e2->E2->E2) &&
+            !el_sideeffect(e)
+           )
+        {
+            e1->Eoper = OPror;
+            return el_selecte1(e);
+        }
+    }
+    return elbitwise(e);
+}
+
+/*************************************
+ */
+
+STATIC elem *elxor(elem *e)
+{
+    if (OPTIMIZER)
+    {
+        elem *e1 = e->E1;
+        elem *e2 = e->E2;
+
+        /* Recognize:
+         *    (a & c) ^ (b & c)  =>  (a ^ b) & c
+         */
+        if (e1->Eoper == OPand && e2->Eoper == OPand &&
+            el_match5(e1->E2, e2->E2) &&
+            (e2->E2->Eoper == OPconst || (!el_sideeffect(e2->E1) && !el_sideeffect(e2->E2))))
+        {
+            el_free(e1->E2);
+            e1->E2 = e2->E1;
+            e1->Eoper = OPxor;
+            e->Eoper = OPand;
+            e->E2 = e2->E2;
+            e2->E1 = NULL;
+            e2->E2 = NULL;
+            el_free(e2);
+            return optelem(e, TRUE);
+        }
+    }
+    return elbitwise(e);
 }
 
 /**************************
@@ -1406,15 +1491,15 @@ STATIC elem * elnot(elem *e)
         case OPu16_d:
         case OPu32_d:
         case OPf_d:
-        case OPvptrfptr:
-        case OPcvptrfptr:
-        case OPshtlng:
+        case OPvp_fp:
+        case OPcvp_fp:
+        case OPs16_32:
         case OPu16_32:
-        case OPu8int:
-        case OPs8int:
+        case OPu8_16:
+        case OPs8_16:
         case OPu32_64:
-        case OPlngllng:
-        case OPptrlptr:
+        case OPs32_64:
+        case OPnp_fp:
             e1->Eoper = e->Eoper;
             goto L1;
 
@@ -1594,8 +1679,7 @@ STATIC elem * elcond(elem *e)
 
             // Try to detect absolute value expression
             // (a < 0) -a : a
-            // (a >= 0) a : -a
-            if (e1->Eoper == OPlt &&
+            if ((e1->Eoper == OPlt || e1->Eoper == OPle) &&
                 e1->E2->Eoper == OPconst &&
                 !boolres(e1->E2) &&
                 !tyuns(e1->E1->Ety) &&
@@ -1610,13 +1694,30 @@ STATIC elem * elcond(elem *e)
                 el_free(e);
                 e = el_una(OPabs,ty,ec2);
             }
+            // (a >= 0) a : -a
+            else if ((e1->Eoper == OPge || e1->Eoper == OPgt) &&
+                e1->E2->Eoper == OPconst &&
+                !boolres(e1->E2) &&
+                !tyuns(e1->E1->Ety) &&
+                !tyuns(e1->E2->Ety) &&
+                ec2->Eoper == OPneg &&
+                !el_sideeffect(ec1) &&
+                el_match(e->E1->E1,ec1) &&
+                el_match(ec2->E1,ec1) &&
+                tysize(ty) >= intsize
+               )
+            {   e->E2->E1 = NULL;
+                el_free(e);
+                e = el_una(OPabs,ty,ec1);
+            }
             break;
             }
         }
     }
     return e;
 }
-
+
+
 /****************************
  * Comma operator.
  *        ,      e
@@ -1843,7 +1944,7 @@ STATIC elem * eldiv(elem *e)
         {   int sz = tysize(tym);
 
             // See if we can replace with OPremquo
-            if (sz == REGSIZE && !I64)  // need cent and ucent working for I64 to work
+            if (sz == REGSIZE /*&& !I64*/)  // need cent and ucent working for I64 to work
             {
                 // Don't do it if there are special code sequences in the
                 // code generator (see cdmul())
@@ -1856,15 +1957,15 @@ STATIC elem * eldiv(elem *e)
                     ;
                 else
                 {
-                    assert(sz == 2 || sz == 4);
+                    assert(sz == 2 || sz == 4 || sz == 8);
                     int op = OPmsw;
                     if (e->Eoper == OPdiv)
                     {
-                        op = (sz == 2) ? OP32_16 : OP64_32;
+                        op = (sz == 2) ? OP32_16 : (sz == 4) ? OP64_32 : OP128_64;
                     }
                     e->Eoper = OPremquo;
                     e = el_una(op, tym, e);
-                    e->E1->Ety = (sz == 2) ? TYlong : TYllong;
+                    e->E1->Ety = (sz == 2) ? TYlong : (sz == 4) ? TYllong : TYcent;
                 }
             }
         }
@@ -1991,10 +2092,8 @@ L1:
 }
 
 STATIC elem * elandand(elem *e)
-{   elem *e1,*e2;
-    tym_t t;
-
-    e1 = e->E1;
+{
+    elem *e1 = e->E1;
     if (OTboolnop(e1->Eoper))
     {
         e->E1 = e1->E1;
@@ -2002,7 +2101,7 @@ STATIC elem * elandand(elem *e)
         el_free(e1);
         return elandand(e);
     }
-    e2 = e->E2;
+    elem *e2 = e->E2;
     if (OTboolnop(e2->Eoper))
     {
         e->E2 = e2->E1;
@@ -2012,19 +2111,46 @@ STATIC elem * elandand(elem *e)
     }
     if (OPTIMIZER)
     {
+        /* Recognize: (a >= c1 && a < c2)
+         */
+        if ((e1->Eoper == OPge || e1->Eoper == OPgt) &&
+            (e2->Eoper == OPlt || e2->Eoper == OPle) &&
+            e1->E2->Eoper == OPconst && e2->E2->Eoper == OPconst &&
+            !el_sideeffect(e1->E1) && el_match(e1->E1, e2->E1) &&
+            tyintegral(e1->E1->Ety) &&
+            tybasic(e1->E2->Ety) == tybasic(e2->E2->Ety) &&
+            tysize(e1->E1->Ety) == NPTRSIZE)
+        {
+            /* Replace with: ((a - c1) < (c2 - c1))
+             */
+            targ_llong c1 = el_tolong(e1->E2);
+            if (e1->Eoper == OPgt)
+                ++c1;
+            targ_llong c2 = el_tolong(e2->E2);
+            if (0 <= c1 && c1 <= c2)
+            {
+                e1->Eoper = OPmin;
+                e1->Ety = e1->E1->Ety;
+                e1->E2->EV.Vllong = c1;
+                e->E2 = el_long(touns(e2->E2->Ety), c2 - c1);
+                e->Eoper = e2->Eoper;
+                el_free(e2);
+                return optelem(e, TRUE);
+            }
+        }
+
         // Look for (!(e >>> c) && ...)
         if (e1->Eoper == OPnot && e1->E1->Eoper == OPshr &&
             e1->E1->E2->Eoper == OPconst)
         {
             // Replace (e >>> c) with (e & x)
-            unsigned shift;
             elem *e11 = e1->E1;
 
-            shift = el_tolong(e11->E2);
+            targ_ullong shift = el_tolong(e11->E2);
             if (shift < intsize * 8)
             {   targ_ullong m;
 
-                m = ~0LL << shift;
+                m = ~0LL << (int)shift;
                 e11->Eoper = OPand;
                 e11->E2->EV.Vullong = m;
                 e11->E2->Ety = e11->Ety;
@@ -2033,7 +2159,7 @@ STATIC elem * elandand(elem *e)
         }
 
         if (e1->Eoper == OPbool)
-        {   t = e1->E1->Ety;
+        {   tym_t t = e1->E1->Ety;
             e1 = e->E1 = el_selecte1(e1);
             e1->Ety = t;
         }
@@ -2052,9 +2178,8 @@ STATIC elem * elandand(elem *e)
         }
     }
 
-  t = e->Ety;
-  if (e2->Eoper == OPconst || e2->Eoper == OPrelconst || e2->Eoper == OPstring)
-  {     if (boolres(e2))        /* e1 && (x,1)  =>  e1 ? ((x,1),1) : 0  */
+    if (e2->Eoper == OPconst || e2->Eoper == OPrelconst || e2->Eoper == OPstring)
+    {   if (boolres(e2))        /* e1 && (x,1)  =>  e1 ? ((x,1),1) : 0  */
         {
             if (e2 == e->E2)    /* if no x, replace e with (bool e1)    */
             {   el_free(e2);
@@ -2069,19 +2194,19 @@ STATIC elem * elandand(elem *e)
                 goto L3;
             }
         }
-  }
+    }
 
   if (e1->Eoper == OPconst || e1->Eoper == OPrelconst || e1->Eoper == OPstring)
   {
         e->Eoper = OPcomma;
         if (boolres(e1))                /* (x,1) && e2  =>  (x,1),bool e2 */
         {
-            e->E2 = el_una(OPbool,t,e->E2);
+            e->E2 = el_una(OPbool,e->Ety,e->E2);
         }
         else                            /* (x,0) && e2  =>  (x,0),0     */
         {
             el_free(e->E2);
-            e->E2 = el_int(t,0);
+            e->E2 = el_int(e->Ety,0);
         }
     }
     else
@@ -2125,8 +2250,8 @@ STATIC elem * elbit(elem *e)
 #if 1   /* Should use a more general solution to this   */
         if (w == 8 && sz == 16 && b == 0)
         {
-            e->E1 = el_una(OPint8,TYuchar,e->E1);
-            e->Eoper = OPu8int;
+            e->E1 = el_una(OP16_8,TYuchar,e->E1);
+            e->Eoper = OPu8_16;
             e->E2 = NULL;
             el_free(e2);
             goto L1;
@@ -2140,8 +2265,8 @@ STATIC elem * elbit(elem *e)
         if (w == 8 && sz == 16 && b == 0)
         {
 #if 1
-            e->E1 = el_una(OPint8,TYschar,e->E1);
-            e->Eoper = OPs8int;
+            e->E1 = el_una(OP16_8,TYschar,e->E1);
+            e->Eoper = OPs8_16;
             e->E2 = NULL;
             el_free(e2);
             goto L1;
@@ -2185,7 +2310,7 @@ STATIC elem * elind(elem *e)
           }
             break;
         case OPadd:
-#if TX86
+#if TARGET_SEGMENTED
             if (OPTIMIZER)
             {   /* Try to convert far pointer to stack pointer  */
                 elem *e12 = e1->E2;
@@ -2249,7 +2374,7 @@ STATIC elem * eladdr(elem *e)
         {   int op;
 
             if (sz > 0)                         /* if &far * near       */
-                op = OPptrlptr;
+                op = OPnp_fp;
             else                                /* else &near * far     */
                 op = OPoffset;
             e->Ety = tym2;
@@ -2336,12 +2461,11 @@ STATIC elem * elcall(elem *e)
  */
 
 STATIC void elstructwalk(elem *e,tym_t tym)
-{   int sz;
+{
     tym_t ety;
 
-    sz = tysize(tym);
     while ((ety = tybasic(e->Ety)) == TYstruct ||
-           ety == TYarray /*|| sz != tysize[ety]*/)
+           ety == TYarray)
     {   elem_debug(e);
         e->Ety = (e->Ety & ~mTYbasic) | tym;
         switch (e->Eoper)
@@ -2436,7 +2560,11 @@ CEXTERN elem * elstruct(elem *e)
                 /* We should do the analysis to see if we can use
                    something simpler than TYfptr.
                  */
+#if TARGET_SEGMENTED
                 typ = (intsize == LONGSIZE) ? TYnptr : TYfptr;
+#else
+                typ = TYnptr;
+#endif
                 e2 = el_una(OPaddr,typ,e2);
                 e2 = optelem(e2,TRUE);          /* distribute & to x and y leaves */
                 *pe2 = el_una(OPind,ty2,e2);
@@ -2479,10 +2607,11 @@ STATIC elem * eleq(elem *e)
     unsigned t,w,b;
     unsigned sz;
     elem *l,*l2,*r,*r2,*e1,*eres;
-    int wantres;
     tym_t tyl;
 
-    wantres = expgoal;
+#if SCPP
+    int wantres = expgoal;
+#endif
     e1 = e->E1;
 
     if (e1->Eoper == OPcomma || OTassign(e1->Eoper))
@@ -2617,7 +2746,6 @@ STATIC elem * eleq(elem *e)
         if (op2 == OPneg && el_match(e1,e2->E1) && !el_sideeffect(e1))
         {   int offset;
 
-            tyl = tybasic(e1->Ety);
         Ldef:
             // Replace (i = -i) with (negass i)
             e->Eoper = OPnegass;
@@ -2802,15 +2930,14 @@ STATIC elem * elopass(elem *e)
     tym_t t;
     tym_t tyl;
     elem *l,*r,*e1,*l2,*l3,*op2,*eres;
-    int wantres;
 
-    wantres = expgoal;
     e1 = e->E1;
     if (OTconv(e1->Eoper))
     {   e = fixconvop(e);
         return optelem(e,TRUE);
     }
-#if !(MARS)   // no bit fields to worry about
+#if SCPP   // have bit fields to worry about?
+    int wantres = expgoal;
     if (e1->Eoper == OPbit)
     {
         op = opeqtoop(e->Eoper);
@@ -2978,7 +3105,6 @@ STATIC elem * elpost(elem *e)
 
     w = (e1->E2->EV.Vuns >> 8) & 0xFF;  /* width in bits of field       */
     m = ((targ_llong)1 << w) - 1;       /* mask w bits wide             */
-    b = e1->E2->EV.Vuns & 0xFF;         /* bits to shift                */
 
     ty = e->Ety;
     e->Eoper = (e->Eoper == OPpostinc) ? OPaddass : ((r = -r), OPminass);
@@ -3022,8 +3148,8 @@ L1:
     if ((op == OPlt || op == OPle || op == OPgt || op == OPge) &&
         tyfv(e2->Ety) && tyfv(e1->Ety))
     {
-        e->E1 = el_una(OPlngsht,e->Ety,e1);
-        e->E2 = el_una(OPlngsht,e->Ety,e2);
+        e->E1 = el_una(OP32_16,e->Ety,e1);
+        e->E2 = el_una(OP32_16,e->Ety,e2);
         return optelem(e,TRUE);
     }
 
@@ -3081,11 +3207,11 @@ L1:
         int sz;
 
         if (e1->Eoper == OPu16_32 && e2->EV.Vulong <= (targ_ulong) SHORTMASK ||
-                 e1->Eoper == OPshtlng &&
+                 e1->Eoper == OPs16_32 &&
                  e2->EV.Vlong == (targ_short) e2->EV.Vlong)
         {
                 tym = (uns || e1->Eoper == OPu16_32) ? TYushort : TYshort;
-                e->E2 = el_una(OPlngsht,tym,e2);
+                e->E2 = el_una(OP32_16,tym,e2);
                 goto L2;
         }
 
@@ -3111,7 +3237,7 @@ L1:
                 else if (sz == LONGSIZE)
                     e1->E1 = el_una(OP32_16,TYushort,e1->E1);
                 tym = TYuchar;
-                op = OPint8;
+                op = OP16_8;
                 goto L4;
             }
 #endif
@@ -3125,7 +3251,7 @@ L1:
                )
             {
                 tym = TYushort;
-                op = OPlngsht;
+                op = OP32_16;
             L4:
                 e2->Ety = tym;
                 e1->Ety = tym;
@@ -3136,12 +3262,12 @@ L1:
             }
         }
 
-        if (e1->Eoper == OPu8int && e2->EV.Vuns < 256 ||
-                 e1->Eoper == OPs8int &&
+        if (e1->Eoper == OPu8_16 && e2->EV.Vuns < 256 ||
+                 e1->Eoper == OPs8_16 &&
                  e2->EV.Vint == (targ_schar) e2->EV.Vint)
         {
-                tym = (uns || e1->Eoper == OPu8int) ? TYuchar : TYschar;
-                e->E2 = el_una(OPint8,tym,e2);
+                tym = (uns || e1->Eoper == OPu8_16) ? TYuchar : TYschar;
+                e->E2 = el_una(OP16_8,tym,e2);
             L2:
                 tym |= e1->Ety & ~mTYbasic;
                 e->E1 = el_selecte1(e1);
@@ -3219,8 +3345,8 @@ L1:
         }
   }
   else if ((
-           (e1->Eoper == OPu8int || e1->Eoper == OPs8int)
-            || (e1->Eoper == OPu16_32 || e1->Eoper == OPshtlng)
+           (e1->Eoper == OPu8_16 || e1->Eoper == OPs8_16)
+            || (e1->Eoper == OPu16_32 || e1->Eoper == OPs16_32)
              ) && e1->Eoper == e2->Eoper)
   {     if (uns)
         {   e1->E1->Ety = touns(e1->E1->Ety);
@@ -3283,7 +3409,7 @@ STATIC elem * elptrlptr(elem *e)
 /*********************************
  * Conversions of handle pointers to far pointers.
  */
-
+// TODO: should this function go away entirely in TARGET_FLAT mode?
 STATIC elem * elvptrfptr(elem *e)
 {   elem *e1;
     elem *e12;
@@ -3293,7 +3419,9 @@ STATIC elem * elvptrfptr(elem *e)
     if (e1->Eoper == OPadd || e1->Eoper == OPmin)
     {
         e12 = e1->E2;
+#if TARGET_SEGMENTED
         if (tybasic(e12->Ety) != TYvptr)
+#endif
         {
             /* Rewrite (vtof(e11 + e12)) to (vtof(e11) + e12)   */
             op = e->Eoper;
@@ -3321,10 +3449,10 @@ STATIC elem * ellngsht(elem *e)
   ty = e->Ety;
   e1 = e->E1;
   switch (e1->Eoper)
-  { case OPshtlng:
+  { case OPs16_32:
     case OPu16_32:
-    case OPu8int:
-    case OPs8int:
+    case OPu8_16:
+    case OPs8_16:
         /* This fix is not quite right. For example, it fails   */
         /* if e->Ety != e->E1->E1->Ety. The difference is when */
         /* one is unsigned and the other isn't.                 */
@@ -3338,7 +3466,7 @@ STATIC elem * ellngsht(elem *e)
         /* many CSEs to be missed, resulting in bad code.               */
         /* Loading a word anyway is just as fast as loading a byte.     */
         /* for 68000 byte is swapped, load byte != load word */
-        if (e->Eoper == OPint8)
+        if (e->Eoper == OP16_8)
         {
             /* Mark symbol as being used sometimes as a byte to         */
             /* 80X86 - preclude using SI or DI                          */
@@ -3353,7 +3481,7 @@ STATIC elem * ellngsht(elem *e)
         e = el_selecte1(e);
         break;
 
-    case OPptrlptr:
+    case OPnp_fp:
         if (e->Eoper != OPoffset)
             goto case_default;
         // Replace (offset)(ptrlptr)e11 with e11
@@ -3371,7 +3499,7 @@ STATIC elem * ellngsht(elem *e)
 
             ty1 = e1->E1->Ety;
             switch (e->Eoper)
-            {   case OPint8:
+            {   case OP16_8:
                     /* Make sure e1->E1 is of the type we're converting from */
                     if (tysize(ty1) <= intsize)
                     {
@@ -3416,7 +3544,7 @@ STATIC elem * ellngsht(elem *e)
                     }
                     /* FALL-THROUGH */
 #endif
-                case OPlngsht:
+                case OP32_16:
                     /* Make sure e1->E1 is of the type we're converting from */
                     if (tysize(ty1) == LONGSIZE)
                     {
@@ -3540,7 +3668,7 @@ STATIC elem *elc_i(elem *e)
 }
 
 /******************************
- * Handle OPu8int and OPs8int.
+ * Handle OPu8_16 and OPs8_16.
  */
 
 STATIC elem * elbyteint(elem *e)
@@ -3554,7 +3682,7 @@ STATIC elem * elbyteint(elem *e)
 }
 
 /************************
- * Handle <<
+ * Handle <<, OProl and OPror
  */
 
 STATIC elem *elshl(elem *e)
@@ -3604,7 +3732,7 @@ STATIC elem * elshr(elem *e)
                                 el_una(OPaddr,e1->E1->Ety,e1),
                                 el_int(TYint,SHORTSIZE)));
         L1:
-            e->Eoper = tyuns(e1->Ety) ? OPu16_32 : OPshtlng;
+            e->Eoper = tyuns(e1->Ety) ? OPu16_32 : OPs16_32;
             el_free(e2);
             e->E2 = NULL;
             e1->Ety = TYshort;
@@ -3830,7 +3958,7 @@ STATIC elem * elparam(elem *e)
 /********************************
  * Optimize an element. This routine is recursive!
  * Be careful not to do this if VBEs have been done (else the VBE
- * work will be undone), or it DAGs have been built (will crash if
+ * work will be undone), or if DAGs have been built (will crash if
  * there is more than one parent for an elem).
  * If (goal)
  *      we care about the result.
@@ -3975,6 +4103,8 @@ beg:
                 e->Ety = e1->Ety;
             return el_selecte1(e);
         }
+        if (op == OPparam && !goal)
+            e->Eoper = OPcomma; // DMD bug 6733
 
         if (cnst(e1) && cnst(e2))
         {
@@ -4186,7 +4316,7 @@ beg:
         if (e1->Eoper == OPconst)
         {
 #if TX86
-            if (!(op == OPptrlptr && el_tolong(e1) != 0))
+            if (!(op == OPnp_fp && el_tolong(e1) != 0))
 #endif
                 return evalu8(e);
         }

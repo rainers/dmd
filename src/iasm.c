@@ -45,14 +45,16 @@
 #define SCOPE_H 1               // avoid conflicts with D's Scope
 #include        "cc.h"
 #include        "token.h"
-#include        "parser.h"
 #include        "global.h"
 #include        "el.h"
 #include        "type.h"
 #include        "oper.h"
 #include        "code.h"
 #include        "iasm.h"
-#include        "cpp.h"
+
+#if DMDV1
+#undef _DH
+#endif
 
 // I32 isn't set correctly yet because this is the front end, and I32
 // is a backend flag
@@ -60,8 +62,8 @@
 #undef I32
 #undef I64
 #define I16 0
-#define I32 (global.params.isX86_64 == 0)
-#define I64 (global.params.isX86_64 == 1)
+#define I32 (global.params.is64bit == 0)
+#define I64 (global.params.is64bit == 1)
 
 //#define EXTRA_DEBUG 1
 
@@ -467,8 +469,15 @@ code *asm_genloc(Loc loc, code *c);
 int asm_getnum();
 
 STATIC void asmerr(const char *, ...);
+
+#if __clang__
+STATIC void asmerr(int, ...) __attribute__((analyzer_noreturn));
+#else
 STATIC void asmerr(int, ...);
+#if __DMC__
 #pragma SC noreturn(asmerr)
+#endif
+#endif
 
 STATIC OPND *asm_equal_exp();
 STATIC OPND *asm_inc_or_exp();
@@ -1178,27 +1187,21 @@ STATIC code *asm_emit(Loc loc,
         unsigned  uSizemaskTmp;
         REG     *pregSegment;
         code    *pcPrefix = NULL;
-        unsigned            uSizemask1 =0, uSizemask2 =0, uSizemask3 =0;
         //ASM_OPERAND_TYPE    aopty1 = _reg , aopty2 = 0, aopty3 = 0;
-        ASM_MODIFIERS       amod1 = _normal, amod2 = _normal, amod3 = _normal;
-        unsigned            uRegmask1 = 0, uRegmask2 =0, uRegmask3 =0;
+        ASM_MODIFIERS       amod1 = _normal, amod2 = _normal;
         unsigned            uSizemaskTable1 =0, uSizemaskTable2 =0,
                             uSizemaskTable3 =0;
         ASM_OPERAND_TYPE    aoptyTable1 = _reg, aoptyTable2 = _reg, aoptyTable3 = _reg;
         ASM_MODIFIERS       amodTable1 = _normal,
-                            amodTable2 = _normal,
-                            amodTable3 = _normal;
-        unsigned            uRegmaskTable1 = 0, uRegmaskTable2 =0,
-                            uRegmaskTable3 =0;
+                            amodTable2 = _normal;
+        unsigned            uRegmaskTable1 = 0, uRegmaskTable2 =0;
 
         pc = code_calloc();
         pc->Iflags |= CFpsw;            // assume we want to keep the flags
         if (popnd1)
         {
-            uSizemask1 = ASM_GET_uSizemask(popnd1->usFlags);
             //aopty1 = ASM_GET_aopty(popnd1->usFlags);
             amod1 = ASM_GET_amod(popnd1->usFlags);
-            uRegmask1 = ASM_GET_uRegmask(popnd1->usFlags);
 
             uSizemaskTable1 = ASM_GET_uSizemask(ptb.pptb1->usOp1);
             aoptyTable1 = ASM_GET_aopty(ptb.pptb1->usOp1);
@@ -1215,10 +1218,8 @@ STATIC code *asm_emit(Loc loc,
             asm_output_flags(ptb.pptb2->usOp2);
             printf("\n");
 #endif
-            uSizemask2 = ASM_GET_uSizemask(popnd2->usFlags);
             //aopty2 = ASM_GET_aopty(popnd2->usFlags);
             amod2 = ASM_GET_amod(popnd2->usFlags);
-            uRegmask2 = ASM_GET_uRegmask(popnd2->usFlags);
 
             uSizemaskTable2 = ASM_GET_uSizemask(ptb.pptb2->usOp2);
             aoptyTable2 = ASM_GET_aopty(ptb.pptb2->usOp2);
@@ -1227,15 +1228,10 @@ STATIC code *asm_emit(Loc loc,
         }
         if (popnd3)
         {
-            uSizemask3 = ASM_GET_uSizemask(popnd3->usFlags);
             //aopty3 = ASM_GET_aopty(popnd3->usFlags);
-            amod3 = ASM_GET_amod(popnd3->usFlags);
-            uRegmask3 = ASM_GET_uRegmask(popnd3->usFlags);
 
             uSizemaskTable3 = ASM_GET_uSizemask(ptb.pptb3->usOp3);
             aoptyTable3 = ASM_GET_aopty(ptb.pptb3->usOp3);
-            amodTable3 = ASM_GET_amod(ptb.pptb3->usOp3);
-            uRegmaskTable3 = ASM_GET_uRegmask(ptb.pptb3->usOp3);
         }
 
         asmstate.statement->regs |= asm_modify_regs(ptb, popnd1, popnd2);
@@ -1407,7 +1403,9 @@ L386_WARNING2:
 
         pc->Iop = usOpcode;
         if ((usOpcode & 0xFFFD00) == 0x0F3800)    // SSSE3, SSE4
-        {
+        {   emit(0xFF);
+            emit(0xFD);
+            emit(0x00);
             goto L3;
         }
         switch (usOpcode & 0xFF0000)
@@ -2028,7 +2026,7 @@ ILLEGAL_ADDRESS_ERROR:
                 error(asmstate.loc, "tuple index %u exceeds length %u", index, tup->objects->dim);
             else
             {
-                Object *o = (Object *)tup->objects->data[index];
+                Object *o = tup->objects->tdata()[index];
                 if (o->dyncast() == DYNCAST_DSYMBOL)
                 {   o1->s = (Dsymbol *)o;
                     return o1;
@@ -2140,7 +2138,7 @@ ILLEGAL_ADDRESS_ERROR:
  */
 
 STATIC void asm_merge_symbol(OPND *o1, Dsymbol *s)
-{   Type *ptype;
+{
     VarDeclaration *v;
     EnumMember *em;
 
@@ -2243,15 +2241,15 @@ STATIC void asm_make_modrm_byte(
     SIB_BYTE    sib = { 0 };
     char                bSib = FALSE;
     char                bDisp = FALSE;
-    char                b32bit = FALSE;
+#ifdef DEBUG
     unsigned char       *puc;
+#endif
     char                bModset = FALSE;
     Dsymbol             *s;
 
     unsigned        uSizemask =0;
     ASM_OPERAND_TYPE    aopty;
     ASM_MODIFIERS           amod;
-    unsigned          uRegmask;
     unsigned char           bOffsetsym = FALSE;
 
 #if 0
@@ -2268,7 +2266,6 @@ STATIC void asm_make_modrm_byte(
     uSizemask = ASM_GET_uSizemask(popnd->usFlags);
     aopty = ASM_GET_aopty(popnd->usFlags);
     amod = ASM_GET_amod(popnd->usFlags);
-    uRegmask = ASM_GET_uRegmask(popnd->usFlags);
     s = popnd->s;
     if (s)
     {
@@ -2553,15 +2550,13 @@ STATIC void asm_make_modrm_byte(
                     asmerr(EM_bad_addr_mode);           // illegal addressing mode
                     break;
             }
-            if (bDisp && sib.sib.base == 0x5)
-                b32bit = TRUE;
         }
         else
         {   unsigned rm;
 
             if (popnd->uchMultiplier)
                 asmerr(EM_bad_addr_mode);               // illegal addressing mode
-            switch (popnd->pregDisp1->val)
+            switch (popnd->pregDisp1->val & NUM_MASK)
             {
                 case _EAX:      rm = 0; break;
                 case _ECX:      rm = 1; break;
@@ -2582,10 +2577,14 @@ STATIC void asm_make_modrm_byte(
 
                 default:
                     asmerr(EM_bad_addr_mode);   // illegal addressing mode
+                    rm = 0;                     // no uninitialized data
                     break;
             }
+            if (popnd->pregDisp1->val & NUM_MASKR)
+                pc->Irex |= REX_B;
             mrmb.modregrm.rm = rm;
         }
+
         if (!bModset && (!s ||
                 (!mrmb.modregrm.mod && popnd->disp)))
         {
@@ -2727,6 +2726,9 @@ STATIC regm_t asm_modify_regs(PTRNTAB ptb, OPND *popnd1, OPND *popnd2)
         break;
     case _modcxr11:
         usRet |= (mCX | mR11);
+        break;
+    case _modxmm0:
+        usRet |= mXMM0;
         break;
     }
     if (popnd1 && ASM_GET_aopty(popnd1->usFlags) == _reg)
@@ -3214,7 +3216,6 @@ STATIC unsigned asm_type_size(Type * ptype)
 STATIC code *asm_da_parse(OP *pop)
 {
     code *clst = NULL;
-    elem *e;
 
     while (1)
     {   code *c;
@@ -3471,6 +3472,7 @@ int asm_getnum()
 
         default:
             asmerr(EM_num);
+            v = 0;              // no uninitialized values
             break;
     }
     asm_token();
@@ -3710,7 +3712,6 @@ STATIC OPND *asm_rel_exp()
 STATIC OPND *asm_shift_exp()
 {
     OPND *o1,*o2;
-    int op;
     enum TOK tk;
 
     o1 = asm_add_exp();
@@ -3855,7 +3856,6 @@ STATIC OPND *asm_mul_exp()
 STATIC OPND *asm_br_exp()
 {
     OPND *o1,*o2;
-    Declaration *s;
 
     //printf("asm_br_exp()\n");
     o1 = asm_una_exp();
@@ -3895,13 +3895,11 @@ STATIC OPND *asm_br_exp()
 STATIC OPND *asm_una_exp()
 {
         OPND *o1;
-        int op;
         Type *ptype;
-        Type *ptypeSpec;
         ASM_JUMPTYPE ajt = ASM_JUMPTYPE_UNSPECIFIED;
         char bPtr = 0;
 
-        switch (tok_value)
+        switch ((int)tok_value)
         {
 #if 0
                 case TOKand:
@@ -4045,7 +4043,6 @@ TYPE_REF:
                     bPtr = 1;
                     asm_token();
                     asm_chktok((enum TOK) ASMTKptr, EM_ptr_exp);
-CAST_REF:
                     o1 = asm_cond_exp();
                     if (!o1)
                         o1 = opnd_calloc();
@@ -4067,15 +4064,11 @@ STATIC OPND *asm_primary_exp()
 {
         OPND *o1 = NULL;
         OPND *o2 = NULL;
-        Type *ptype;
         Dsymbol *s;
         Dsymbol *scopesym;
 
-        enum TOK tkOld;
-        int global;
         REG *regp;
 
-        global = 0;
         switch (tok_value)
         {
             case TOKdollar:
@@ -4090,7 +4083,6 @@ STATIC OPND *asm_primary_exp()
 #endif
             case TOKthis:
             case TOKidentifier:
-            case_ident:
                 o1 = opnd_calloc();
                 regp = asm_reg_lookup(asmtok->ident->toChars());
                 if (regp != NULL)
@@ -4396,12 +4388,10 @@ Statement *AsmStatement::semantic(Scope *sc)
 {
     //printf("AsmStatement::semantic()\n");
 
+    assert(sc->func);
 #if DMDV2
-    if (sc->func)
-    {
-        if (sc->func->setUnsafe())
-            error("inline assembler not allowed in @safe function %s", sc->func->toChars());
-    }
+    if (sc->func->setUnsafe())
+        error("inline assembler not allowed in @safe function %s", sc->func->toChars());
 #endif
 
     OP *o;
@@ -4409,12 +4399,13 @@ Statement *AsmStatement::semantic(Scope *sc)
     PTRNTAB ptb;
     unsigned usNumops;
     unsigned char uchPrefix = 0;
-    unsigned char bAsmseen;
     char *pszLabel = NULL;
-    code *c;
     FuncDeclaration *fd = sc->parent->isFuncDeclaration();
 
     assert(fd);
+#if DMDV1
+    fd->inlineAsm = 1;
+#endif
 
     if (!tokens)
         return NULL;
@@ -4443,9 +4434,7 @@ Statement *AsmStatement::semantic(Scope *sc)
         asmstate.bInit = TRUE;
         init_optab();
         asmstate.psDollar = new LabelDsymbol(Id::__dollar);
-        //asmstate.psLocalsize = new VarDeclaration(0, Type::tint32, Id::__LOCAL_SIZE, NULL);
         asmstate.psLocalsize = new Dsymbol(Id::__LOCAL_SIZE);
-        cod3_set386();
     }
 
     asmstate.loc = loc;

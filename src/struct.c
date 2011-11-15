@@ -21,6 +21,8 @@
 #include "statement.h"
 #include "template.h"
 
+FuncDeclaration *StructDeclaration::xerreq;     // object.xopEquals
+
 /********************************* AggregateDeclaration ****************************/
 
 AggregateDeclaration::AggregateDeclaration(Loc loc, Identifier *id)
@@ -52,6 +54,7 @@ AggregateDeclaration::AggregateDeclaration(Loc loc, Identifier *id)
     ctor = NULL;
     defaultCtor = NULL;
     aliasthis = NULL;
+    noDefaultCtor = FALSE;
 #endif
     dtor = NULL;
 }
@@ -73,7 +76,7 @@ void AggregateDeclaration::semantic2(Scope *sc)
         sc = sc->push(this);
         for (size_t i = 0; i < members->dim; i++)
         {
-            Dsymbol *s = (Dsymbol *)members->data[i];
+            Dsymbol *s = members->tdata()[i];
             s->semantic2(sc);
         }
         sc->pop();
@@ -81,15 +84,14 @@ void AggregateDeclaration::semantic2(Scope *sc)
 }
 
 void AggregateDeclaration::semantic3(Scope *sc)
-{   int i;
-
+{
     //printf("AggregateDeclaration::semantic3(%s)\n", toChars());
     if (members)
     {
         sc = sc->push(this);
-        for (i = 0; i < members->dim; i++)
+        for (size_t i = 0; i < members->dim; i++)
         {
-            Dsymbol *s = (Dsymbol *)members->data[i];
+            Dsymbol *s = members->tdata()[i];
             s->semantic3(sc);
         }
         sc->pop();
@@ -97,14 +99,13 @@ void AggregateDeclaration::semantic3(Scope *sc)
 }
 
 void AggregateDeclaration::inlineScan()
-{   int i;
-
+{
     //printf("AggregateDeclaration::inlineScan(%s)\n", toChars());
     if (members)
     {
-        for (i = 0; i < members->dim; i++)
+        for (size_t i = 0; i < members->dim; i++)
         {
-            Dsymbol *s = (Dsymbol *)members->data[i];
+            Dsymbol *s = members->tdata()[i];
             //printf("inline scan aggregate symbol '%s'\n", s->toChars());
             s->inlineScan();
         }
@@ -149,7 +150,7 @@ void AggregateDeclaration::alignmember(
     if (salign > 1)
     {
         assert(size != 3);
-        int sa = size;
+        unsigned sa = size;
         if (sa == 0 || salign < sa)
             sa = salign;
         *poffset = (*poffset + sa - 1) & ~(sa - 1);
@@ -215,7 +216,7 @@ void AggregateDeclaration::addField(Scope *sc, VarDeclaration *v)
     if (!isUnionDeclaration())
         sc->offset = ofs;
 #endif
-    if (global.params.isX86_64 && sc->structalign == 8 && memalignsize == 16)
+    if (global.params.is64bit && sc->structalign == 8 && memalignsize == 16)
         /* Not sure how to handle this */
         ;
     else if (sc->structalign < memalignsize)
@@ -248,13 +249,13 @@ int AggregateDeclaration::firstFieldInUnion(int indx)
 {
     if (isUnionDeclaration())
         return 0;
-    VarDeclaration * vd = (VarDeclaration *)fields.data[indx];
+    VarDeclaration * vd = fields.tdata()[indx];
     int firstNonZero = indx; // first index in the union with non-zero size
     for (; ;)
     {
         if (indx == 0)
             return firstNonZero;
-        VarDeclaration * v = (VarDeclaration *)fields.data[indx - 1];
+        VarDeclaration * v = fields.tdata()[indx - 1];
         if (v->offset != vd->offset)
             return firstNonZero;
         --indx;
@@ -273,7 +274,7 @@ int AggregateDeclaration::firstFieldInUnion(int indx)
  */
 int AggregateDeclaration::numFieldsInUnion(int firstIndex)
 {
-    VarDeclaration * vd = (VarDeclaration *)fields.data[firstIndex];
+    VarDeclaration * vd = fields.tdata()[firstIndex];
     /* If it is a zero-length field, AND we can't find an earlier non-zero
      * sized field with the same offset, we assume it's not part of a union.
      */
@@ -281,9 +282,9 @@ int AggregateDeclaration::numFieldsInUnion(int firstIndex)
         firstFieldInUnion(firstIndex) == firstIndex)
         return 1;
     int count = 1;
-    for (int i = firstIndex+1; i < fields.dim; ++i)
+    for (size_t i = firstIndex+1; i < fields.dim; ++i)
     {
-        VarDeclaration * v = (VarDeclaration *)fields.data[i];
+        VarDeclaration * v = fields.tdata()[i];
         // If offsets are different, they are not in the same union
         if (v->offset != vd->offset)
             break;
@@ -300,9 +301,11 @@ StructDeclaration::StructDeclaration(Loc loc, Identifier *id)
     zeroInit = 0;       // assume false until we do semantic processing
 #if DMDV2
     hasIdentityAssign = 0;
+    hasIdentityEquals = 0;
     cpctor = NULL;
     postblit = NULL;
-    eq = NULL;
+
+    xeq = NULL;
 #endif
 
     // For forward references
@@ -379,9 +382,9 @@ void StructDeclaration::semantic(Scope *sc)
     if (sizeok == 0)            // if not already done the addMember step
     {
         int hasfunctions = 0;
-        for (int i = 0; i < members->dim; i++)
+        for (size_t i = 0; i < members->dim; i++)
         {
-            Dsymbol *s = (Dsymbol *)members->data[i];
+            Dsymbol *s = members->tdata()[i];
             //printf("adding member '%s' to '%s'\n", s->toChars(), this->toChars());
             s->addMember(sc, this, 1);
             if (s->isFuncDeclaration())
@@ -431,13 +434,13 @@ void StructDeclaration::semantic(Scope *sc)
     sc2->protection = PROTpublic;
     sc2->explicitProtection = 0;
 
-    int members_dim = members->dim;
+    size_t members_dim = members->dim;
 
     /* Set scope so if there are forward references, we still might be able to
      * resolve individual members like enums.
      */
-    for (int i = 0; i < members_dim; i++)
-    {   Dsymbol *s = (Dsymbol *)members->data[i];
+    for (size_t i = 0; i < members_dim; i++)
+    {   Dsymbol *s = members->tdata()[i];
         /* There are problems doing this in the general case because
          * Scope keeps track of things like 'offset'
          */
@@ -448,9 +451,9 @@ void StructDeclaration::semantic(Scope *sc)
         }
     }
 
-    for (int i = 0; i < members_dim; i++)
+    for (size_t i = 0; i < members_dim; i++)
     {
-        Dsymbol *s = (Dsymbol *)members->data[i];
+        Dsymbol *s = members->tdata()[i];
         s->semantic(sc2);
 #if 0
         if (sizeok == 2)
@@ -472,6 +475,65 @@ void StructDeclaration::semantic(Scope *sc)
                      sd->toChars(), s->toChars(), sd->toParent2()->toPrettyChars());
         }
 #endif
+    }
+
+    if (sizeok == 2)
+    {   // semantic() failed because of forward references.
+        // Unwind what we did, and defer it for later
+        fields.setDim(0);
+        structsize = 0;
+        alignsize = 0;
+        structalign = 0;
+
+        scope = scx ? scx : new Scope(*sc);
+        scope->setNoFree();
+        scope->module->addDeferredSemantic(this);
+
+        Module::dprogress = dprogress_save;
+        //printf("\tdeferring %s\n", toChars());
+        return;
+    }
+
+    // 0 sized struct's are set to 1 byte
+    if (structsize == 0)
+    {
+        structsize = 1;
+        alignsize = 1;
+    }
+
+    // Round struct size up to next alignsize boundary.
+    // This will ensure that arrays of structs will get their internals
+    // aligned properly.
+    structsize = (structsize + alignsize - 1) & ~(alignsize - 1);
+
+    sizeok = 1;
+    Module::dprogress++;
+
+    //printf("-StructDeclaration::semantic(this=%p, '%s')\n", this, toChars());
+
+    // Determine if struct is all zeros or not
+    zeroInit = 1;
+    for (size_t i = 0; i < fields.dim; i++)
+    {
+        Dsymbol *s = fields.tdata()[i];
+        VarDeclaration *vd = s->isVarDeclaration();
+        if (vd && !vd->isDataseg())
+        {
+            if (vd->init)
+            {
+                // Should examine init to see if it is really all 0's
+                zeroInit = 0;
+                break;
+            }
+            else
+            {
+                if (!vd->type->isZeroInit(loc))
+                {
+                    zeroInit = 0;
+                    break;
+                }
+            }
+        }
     }
 
 #if DMDV1
@@ -537,106 +599,17 @@ void StructDeclaration::semantic(Scope *sc)
     }
 #endif
 #if DMDV2
-    /* Try to find the opEquals function. Build it if necessary.
-     */
-    TypeFunction *tfeqptr;
-    {   // bool opEquals(const T*) const;
-        Parameters *parameters = new Parameters;
-#if STRUCTTHISREF
-        // bool opEquals(ref const T) const;
-        Parameter *param = new Parameter(STCref, type->constOf(), NULL, NULL);
-#else
-        // bool opEquals(const T*) const;
-        Parameter *param = new Parameter(STCin, type->pointerTo(), NULL, NULL);
-#endif
-
-        parameters->push(param);
-        tfeqptr = new TypeFunction(parameters, Type::tbool, 0, LINKd);
-        tfeqptr->mod = MODconst;
-        tfeqptr = (TypeFunction *)tfeqptr->semantic(0, sc2);
-
-        Dsymbol *s = search_function(this, Id::eq);
-        FuncDeclaration *fdx = s ? s->isFuncDeclaration() : NULL;
-        if (fdx)
-        {
-            eq = fdx->overloadExactMatch(tfeqptr);
-            if (!eq)
-                fdx->error("type signature should be %s not %s", tfeqptr->toChars(), fdx->type->toChars());
-        }
-
-        TemplateDeclaration *td = s ? s->isTemplateDeclaration() : NULL;
-        // BUG: should also check that td is a function template, not just a template
-
-        if (!eq && !td)
-            eq = buildOpEquals(sc2);
-    }
-
     dtor = buildDtor(sc2);
     postblit = buildPostBlit(sc2);
     cpctor = buildCpCtor(sc2);
+
     buildOpAssign(sc2);
+    hasIdentityEquals = (buildOpEquals(sc2) != NULL);
+
+    xeq = buildXopEquals(sc2);
 #endif
 
     sc2->pop();
-
-    if (sizeok == 2)
-    {   // semantic() failed because of forward references.
-        // Unwind what we did, and defer it for later
-        fields.setDim(0);
-        structsize = 0;
-        alignsize = 0;
-        structalign = 0;
-
-        scope = scx ? scx : new Scope(*sc);
-        scope->setNoFree();
-        scope->module->addDeferredSemantic(this);
-
-        Module::dprogress = dprogress_save;
-        //printf("\tdeferring %s\n", toChars());
-        return;
-    }
-
-    // 0 sized struct's are set to 1 byte
-    if (structsize == 0)
-    {
-        structsize = 1;
-        alignsize = 1;
-    }
-
-    // Round struct size up to next alignsize boundary.
-    // This will ensure that arrays of structs will get their internals
-    // aligned properly.
-    structsize = (structsize + alignsize - 1) & ~(alignsize - 1);
-
-    sizeok = 1;
-    Module::dprogress++;
-
-    //printf("-StructDeclaration::semantic(this=%p, '%s')\n", this, toChars());
-
-    // Determine if struct is all zeros or not
-    zeroInit = 1;
-    for (int i = 0; i < fields.dim; i++)
-    {
-        Dsymbol *s = (Dsymbol *)fields.data[i];
-        VarDeclaration *vd = s->isVarDeclaration();
-        if (vd && !vd->isDataseg())
-        {
-            if (vd->init)
-            {
-                // Should examine init to see if it is really all 0's
-                zeroInit = 0;
-                break;
-            }
-            else
-            {
-                if (!vd->type->isZeroInit(loc))
-                {
-                    zeroInit = 0;
-                    break;
-                }
-            }
-        }
-    }
 
     /* Look for special member functions.
      */
@@ -676,8 +649,7 @@ Dsymbol *StructDeclaration::search(Loc loc, Identifier *ident, int flags)
 }
 
 void StructDeclaration::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
-{   int i;
-
+{
     buf->printf("%s ", kind());
     if (!isAnonymous())
         buf->writestring(toChars());
@@ -690,9 +662,9 @@ void StructDeclaration::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
     buf->writenl();
     buf->writeByte('{');
     buf->writenl();
-    for (i = 0; i < members->dim; i++)
+    for (size_t i = 0; i < members->dim; i++)
     {
-        Dsymbol *s = (Dsymbol *)members->data[i];
+        Dsymbol *s = members->tdata()[i];
 
         buf->writestring("    ");
         s->toCBuffer(buf, hgs);

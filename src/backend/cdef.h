@@ -18,6 +18,8 @@
         __DMC__         Digital Mars compiler
         _MSC_VER        Microsoft compiler
         __GNUC__        Gnu compiler
+        __clang__       Clang compiler
+        __llvm__        Compiler using LLVM as backend (LLVM-GCC/Clang)
 
     Host operating system:
         _WIN32          Microsoft NT, Windows 95, Windows 98, Win32s, Windows 2000
@@ -231,7 +233,7 @@ One and only one of these macros must be set by the makefile:
  * This is not quite the same as !SIXTEENBIT, as one could
  * have near/far with 32 bit code.
  */
-#define TARGET_FLAT     (MARS || !TARGET_WINDOS)
+#define TARGET_SEGMENTED     (!MARS && TARGET_WINDOS)
 
 
 #define STATEMENT_SCOPES CPP
@@ -304,13 +306,6 @@ One and only one of these macros must be set by the makefile:
 #define NEWSTATICDTOR           1       // support new style static destructors
 
 // For Shared Code Base
-#define TARGET_structBLOCK
-#define TARGET_structFUNC_S
-#define TARGET_structSTRUCT
-#define TARGET_structPARAM
-#define TARGET_structBLKLST
-#define TARGET_structELEM
-#define TARGET_structSYMBOL
 #define TARGET_INLINEFUNC_NAMES
 #define PASCAL pascal
 #define HINT int
@@ -487,7 +482,7 @@ typedef unsigned        targ_uns;
 #define FPTRSIZE        tysize[TYfptr]
 #define REGMASK         0xFFFF
 
-#if TARGET_LINUX || TARGET_FREEBSD
+#if TARGET_LINUX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS || TARGET_OSX
 typedef targ_llong      targ_ptrdiff_t; /* ptrdiff_t for target machine  */
 typedef targ_ullong     targ_size_t;    /* size_t for the target machine */
 #else
@@ -695,6 +690,7 @@ struct Config
 #       define WFdsnedgroup 0x4000      // DS != DGROUP
 #       define WFexe     0x8000 // generating code for Windows EXE
 
+    bool fpxmmregs;             // use XMM registers for floating point
     char inline8087;            /* 0:   emulator
                                    1:   IEEE 754 inline 8087 code
                                    2:   fast inline 8087 code

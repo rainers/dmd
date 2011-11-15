@@ -1,5 +1,5 @@
 // Copyright (C) 1985-1998 by Symantec
-// Copyright (C) 2000-2009 by Digital Mars
+// Copyright (C) 2000-2011 by Digital Mars
 // All Rights Reserved
 // http://www.digitalmars.com
 // Written by Walter Bright
@@ -41,7 +41,7 @@ int _binary[] =
          OPnlt,OPnle,OPord,OPnlg,OPnleg,OPnule,OPnul,OPnuge,OPnug,OPnue,
          OPinfo,OParray,OPfield,OPnewarray,OPmultinewarray,OPinstanceof,OPfinalinstanceof,
          OPcheckcast,OPpair,OPrpair,
-         OPbt,OPbtc,OPbtr,OPbts,
+         OPbt,OPbtc,OPbtr,OPbts,OPror,OProl,
          OPscale,OPremquo,OPyl2x,OPyl2xp1,
         };
 int _unary[] =
@@ -51,13 +51,13 @@ int _unary[] =
          OPbool,OPstrlen,OPnullcheck,
          OPb_8,OPs16_32,OPu16_32,OPd_s32,OPd_u32,OPoffset,
          OPs32_d,OPu32_d,OPd_s16,OPs16_d,OP32_16,
-         OPd_f,OPf_d,OPvptrfptr,OPcvptrfptr,OPu8int,OPs8_16,OPint8,
+         OPd_f,OPf_d,OPvp_fp,OPcvp_fp,OPu8_16,OPs8_16,OP16_8,
          OPd_ld, OPld_d,OPc_r,OPc_i,
-         OPu32_64,OPlngllng,OP64_32,OPmsw,
+         OPu32_64,OPs32_64,OP64_32,OPmsw,
          OPd_s64,OPs64_d,OPd_u64,OPu64_d,OPld_u64,
          OP128_64,OPs64_128,OPu64_128,
-         OPucall,OPucallns,OPstrpar,OPstrctor,OPu16_d,OPdbluns,
-         OPinp,OPptrlptr,OPtofar16,OPfromfar16,OParrow,OPnegass,
+         OPucall,OPucallns,OPstrpar,OPstrctor,OPu16_d,OPd_u16,
+         OPinp,OPnp_fp,OPnp_f16p,OPf16p_np,OParrow,OPnegass,
          OPctor,OPdtor,OPsetjmp,OPvoid,OParraylength,
          OPbsf,OPbsr,OPbswap,
          OPddtor,
@@ -80,7 +80,8 @@ int _wid[] =
         };
 int _eop0e[] =
         {OPadd,OPmin,OPxor,OPor,OPshl,OPshr,OPashr,OPpostinc,OPpostdec,OPaddass,
-         OPminass,OPshrass,OPashrass,OPshlass,OPxorass,OPorass
+         OPminass,OPshrass,OPashrass,OPshlass,OPxorass,OPorass,
+         OPror,OProl,
         };
 int _eop00[] = {OPmul,OPand,OPmulass,OPandass};
 int _eop1e[] = {OPmul,OPdiv,OPmulass,OPdivass};
@@ -121,11 +122,11 @@ int _ae[] = {OPvar,OPconst,OPrelconst,OPneg,
                 OPxor,OPdiv,OPmod,OPshl,OPshr,OPashr,OPeqeq,OPne,OPle,OPlt,OPge,OPgt,
                 OPunord,OPlg,OPleg,OPule,OPul,OPuge,OPug,OPue,OPngt,OPnge,
                 OPnlt,OPnle,OPord,OPnlg,OPnleg,OPnule,OPnul,OPnuge,OPnug,OPnue,
-                OPs16_32,OPu16_32,OPd_s32,OPd_u32,OPoffset,OPu16_d,OPdbluns,
-                OPs32_d,OPu32_d,OPd_s16,OPs16_d,OP32_16,OPptrlptr,OPtofar16,OPfromfar16,
-                OPd_f,OPf_d,OPvptrfptr,OPcvptrfptr,OPu8int,OPs8_16,OPint8,
+                OPs16_32,OPu16_32,OPd_s32,OPd_u32,OPoffset,OPu16_d,OPd_u16,
+                OPs32_d,OPu32_d,OPd_s16,OPs16_d,OP32_16,OPnp_fp,OPnp_f16p,OPf16p_np,
+                OPd_f,OPf_d,OPvp_fp,OPcvp_fp,OPu8_16,OPs8_16,OP16_8,
                 OPd_ld,OPld_d,OPc_r,OPc_i,
-                OPu32_64,OPlngllng,OP64_32,OPmsw,
+                OPu32_64,OPs32_64,OP64_32,OPmsw,
                 OPd_s64,OPs64_d,OPd_u64,OPu64_d,OPld_u64,
                 OP128_64,OPs64_128,OPu64_128,
                 OPsizeof,OParray,OPfield,OPinstanceof,OPfinalinstanceof,OPcheckcast,OParraylength,
@@ -133,6 +134,7 @@ int _ae[] = {OPvar,OPconst,OPrelconst,OPneg,
                 OPbsf,OPbsr,OPbt,OPbswap,OPb_8,
                 OPgot,OPremquo,
                 OPnullptr,
+                OProl,OPror,
                 /*OPcomma,OPbit,OPoror,OPandand,OPcond,OPcolon,OPcolon2*/};
 int _exp[] = {OPvar,OPconst,OPrelconst,OPneg,OPabs,OPsqrt,OPrndtol,OPrint,
                 OPsin,OPcos,OPscale,OPyl2x,OPyl2xp1,
@@ -142,11 +144,11 @@ int _exp[] = {OPvar,OPconst,OPrelconst,OPneg,OPabs,OPsqrt,OPrndtol,OPrint,
                 OPunord,OPlg,OPleg,OPule,OPul,OPuge,OPug,OPue,OPngt,OPnge,
                 OPnlt,OPnle,OPord,OPnlg,OPnleg,OPnule,OPnul,OPnuge,OPnug,OPnue,
                 OPcomma,OPasm,OPsizeof,OPmemcmp,
-                OPs16_32,OPu16_32,OPd_s32,OPd_u32,OPoffset,OPu16_d,OPdbluns,
-                OPs32_d,OPu32_d,OPd_s16,OPs16_d,OP32_16,OPptrlptr,OPtofar16,OPfromfar16,
-                OPd_f,OPf_d,OPvptrfptr,OPcvptrfptr,OPu8int,OPs8_16,OPint8,
+                OPs16_32,OPu16_32,OPd_s32,OPd_u32,OPoffset,OPu16_d,OPd_u16,
+                OPs32_d,OPu32_d,OPd_s16,OPs16_d,OP32_16,OPnp_fp,OPnp_f16p,OPf16p_np,
+                OPd_f,OPf_d,OPvp_fp,OPcvp_fp,OPu8_16,OPs8_16,OP16_8,
                 OPd_ld, OPld_d,OPc_r,OPc_i,
-                OPu32_64,OPlngllng,OP64_32,OPmsw,
+                OPu32_64,OPs32_64,OP64_32,OPmsw,
                 OPd_s64,OPs64_d,OPd_u64,OPu64_d,OPld_u64,
                 OP128_64,OPs64_128,OPu64_128,
                 OPbit,OPind,OPucall,OPucallns,OPnullcheck,
@@ -155,15 +157,16 @@ int _exp[] = {OPvar,OPconst,OPrelconst,OPneg,OPabs,OPsqrt,OPrndtol,OPrint,
                 OPaddass,OPminass,OPmulass,OPdivass,OPmodass,OPandass,
                 OPorass,OPxorass,OPshlass,OPshrass,OPashrass,OPoror,OPandand,OPcond,
                 OPbsf,OPbsr,OPbt,OPbtc,OPbtr,OPbts,OPbswap,
+                OProl,OPror,
                 OPpair,OPrpair,OPframeptr,OPgot,OPremquo,
                 OPcolon,OPcolon2,OPasm,OPstrcpy,OPmemcpy,OPmemset,OPstrcat,OPnegass};
 int _boolnop[] = {OPuadd,OPbool,OPs16_32,OPu16_32,
                 OPs16_d,
-                OPf_d,OPvptrfptr,OPcvptrfptr,OPu8int,OPs8_16,
+                OPf_d,OPvp_fp,OPcvp_fp,OPu8_16,OPs8_16,
                 OPd_ld, OPld_d,
-                OPu32_64,OPlngllng,/*OP64_32,OPmsw,*/
+                OPu32_64,OPs32_64,/*OP64_32,OPmsw,*/
                 OPs64_128,OPu64_128,
-                OPu16_d,OPptrlptr,OPb_8,
+                OPu16_d,OPnp_fp,OPb_8,
                 OPnullptr,
                 };
 int _lvalue[] = {OPvar,OPind,OPcomma,OPbit,
@@ -198,6 +201,8 @@ int cost(unsigned op)
             case OPmul: c += 3; break;
             case OPdiv:
             case OPmod: c += 4; break;
+            case OProl:
+            case OPror:
             case OPshl:
             case OPashr:
             case OPshr: c += 2; break;
@@ -423,9 +428,9 @@ void dotab()
         case OPremquo:  X("/%",         elremquo, cdmul);
         case OPdiv:     X("/",          eldiv,  cdmul);
         case OPmod:     X("%",          elmod,  cdmul);
-        case OPxor:     X("^",          elbitwise,cdorth);
-        case OPvptrfptr: X("vptrfptr",  elvptrfptr,cdcnvt);
-        case OPcvptrfptr: X("cvptrfptr", elvptrfptr,cdcnvt);
+        case OPxor:     X("^",          elxor,  cdorth);
+        case OPvp_fp:   X("vptrfptr",   elvptrfptr,cdcnvt);
+        case OPcvp_fp:  X("cvptrfptr",  elvptrfptr,cdcnvt);
         case OPstring:  X("string",     elstring,cderr);
         case OPrelconst: X("relconst",  elzot, cdrelconst);
         case OPinp:     X("inp",        elzot, cdport);
@@ -454,9 +459,11 @@ void dotab()
         case OPhstring: X("hstring",    elhstring,cderr);
         case OPnullcheck: X("nullcheck", elnullcheck,cdnullcheck);
 
-        case OPor:      X("|",          elbitwise,cdorth);
+        case OPor:      X("|",          elor,   cdorth);
         case OPoror:    X("||",         eloror, cdloglog);
         case OPandand:  X("&&",         elandand,cdloglog);
+        case OProl:     X("<<|",        elshl,  cdshift);
+        case OPror:     X(">>|",        elshl,  cdshift);
         case OPshl:     X("<<",         elshl,  cdshift);
         case OPshr:     X(">>>",        elshr,  cdshift);
         case OPashr:    X(">>",         elshr,  cdshift);
@@ -529,9 +536,9 @@ void dotab()
         case OPnug:     X("~!<=",       elcmp,  cdcmp);
         case OPnue:     X("~!<>",       elcmp,  cdcmp);
 
-        case OPptrlptr: X("ptrlptr",    elptrlptr,cdshtlng);
-        case OPtofar16: X("tofar16",    elzot,  cdfar16);
-        case OPfromfar16: X("fromfar16",elzot,  cdfar16);
+        case OPnp_fp:   X("ptrlptr",    elptrlptr,cdshtlng);
+        case OPnp_f16p: X("tofar16",    elzot,  cdfar16);
+        case OPf16p_np: X("fromfar16",  elzot,  cdfar16);
         case OPs16_32:  X("s16_32",     evalu8, cdshtlng);
         case OPu16_32:  X("u16_32",     evalu8, cdshtlng);
         case OPd_s32:   X("d_s32",      evalu8, cdcnvt);
@@ -638,15 +645,21 @@ void fltables()
 
         static char indatafl[] =        /* is FLxxxx a data type?       */
         { FLdata,FLudata,FLreg,FLpseudo,FLauto,FLpara,FLextern,FLtmp,
-          FLcs,FLfltreg,FLallocatmp,FLdatseg,FLndp,FLfardata,FLtlsdata,FLbprel,
+          FLcs,FLfltreg,FLallocatmp,FLdatseg,FLndp,FLtlsdata,FLbprel,
           FLstack,FLregsave };
+#if TARGET_SEGMENTED
+        static char indatafl_s[] = { FLfardata, };
+#endif
 
         static char instackfl[] =       /* is FLxxxx a stack data type? */
         { FLauto,FLpara,FLtmp,FLcs,FLfltreg,FLallocatmp,FLndp,FLbprel,FLstack,FLregsave };
 
         static char inflinsymtab[] =    /* is FLxxxx in the symbol table? */
         { FLdata,FLudata,FLreg,FLpseudo,FLauto,FLpara,FLextern,FLtmp,FLfunc,
-          FLfardata,FLtlsdata,FLbprel,FLcsdata,FLstack };
+          FLtlsdata,FLbprel,FLstack };
+#if TARGET_SEGMENTED
+        static char inflinsymtab_s[] = { FLfardata,FLcsdata, };
+#endif
 
         for (i = 0; i < FLMAX; i++)
                 datafl[i] = stackfl[i] = flinsymtab[i] = 0;
@@ -659,6 +672,14 @@ void fltables()
 
         for (i = 0; i < sizeof(inflinsymtab); i++)
                 flinsymtab[inflinsymtab[i]] = 1;
+
+#if TARGET_SEGMENTED
+        for (i = 0; i < sizeof(indatafl_s); i++)
+                datafl[indatafl_s[i]] = 1;
+
+        for (i = 0; i < sizeof(inflinsymtab_s); i++)
+                flinsymtab[inflinsymtab_s[i]] = 1;
+#endif
 
 /* Segment registers    */
 #define ES      0
@@ -688,12 +709,14 @@ void fltables()
                 case FLblockoff: segfl[i] = CS; break;
                 case FLcs:      segfl[i] = SS;  break;
                 case FLregsave: segfl[i] = SS;  break;
-                case FLcsdata:  segfl[i] = CS;  break;
                 case FLndp:     segfl[i] = SS;  break;
                 case FLswitch:  segfl[i] = -1;  break;
                 case FLfltreg:  segfl[i] = SS;  break;
                 case FLoffset:  segfl[i] = -1;  break;
+#if TARGET_SEGMENTED
                 case FLfardata: segfl[i] = -1;  break;
+                case FLcsdata:  segfl[i] = CS;  break;
+#endif
                 case FLdatseg:  segfl[i] = DS;  break;
                 case FLctor:    segfl[i] = -1;  break;
                 case FLdtor:    segfl[i] = -1;  break;
@@ -740,8 +763,10 @@ void fltables()
 
 void dotytab()
 {
-    static tym_t _ptr[]      = { TYjhandle,TYnptr,TYsptr,TYcptr,TYf16ptr,TYfptr,TYhptr,
-                                 TYvptr };
+    static tym_t _ptr[]      = { TYjhandle,TYnptr };
+#if TARGET_SEGMENTED
+    static tym_t _ptr_nflat[]= { TYsptr,TYcptr,TYf16ptr,TYfptr,TYhptr,TYvptr };
+#endif
     static tym_t _real[]     = { TYfloat,TYdouble,TYdouble_alias,TYldouble,
                                };
     static tym_t _imaginary[] = {
@@ -754,25 +779,37 @@ void dotytab()
                                  TYwchar_t,TYushort,TYenum,TYint,TYuint,
                                  TYlong,TYulong,TYllong,TYullong,TYdchar,
                                  TYchar16, TYcent, TYucent };
-    static tym_t _ref[]      = { TYnref,TYfref,TYref };
-    static tym_t _func[]     = { TYnfunc,TYffunc,TYnpfunc,TYfpfunc,TYf16func,
-                                 TYnsfunc,TYfsfunc,TYifunc,TYmfunc,TYjfunc,
-                                 TYnsysfunc,TYfsysfunc, TYhfunc };
+    static tym_t _ref[]      = { TYnref,TYref };
+    static tym_t _func[]     = { TYnfunc,TYnpfunc,TYnsfunc,TYifunc,TYmfunc,TYjfunc,TYhfunc };
+#if TARGET_SEGMENTED
+    static tym_t _ref_nflat[] = { TYfref };
+    static tym_t _func_nflat[]= { TYffunc,TYfpfunc,TYf16func,TYfsfunc,TYnsysfunc,TYfsysfunc, };
+#endif
     static tym_t _uns[]     = { TYuchar,TYushort,TYuint,TYulong,
 #if MARS
                                 TYwchar_t,
 #endif
                                 TYdchar,TYullong,TYucent,TYchar16 };
+#if !MARS
     static tym_t _mptr[]    = { TYmemptr };
+#endif
     static tym_t _nullptr[] = { TYnullptr };
+#if TARGET_SEGMENTED
 #if OMFOBJ
     static tym_t _fv[]      = { TYfptr, TYvptr };
 #endif
 #if TARGET_WINDOS
     static tym_t _farfunc[] = { TYffunc,TYfpfunc,TYfsfunc,TYfsysfunc };
 #endif
-    static tym_t _pasfunc[] = { TYnpfunc,TYfpfunc,TYf16func,TYnsfunc,TYfsfunc,TYmfunc,TYjfunc };
-    static tym_t _revfunc[] = { TYnpfunc,TYfpfunc,TYf16func,TYjfunc };
+#endif
+    static tym_t _pasfunc[] = { TYnpfunc,TYnsfunc,TYmfunc,TYjfunc };
+#if TARGET_SEGMENTED
+    static tym_t _pasfunc_nf[] = { TYfpfunc,TYf16func,TYfsfunc, };
+#endif
+    static tym_t _revfunc[] = { TYnpfunc,TYjfunc };
+#if TARGET_SEGMENTED
+    static tym_t _revfunc_nf[] = { TYfpfunc,TYf16func, };
+#endif
     static tym_t _short[]     = { TYbool,TYchar,TYschar,TYuchar,TYshort,
                                   TYwchar_t,TYushort,TYchar16 };
     static tym_t _aggregate[] = { TYstruct,TYarray };
@@ -798,7 +835,7 @@ void dotytab()
 "wchar_t",      TYwchar_t,      TYwchar_t, TYint,       SHORTSIZE, 0x85,0x71,
 "unsigned short",TYushort,      TYushort,  TYint,       SHORTSIZE, 0x85,0x21,
 
-// These values are adjusted for 32 bit ints in cv_init() and util_set386()
+// These values are adjusted for 32 bit ints in cv_init() and util_set32()
 "enum",         TYenum,         TYuint,    TYint,       -1,        0x81,0x72,
 "int",          TYint,          TYuint,    TYint,       2,         0x81,0x72,
 "unsigned",     TYuint,         TYuint,    TYint,       2,         0x85,0x73,
@@ -823,39 +860,44 @@ void dotytab()
 "complex double",       TYcdouble,      TYcdouble,  TYcdouble,  2*DOUBLESIZE,0x89,0x51,
 "complex long double",  TYcldouble,     TYcldouble, TYcldouble, 2*LNGDBLSIZE,0x89,0x52,
 
-"*",            TYptr,          TYptr,     TYptr,       2,  0x20,       0x100,
 "__near *",     TYjhandle,      TYjhandle, TYjhandle,   2,  0x20,       0x100,
 "nullptr_t",    TYnullptr,      TYnullptr, TYptr,       2,  0x20,       0x100,
 "*",            TYnptr,         TYnptr,    TYnptr,      2,  0x20,       0x100,
+"&",            TYref,          TYref,     TYref,       -1,     0,      0,
+"void",         TYvoid,         TYvoid,    TYvoid,      -1,     0x85,   3,
+"struct",       TYstruct,       TYstruct,  TYstruct,    -1,     0,      0,
+"array",        TYarray,        TYarray,   TYarray,     -1,     0x78,   0,
+"C func",       TYnfunc,        TYnfunc,   TYnfunc,     -1,     0x63,   0,
+"Pascal func",  TYnpfunc,       TYnpfunc,  TYnpfunc,    -1,     0x74,   0,
+"std func",     TYnsfunc,       TYnsfunc,  TYnsfunc,    -1,     0x63,   0,
+"*",            TYptr,          TYptr,     TYptr,       2,  0x20,       0x100,
+"member func",  TYmfunc,        TYmfunc,   TYmfunc,     -1,     0x64,   0,
+"D func",       TYjfunc,        TYjfunc,   TYjfunc,     -1,     0x74,   0,
+"C func",       TYhfunc,        TYhfunc,   TYhfunc,     -1,     0,      0,
+"__near &",     TYnref,         TYnref,    TYnref,      2,      0,      0,
+
+#if TARGET_SEGMENTED
 "__ss *",       TYsptr,         TYsptr,    TYsptr,      2,  0x20,       0x100,
 "__cs *",       TYcptr,         TYcptr,    TYcptr,      2,  0x20,       0x100,
 "__far16 *",    TYf16ptr,       TYf16ptr,  TYf16ptr,    4,  0x40,       0x200,
 "__far *",      TYfptr,         TYfptr,    TYfptr,      4,  0x40,       0x200,
 "__huge *",     TYhptr,         TYhptr,    TYhptr,      4,  0x40,       0x300,
 "__handle *",   TYvptr,         TYvptr,    TYvptr,      4,  0x40,       0x200,
-"struct",       TYstruct,       TYstruct,  TYstruct,    -1,     0,      0,
-"array",        TYarray,        TYarray,   TYarray,     -1,     0x78,   0,
-"&",            TYref,          TYref,     TYref,       -1,     0,      0,
-"__near &",     TYnref,         TYnref,    TYnref,      2,      0,      0,
-"__far &",      TYfref,         TYfref,    TYfref,      4,      0,      0,
-"C func",       TYnfunc,        TYnfunc,   TYnfunc,     -1,     0x63,   0,
-"C func",       TYhfunc,        TYhfunc,   TYhfunc,     -1,     0,      0,
 "far C func",   TYffunc,        TYffunc,   TYffunc,     -1,     0x64,   0,
-"std func",     TYnsfunc,       TYnsfunc,  TYnsfunc,    -1,     0x63,   0,
+"far Pascal func", TYfpfunc,    TYfpfunc,  TYfpfunc,    -1,     0x73,   0,
 "far std func", TYfsfunc,       TYfsfunc,  TYfsfunc,    -1,     0x64,   0,
+"_far16 Pascal func", TYf16func, TYf16func, TYf16func,  -1,     0x63,   0,
 "sys func",     TYnsysfunc,     TYnsysfunc,TYnsysfunc,  -1,     0x63,   0,
 "far sys func", TYfsysfunc,     TYfsysfunc,TYfsysfunc,  -1,     0x64,   0,
-"member func",  TYmfunc,        TYmfunc,   TYmfunc,     -1,     0x64,   0,
-"D func",        TYjfunc,       TYjfunc,   TYjfunc,     -1,     0x74,   0,
+"__far &",      TYfref,         TYfref,    TYfref,      4,      0,      0,
+#endif
+#if !MARS
 "interrupt func", TYifunc,      TYifunc,   TYifunc,     -1,     0x64,   0,
-"_far16 Pascal func", TYf16func, TYf16func, TYf16func,  -1,     0x63,   0,
-"Pascal func",  TYnpfunc,       TYnpfunc,  TYnpfunc,    -1,     0x74,   0,
-"far Pascal func",  TYfpfunc,   TYfpfunc,  TYfpfunc,    -1,     0x73,   0,
-"void",         TYvoid,         TYvoid,    TYvoid,      -1,     0x85,   3,
 "memptr",       TYmemptr,       TYmemptr,  TYmemptr,    -1,     0,      0,
 "ident",        TYident,        TYident,   TYident,     -1,     0,      0,
 "template",     TYtemplate,     TYtemplate, TYtemplate, -1,     0,      0,
 "vtshape",      TYvtshape,      TYvtshape,  TYvtshape,  -1,     0,      0,
+#endif
     };
 
     FILE *f;
@@ -884,14 +926,19 @@ void dotytab()
                      };
 
     T1(_ptr,      TYFLptr);
+#if TARGET_SEGMENTED
+    T1(_ptr_nflat,TYFLptr);
+#endif
     T1(_real,     TYFLreal);
     T1(_integral, TYFLintegral);
     T1(_imaginary,TYFLimaginary);
     T1(_complex,  TYFLcomplex);
     T1(_uns,      TYFLuns);
+#if !MARS
     T1(_mptr,     TYFLmptr);
+#endif
 
-#if OMFOBJ
+#if OMFOBJ && TARGET_SEGMENTED
     T1(_fv,       TYFLfv);
     T2(_farfunc,  TYFLfarfunc);
 #endif
@@ -902,7 +949,12 @@ void dotytab()
     T2(_ref,      TYFLref);
     T2(_func,     TYFLfunc);
     T2(_nullptr,  TYFLnullptr);
-
+#if TARGET_SEGMENTED
+    T2(_pasfunc_nf, TYFLpascal);
+    T2(_revfunc_nf, TYFLrevparam);
+    T2(_ref_nflat,  TYFLref);
+    T2(_func_nflat, TYFLfunc);
+#endif
 #undef T1
 #undef T2
 
@@ -1007,7 +1059,7 @@ void dotytab()
         _tyequiv[i] = i;
     _tyequiv[TYchar] = TYschar;         /* chars are signed by default  */
 
-    // These values are adjusted in util_set386() for 32 bit ints
+    // These values are adjusted in util_set32() for 32 bit ints
     _tyequiv[TYint] = TYshort;
     _tyequiv[TYuint] = TYushort;
 

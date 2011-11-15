@@ -1,5 +1,5 @@
 // Copyright (C) 1985-1998 by Symantec
-// Copyright (C) 2000-2009 by Digital Mars
+// Copyright (C) 2000-2011 by Digital Mars
 // All Rights Reserved
 // http://www.digitalmars.com
 // Written by Walter Bright
@@ -27,11 +27,14 @@
 #include        "oper.h"
 #include        "type.h"
 
-#include        "parser.h"
 #include        "code.h"
 
 #include        "global.h"
 #include        "go.h"
+
+#if SCPP
+#include        "parser.h"
+#endif
 
 static char __file__[] = __FILE__;      /* for tassert.h                */
 #include        "tassert.h"
@@ -112,11 +115,7 @@ void el_term()
         {   elem *e;
 
             e = nextfree->E1;
-#if TX86
             mem_ffree(nextfree);
-#else
-            MEM_PH_FREE(nextfree);
-#endif
             nextfree = e;
         }
 #else
@@ -183,11 +182,7 @@ elem *el_calloc()
         nextfree = e->E1;
     }
     else
-#if TX86
         e = (elem *) mem_fmalloc(sizeof(elem));
-#else
-        e = (elem *) MEM_PH_MALLOC(sizeof(elem));
-#endif
 #ifdef STATS
     eprm_cnt++;
 #endif
@@ -246,10 +241,7 @@ L1:
             break;
         case OPstring:
         case OPasm:
-#if TX86
-                // never free; it's alloc'd from temp mem in most (all?) cases
-            MEM_PH_FREE(e->EV.ss.Vstring);
-#endif
+            mem_free(e->EV.ss.Vstring);
             break;
         default:
             debug_assert(op < OPMAX);
@@ -557,27 +549,10 @@ elem * el_copytree(elem *e)
                 e->EV.sm.ethis = NULL;
                 break;
 #endif
-#if TX86
             case OPasm:
                 d->EV.ss.Vstring = (char *) mem_malloc(d->EV.ss.Vstrlen);
                 memcpy(d->EV.ss.Vstring,e->EV.ss.Vstring,e->EV.ss.Vstrlen);
                 break;
-#else
-            case OPasm:
-                if (e->Eflags&EFsmasm)
-                {
-                    d->Eflags |= EFsmasm;
-                    d->EV.mac.Vasmdat[0] = e->EV.mac.Vasmdat[0];
-                    d->EV.mac.Vasmdat[1] = e->EV.mac.Vasmdat[1];
-                }
-                else
-                {
-                    debug_assert(PARSER);
-                    d->EV.ss.Vstring = (char *)MEM_PH_MALLOC(d->EV.ss.Vstrlen);
-                    memcpy(d->EV.ss.Vstring,e->EV.ss.Vstring,e->EV.ss.Vstrlen);
-                }
-                break;
-#endif
         }
     }
     return d;
@@ -775,9 +750,9 @@ elem * el_bint(unsigned op,type *t,elem *e1,elem *e2)
 elem * el_bin(unsigned op,tym_t ty,elem *e1,elem *e2)
 {   elem *e;
 
-#ifdef DEBUG
+#if 0
     if (!(op < OPMAX && OTbinary(op) && e1 && e2))
-        *(char *)0 = 0;
+        *(char *)0=0;
 #endif
     assert(op < OPMAX && OTbinary(op) && e1 && e2);
     assert(MARS || !PARSER);
@@ -1137,8 +1112,7 @@ elem *el_picvar(symbol *s)
 {   elem *e;
     int x;
 
-    //printf("el_picvar(s = '%s')\n", s->Sident);
-    //printf("  Sclass = "); WRclass((enum SC) s->Sclass); printf("\n");
+    //printf("el_picvar(s = '%s')", s->Sident); printf("  Sclass = "); WRclass((enum SC) s->Sclass); printf("\n");
     //symbol_print(s);
     symbol_debug(s);
     type_debug(s->Stype);
@@ -1156,6 +1130,11 @@ elem *el_picvar(symbol *s)
 
         case SCcomdat:
         case SCcomdef:
+            if (0 && I64)
+            {
+                x = 0;
+                goto case_got;
+            }
         case SCglobal:
         case SCextern:
 #if 0
@@ -1165,7 +1144,8 @@ elem *el_picvar(symbol *s)
 #endif
                 x = 1;
         case_got:
-        {   if (!localgot)
+        {
+            if (I32 && !localgot)
             {
                 //localgot = symbol_generate(SCtmp,type_fake(TYnptr));
                 char name[15];
@@ -1180,7 +1160,8 @@ elem *el_picvar(symbol *s)
             tym_t tym = e->Ety;
             e->Eoper = OPrelconst;
             e->Ety = TYnptr;
-            e = el_bin(OPadd, TYnptr, e, el_var(localgot));
+            if (I32)
+                e = el_bin(OPadd, TYnptr, e, el_var(localgot));
 #if 1
             if (s->Stype->Tty & mTYthread)
             {
@@ -1641,7 +1622,7 @@ elem * el_ptr(symbol *s)
     symbol_debug(s);
     type_debug(s->Stype);
 #if TARGET_OSX
-    if (config.flags3 & CFG3pic && tyfunc(s->ty()))
+    if (config.flags3 & CFG3pic && tyfunc(s->ty()) && I32)
     {
         /* Cannot access address of code from code.
          * Instead, create a data variable, put the address of the
@@ -1655,7 +1636,8 @@ elem * el_ptr(symbol *s)
     }
 #endif
 #if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
-    if (config.flags3 & CFG3pic && tyfunc(s->ty()))
+    if (config.flags3 & CFG3pic &&
+        tyfunc(s->ty()))
         e = el_picvar(s);
     else
 #endif
@@ -1904,7 +1886,7 @@ elem *el_convstring(elem *e)
     e->EV.ss.Vstring = NULL;
     len = e->EV.ss.Vstrlen;
 
-#if TX86
+#if TARGET_SEGMENTED
     // Handle strings that go into the code segment
     if (tybasic(e->Ety) == TYcptr ||
         (tyfv(e->Ety) && config.flags3 & CFG3strcod))
@@ -1946,7 +1928,6 @@ elem *el_convstring(elem *e)
     // Replace string with a symbol that refers to that string
     // in the DATA segment
 
-#if TX86
     if (eecontext.EEcompile)
         s = symboldata(Doffset,e->Ety);
     else
@@ -1959,20 +1940,6 @@ elem *el_convstring(elem *e)
     stable[stable_si].len = len;
     stable[stable_si].sym = s;
     stable_si = (stable_si + 1) & (arraysize(stable) - 1);
-#else
-    s = symboldata(Doffset,e->Ety);
-    s->Sfl = FLdatseg;              // string in data segment
-    s->Sidnum = obj_module(DATA,SClocstat,0);
-    obj_bytes(DATA,0,len,p);
-
-    // Remember the string for possible reuse later
-    //dbg_printf("Adding %d, '%s'\n",stable_si,p);
-    MEM_PH_FREE(stable[stable_si].p);
-    stable[stable_si].p   = p;
-    stable[stable_si].len = len;
-    stable[stable_si].sym = s;
-    stable_si = (stable_si + 1) & (arraysize(stable) - 1);
-#endif
 
 L1:
     // Refer e to the symbol generated
@@ -2306,8 +2273,11 @@ L1:
         }
         tym = tybasic(tym);
         tym2 = tybasic(tym2);
-        if (tyequiv[tym] != tyequiv[tym2])
+        if (tyequiv[tym] != tyequiv[tym2] &&
+            !((gmatch2 & 8) && touns(tym) == touns(tym2))
+           )
             goto nomatch;
+        gmatch2 &= ~8;
     }
 
   if (OTunary(op))
@@ -2412,8 +2382,10 @@ L1:
 #endif
                     case TYnullptr:
                     case TYnptr:
+#if TARGET_SEGMENTED
                     case TYsptr:
                     case TYcptr:
+#endif
                         if (NPTRSIZE == SHORTSIZE)
                             goto case_short;
                         else if (NPTRSIZE == LONGSIZE)
@@ -2431,7 +2403,7 @@ L1:
                         if (n1->EV.Vschar != n2->EV.Vschar)
                                 goto nomatch;
                         break;
-#if TX86
+#if TARGET_SEGMENTED
                     case TYfptr:
                     case TYhptr:
                     case TYvptr:
@@ -2606,6 +2578,19 @@ int el_match4(elem *n1,elem *n2)
     return result;
 }
 
+/*********************************
+ * Kludge on el_match(). Same, but regard signed/unsigned as equivalent.
+ */
+
+int el_match5(elem *n1,elem *n2)
+{   int result;
+
+    gmatch2 = 8;
+    result = el_match(n1,n2);
+    gmatch2 = 0;
+    return result;
+}
+
 /******************************
  * Extract long value from constant parser elem.
  */
@@ -2674,14 +2659,15 @@ L1:
             goto L1;
 #endif
 
-#if TX86
 #if JHANDLE
         case TYjhandle:
 #endif
-        case TYnullptr:
-        case TYnptr:
+#if TARGET_SEGMENTED
         case TYsptr:
         case TYcptr:
+#endif
+        case TYnptr:
+        case TYnullptr:
             if (NPTRSIZE == SHORTSIZE)
                 goto Ushort;
             if (NPTRSIZE == LONGSIZE)
@@ -2689,7 +2675,6 @@ L1:
             if (NPTRSIZE == LLONGSIZE)
                 goto Ullong;
             assert(0);
-#endif
 
         case TYuint:
             if (intsize == SHORTSIZE)
@@ -2698,17 +2683,16 @@ L1:
 
         case TYulong:
         case TYdchar:
+#if TARGET_SEGMENTED
         case TYfptr:
-#if TX86
         case TYhptr:
-#endif
         case TYvptr:
+#endif
         case TYvoid:                    /* some odd cases               */
         Ulong:
             result = e->EV.Vulong;
             break;
 
-#if TX86
         case TYint:
             if (intsize == SHORTSIZE)
                 goto Ishort;
@@ -2718,7 +2702,7 @@ L1:
         Ilong:
             result = e->EV.Vlong;
             break;
-#endif
+
         case TYllong:
         case TYullong:
         Ullong:
@@ -2754,7 +2738,6 @@ L1:
 #else
 #ifdef DEBUG
             elem_print(e);
-            *(char*)0=0;
 #endif
             assert(0);
 #endif
@@ -2837,6 +2820,9 @@ targ_ldouble el_toldouble(elem *e)
         case TYildouble:
             result = e->EV.Vldouble;
             break;
+        default:
+            result = 0;
+            break;
     }
 #else
     switch (tysize[tybasic(typemask(e))])
@@ -2855,6 +2841,9 @@ targ_ldouble el_toldouble(elem *e)
             result = e->EV.Vldouble;
         break;
 #endif
+        default:
+            result = 0;
+            break;
     }
 #endif
     return result;
@@ -3021,15 +3010,15 @@ void elem_print(elem *e)
                     case TYuchar:
                         dbg_printf("%d ",e->EV.Vuchar);
                         break;
-#if TX86
-                    case TYsptr:
 #if JHANDLE
                     case TYjhandle:
 #endif
-                    case TYnullptr:
-                    case TYnptr:
+#if TARGET_SEGMENTED
+                    case TYsptr:
                     case TYcptr:
 #endif
+                    case TYnullptr:
+                    case TYnptr:
                         if (NPTRSIZE == LONGSIZE)
                             goto L1;
                         if (NPTRSIZE == SHORTSIZE)
@@ -3055,15 +3044,13 @@ void elem_print(elem *e)
                     case TYushort:
                     case TYchar16:
                     L3:
-#if TX86
                         dbg_printf("%d ",e->EV.Vint);
                         break;
-#endif
                     case TYlong:
                     case TYulong:
                     case TYdchar:
+#if TARGET_SEGMENTED
                     case TYfptr:
-#if TX86
                     case TYvptr:
                     case TYhptr:
 #endif
@@ -3120,9 +3107,11 @@ void elem_print(elem *e)
                         dbg_printf("%gL+%gLi ", (double)e->EV.Vcldouble.re, (double)e->EV.Vcldouble.im);
                         break;
 
+#if !MARS
                     case TYident:
                         dbg_printf("'%s' ", e->ET->Tident);
                         break;
+#endif
 
                     default:
                         dbg_printf("Invalid type ");

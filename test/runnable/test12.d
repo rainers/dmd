@@ -1,6 +1,3 @@
-// REQUIRED_ARGS: -d
-
-import std.utf: toUTF8;
 
 extern(C) int printf(const char*, ...);
 extern(C) int sprintf(char*, const char*, ...);
@@ -99,7 +96,7 @@ void test2()
 
 /**************************************/
 
-bool all(string array, bool (*predicate)(char)) {
+bool all(string array, bool function(char) predicate) {
     for (int i = 0; i < array.length; i++) {
         if (!predicate(array[i])) {
             return false;
@@ -209,15 +206,6 @@ void test6()
 }
 
 /**************************************/
-
-template base7( T )
-{
- void errfunc() { throw new Exception("no init"); }
- typedef T safeptr = cast(T)&errfunc;
-}
-
-alias int (*mfp)(int);
-alias base7!(mfp) I_V_fp;
 
 void test7()
 {
@@ -488,7 +476,7 @@ void test20()
 
 /**************************************/
 
-import std.math;
+bool isnan(float x) { return !( (x >= 0)  || (x < 0)); }
 
 struct X21 { float f, g, h; }
 X21 x21_1;
@@ -497,16 +485,12 @@ X21 x21_2 = { f: 1.0, h: 2.0 };
 char[3] y21_1;
 char[3] y21_2 = [ 0: 'a', 2: 'b' ];
 
-typedef bool antibool = 1;
-antibool[8] z21 = [ cast(antibool) 0, ];
-
 void test21()
 {
     assert(isnan(x21_1.g));
     assert(isnan(x21_2.g));
     assert(y21_1[1] == '\xff');
     assert(y21_2[1] == '\xff');
-    assert(z21[7]);
 }
 
 
@@ -846,6 +830,7 @@ void test38()
 
 
 /**************************************/
+// http://www.digitalmars.com/d/archives/digitalmars/D/bugs/2409.html
 
 class C39
 {
@@ -878,17 +863,6 @@ void test40()
 {
     C40 c = new C40();
     assert(C40.foo() == 4);
-}
-
-
-/**************************************/
-
-typedef void* H41;
-
-const H41 INVALID_H41_VALUE = cast(H41)-1;
-
-void test41()
-{
 }
 
 
@@ -1013,7 +987,7 @@ class B46 : A46
 
 class C46 : B46
 {
-    char foo() { return 'c'; }
+    override char foo() { return 'c'; }
     char bar()
     {
 	return B46.foo();
@@ -1183,53 +1157,41 @@ void test56()
     string a = "abcd";
     string r;
 
-    r = a.idup.reverse;
+    r = a.dup.reverse.idup;
     writefln(r);
     assert(r == "dcba");
 
     a = "a\u1235\u1234c";
     writefln(a);
-    r = a.idup.reverse;
+    r = a.dup.reverse.idup;
     writefln(r);
     assert(r == "c\u1234\u1235a");
 
     a = "ab\u1234c";
     writefln(a);
-    r = a.idup.reverse;
+    r = a.dup.reverse.idup;
     writefln(r);
     assert(r == "c\u1234ba");
 }
 
 /**************************************/
 
-void writefln(wstring ws)
-{
-    string s = toUTF8(ws);
-    printf("%.*s\n", s.length, s.ptr);
-}
-
+// DMD 0.114: Fixed .reverse bug of char[] and wchar[] with multibyte encodings.
 void test57()
 {
     wstring a = "abcd";
-    wstring r;
+    wchar[] r;
 
-    r = a.idup.reverse;
-    writefln(r);
+    r = a.dup.reverse;
     assert(r == "dcba");
 
     a = "a\U00012356\U00012346c";
-    writefln(a);
-    r = a.idup.reverse;
-    writefln(r);
+    r = a.dup.reverse;
     assert(r == "c\U00012346\U00012356a");
 
     a = "ab\U00012345c";
-    writefln(a);
-    r = a.idup.reverse;
-    writefln(r);
+    r = a.dup.reverse;
     assert(r == "c\U00012345ba");
-
-    printf("Success\n");
 }
 
 /**************************************/
@@ -1308,7 +1270,6 @@ int main(string[] argv)
     test38();
     test39();
     test40();
-    test41();
     test42();
     test43();
     test44();

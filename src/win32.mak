@@ -1,16 +1,19 @@
 #_ win32.mak
-# Copyright (C) 1999-2010 by Digital Mars, http://www.digitalmars.com
+# Copyright (C) 1999-2011 by Digital Mars, http://www.digitalmars.com
 # Written by Walter Bright
 # All Rights Reserved
 # Build dmd with Digital Mars C++ compiler
+#   http://www.digitalmars.com/ctg/sc.html
+# This makefile is designed to be used with Digital Mars make.exe
+#   http://www.digitalmars.com/ctg/make.html
+# which should be in \dm\bin or in \dmd\windows\bin 
 
-D=c:\l\dmc
+D=
 DMDSVN=\svnproj\dmd\trunk\src
 #DMDSVN=\svnproj\dmd\branches\dmd-1.x\src
 SCROOT=$D\dm
 INCLUDE=$(SCROOT)\include
-CC=$D\bin\dmc
-LIB=$D\bin\lib
+CC=dmc
 LIBNT=$(SCROOT)\lib
 SNN=$(SCROOT)\lib\snn
 DIR=\dmd2
@@ -20,13 +23,13 @@ C=backend
 TK=tk
 ROOT=root
 
-MAKE=$D\bin\make -fwin32.mak C=$C TK=$(TK) ROOT=$(ROOT)
+MAKE=make -fwin32.mak C=$C TK=$(TK) ROOT=$(ROOT)
 
 TARGET=dmd
 XFLG=
 MODEL=n
 OPT=
-DEBUG=-g -D -DUNITTEST
+DEBUG=-gl -D -DUNITTEST
 #PREC=-H -HItotal.h -HO
 PREC=
 LFLAGS=
@@ -34,7 +37,7 @@ LFLAGS=
 LINKN=$(SCROOT)\bin\link /de
 
 CFLAGS=-I$(ROOT);$(INCLUDE) $(XFLG) $(OPT) $(DEBUG) -cpp
-MFLAGS=-I$C;$(TK) -DMARS -cpp $(DEBUG) -e -wx
+MFLAGS=-I$C;$(TK) $(OPT) -DMARS -cpp $(DEBUG) -e -wx
 
 # Makerules:
 .c.obj:
@@ -61,9 +64,6 @@ dmd:
 	$(MAKE) OPT=-o "DEBUG=" LFLAGS=-L/delexe dmd.exe
 #	$(MAKE) OPT=-o "DEBUG=" LFLAGS=-L/ma/co/delexe dmd.exe
 
-lib:
-	$(MAKE) OPT=-o "DEBUG=" LFLAGS=-L/delexe dmd.lib
-
 ################ NT COMMAND LINE DEBUG #########################
 
 debdmd:
@@ -84,7 +84,7 @@ OBJ1= mars.obj enum.obj struct.obj dsymbol.obj import.obj id.obj \
 	interpret.obj traits.obj aliasthis.obj intrange.obj \
 	builtin.obj clone.obj libomf.obj arrayop.obj irstate.obj \
 	glue.obj msc.obj ph.obj tk.obj s2ir.obj todt.obj e2ir.obj tocsym.obj \
-	util.obj bit.obj eh.obj toobj.obj toctype.obj tocvdebug.obj toir.obj \
+	util.obj eh.obj toobj.obj toctype.obj tocvdebug.obj toir.obj \
 	json.obj unittests.obj imphint.obj argtypes.obj
 
 # from C/C++ compiler optimizer and back end
@@ -93,15 +93,19 @@ OBJ8= go.obj gdag.obj gother.obj gflow.obj gloop.obj var.obj el.obj \
 	newman.obj glocal.obj os.obj nteh.obj evalu8.obj cgcs.obj \
 	rtlsym.obj html.obj cgelem.obj cgen.obj cgreg.obj out.obj \
 	blockopt.obj cgobj.obj cg.obj cgcv.obj type.obj dt.obj \
-	debug.obj code.obj cg87.obj cgsched.obj ee.obj csymbol.obj \
+	debug.obj code.obj cg87.obj cgxmm.obj cgsched.obj ee.obj csymbol.obj \
 	cgcod.obj cod1.obj cod2.obj cod3.obj cod4.obj cod5.obj outbuf.obj \
 	bcomplex.obj iasm.obj ptrntab.obj aa.obj ti_achar.obj md5.obj \
 	ti_pvoid.obj
 
 # from ROOT
 
-ROOTOBJS= lstring.obj array.obj gnuc.obj man.obj rmem.obj port.obj root.obj \
-	stringtable.obj dchar.obj response.obj async.obj speller.obj aav.obj
+GCOBJS=rmem.obj
+#GCOBJS=dmgcmem.obj bits.obj win32.obj gc.obj
+
+ROOTOBJS= lstring.obj array.obj gnuc.obj man.obj root.obj port.obj \
+	stringtable.obj dchar.obj response.obj async.obj speller.obj aav.obj \
+	$(GCOBJS)
 
 OBJS= $(OBJ1) $(OBJ8) $(ROOTOBJS)
 
@@ -111,7 +115,7 @@ SRCS= mars.c enum.c struct.c dsymbol.c import.c idgen.c impcnvgen.c utf.h \
 	cond.h cond.c link.c aggregate.h staticassert.h parse.c statement.c \
 	constfold.c version.h version.c inifile.c iasm.c staticassert.c \
 	module.c scope.c dump.c init.h init.c attrib.h attrib.c opover.c \
-	eh.c toctype.c class.c mangle.c bit.c tocsym.c func.c inline.c \
+	eh.c toctype.c class.c mangle.c tocsym.c func.c inline.c \
 	access.c complex_t.h unialpha.c irstate.h irstate.c glue.c msc.c \
 	ph.c tk.c s2ir.c todt.c e2ir.c util.c toobj.c cppmangle.c \
 	identifier.h parse.h scope.h enum.h import.h intrange.h \
@@ -125,9 +129,9 @@ SRCS= mars.c enum.c struct.c dsymbol.c import.c idgen.c impcnvgen.c utf.h \
 # From C++ compiler
 
 BACKSRC= $C\cdef.h $C\cc.h $C\oper.h $C\ty.h $C\optabgen.c \
-	$C\global.h $C\parser.h $C\code.h $C\type.h $C\dt.h $C\cgcv.h \
+	$C\global.h $C\code.h $C\type.h $C\dt.h $C\cgcv.h \
 	$C\el.h $C\iasm.h $C\rtlsym.h $C\html.h \
-	$C\bcomplex.c $C\blockopt.c $C\cg.c $C\cg87.c \
+	$C\bcomplex.c $C\blockopt.c $C\cg.c $C\cg87.c $C\cgxmm.c \
 	$C\cgcod.c $C\cgcs.c $C\cgcv.c $C\cgelem.c $C\cgen.c $C\cgobj.c \
 	$C\cgreg.c $C\var.c \
 	$C\cgsched.c $C\cod1.c $C\cod2.c $C\cod3.c $C\cod4.c $C\cod5.c \
@@ -137,7 +141,7 @@ BACKSRC= $C\cdef.h $C\cc.h $C\oper.h $C\ty.h $C\optabgen.c \
 	$C\nteh.c $C\os.c $C\out.c $C\outbuf.c $C\ptrntab.c $C\rtlsym.c \
 	$C\type.c $C\melf.h $C\mach.h $C\bcomplex.h \
 	$C\cdeflnx.h $C\outbuf.h $C\token.h $C\tassert.h \
-	$C\elfobj.c $C\cv4.h $C\dwarf2.h $C\cpp.h $C\exh.h $C\go.h \
+	$C\elfobj.c $C\cv4.h $C\dwarf2.h $C\exh.h $C\go.h \
 	$C\dwarf.c $C\dwarf.h $C\cppman.c $C\machobj.c \
 	$C\strtold.c $C\aa.h $C\aa.c $C\tinfo.h $C\ti_achar.c \
 	$C\md5.h $C\md5.c $C\ti_pvoid.c \
@@ -157,18 +161,17 @@ ROOTSRC= $(ROOT)\dchar.h $(ROOT)\dchar.c $(ROOT)\lstring.h \
 	$(ROOT)\gnuc.h $(ROOT)\gnuc.c $(ROOT)\man.c $(ROOT)\port.c \
 	$(ROOT)\response.c $(ROOT)\async.h $(ROOT)\async.c \
 	$(ROOT)\speller.h $(ROOT)\speller.c \
-	$(ROOT)\aav.h $(ROOT)\aav.c
+	$(ROOT)\aav.h $(ROOT)\aav.c \
+	$(ROOT)\dmgcmem.c $(ROOT)\gc\bits.c $(ROOT)\gc\gc.c $(ROOT)\gc\gc.h $(ROOT)\gc\mscbitops.h \
+	$(ROOT)\gc\bits.h $(ROOT)\gc\gccbitops.h $(ROOT)\gc\linux.c $(ROOT)\gc\os.h \
+	$(ROOT)\gc\win32.c
 
 MAKEFILES=win32.mak posix.mak
 
 #########################################
 
 $(TARGET).exe : $(OBJS) win32.mak
-	$(CC) -o$(TARGET).exe $(OBJS) -cpp -mn -Ar $(LFLAGS)
-
-$(TARGET).lib : $(OBJS) win32.mak
-	$(LIB) -c -p128 $(TARGET).lib $(OBJ8) $(ROOTOBJS) msc.obj tk.obj util.obj entity.obj ph.obj eh.obj
-	$(LIB) -d $(TARGET).lib iasm.obj
+	dmc -o$(TARGET).exe $(OBJS) -cpp -mn -Ar $(LFLAGS)
 
 
 ##################### INCLUDE MACROS #####################
@@ -176,7 +179,7 @@ $(TARGET).lib : $(OBJS) win32.mak
 CCH=
 #TOTALH=$(CCH) total.sym
 TOTALH=$(CCH) id.h
-CH= $C\cc.h $C\global.h $C\parser.h $C\oper.h $C\code.h $C\type.h $C\dt.h $C\cgcv.h $C\el.h $C\iasm.h
+CH= $C\cc.h $C\global.h $C\oper.h $C\code.h $C\type.h $C\dt.h $C\cgcv.h $C\el.h $C\iasm.h
 
 ##################### GENERATED SOURCE #####################
 
@@ -184,11 +187,11 @@ msgs.h msgs.c sj1041.msg sj1036.msg sj1031.msg : msgsx.exe
 	msgsx
 
 msgsx.exe : msgsx.c
-	$(CC) msgsx -mn -D$(TARGET) $(DEFINES) $(WINLIBS)
+	dmc msgsx -mn -D$(TARGET) $(DEFINES) $(WINLIBS)
 
 elxxx.c cdxxx.c optab.c debtab.c fltables.c tytab.c : \
 	$C\cdef.h $C\cc.h $C\oper.h $C\ty.h $C\optabgen.c
-	$(CC) -cpp -ooptabgen.exe $C\optabgen -DMARS -I$(TK) $(WINLIBS) #-L$(LINKS)
+	dmc -cpp -ooptabgen.exe $C\optabgen -DMARS -I$(TK) $(WINLIBS) #-L$(LINKS)
 	optabgen
 
 impcnvtab.c : impcnvgen.c
@@ -196,7 +199,7 @@ impcnvtab.c : impcnvgen.c
 	impcnvgen
 
 id.h id.c : idgen.c
-	$(CC) -cpp idgen
+	dmc -cpp idgen
 	idgen
 
 ##################### SPECIAL BUILDS #####################
@@ -218,9 +221,6 @@ bcomplex.obj : $C\bcomplex.c
 
 aa.obj : $C\tinfo.h $C\aa.h $C\aa.c
 	$(CC) -c $(MFLAGS) -I. $C\aa
-
-bit.obj : expression.h bit.c
-	$(CC) -c -I$(ROOT) $(MFLAGS) bit
 
 blockopt.obj : $C\blockopt.c
 	$(CC) -c $(MFLAGS) $C\blockopt
@@ -254,6 +254,9 @@ cgreg.obj : $C\cgreg.c
 
 cgsched.obj : $C\rtlsym.h $C\cgsched.c
 	$(CC) -c $(MFLAGS) $C\cgsched
+
+cgxmm.obj : $C\cgxmm.c
+	$(CC) -c $(MFLAGS) $C\cgxmm
 
 cod1.obj : $C\rtlsym.h $C\cod1.c
 	$(CC) -c $(MFLAGS) $C\cod1
@@ -423,6 +426,9 @@ async.obj : $(ROOT)\async.h $(ROOT)\async.c
 dchar.obj : $(ROOT)\dchar.c
 	$(CC) -c $(CFLAGS) $(ROOT)\dchar.c
 
+dmgcmem.obj : $(ROOT)\dmgcmem.c
+	$(CC) -c $(CFLAGS) $(ROOT)\dmgcmem.c
+
 gnuc.obj : $(ROOT)\gnuc.c
 	$(CC) -c $(CFLAGS) $(ROOT)\gnuc.c
 
@@ -449,6 +455,17 @@ speller.obj : $(ROOT)\speller.h $(ROOT)\speller.c
 
 stringtable.obj : $(ROOT)\stringtable.c
 	$(CC) -c $(CFLAGS) $(ROOT)\stringtable.c
+
+# ROOT/GC
+
+bits.obj : $(ROOT)\gc\bits.h $(ROOT)\gc\bits.c
+	$(CC) -c $(CFLAGS) -I$(ROOT)\gc $(ROOT)\gc\bits.c
+
+gc.obj : $(ROOT)\gc\bits.h $(ROOT)\gc\os.h $(ROOT)\gc\gc.h $(ROOT)\gc\gc.c
+	$(CC) -c $(CFLAGS) -I$(ROOT)\gc $(ROOT)\gc\gc.c
+
+win32.obj : $(ROOT)\gc\os.h $(ROOT)\gc\win32.c
+	$(CC) -c $(CFLAGS) -I$(ROOT)\gc $(ROOT)\gc\win32.c
 
 
 ################# Source file dependencies ###############

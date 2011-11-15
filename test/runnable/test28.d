@@ -54,11 +54,11 @@ void test2()
 /*******************************************/
 
 template Qwert3(string yuiop) {
-    invariant string Qwert3 = cast(string)yuiop;
+    immutable string Qwert3 = cast(string)yuiop;
 }
 
 template Asdfg3(string yuiop) {
-    invariant string Asdfg3 = cast(string)Qwert3!(cast(string)(cast(string)yuiop ~ cast(string)"hjkl"));
+    immutable string Asdfg3 = cast(string)Qwert3!(cast(string)(cast(string)yuiop ~ cast(string)"hjkl"));
 }
 
 void test3()
@@ -72,31 +72,13 @@ void test3()
 
 template Qwert4(string yuiop)
 {
-    invariant string Qwert4 = cast(string)(yuiop ~ "asdfg" ~ yuiop);
+    immutable string Qwert4 = cast(string)(yuiop ~ "asdfg" ~ yuiop);
 }
 
 void test4()
 {
     string hjkl = Qwert4!(null);
     assert(hjkl == "asdfg");
-}
-
-/*******************************************/
-
-struct Ranged(T)
-{
-    T value, min, max, range;
-}
-
-typedef Ranged!(float) Degree = {0f, 0f, 360f, 360f};
-
-void test5()
-{
-    static Degree a;
-    assert(a.value == 0f);
-    assert(a.min == 0f);
-    assert(a.max == 360f);
-    assert(a.range == 360f);
 }
 
 /*******************************************/
@@ -108,7 +90,7 @@ void test6()
         void foo() { }
     }
 
-    typedef Foo Bar;
+    alias Foo Bar;
 
     Bar a;
     a.foo();
@@ -258,24 +240,6 @@ void test15()
 
 /*******************************************/
 
-typedef uint socket_t = -1u;
-
-class Socket
-{
-    socket_t sock;
-    
-    void accept()
-    {
-	    socket_t newsock;
-    }
-}
-
-void test16()
-{
-}
-
-/*******************************************/
-
 void test17()
 {
     void delegate() y = { };
@@ -287,11 +251,11 @@ void test17()
 abstract class Pen { int foo(); }
 
 class Penfold : Pen {
-    int foo() { return 1; }
+    override int foo() { return 1; }
 }
 
 class Pinky : Pen {
-    int foo() { return 2; }
+    override int foo() { return 2; }
 }
 
 class Printer {
@@ -339,7 +303,7 @@ class B19 : A19
 {
     alias A19.s s;
     static void s(int i) {}
-    void s() {}
+    override void s() {}
 }
 
 class C19
@@ -1097,32 +1061,6 @@ void test55()
 
 /*******************************************/
 
-typedef int Xint = 42;
-
-void test56()
-{
-    Xint[3][] x = new Xint[3][4];
-
-    foreach(Xint[3] i; x) {
-        foreach (Xint j; i)
-            assert(j == 42);
-    }
-}
-
-void test57()
-{
-    Xint[3][] x = new Xint[3][4];
-    x.length = 200;
-    assert(x.length == 200);
-
-    foreach(Xint[3] i; x) {
-        foreach (Xint j; i)
-            assert(j == 42);
-    }
-}
-
-/*******************************************/
-
 void test58()
 {
     struct S
@@ -1317,7 +1255,6 @@ void main()
     test2();
     test3();
     test4();
-    test5();
     test6();
     test7();
     test8();
@@ -1328,7 +1265,6 @@ void main()
     test13();
     test14();
     test15();
-    test16();
     test17();
     test18();
     test19();
@@ -1368,8 +1304,6 @@ void main()
     test53();
     test54();
     test55();
-    test56();
-    test57();
     test58();
     test59();
     test60();

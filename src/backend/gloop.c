@@ -675,21 +675,6 @@ STATIC int looprotate(loop *l)
         assert(0);
 
     L1:
-#if !TX86
-        if (config.flags3 & CFG3eh)
-        {
-            if (!(b->Bflags & BFLlooprt))
-            {
-                b->Boldnext = b->Bnext;
-                b->Bflags |= BFLlooprt;
-            }
-            if (!(head->Bflags & BFLlooprt))
-            {
-                head->Boldnext = head->Bnext;
-                head->Bflags |= BFLlooprt;
-            }
-        }
-#endif
         b->Bnext = head->Bnext;
         head->Bnext = tail->Bnext;
         tail->Bnext = head;
@@ -1056,9 +1041,9 @@ STATIC void markinvar(elem *n,vec_t rd)
                 break;
         case OPmsw:
         case OPneg:     case OPbool:    case OPnot:     case OPcom:
-        case OPshtlng:  case OPd_s32:   case OPs32_d:
-        case OPdblint:  case OPs16_d:   case OPd_f:     case OPf_d:
-        case OPlngsht:  case OPu8int:
+        case OPs16_32:  case OPd_s32:   case OPs32_d:
+        case OPd_s16:   case OPs16_d:   case OPd_f:     case OPf_d:
+        case OP32_16:   case OPu8_16:
         case OPld_d:    case OPd_ld:
         case OPld_u64:
         case OPc_r:     case OPc_i:
@@ -1069,12 +1054,12 @@ STATIC void markinvar(elem *n,vec_t rd)
 #else
         case OPunslng:
 #endif
-        case OPu16_d:   case OPdbluns:
-        case OPs8int:   case OPint8:
+        case OPu16_d:   case OPd_u16:
+        case OPs8_16:   case OP16_8:
         case OPd_u32:   case OPu32_d:
 
 #if LONGLONG
-        case OPlngllng: case OPu32_64:
+        case OPs32_64:  case OPu32_64:
         case OP64_32:
         case OPd_s64:   case OPd_u64:
         case OPs64_d:
@@ -1090,9 +1075,9 @@ STATIC void markinvar(elem *n,vec_t rd)
         case OPcos:
         case OPrint:
 #if TX86
-        case OPvptrfptr: /* BUG for MacHandles */
-        case OPtofar16: case OPfromfar16: case OPoffset: case OPptrlptr:
-        case OPcvptrfptr:
+        case OPvp_fp: /* BUG for MacHandles */
+        case OPnp_f16p: case OPf16p_np: case OPoffset: case OPnp_fp:
+        case OPcvp_fp:
         case OPsetjmp:
         case OPbsf:
         case OPbsr:
@@ -1138,6 +1123,7 @@ STATIC void markinvar(elem *n,vec_t rd)
         case OPshl:     case OPshr:     case OPeqeq:    case OPne:
         case OPlt:      case OPle:      case OPgt:      case OPge:
         case OPashr:
+        case OPror:     case OProl:
 
         case OPunord:   case OPlg:      case OPleg:     case OPule:
         case OPul:      case OPuge:     case OPug:      case OPue:
@@ -2050,14 +2036,16 @@ STATIC famlist * newfamlist(tym_t ty)
                 c.Vldouble = 1;
                 break;
 #if _MSDOS || __OS2__ || _WIN32         // if no byte ordering problems
-            case TYsptr:
-            case TYcptr:
 #if JHANDLE
             case TYjhandle:
 #endif
+#if TARGET_SEGMENTED
+            case TYsptr:
+            case TYcptr:
             case TYnptr:
             case TYfptr:
             case TYvptr:
+#endif
                 /* Convert pointers to integrals to avoid things like   */
                 /* multiplying pointers                                 */
                 ty = TYptrdiff;
@@ -2065,7 +2053,7 @@ STATIC famlist * newfamlist(tym_t ty)
             default:
                 c.Vlong = 1;
                 break;
-#if TX86
+#if TARGET_SEGMENTED
             case TYhptr:
                 ty = TYlong;
                 c.Vlong = 1;
@@ -2084,17 +2072,17 @@ STATIC famlist * newfamlist(tym_t ty)
             case TYwchar_t:             // BUG: what about 4 byte wchar_t's?
                 c.Vshort = 1;
                 break;
-#if TX86
-            case TYsptr:
-            case TYcptr:
 #if JHANDLE
             case TYjhandle:
 #endif
-            case TYnptr:
-#endif
-            case TYnullptr:
+#if TARGET_SEGMENTED
+            case TYsptr:
+            case TYcptr:
             case TYfptr:
             case TYvptr:
+#endif
+            case TYnptr:
+            case TYnullptr:
                 ty = TYint;
                 if (I64)
                     ty = TYllong;
@@ -2103,7 +2091,7 @@ STATIC famlist * newfamlist(tym_t ty)
             case TYuint:
                 c.Vint = 1;
                 break;
-#if TX86
+#if TARGET_SEGMENTED
             case TYhptr:
                 ty = TYlong;
 #endif
@@ -2124,13 +2112,13 @@ STATIC famlist * newfamlist(tym_t ty)
         c.Vldouble = 0;
         if (typtr(ty))
         {
-#if TX86
-            ty = (tybasic(ty) == TYhptr) ? TYlong : TYint;
+            ty = TYint;
+#if TARGET_SEGMENTED
+            if (tybasic(ty) == TYhptr)
+                ty = TYlong;
+#endif
             if (I64)
                 ty = TYllong;
-#else
-            ty = TYint;
-#endif
         }
         fl->c2 = el_const(ty,&c);               /* c2 = 0               */
         return fl;
@@ -2471,6 +2459,7 @@ STATIC void ivfamelems(register Iv *biv,register elem **pn)
   if (OTunary(op))
   {     ivfamelems(biv,&n->E1);
         n1 = n->E1;
+        n2 = NULL;
   }
   else if (OTbinary(op))
   {     ivfamelems(biv,&n->E1);
@@ -2505,6 +2494,7 @@ STATIC void ivfamelems(register Iv *biv,register elem **pn)
                 n1 = n->E1;
         }
 
+#if TARGET_SEGMENTED
         // Get rid of case where we painted a far pointer to a long
         if (op == OPadd || op == OPmin)
         {   int sz;
@@ -2514,6 +2504,7 @@ STATIC void ivfamelems(register Iv *biv,register elem **pn)
                 (sz != tysize(n1->Ety) || sz != tysize(n2->Ety)))
                 return;
         }
+#endif
 
         /* Look for function of basic IV (-biv or biv op const)         */
         if (n1->Eoper == OPvar && n1->EV.sp.Vsym == biv->IVbasic)
@@ -2559,7 +2550,7 @@ STATIC void ivfamelems(register Iv *biv,register elem **pn)
                                 /* Check for subtracting two pointers */
                                 if (typtr(c2ty) && typtr(n2->Ety))
                                 {
-#if TX86
+#if TARGET_SEGMENTED
                                     if (tybasic(c2ty) == TYhptr)
                                         c2ty = TYlong;
                                     else
@@ -2787,7 +2778,7 @@ STATIC void intronvars(loop *l)
             if (!elemisone(fl->c1))             /* don't multiply ptrs by 1 */
                 ne = el_bin(OPmul,tyr,ne,el_copytree(fl->c1));
             if (tyfv(tyr) && tysize(ty) == SHORTSIZE)
-                ne = el_una(OPlngsht,ty,ne);
+                ne = el_una(OP32_16,ty,ne);
             C2 = el_copytree(fl->c2);
             t2 = el_bin(OPadd,ty,ne,C2);        /* t2 = ne + C2         */
             ne = el_bin(OPeq,ty,el_copytree(T),t2);
@@ -2898,7 +2889,7 @@ STATIC bool funcprev(Iv *biv,famlist *fl)
                     else                        /* can't subtract fptr  */
                         goto L1;
                 }
-#if TX86
+#if TARGET_SEGMENTED
                 if (tybasic(fls->c2->Ety) == TYhptr)
                     tymin = TYlong;
                 else
@@ -2906,7 +2897,7 @@ STATIC bool funcprev(Iv *biv,famlist *fl)
                     tymin = I64 ? TYllong : TYint;         /* type of (ptr - ptr) */
         }
 
-#if TX86
+#if TARGET_SEGMENTED
         /* If e1 and fls->c2 are fptrs, and are not from the same       */
         /* segment, we cannot subtract them.                            */
         if (tyfv(e1->Ety) && tyfv(fls->c2->Ety))
@@ -3113,7 +3104,7 @@ STATIC void elimbasivs(register loop *l)
                  */
                 if (tysize(flty) == SHORTSIZE &&
                     tysize(refE2->Ety) == LONGSIZE)
-                    refE2 = el_una(OPlngsht,flty,refE2);
+                    refE2 = el_una(OP32_16,flty,refE2);
 
                 /* replace e with e*c1 + c2             */
                 C2 = el_copytree(fl->c2);
@@ -3227,12 +3218,12 @@ STATIC void elimbasivs(register loop *l)
                                 ne = el_bin(OPmin,ty,
                                         el_var(fl->FLtemp),
                                         C2);
-#if TX86
+#if TARGET_SEGMENTED
                                 if (tybasic(ne->E1->Ety) == TYfptr &&
                                     tybasic(ne->E2->Ety) == TYfptr)
                                 {   ne->Ety = I64 ? TYllong : TYint;
                                     if (tylong(ty) && intsize == 2)
-                                        ne = el_una(OPshtlng,ty,ne);
+                                        ne = el_una(OPs16_32,ty,ne);
                                 }
 #endif
 
@@ -3330,7 +3321,6 @@ STATIC void elimopeqs(register loop *l)
 {
     Iv *biv;
     unsigned i;
-    tym_t ty;
     elem **pref;
     symbol *X;
     int refcount;
@@ -3347,7 +3337,6 @@ STATIC void elimopeqs(register loop *l)
 
         X = biv->IVbasic;
         assert(symbol_isintab(X));
-        ty = X->ty();
         pref = onlyref(X,l,*biv->IVincr,&refcount);
 
         // if only ref of X is of the form (X) or (X relop e) or (e relop X)
@@ -3454,15 +3443,15 @@ STATIC famlist * flcmp(famlist *f1,famlist *f2)
                         goto Lf2;
                 break;
 
-#if TX86
 #if JHANDLE
             case TYjhandle:
 #endif
-            case TYnullptr:
-            case TYnptr:        // BUG: 64 bit pointers?
+#if TARGET_SEGMENTED
             case TYsptr:
             case TYcptr:
 #endif
+            case TYnptr:        // BUG: 64 bit pointers?
+            case TYnullptr:
             case TYint:
             case TYuint:
                 if (intsize == SHORTSIZE)
@@ -3472,9 +3461,9 @@ STATIC famlist * flcmp(famlist *f1,famlist *f2)
             case TYlong:
             case TYulong:
             case TYdchar:
+#if TARGET_SEGMENTED
             case TYfptr:
             case TYvptr:
-#if TX86
             case TYhptr:
 #endif
             case_long:

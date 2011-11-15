@@ -73,7 +73,7 @@ class Bar3
 
 class Code3 : Bar3
 {
-    int func() { printf("Code3.func()\n"); return 2; }
+    override int func() { printf("Code3.func()\n"); return 2; }
 }
 
 void test3()
@@ -973,6 +973,162 @@ void test41()
 }
 
 /*******************************************/
+// 2245
+
+template TCALL2245a(ARGS...)
+{
+    int makecall(ARGS args)
+    {
+        return args.length;
+    }
+}
+
+template TCALL2245b(int n)
+{
+    int makecall2(ARGS...)(ARGS args) if (ARGS.length == n)
+    {
+        return args.length;
+    }
+}
+
+class C2245
+{
+    mixin TCALL2245a!();
+    mixin TCALL2245a!(int);
+    mixin TCALL2245a!(int,int);
+
+    mixin TCALL2245b!(0);
+    mixin TCALL2245b!(1);
+    mixin TCALL2245b!(2);
+}
+
+struct S2245
+{
+    mixin TCALL2245a!();
+    mixin TCALL2245a!(int);
+    mixin TCALL2245a!(int,int);
+
+    mixin TCALL2245b!(0);
+    mixin TCALL2245b!(1);
+    mixin TCALL2245b!(2);
+}
+
+void test2245()
+{
+    auto c = new C2245;
+    assert(c.makecall() == 0);
+    assert(c.makecall(0) == 1);
+    assert(c.makecall(0,1) == 2);
+
+    assert(c.makecall2() == 0);
+    assert(c.makecall2(0) == 1);
+    assert(c.makecall2(0,1) == 2);
+
+    assert(c.makecall2!()() == 0);
+    assert(c.makecall2!(int)(0) == 1);
+    assert(c.makecall2!(int, int)(0,1) == 2);
+
+    auto s = S2245();
+    assert(s.makecall() == 0);
+    assert(s.makecall(0) == 1);
+    assert(s.makecall(0,1) == 2);
+
+    assert(s.makecall2() == 0);
+    assert(s.makecall2(0) == 1);
+    assert(s.makecall2(0,1) == 2);
+
+    assert(s.makecall2!()() == 0);
+    assert(s.makecall2!(int)(0) == 1);
+    assert(s.makecall2!(int, int)(0,1) == 2);
+}
+
+/*******************************************/
+// 2740
+
+interface IFooable2740
+{
+    bool foo();
+}
+abstract class CFooable2740
+{
+    bool foo();
+}
+
+mixin template MFoo2740()
+{
+    override bool foo() { return true; }
+}
+
+class Foo2740i1 : IFooable2740
+{
+    override bool foo() { return false; }
+    mixin MFoo2740;
+}
+class Foo2740i2 : IFooable2740
+{
+    mixin MFoo2740;
+    override bool foo() { return false; }
+}
+
+class Foo2740c1 : CFooable2740
+{
+    override bool foo() { return false; }
+    mixin MFoo2740;
+}
+class Foo2740c2 : CFooable2740
+{
+    mixin MFoo2740;
+    override bool foo() { return false; }
+}
+
+void test2740()
+{
+    {
+        auto p = new Foo2740i1();
+        IFooable2740 i = p;
+        assert(p.foo() == false);
+        assert(i.foo() == false);
+    }
+    {
+        auto p = new Foo2740i2();
+        IFooable2740 i = p;
+        assert(p.foo() == false);
+        assert(i.foo() == false);
+    }
+
+    {
+        auto p = new Foo2740c1();
+        CFooable2740 i = p;
+        assert(p.foo() == false);
+        assert(i.foo() == false);
+    }
+    {
+        auto p = new Foo2740c2();
+        CFooable2740 i = p;
+        assert(p.foo() == false);
+        assert(i.foo() == false);
+    }
+}
+
+/*******************************************/
+
+mixin template MTestFoo()
+{
+    int foo(){ return 2; }
+}
+class TestFoo
+{
+    mixin MTestFoo!() test;
+    int foo(){ return 1; }
+}
+void test42()
+{
+    auto p = new TestFoo();
+    assert(p.foo() == 1);
+    assert(p.test.foo() == 2);
+}
+
+/*******************************************/
 
 int main()
 {
@@ -1017,6 +1173,9 @@ int main()
     test39();
     test40();
     test41();
+    test2245();
+    test2740();
+    test42();
 
     printf("Success\n");
     return 0;

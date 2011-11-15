@@ -29,7 +29,7 @@ class A
 
 class B : A
 {
-     int foo(int i)
+     override int foo(int i)
      in
      {
 	float f;
@@ -83,7 +83,7 @@ class A2
 
 class B2 : A2
 {
-     int foo(int i)
+     override int foo(int i)
      in
      {
 	float f;
@@ -105,7 +105,7 @@ class B2 : A2
 
 class C : B2
 {
-     int foo(int i)
+     override int foo(int i)
      in
      {
 	float f;
@@ -189,6 +189,35 @@ body
 void test5()
 {
     mul100(5);
+}
+
+/*******************************************/
+// 3273
+
+// original case
+struct Bug3273
+{
+    ~this() {}
+    invariant() {}
+}
+
+// simplest case
+ref int func3273()
+out(r)
+{
+	// Regression check of issue 3390
+	static assert(!__traits(compiles, r = 1));
+}
+body
+{
+	static int dummy;
+	return dummy;
+}
+
+void test6()
+{
+	func3273() = 1;
+	assert(func3273() == 1);
 }
 
 /*******************************************/

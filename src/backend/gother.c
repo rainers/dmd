@@ -23,6 +23,10 @@
 #include        "list.h"
 #include        "type.h"
 
+#if SCPP
+#include        "parser.h"
+#endif
+
 static char __file__[] = __FILE__;      /* for tassert.h                */
 #include        "tassert.h"
 
@@ -1201,7 +1205,7 @@ void elimass(elem *n)
             /* Don't screw up assnod[]. */
             n->Eoper = OPcomma;
             n->Ety |= n->E2->Ety & (mTYconst | mTYvolatile | mTYimmutable | mTYshared
-#if !TARGET_FLAT
+#if TARGET_SEGMENTED
                  | mTYfar
 #endif
                 );
@@ -1359,7 +1363,7 @@ STATIC void accumda(elem *n,vec_t DEAD, vec_t POSS)
             case OPucall:
             case OPucallns:
 #if !TX86
-            case OPvptrfptr:
+            case OPvp_fp:
 #endif
                 accumda(n->E1,DEAD,POSS);
                 vec_subass(POSS,ambigref);      // remove possibly refed

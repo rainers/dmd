@@ -1,4 +1,4 @@
-// PERMUTE_ARGS: -inline
+﻿// PERMUTE_ARGS: -inline
 
 struct ArrayRet{
    int x;
@@ -237,6 +237,23 @@ struct Matrix5248 {
 };
 
 static assert(Matrix5248().Compile());
+
+/**************************************************
+    4837   >>>=
+**************************************************/
+
+bool bug4837()
+{
+    ushort x = 0x89AB;
+    x >>>= 4;
+    assert(x == 0x89A);
+    byte y = 0x7C;
+    y >>>= 2;
+    assert(y == 0x1F);
+    return true;
+}
+
+static assert(bug4837());
 
 /**************************************************
     Bug 6164
@@ -747,6 +764,16 @@ struct Bug5865 {
 }
 
 /*******************************************
+    6235 - Regression ICE on $ in template
+*******************************************/
+
+struct Bug6235(R) {
+    enum XXX = is(typeof(R.init[0..$]) : const ubyte[]);
+}
+
+Bug6235!(ubyte[]) bug6235;
+
+/*******************************************
         Bug 5840
 *******************************************/
 
@@ -1091,21 +1118,18 @@ static assert(bug6001f());
 
 // Assignment to AAs
 
-version(X86)
+void blah(int[char] as)
 {
-    void blah(int[char] as)
-    {
-        auto k = [6: as];
-        as = k[6];
-    }
-    int blaz()
-    {
-        int[char] q;
-        blah(q);
-        return 67;
-    }
-    static assert(blaz()==67);
+    auto k = [6: as];
+    as = k[6];
 }
+int blaz()
+{
+    int[char] q;
+    blah(q);
+    return 67;
+}
+static assert(blaz()==67);
 
 void bug6001g(ref int[] w)
 {
@@ -1325,6 +1349,24 @@ static assert({
     assert(pieces[4][0] == 7);
     return true;
 }());
+
+/**************************************************
+    Bug 6749
+**************************************************/
+
+struct CtState {
+    string code;
+}
+
+CtState bug6749()
+{
+    CtState[] pieces;
+    CtState r = CtState("correct");
+    pieces ~= r;
+    r = CtState("clobbered");
+    return pieces[0];
+}
+static assert(bug6749().code == "correct");
 
 /**************************************************
     Index + slice assign to function returns
@@ -1654,6 +1696,28 @@ static assert({
 }() == 6);
 
 /**************************************************
+  6517 ptr++, ptr--
+**************************************************/
+
+int bug6517() {
+    int[] arr = [1, 2, 3];
+    auto startp = arr.ptr;
+    auto endp = arr.ptr + arr.length;
+
+    for(; startp < endp; startp++) {}
+    startp = arr.ptr;
+    assert(startp++ == arr.ptr);
+    assert(startp != arr.ptr);
+    assert(startp-- != arr.ptr);
+    assert(startp == arr.ptr);
+
+    return 84;
+}
+
+static assert(bug6517() == 84);
+
+
+/**************************************************
   Out-of-bounds pointer assignment and deference
 **************************************************/
 
@@ -1874,6 +1938,16 @@ int ptrSlice()
 static assert(ptrSlice()==2);
 
 /**************************************************
+    6344 - create empty slice from null pointer
+**************************************************/
+
+static assert({
+    char* c = null;
+    auto m = c[0..0];
+    return true;
+}());
+
+/**************************************************
     4448 - labelled break + continue
 **************************************************/
 
@@ -1914,3 +1988,1404 @@ int bug4448b()
 }
 
 static assert(bug4448b()==3);
+
+/**************************************************
+    6281 - [CTFE] A null pointer '!is null' returns 'true'
+**************************************************/
+
+static assert(!{
+    auto p = null;
+    return p !is null;
+}());
+static assert(!{
+    auto p = null;
+    return p != null;
+}());
+
+/**************************************************
+    6331 - evaluate SliceExp on if condition
+**************************************************/
+
+bool bug6331(string s)
+{
+    if (s[0..1])
+        return true;
+    return false;
+}
+static assert(bug6331("str"));
+
+/**************************************************
+    6283 - assign to AA with slice as index
+**************************************************/
+
+static assert({
+    immutable p = "pp";
+    int[string] pieces = [p: 0];
+    pieces["qq"] = 1;
+    return true;
+}());
+
+static assert({
+    immutable renames = [0: "pp"];
+    int[string] pieces;
+    pieces[true ? renames[0] : "qq"] = 1;
+    pieces["anything"] = 1;
+    return true;
+}());
+
+static assert( {
+    immutable qq = "qq";
+    string q = qq;
+    int[string] pieces = ["a":1];
+    pieces[q] = 0;
+    string w = "ab";
+    int z = pieces[w[0..1]];
+    assert(z == 1);
+    return true;
+}() );
+
+/**************************************************
+    6282 - dereference 'in' of an AA
+**************************************************/
+
+static assert({
+    int [] w = new int[4];
+    w[2] = 6;
+    auto c = [5: w];
+    auto kk  = (*(5 in c))[2];
+    (*(5 in c))[2] = 8;
+    (*(5 in c))[1..$-2] = 4;
+    auto a = [4:"1"];
+    auto n = *(4 in a);
+    return n;
+}() == "1");
+
+/**************************************************
+    6337 - member function call on struct literal
+**************************************************/
+
+struct Bug6337
+{
+    int k;
+    void six() {
+        k = 6;
+    }
+    int ctfe()
+    {
+        six();
+        return k;
+    }
+}
+static assert( Bug6337().ctfe() == 6);
+
+/**************************************************
+    6603 call manifest function pointer
+**************************************************/
+
+int f6603(int a) { return a+5; }
+enum bug6603 = &f6603;
+static assert(bug6603(6)==11);
+
+/**************************************************
+    6375
+**************************************************/
+
+struct D6375 {
+    int[] arr;
+}
+A6375 a6375(int[] array) {
+    return A6375(array);
+}
+struct A6375 {
+    D6375* _data;
+    this(int[] arr) {
+        _data = new D6375;
+        _data.arr = arr;
+    }
+    int[] data() {
+        return _data.arr;
+    }
+}
+static assert({
+    int[] a = [ 1, 2 ];
+    auto app2 = a6375(a);
+    auto data = app2.data();
+    return true;
+}());
+
+/**************************************************
+    6280 Converting pointers to bool
+**************************************************/
+
+static assert({
+    if ((0 in [0:0])) {}
+    if ((0 in [0:0]) && (0 in [0:0])) {}
+    return true;
+}());
+
+/**************************************************
+    6276 ~=
+**************************************************/
+
+struct Bug6276{
+    int[] i;
+}
+static assert({
+    Bug6276 foo;
+    foo.i ~= 1;
+    foo.i ~= 2;
+    return true;
+}());
+
+/**************************************************
+    6374   ptr[n] = x, x = ptr[n]
+**************************************************/
+
+static assert({
+    int[] arr = [1];
+    arr.ptr[0] = 2;
+    auto k = arr.ptr[0];
+    assert(k==2);
+    return arr[0];
+}() == 2);
+
+/**************************************************
+    6306  recursion and local variables
+**************************************************/
+
+void recurse6306() {
+    bug6306(false);
+}
+
+bool bug6306(bool b) {
+    int x = 0;
+    if (b)
+        recurse6306();
+    assert(x == 0);
+    x = 1;
+    return true;
+}
+
+static assert( bug6306(true) );
+
+/**************************************************
+    6386  ICE on unsafe pointer cast
+**************************************************/
+
+static assert(!is(typeof(compiles!({
+    int x = 123;
+    int* p = &x;
+    float z;
+    float* q = cast(float*)p;
+    return true;
+}()
+))));
+
+static assert({
+    int [] x = [123, 456];
+    int* p = &x[0];
+    auto m = cast(const(int) *)p;
+    auto q = p;
+    return *q;
+}());
+
+/**************************************************
+    6420  ICE on dereference of invalid pointer
+**************************************************/
+
+static assert({
+    // Should compile, but pointer can't be dereferenced
+    int x = 123;
+    int* p = cast(int *)x;
+    auto q = cast(char*)x;
+    auto r = cast(char*)323;
+    // Valid const-changing cast
+    const float *m = cast(immutable float *)[1.2f,2.4f,3f];
+    return true;
+}()
+);
+
+static assert(!is(typeof(compiles!({
+    int x = 123;
+    int* p = cast(int *)x;
+    int a = *p;
+    return true;
+}()
+))));
+
+static assert(!is(typeof(compiles!({
+    int* p = cast(int *)123;
+    int a = *p;
+    return true;
+}()
+))));
+
+static assert(!is(typeof(compiles!({
+    auto k = cast(int*)45;
+    *k = 1;
+    return true;
+}()
+))));
+
+static assert(!is(typeof(compiles!({
+    *cast(float*)"a" = 4.0;
+    return true;
+}()
+))));
+
+static assert(!is(typeof(compiles!({
+    float f = 2.8;
+    long *p = &f;
+    return true;
+}()
+))));
+
+static assert(!is(typeof(compiles!({
+    long *p = cast(long *)[1.2f,2.4f,3f];
+    return true;
+}()
+))));
+
+
+/**************************************************
+    6250  deref pointers to array
+**************************************************/
+
+int []* simple6250(int []* x) { return x; }
+
+void swap6250(int[]* lhs, int[]* rhs)
+{
+    int[] kk = *lhs;
+    assert(simple6250(lhs) == lhs);
+    lhs = simple6250(lhs);
+    assert(kk[0] == 18);
+    assert((*lhs)[0] == 18);
+    assert((*rhs)[0] == 19);
+    *lhs = *rhs;
+    assert((*lhs)[0] == 19);
+    *rhs = kk;
+    assert(*rhs == kk);
+    assert(kk[0] == 18);
+    assert((*rhs)[0] == 18);
+}
+
+int ctfeSort6250()
+{
+     int[][2] x;
+     int[3] a = [17, 18, 19];
+     x[0] = a[1..2];
+     x[1] = a[2..$];
+     assert(x[0][0] == 18);
+     assert(x[0][1] == 19);
+     swap6250(&x[0], &x[1]);
+     assert(x[0][0] == 19);
+     assert(x[1][0] == 18);
+     a[1] = 57;
+     assert(x[0][0] == 19);
+     return x[1][0];
+}
+
+static assert(ctfeSort6250()==57);
+
+/**************************************************
+    6672 circular references in array
+**************************************************/
+
+void bug6672(ref string lhs, ref string rhs)
+{
+    auto tmp = lhs;
+    lhs = rhs;
+    rhs = tmp;
+}
+
+static assert( {
+    auto kw = ["a"];
+    bug6672(kw[0], kw[0]);
+    return true;
+}());
+
+void slice6672(ref string[2] agg, ref string lhs) { agg[0..$] = lhs; }
+
+static assert( {
+    string[2] kw = ["a", "b"];
+    slice6672(kw, kw[0]);
+    assert(kw[0] == "a");
+    assert(kw[1] == "a");
+    return true;
+}());
+
+// an unrelated rejects-valid bug
+static assert( {
+    string[2] kw = ["a", "b"];
+    kw[0..2] = "x";
+    return true;
+}());
+
+void bug6672b(ref string lhs, ref string rhs)
+{
+    auto tmp = lhs;
+    assert(tmp == "a");
+    lhs = rhs;
+    assert(tmp == "a");
+    rhs = tmp;
+}
+
+static assert( {
+    auto kw=["a", "b"];
+    bug6672b(kw[0], kw[1]);
+    assert(kw[0]=="b");
+    assert(kw[1]=="a");
+    return true;
+}());
+
+/**************************************************
+    6399 (*p).length = n
+**************************************************/
+
+struct A6399{
+    int[] arr;
+    int subLen()
+    {
+        arr = [1,2,3,4,5];
+        arr.length -= 1;
+        return cast(int)arr.length;
+    }
+}
+
+static assert({
+    A6399 a;
+    return a.subLen();
+}() == 4);
+
+/**************************************************
+    6418 member named 'length'
+**************************************************/
+
+struct Bug6418 {
+    size_t length() { return 189; }
+}
+static assert(Bug6418.init.length == 189);
+
+/**************************************************
+    4021 rehash
+**************************************************/
+
+bool bug4021() {
+    int[int] aa = [1: 1];
+    aa.rehash;
+    return true;
+}
+static assert(bug4021());
+
+/**************************************************
+    3512 foreach(dchar; string)
+    6558 foreach(int, dchar; string)
+**************************************************/
+
+bool test3512()
+{
+    string s = "öhai";
+    int q = 0;
+    foreach (wchar c; s) {
+        if (q==2) assert(c=='a');
+        ++q;
+    }
+    assert(q==4);
+    foreach (dchar c; s) { ++q; if (c=='h') break; } // _aApplycd1
+    assert(q == 6);
+    foreach (int i, wchar c; s) {
+        assert(i >= 0 && i < s.length);
+	}   // _aApplycw2
+    foreach (int i, dchar c; s) {
+        assert(i >= 0 && i < s.length);
+	} // _aApplycd2
+
+    wstring w = "xüm";
+    foreach (char c; w) {++q; } // _aApplywc1
+    assert(q == 10);
+    foreach (dchar c; w) { ++q; } // _aApplywd1
+    assert(q == 13);
+    foreach (int i, char c; w) {
+        assert(i >= 0 && i < w.length);
+	} // _aApplywc2
+    foreach (int i, dchar c; w) {
+        assert(i >= 0 && i < w.length);
+	} // _aApplywd2
+
+    dstring d = "yäq";
+    q = 0;
+    foreach (char c; d) { ++q; } // _aApplydc1
+    assert(q == 4);
+    q = 0;
+    foreach (wchar c; d) { ++q; } // _aApplydw1
+    assert(q == 3);
+    foreach (int i, char c; d) {
+        assert(i >= 0 && i < d.length);
+    } // _aApplydc2
+    foreach (int i, wchar c; d) {
+        assert(i >= 0 && i < d.length);
+    } // _aApplydw2
+
+    dchar[] dr = "squop"d.dup;
+    foreach(int n, char c; dr) { if (n==2) break; assert(c!='o'); }
+    foreach_reverse (char c; dr) {} // _aApplyRdc1
+    foreach_reverse (wchar c; dr) {} // _aApplyRdw1
+    foreach_reverse (int n, char c; dr) { if (n==4) break; assert(c!='o');} // _aApplyRdc2
+    foreach_reverse (int i, wchar c; dr) {
+        assert(i >= 0 && i < dr.length);
+    } // _aApplyRdw2
+    q = 0;
+    wstring w2 = ['x', 'ü', 'm']; // foreach over array literals
+    foreach_reverse (int n, char c; w2)
+    {
+        ++q;
+        if (c == 'm') assert(n == 2 && q==1);
+        if (c == 'x') assert(n == 0 && q==4);
+    }
+    return true;
+}
+static assert(test3512());
+
+/**************************************************
+    6510 ICE only with -inline
+**************************************************/
+
+struct Stack6510 {
+    struct Proxy {
+        void shrink() {}
+    }
+    Proxy stack;
+    void pop() {
+        stack.shrink();
+    }
+}
+
+int bug6510() {
+    static int used() {
+        Stack6510 junk;
+        junk.pop();
+        return 3;
+    }
+    return used();
+}
+
+void test6510() {
+    static assert(bug6510()==3);
+}
+
+/**************************************************
+    6511   arr[] shouldn't make a copy
+**************************************************/
+
+T bug6511(T)() {
+    T[1] a = [1];
+    a[] += a[];
+    return a[0];
+}
+static assert(bug6511!ulong() == 2);
+static assert(bug6511!long() == 2);
+
+/**************************************************
+    6512   new T[][]
+**************************************************/
+
+bool bug6512(int m) {
+    auto x = new int[2][][](m, 5);
+    assert(x.length == m);
+    assert(x[0].length == 5);
+    assert(x[0][0].length == 2);
+    foreach( i; 0.. m)
+        foreach( j; 0..5)
+            foreach(k; 0..2)
+                x[i][j][k] = k + j*10 + i*100;
+    foreach( i; 0.. m)
+        foreach( j; 0..5)
+            foreach(k; 0..2)
+                assert( x[i][j][k] == k + j*10 + i*100);
+    return true;
+}
+static assert(bug6512(3));
+
+/**************************************************
+    6516   ICE(constfold.c)
+**************************************************/
+
+dstring bug6516()
+{
+    return cast(dstring) new dchar[](0);
+}
+
+static assert(bug6516() == ""d);
+
+/**************************************************
+    6727   ICE(interpret.c)
+**************************************************/
+
+const(char) * ice6727(const(char) *z) { return z;}
+static assert(
+    {
+        auto q = ice6727("a".dup.ptr);
+        return true;
+    }());
+
+/**************************************************
+    6721   Cannot get pointer to start of char[]
+**************************************************/
+static assert({
+        char[] c1="".dup;
+        auto p = c1.ptr;
+        string c2="";
+        auto p2 = c2.ptr;
+        return 6;
+    }() == 6);
+
+/**************************************************
+    6693   Assign to null AA
+**************************************************/
+
+struct S6693
+{
+    int[int] m;
+}
+
+static assert({
+    int[int][int] aaa;
+    aaa[3][1] = 4;
+    int[int][3] aab;
+    aab[2][1] = 4;
+    S6693 s;
+    s.m[2] = 4;
+    return 6693;
+ }() == 6693);
+
+/**************************************************
+    6739   Nested AA assignment
+**************************************************/
+
+static assert({
+    int[int][int][int] aaa;
+    aaa[3][1][6] = 14;
+    return aaa[3][1][6];
+}() == 14);
+
+static assert({
+    int[int][int] aaa;
+    aaa[3][1] = 4;
+    aaa[3][3] = 3;
+    aaa[1][5] = 9;
+    auto kk = aaa[1][5];
+    return kk;
+}() == 9);
+
+/**************************************************
+    6751   ref AA assignment
+**************************************************/
+
+void bug6751(ref int[int] aa){
+    aa[1] = 2;
+}
+
+static assert({
+    int[int] aa;
+    bug6751(aa);
+    assert(aa[1] == 2);
+    return true;
+}());
+
+void bug6751b(ref int[int][int] aa){
+    aa[1][17] = 2;
+}
+
+struct S6751
+{
+    int[int][int] aa;
+    int[int] bb;
+}
+
+static assert({
+    S6751 s;
+    bug6751b(s.aa);
+    assert(s.aa[1][17] == 2);
+    return true;
+}());
+
+static assert({
+    S6751 s;
+    s.aa[7][56]=57;
+    bug6751b(s.aa);
+    assert(s.aa[1][17] == 2);
+    assert(s.aa[7][56] == 57);
+    bug6751c(s.aa);
+    assert(s.aa.keys.length==1);
+    assert(s.aa.values.length==1);
+    return true;
+}());
+
+static assert({
+    S6751 s;
+    s.bb[19] = 97;
+    bug6751(s.bb);
+    assert(s.bb[1] == 2);
+    assert(s.bb[19] == 97);
+    return true;
+}());
+
+void bug6751c(ref int[int][int] aa){
+    aa = [38: [56 : 77]];
+}
+
+/**************************************************
+    6765   null AA.length
+**************************************************/
+
+static assert({
+    int[int] w;
+    return w.length;
+}()==0);
+
+/**************************************************
+    6769   AA.keys, AA.values with -inline
+**************************************************/
+
+static assert({
+    double[char[3]] w = ["abc" : 2.3];
+    double[] z = w.values;
+    return w.keys.length;
+}() == 1);
+
+/**************************************************
+    4022   AA.get
+**************************************************/
+
+static assert({
+    int[int] aa = [58: 13];
+    int r = aa.get(58, 1000);
+    assert(r == 13);
+    r = aa.get(59, 1000);
+    return r;
+}() == 1000);
+
+/**************************************************
+    6775 AA.opApply
+**************************************************/
+
+static assert({
+    int[int] aa = [58: 17, 45:6];
+    int valsum = 0;
+    int keysum = 0;
+    foreach(m; aa) { //aaApply
+        valsum += m;
+    }
+    assert(valsum == 17+6);
+    valsum = 0;
+    foreach(n, m; aa) { //aaApply2
+        valsum += m;
+        keysum += n;
+    }
+    assert(valsum == 17+6);
+    assert(keysum == 58+45);
+    // Check empty AA
+    valsum = 0;
+    int[int] bb;
+    foreach(m; bb) {
+        ++valsum;
+    }
+    assert(valsum == 0);
+    return true;
+}());
+
+/**************************************************
+    AA.remove
+**************************************************/
+
+static assert({
+    int[int] aa = [58: 17, 45:6];
+    aa.remove(45);
+    assert(aa.length == 1);
+    aa.remove(7);
+    assert(aa.length == 1);
+    aa.remove(58);
+    assert(aa.length == 0);
+    return true;
+}());
+
+/**************************************************
+    try, finally
+**************************************************/
+
+static assert({
+    int n = 0;
+    try {
+        n = 1;
+    }
+    catch (Exception e)
+    {}
+    assert(n == 1);
+    try {
+        n = 2;
+    }
+    catch (Exception e)
+    {}
+    finally {
+        assert(n == 2);
+        n = 3;
+    }
+    assert(n == 3);
+    return true;
+}());
+
+/**************************************************
+    6800 bad pointer casts
+**************************************************/
+
+bool badpointer(int k)
+{
+    int m = 6;
+    int *w =  &m;
+    assert(*w == 6);
+    int [3] a = [17,2,21];
+    int *w2 = &a[2];
+    assert(*w2 == 21);
+
+    // cast int* to uint* is OK
+    uint* u1 = cast(uint*)w;
+    assert(*u1 == 6);
+    uint* u2 = cast(uint*)w2;
+    assert(*u2 == 21);
+    uint* u3 = cast(uint*)&m;
+    assert(*u3 == 6);
+    // cast int* to void* is OK
+    void *v1 = cast(void*)w;
+    void *v3 = &m;
+    void *v4 = &a[0];
+    // cast from void * back to int* is OK
+    int *t3 = cast(int *)v3;
+    assert(*t3 == 6);
+    int *t4 = cast(int *)v4;
+    assert(*t4 == 17);
+    // cast from void* to uint* is OK
+    uint *t1 = cast(uint *)v1;
+    assert(*t1 == 6);
+    // and check that they're real pointers
+    m = 18;
+    assert(*t1 == 18);
+    assert(*u3 == 18);
+
+    int **p = &w;
+
+    if (k == 1) // bad reinterpret
+        double *d1 = cast(double *)w;
+    if (k == 3) // bad reinterpret
+        char *d3 = cast(char *)w2;
+    if (k == 4) {
+        void *q1 = cast(void *)p;    // OK-void is int*
+        void **q = cast(void **)p;   // OK-void is int
+    }
+    if (k == 5)
+        void ***q = cast(void ***)p;  // bad: too many *
+    if (k == 6) // bad reinterpret through void *
+        double *d1 = cast(double*)v1;
+    if (k == 7)
+        double *d7 = cast(double*)v4;
+    if (k==8)
+        ++v4; // can't do pointer arithmetic on void *
+    return true;
+}
+static assert(badpointer(4));
+static assert(!is(typeof(compiles!(badpointer(1)))));
+static assert(is(typeof(compiles!(badpointer(2)))));
+static assert(!is(typeof(compiles!(badpointer(3)))));
+static assert(is(typeof(compiles!(badpointer(4)))));
+static assert(!is(typeof(compiles!(badpointer(5)))));
+static assert(!is(typeof(compiles!(badpointer(6)))));
+static assert(!is(typeof(compiles!(badpointer(7)))));
+static assert(!is(typeof(compiles!(badpointer(8)))));
+
+/**************************************************
+    6792 ICE with pointer cast of indexed array
+**************************************************/
+
+struct S6792 {
+    int i;
+}
+
+static assert({
+    {
+        void* p;
+        p = [S6792(1)].ptr;
+        S6792 s = *(cast(S6792*)p);
+        assert(s.i == 1);
+    }
+    {
+        void*[] ary;
+        ary ~= [S6792(2)].ptr;
+        S6792 s = *(cast(S6792*)ary[0]);
+        assert(s.i == 2);
+    }
+    {
+        void*[7] ary;
+        ary[6]= [S6792(2)].ptr;
+        S6792 s = *(cast(S6792*)ary[6]);
+        assert(s.i == 2);
+    }
+    {
+        void* p;
+        p = [S6792(1)].ptr;
+        void*[7] ary;
+        ary[5]= p;
+        S6792 s = *(cast(S6792*)ary[5]);
+        assert(s.i == 1);
+    }
+    {
+        S6792*[string] aa;
+        aa["key"] = [S6792(3)].ptr;
+        const(S6792) s = *(cast(const(S6792) *)aa["key"]);
+        assert(s.i == 3);
+    }
+    {
+        S6792[string] blah;
+        blah["abc"] = S6792(6);
+        S6792*[string] aa;
+        aa["kuy"] = &blah["abc"];
+        const(S6792) s = *(cast(const(S6792) *)aa["kuy"]);
+        assert(s.i == 6);
+
+        void*[7] ary;
+        ary[5]= &blah["abc"];
+        S6792 t = *(cast(S6792*)ary[5]);
+        assert(t.i == 6);
+
+        int Q= 6;
+        ary[3]= &Q;
+        int gg = *(cast(int*)(ary[3]));
+    }
+    return true;
+}());
+
+/**************************************************
+    6851 passing pointer by argument
+**************************************************/
+
+void set6851(int* pn)
+{
+    *pn = 20;
+}
+void bug6851()
+{
+    int n = 0;
+    auto pn = &n;
+    *pn = 10;
+    assert(n == 10);
+    set6851(&n);
+}
+static assert({ bug6851(); return true; }());
+
+/**************************************************
+    6817 if converted to &&, only with -inline
+**************************************************/
+static assert({
+    void toggle() {
+        bool b;
+        if (b)
+            b = false;
+    }
+    toggle();
+    return true;
+}());
+
+/**************************************************
+    cast to void
+**************************************************/
+
+static assert({
+    cast(void)(71);
+    return true;
+} ());
+
+/**************************************************
+    6816 nested function can't access this
+**************************************************/
+
+struct S6816 {
+    size_t foo() {
+        return (){ return value+1; }();
+    }
+    size_t value;
+}
+
+enum s6816 = S6816().foo();
+
+/**************************************************
+    classes and interfaces
+**************************************************/
+
+interface SomeInterface
+{
+  int daz();
+  float bar(char);
+  int baz();
+}
+
+interface SomeOtherInterface
+{
+    int xxx();
+}
+
+class TheBase : SomeInterface, SomeOtherInterface
+{
+    int q = 88;
+    int rad = 61;
+    int a = 14;
+    int somebaseclassfunc() { return 28;}
+    int daz() { return 0; }
+    int baz() { return 0; }
+    int xxx() { return 762; }
+    int foo() { return q; }
+    float bar(char c) { return 3.6; }
+}
+
+class SomeClass : TheBase, SomeInterface
+{
+    int gab = 9;
+    int fab;
+    int a = 17;
+    int b = 23;
+    int foo() { return gab + a; }
+    float bar(char c) { return 2.6; }
+    int something() { return 0; }
+    int daz() { return 0; }
+    int baz() { return 0; }
+}
+
+class Unrelated : TheBase {
+    this(int x) { a = x; }
+}
+
+auto classtest1(int n)
+{
+    SomeClass c = new SomeClass;
+    assert(c.a == 17);
+    assert(c.q == 88);
+    TheBase d = c;
+    assert(d.a == 14);
+    assert(d.q == 88);
+    if (n==7)
+    {   // bad cast -- should fail
+        Unrelated u = cast(Unrelated)d;
+    }
+    SomeClass e = cast(SomeClass)d;
+    d.q = 35;
+    assert(c.q == 35);
+    assert(c.foo() == 9 + 17);
+    ++c.a;
+    assert(c.foo() == 9 + 18);
+    assert(d.foo() == 9 + 18);
+    d = new TheBase;
+    SomeInterface fc = c;
+    SomeOtherInterface ot = c;
+    assert(fc.bar('x') == 2.6);
+    assert(ot.xxx() == 762);
+    fc = d;
+    ot = d;
+    assert(fc.bar('x') == 3.6);
+    assert(ot.xxx() == 762);
+
+    Unrelated u2 = new Unrelated(7);
+    assert(u2.a == 7);
+    return 6;
+}
+static assert(classtest1(1));
+static assert(is(typeof(compiles!(classtest1(2)))));
+static assert(!is(typeof(compiles!(classtest1(7)))));
+
+// can't return classes literals outside CTFE
+SomeClass classtest2(int n)
+{
+    return n==5 ? (new SomeClass) : null;
+}
+static assert(is(typeof( (){ enum xx = classtest2(2);}() )));
+static assert(!is(typeof( (){ enum xx = classtest2(5);}() )));
+
+class RecursiveClass
+{
+   int x;
+   this(int n) { x = n; }
+   RecursiveClass b;
+   void doit() { b = new RecursiveClass(7); b.x = 2;}
+}
+
+int classtest3()
+{
+    RecursiveClass x = new RecursiveClass(17);
+    x.doit();
+    RecursiveClass y = x.b;
+    assert(y.x == 2);
+    assert(x.x == 17);
+    return 1;
+}
+
+static assert(classtest3());
+
+/**************************************************
+    6885 wrong code with new array
+**************************************************/
+
+struct S6885 {
+    int p;
+}
+
+int bug6885()
+{
+    auto array = new double[1][2];
+    array[1][0] = 6;
+    array[0][0] = 1;
+    assert(array[1][0]==6);
+
+    auto barray = new S6885[2];
+    barray[1].p = 5;
+    barray[0].p = 2;
+    assert(barray[1].p == 5);
+    return 1;
+}
+
+static assert(bug6885());
+
+/**************************************************
+    6886 ICE with new array of dynamic arrays
+**************************************************/
+
+int bug6886()
+{
+    auto carray = new int[][2];
+    carray[1] = [6];
+    carray[0] = [4];
+    assert(carray[1][0]==6);
+    return 1;
+}
+
+static assert(bug6886());
+
+/****************************************************
+ * Exception chaining tests from xtest46.d
+ ****************************************************/
+class A75
+{
+    pure static void raise(string s)
+    {
+        throw new Exception(s);
+    }
+}
+
+int test75()
+{   int x = 0;
+    try
+    {
+	A75.raise("a");
+    } catch (Exception e)
+    {
+	x = 1;
+    }
+    assert(x == 1);
+    return 1;
+}
+static assert(test75());
+
+/****************************************************
+ * Exception chaining tests from test4.d
+ ****************************************************/
+
+int test4_test54()
+{
+	int status=0;
+
+	try
+	{
+		try
+		{
+			status++;
+			assert(status==1);
+			throw new Exception("first");
+		}
+		finally
+		{
+			status++;
+			assert(status==2);
+			status++;
+			throw new Exception("second");
+		}
+	}
+	catch(Exception e)
+	{
+        assert(e.msg == "first");
+        assert(e.next.msg == "second");
+	}
+	return true;
+}
+
+static assert(test4_test54());
+
+void foo55()
+{
+    try
+    {
+	Exception x = new Exception("second");
+	throw x;
+    }
+    catch (Exception e)
+    {
+	assert(e.msg == "second");
+    }
+}
+
+int test4_test55()
+{
+	int status=0;
+	try{
+		try{
+			status++;
+			assert(status==1);
+			Exception x = new Exception("first");
+			throw x;
+		}finally{
+			status++;
+			assert(status==2);
+			status++;
+			foo55();
+		}
+	}catch(Exception e){
+		assert(e.msg == "first");
+		assert(status==3);
+	}
+    return 1;
+}
+
+static assert(test4_test55());
+
+/****************************************************
+ * Exception chaining tests from eh.d
+ ****************************************************/
+
+void bug1513outer()
+{
+    int result1513;
+
+    void bug1513a()
+    {
+         throw new Exception("d");
+    }
+
+    void bug1513b()
+    {
+        try
+        {
+            try
+            {
+                bug1513a();
+            }
+            finally
+            {
+                result1513 |=4;
+               throw new Exception("f");
+            }
+        }
+        catch(Exception e)
+        {
+            assert(e.msg == "d");
+            assert(e.next.msg == "f");
+            assert(!e.next.next);
+        }
+    }
+
+    void bug1513c()
+    {
+        try
+        {
+            try
+            {
+                throw new Exception("a");
+            }
+            finally
+            {
+                result1513 |= 1;
+                throw new Exception("b");
+            }
+        }
+        finally
+        {
+            bug1513b();
+            result1513 |= 2;
+            throw new Exception("c");
+        }
+    }
+
+    void bug1513()
+    {
+        result1513 = 0;
+        try
+        {
+            bug1513c();
+        }
+        catch(Exception e)
+        {
+            assert(result1513 == 7);
+            assert(e.msg == "a");
+            assert(e.next.msg == "b");
+            assert(e.next.next.msg == "c");
+        }
+    }
+
+    bug1513();
+}
+
+void collideone()
+{
+    try
+    {
+        throw new Exception("x");
+    }
+    finally
+    {
+        throw new Exception("y");
+    }
+}
+
+void doublecollide()
+{
+    try
+    {
+        try
+        {
+            try
+            {
+                throw new Exception("p");
+            }
+            finally
+            {
+                throw new Exception("q");
+            }
+        }
+        finally
+        {
+            collideone();
+        }
+    }
+    catch(Exception e)
+    {
+            assert(e.msg == "p");
+            assert(e.next.msg == "q");
+            assert(e.next.next.msg == "x");
+            assert(e.next.next.next.msg == "y");
+            assert(!e.next.next.next.next);
+    }
+}
+
+void collidetwo()
+{
+       try
+        {
+            try
+            {
+                throw new Exception("p2");
+            }
+            finally
+            {
+                throw new Exception("q2");
+            }
+        }
+        finally
+        {
+            collideone();
+        }
+}
+
+void collideMixed()
+{
+    int works = 6;
+    try
+    {
+        try
+        {
+            try
+            {
+                throw new Exception("e");
+            }
+            finally
+            {
+                throw new Error("t");
+            }
+        }
+        catch(Exception f)
+        {    // Doesn't catch, because Error is chained to it.
+            works += 2;
+        }
+    }
+    catch(Error z)
+    {
+        works += 4;
+        assert(z.msg=="t"); // Error comes first
+        assert(z.next is null);
+        assert(z.bypassedException.msg == "e");
+    }
+    assert(works == 10);
+}
+
+class AnotherException : Exception
+{
+    this(string s)
+    {
+        super(s);
+    }
+}
+
+void multicollide()
+{
+    try
+    {
+       try
+        {
+            try
+            {
+                try
+                {
+                    throw new Exception("m2");
+                }
+                finally
+                {
+                    throw new AnotherException("n2");
+                }
+            }
+            catch(AnotherException s)
+            {   // Not caught -- we needed to catch the root cause "m2", not
+                // just the collateral "n2" (which would leave m2 uncaught).
+                assert(0);
+            }
+        }
+        finally
+        {
+            collidetwo();
+        }
+    }
+    catch(Exception f)
+    {
+        assert(f.msg == "m2");
+        assert(f.next.msg == "n2");
+        Throwable e = f.next.next;
+        assert(e.msg == "p2");
+        assert(e.next.msg == "q2");
+        assert(e.next.next.msg == "x");
+        assert(e.next.next.next.msg == "y");
+        assert(!e.next.next.next.next);
+    }
+}
+
+int testsFromEH()
+{
+    bug1513outer();
+    doublecollide();
+    collideMixed();
+    multicollide();
+    return 1;
+}
+static assert(testsFromEH());
+
+/****************************************************/

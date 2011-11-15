@@ -25,8 +25,6 @@
 #include        "dt.h"
 #if SCPP
 #include        "scope.h"
-#include        "parser.h"
-#include        "cpp.h"
 #endif
 #include        "exh.h"
 
@@ -169,6 +167,7 @@ void nteh_gentables()
 void nteh_declarvars(Blockx *bx)
 {   symbol *s;
 
+    //printf("nteh_declarvars()\n");
 #if MARS
     if (!(bx->funcsym->Sfunc->Fflags3 & Fnteh)) // if haven't already done it
     {   bx->funcsym->Sfunc->Fflags3 |= Fnteh;

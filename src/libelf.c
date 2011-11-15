@@ -1,6 +1,6 @@
 
 // Compiler implementation of the D programming language
-// Copyright (c) 1999-2009 by Digital Mars
+// Copyright (c) 1999-2011 by Digital Mars
 // All Rights Reserved
 // written by Walter Bright
 // http://www.digitalmars.com
@@ -29,6 +29,7 @@
 Library::Library()
 {
     libfile = NULL;
+    tab.init();
 }
 
 /***********************************
@@ -46,7 +47,7 @@ void Library::setFilename(char *dir, char *filename)
     char *arg = filename;
     if (!arg || !*arg)
     {   // Generate lib file name from first obj name
-        char *n = (char *)global.params.objfiles->data[0];
+        char *n = global.params.objfiles->tdata()[0];
 
         n = FileName::name(n);
         FileName *fn = FileName::forceExt(n, global.lib_ext);
@@ -542,7 +543,7 @@ void Library::addObject(const char *module_name, void *buf, size_t buflen)
                 {   reason = 12;
                     goto Lcorrupt;              // didn't find it
                 }
-                ObjModule *om = (ObjModule *)objmodules.data[m];
+                ObjModule *om = objmodules.tdata()[m];
 //printf("\t%x\n", (char *)om->base - (char *)buf);
                 if (moff + sizeof(Header) == (char *)om->base - (char *)buf)
                 {
@@ -625,7 +626,7 @@ void Library::WriteLibToBuffer(OutBuffer *libbuf)
     /************* Scan Object Modules for Symbols ******************/
 
     for (int i = 0; i < objmodules.dim; i++)
-    {   ObjModule *om = (ObjModule *)objmodules.data[i];
+    {   ObjModule *om = objmodules.tdata()[i];
         if (om->scan)
         {
             scanObjModule(om);
@@ -638,7 +639,7 @@ void Library::WriteLibToBuffer(OutBuffer *libbuf)
      */
     unsigned noffset = 0;
     for (int i = 0; i < objmodules.dim; i++)
-    {   ObjModule *om = (ObjModule *)objmodules.data[i];
+    {   ObjModule *om = objmodules.tdata()[i];
         size_t len = strlen(om->name);
         if (len >= OBJECT_NAME_SIZE)
         {
@@ -658,7 +659,7 @@ void Library::WriteLibToBuffer(OutBuffer *libbuf)
     unsigned moffset = 8 + sizeof(Header) + 4;
 
     for (int i = 0; i < objsymbols.dim; i++)
-    {   ObjSymbol *os = (ObjSymbol *)objsymbols.data[i];
+    {   ObjSymbol *os = objsymbols.tdata()[i];
 
         moffset += 4 + strlen(os->name) + 1;
     }
@@ -673,7 +674,7 @@ void Library::WriteLibToBuffer(OutBuffer *libbuf)
          moffset += sizeof(Header) + noffset;
 
     for (int i = 0; i < objmodules.dim; i++)
-    {   ObjModule *om = (ObjModule *)objmodules.data[i];
+    {   ObjModule *om = objmodules.tdata()[i];
 
         moffset += moffset & 1;
         om->offset = moffset;
@@ -704,14 +705,14 @@ void Library::WriteLibToBuffer(OutBuffer *libbuf)
     libbuf->write(buf, 4);
 
     for (int i = 0; i < objsymbols.dim; i++)
-    {   ObjSymbol *os = (ObjSymbol *)objsymbols.data[i];
+    {   ObjSymbol *os = objsymbols.tdata()[i];
 
         sputl(os->om->offset, buf);
         libbuf->write(buf, 4);
     }
 
     for (int i = 0; i < objsymbols.dim; i++)
-    {   ObjSymbol *os = (ObjSymbol *)objsymbols.data[i];
+    {   ObjSymbol *os = objsymbols.tdata()[i];
 
         libbuf->writestring(os->name);
         libbuf->writeByte(0);
@@ -740,7 +741,7 @@ void Library::WriteLibToBuffer(OutBuffer *libbuf)
         libbuf->write(&h, sizeof(h));
 
         for (int i = 0; i < objmodules.dim; i++)
-        {   ObjModule *om = (ObjModule *)objmodules.data[i];
+        {   ObjModule *om = objmodules.tdata()[i];
             if (om->name_offset >= 0)
             {   libbuf->writestring(om->name);
                 libbuf->writeByte('/');
@@ -752,7 +753,7 @@ void Library::WriteLibToBuffer(OutBuffer *libbuf)
     /* Write out each of the object modules
      */
     for (int i = 0; i < objmodules.dim; i++)
-    {   ObjModule *om = (ObjModule *)objmodules.data[i];
+    {   ObjModule *om = objmodules.tdata()[i];
 
         if (libbuf->offset & 1)
             libbuf->writeByte('\n');    // module alignment

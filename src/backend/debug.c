@@ -81,16 +81,18 @@ void WRTYxx(tym_t t)
 #if TX86
     if (t & mTYnear)
         dbg_printf("mTYnear|");
+#if TARGET_SEGMENTED
     if (t & mTYfar)
         dbg_printf("mTYfar|");
     if (t & mTYcs)
         dbg_printf("mTYcs|");
 #endif
+#endif
     if (t & mTYconst)
         dbg_printf("mTYconst|");
     if (t & mTYvolatile)
         dbg_printf("mTYvolatile|");
-#if linux || __APPLE__ || __FreeBSD__ || __OpenBSD__ || __sun&&__SVR4
+#if !MARS && (linux || __APPLE__ || __FreeBSD__ || __OpenBSD__ || __sun&&__SVR4)
     if (t & mTYtransu)
         dbg_printf("mTYtransu|");
 #endif
@@ -218,7 +220,12 @@ void WReqn(elem *e)
                 if (e->EV.sp.Vsym->Ssymnum != -1)
                     dbg_printf("(%d)",e->EV.sp.Vsym->Ssymnum);
                 if (e->Eoffset != 0)
+                {
+                    if (sizeof(e->Eoffset) == 8)
+                        dbg_printf(".x%llx", e->Eoffset);
+                    else
                         dbg_printf(".%ld",(long)e->Eoffset);
+                }
                 break;
             case OPasm:
             case OPstring:
@@ -272,14 +279,18 @@ void WRFL(enum FL fl)
          "auto  ","para  ","extrn ","tmp   ",
          "code  ","block ","udata ","cs    ","swit  ",
          "fltrg ","offst ","datsg ",
-         "ctor  ","dtor  ",
+         "ctor  ","dtor  ","regsav","asm   ",
 #if TX86
-         "ndp   ","farda ","local ","csdat ","tlsdat",
-         "bprel ","frameh","asm   ","blocko","alloca",
+         "ndp   ",
+#endif
+#if TARGET_SEGMENTED
+         "farda ","csdat ",
+#endif
+         "local ","tlsdat",
+         "bprel ","frameh","blocko","alloca",
          "stack ","dsym  ",
 #if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
          "got   ","gotoff",
-#endif
 #endif
         };
 

@@ -1,7 +1,7 @@
 
 import std.stdio;
 
-typedef int myint;
+alias int myint;
 struct S { void bar() { } int x = 4; static int z = 5; }
 class C { void bar() { } final void foo() { } static void abc() { } }
 abstract class AC { }
@@ -591,6 +591,53 @@ void test23()
    auto w = OddWord.alembicated;
    assert(toString23(w) == "alembicated");
 }
+
+/********************************************************/
+
+template Foo2234(){ int x; }
+
+struct S2234a{ mixin Foo2234; }
+struct S2234b{ mixin Foo2234; mixin Foo2234; }
+struct S2234c{ alias Foo2234!() foo; }
+
+static assert([__traits(allMembers, S2234a)] == ["x"]);
+static assert([__traits(allMembers, S2234b)] == ["x"]);
+static assert([__traits(allMembers, S2234c)] == ["foo"]);
+
+/********************************************************/
+
+mixin template Members6674()
+{
+    static int i1;
+    static int i2;
+    static int i3;  //comment out to make func2 visible
+    static int i4;  //comment out to make func1 visible
+}
+
+class Test6674
+{
+    mixin Members6674;
+
+    alias void function() func1;
+    alias bool function() func2;
+}
+
+static assert([__traits(allMembers,Test6674)] == [
+    "i1","i2","i3","i4",
+    "func1","func2",
+    "toString","toHash","opCmp","opEquals","Monitor","factory"]);
+
+/********************************************************/
+// 6073
+
+struct S6073 {}
+
+template T6073(M...) {
+    //alias int T;
+}
+alias T6073!traits V6073;                       // ok
+alias T6073!(__traits(parent, S6073)) U6073;    // error
+static assert(__traits(isSame, V6073, U6073));  // same instantiation == same arguemnts
 
 /********************************************************/
 

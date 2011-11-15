@@ -1,5 +1,5 @@
 // Copyright (C) 1985-1998 by Symantec
-// Copyright (C) 2000-2010 by Digital Mars
+// Copyright (C) 2000-2011 by Digital Mars
 // All Rights Reserved
 // http://www.digitalmars.com
 // Written by Walter Bright
@@ -47,10 +47,8 @@ static int *weights;
  */
 
 void cgreg_init()
-{   block *b;
-    int bi;
-
-    if (!config.flags4 & CFG4optimized)
+{
+    if (!(config.flags4 & CFG4optimized))
         return;
 
     // Use calloc() instead because sometimes the alloc is too large
@@ -59,8 +57,8 @@ void cgreg_init()
     assert(weights);
 
     nretblocks = 0;
-    for (bi = 0; bi < dfotop; bi++)
-    {   b = dfo[bi];
+    for (int bi = 0; bi < dfotop; bi++)
+    {   block *b = dfo[bi];
         if (b->BC == BCret || b->BC == BCretexp)
             nretblocks++;
         if (b->Belem)
@@ -72,9 +70,11 @@ void cgreg_init()
     memset(regrange,0,sizeof(regrange));
 
     // Make adjustments to symbols we might stick in registers
-    for (int i = 0; i < globsym.top; i++)
+    for (size_t i = 0; i < globsym.top; i++)
     {   unsigned sz;
         symbol *s = globsym.tab[i];
+
+        //printf("candidate '%s' for register\n",s->Sident);
 
         if (s->Srange)
             s->Srange = vec_realloc(s->Srange,dfotop);
@@ -85,9 +85,13 @@ void cgreg_init()
             (sz = type_size(s->Stype)) == 0 ||
             (tysize(s->ty()) == -1) ||
             (I16 && sz > REGSIZE) ||
-            ((I32 || I64) && tyfloating(s->ty()))
+            (tyfloating(s->ty()) && !(config.fpxmmregs && tyxmmreg(s->ty())))
            )
         {
+            #ifdef DEBUG
+            if (debugr)
+                printf("not considering variable '%s' for register\n",s->Sident);
+            #endif
             s->Sflags &= ~GTregcand;
             continue;
         }
@@ -124,25 +128,25 @@ void cgreg_init()
  */
 
 void cgreg_term()
-{   int i;
-    Symbol *s;
-
+{
     if (config.flags4 & CFG4optimized)
     {
-        for (i = 0; i < globsym.top; i++)
+        for (size_t i = 0; i < globsym.top; i++)
         {
-            s = globsym.tab[i];
+            Symbol *s = globsym.tab[i];
             vec_free(s->Srange);
             vec_free(s->Slvreg);
             s->Srange = NULL;
             s->Slvreg = NULL;
         }
 
-        for (i = 0; i < arraysize(regrange); i++)
+        for (size_t i = 0; i < arraysize(regrange); i++)
+        {
             if (regrange[i])
             {   vec_free(regrange[i]);
-                    regrange[i] = NULL;
+                regrange[i] = NULL;
             }
+        }
 
         free(weights);
         weights = NULL;
@@ -153,9 +157,8 @@ void cgreg_term()
  */
 
 void cgreg_reset()
-{   unsigned j;
-
-    for (j = 0; j < arraysize(regrange); j++)
+{
+    for (size_t j = 0; j < arraysize(regrange); j++)
         if (!regrange[j])
             regrange[j] = vec_calloc(dfotop);
         else
@@ -167,9 +170,8 @@ void cgreg_reset()
  */
 
 void cgreg_used(unsigned bi,regm_t used)
-{   int j;
-
-    for (j = 0; used; j++)
+{
+    for (size_t j = 0; used; j++)
     {   if (used & 1)           // if register j is used
             vec_setbit(bi,regrange[j]);
         used >>= 1;
@@ -181,13 +183,11 @@ void cgreg_used(unsigned bi,regm_t used)
  */
 
 STATIC void el_weights(int bi,elem *e,unsigned weight)
-{   int op;
-    Symbol *s;
-
+{
     while (1)
     {   elem_debug(e);
 
-        op = e->Eoper;
+        int op = e->Eoper;
         if (!OTleaf(op))
         {
             // This prevents variable references within common subexpressions
@@ -217,7 +217,7 @@ STATIC void el_weights(int bi,elem *e,unsigned weight)
             switch (op)
             {
                 case OPvar:
-                    s = e->EV.sp.Vsym;
+                    Symbol *s = e->EV.sp.Vsym;
                     if (s->Ssymnum != -1 && s->Sflags & GTregcand)
                     {
                         s->Sweight += weight;
@@ -243,16 +243,14 @@ int cgreg_benefit(Symbol *s,int reg, Symbol *retsym)
     int benefit;
     int benefit2;
     block *b;
-    list_t bl;
     int bi;
-    int si;
     int gotoepilog;
     int retsym_cnt;
 
     //printf("cgreg_benefit(s = '%s', reg = %d)\n", s->Sident, reg);
 
     vec_sub(s->Slvreg,s->Srange,regrange[reg]);
-    si = s->Ssymnum;
+    int si = s->Ssymnum;
 
 Lagain:
     //printf("again\n");
@@ -284,7 +282,7 @@ Lagain:
             //printf("WEIGHTS(%d,%d) = %d, benefit = %d\n",bi,si,WEIGHTS(bi,si),benefit);
             inout = 1;
 
-            if (s == retsym && reg == AX && b->BC == BCretexp)
+            if (s == retsym && (reg == AX || reg == XMM0) && b->BC == BCretexp)
             {   benefit += 1;
                 retsym_cnt++;
                 //printf("retsym, benefit = %d\n",benefit);
@@ -300,12 +298,10 @@ Lagain:
     L2:
         inoutp = 0;
         benefit2 = 0;
-        for (bl = b->Bpred; bl; bl = list_next(bl))
-        {   block *bp;
-            int bpi;
-
-            bp = list_block(bl);
-            bpi = bp->Bdfoidx;
+        for (list_t bl = b->Bpred; bl; bl = list_next(bl))
+        {
+            block *bp = list_block(bl);
+            int bpi = bp->Bdfoidx;
             if (!vec_testbit(bpi,s->Srange))
                 continue;
             if (gotoepilog && bp->BC == BCgoto)
@@ -398,30 +394,21 @@ Lcant:
 
 int cgreg_gotoepilog(block *b,Symbol *s)
 {
-    list_t bl;
-    int bi;
-    int si;
-    int gotoepilog;
-    int inoutp;
+    int bi = b->Bdfoidx;
+
     int inout;
-
-    bi = b->Bdfoidx;
-    si = s->Ssymnum;
-
     if (vec_testbit(bi,s->Slvreg))
         inout = 1;
     else
         inout = -1;
 
     // Look at predecessors to see if we need to load in/out of register
-    gotoepilog = 0;
-    inoutp = 0;
-    for (bl = b->Bpred; bl; bl = list_next(bl))
-    {   block *bp;
-        int bpi;
-
-        bp = list_block(bl);
-        bpi = bp->Bdfoidx;
+    int gotoepilog = 0;
+    int inoutp = 0;
+    for (list_t bl = b->Bpred; bl; bl = list_next(bl))
+    {
+        block *bp = list_block(bl);
+        int bpi = bp->Bdfoidx;
         if (!vec_testbit(bpi,s->Srange))
             continue;
         if (vec_testbit(bpi,s->Slvreg))
@@ -482,25 +469,23 @@ Lcant:
 
 void cgreg_spillreg_prolog(block *b,Symbol *s,code **pcstore,code **pcload)
 {
-    list_t bl;
-    code *cload;
-    code *cstore;
     code *c;
     code cs;
-    int inoutp;
-    int sz;
-    elem *e;
     regm_t keepmsk;
-    int bi;
 
-    e = NULL;
-    cstore = *pcstore;
-    cload = *pcload;
-    bi = b->Bdfoidx;
-    sz = type_size(s->Stype);
+    int bpi;
+    block *bp;
+    list_t bl;
+
+    elem *e = NULL;
+    code *cstore = *pcstore;
+    code *cload = *pcload;
+    int bi = b->Bdfoidx;
+    int sz = type_size(s->Stype);
 
     //printf("cgreg_spillreg_prolog(block %d, s = '%s')\n",bi,s->Sident);
 
+    int inoutp;
     if (vec_testbit(bi,s->Slvreg))
     {   inoutp = 1;
         // If it's startblock, and it's a spilled parameter, we
@@ -519,9 +504,7 @@ void cgreg_spillreg_prolog(block *b,Symbol *s,code **pcstore,code **pcload)
 
     // Look at predecessors to see if we need to load in/out of register
     for (bl = b->Bpred; bl; bl = list_next(bl))
-    {   block *bp;
-        int bpi;
-
+    {
         bp = list_block(bl);
         bpi = bp->Bdfoidx;
         if (!vec_testbit(bpi,s->Srange))
@@ -565,18 +548,33 @@ void cgreg_spillreg_prolog(block *b,Symbol *s,code **pcstore,code **pcload)
         if (!e)
             e = el_var(s);              // so we can trick getlvalue() into
                                         // working for us
-        cs.Iop ^= (sz == 1);
-        c = getlvalue(&cs,e,keepmsk);
-        cs.orReg(s->Sreglsw);
-        if (I64 && sz == 1 && s->Sreglsw >= 4)
-            cs.Irex |= REX;
-        c = gen(c,&cs);
-        if (sz > REGSIZE)
-        {
-            cs.setReg(s->Sregmsw);
-            getlvalue_msw(&cs);
+        if (mask[s->Sreglsw] & XMMREGS)
+        {   // Convert to save/restore of XMM register
+            assert(sz == 4 || sz == 8);                         // float or double
+            if (cs.Iop == 0x89)
+                cs.Iop = (sz == 4) ? 0xF30F11 : 0xF20F11;       // MOVSS/D mem,xreg
+            else
+                cs.Iop = (sz == 4) ? 0xF30F10 : 0xF20F10;       // MOVSS/D xreg,mem
+            c = getlvalue(&cs,e,keepmsk);
+            cs.orReg(s->Sreglsw - XMM0);
             c = gen(c,&cs);
         }
+        else
+        {
+            cs.Iop ^= (sz == 1);
+            c = getlvalue(&cs,e,keepmsk);
+            cs.orReg(s->Sreglsw);
+            if (I64 && sz == 1 && s->Sreglsw >= 4)
+                cs.Irex |= REX;
+            c = gen(c,&cs);
+            if (sz > REGSIZE)
+            {
+                cs.setReg(s->Sregmsw);
+                getlvalue_msw(&cs);
+                c = gen(c,&cs);
+            }
+        }
+
         if (inoutp == -1)
             cstore = cat(cstore,c);
         else
@@ -597,40 +595,32 @@ void cgreg_spillreg_prolog(block *b,Symbol *s,code **pcstore,code **pcload)
 
 void cgreg_spillreg_epilog(block *b,Symbol *s,code **pcstore,code **pcload)
 {
-    list_t bl;
-    code *cload;
-    code *cstore;
     code *c;
     code cs;
-    int inoutp;
-    int sz;
-    elem *e;
     regm_t keepmsk;
-    int bi;
 
-    e = NULL;
-    cstore = *pcstore;
-    cload = *pcload;
-    bi = b->Bdfoidx;
-    sz = type_size(s->Stype);
+    elem *e = NULL;
+    code *cstore = *pcstore;
+    code *cload = *pcload;
+    int bi = b->Bdfoidx;
+    int sz = type_size(s->Stype);
 
     //printf("cgreg_spillreg_epilog(block %d, s = '%s')\n",bi,s->Sident);
     //assert(b->BC == BCgoto);
     if (!cgreg_gotoepilog(list_block(b->Bsucc),s))
         return;
 
+    int inoutp;
     if (vec_testbit(bi,s->Slvreg))
         inoutp = 1;
     else
         inoutp = -1;
 
     // Look at successors to see if we need to load in/out of register
-    for (bl = b->Bsucc; bl; bl = list_next(bl))
-    {   block *bp;
-        int bpi;
-
-        bp = list_block(bl);
-        bpi = bp->Bdfoidx;
+    for (list_t bl = b->Bsucc; bl; bl = list_next(bl))
+    {
+        block *bp = list_block(bl);
+        int bpi = bp->Bdfoidx;
         if (!vec_testbit(bpi,s->Srange))
             continue;
         if (vec_testbit(bpi,s->Slvreg))
@@ -665,18 +655,33 @@ void cgreg_spillreg_epilog(block *b,Symbol *s,code **pcstore,code **pcload)
         if (!e)
             e = el_var(s);              // so we can trick getlvalue() into
                                         // working for us
-        cs.Iop ^= (sz == 1);
-        c = getlvalue(&cs,e,keepmsk);
-        cs.orReg(s->Sreglsw);
-        if (I64 && sz == 1 && s->Sreglsw >= 4)
-            cs.Irex |= REX;
-        c = gen(c,&cs);
-        if (sz > REGSIZE)
-        {
-            cs.setReg(s->Sregmsw);
-            getlvalue_msw(&cs);
+        if (mask[s->Sreglsw] & XMMREGS)
+        {   // Convert to save/restore of XMM register
+            assert(sz == 4 || sz == 8);                         // float or double
+            if (cs.Iop == 0x89)
+                cs.Iop = (sz == 4) ? 0xF30F11 : 0xF20F11;       // MOVSS/D mem,xreg
+            else
+                cs.Iop = (sz == 4) ? 0xF30F10 : 0xF20F10;       // MOVSS/D xreg,mem
+            c = getlvalue(&cs,e,keepmsk);
+            cs.orReg(s->Sreglsw - XMM0);
             c = gen(c,&cs);
         }
+        else
+        {
+            cs.Iop ^= (sz == 1);
+            c = getlvalue(&cs,e,keepmsk);
+            cs.orReg(s->Sreglsw);
+            if (I64 && sz == 1 && s->Sreglsw >= 4)
+                cs.Irex |= REX;
+            c = gen(c,&cs);
+            if (sz > REGSIZE)
+            {
+                cs.setReg(s->Sregmsw);
+                getlvalue_msw(&cs);
+                c = gen(c,&cs);
+            }
+        }
+
         if (inoutp == 1)
             cstore = cat(cstore,c);
         else
@@ -817,16 +822,12 @@ struct Reg              // data for trial register assignment
 
 int cgreg_assign(Symbol *retsym)
 {
-    Reg t;
-    vec_t v;
-
-    int si;
-    int flag = FALSE;
+    int flag = FALSE;                   // assume no changes
 
     /* First do any 'unregistering' which might have happened in the last
      * code gen pass.
      */
-    for (si = 0; si < globsym.top; si++)
+    for (size_t si = 0; si < globsym.top; si++)
     {   symbol *s = globsym.tab[si];
 
         if (s->Sflags & GTunregister)
@@ -877,20 +878,17 @@ int cgreg_assign(Symbol *retsym)
         }
     }
 
-    v = vec_calloc(dfotop);
+    vec_t v = vec_calloc(dfotop);
 
     // Find symbol t, which is the most 'deserving' symbol that should be
     // placed into a register.
+    Reg t;
     t.sym = NULL;
     t.benefit = 0;
-    for (si = 0; si < globsym.top; si++)
+    for (size_t si = 0; si < globsym.top; si++)
     {   symbol *s = globsym.tab[si];
+
         Reg u;
-        unsigned reg;
-        tym_t ty;
-        unsigned sz;
-
-
         u.sym = s;
         if (!(s->Sflags & GTregcand) ||
             s->Sflags & SFLspill ||
@@ -904,17 +902,16 @@ int cgreg_assign(Symbol *retsym)
                 printf("symbol '%s' is in reg %s\n",s->Sident,regm_str(s->Sregm));
             else if (s->Sflags & SFLspill)
                 printf("symbol '%s' spilled in reg %s\n",s->Sident,regm_str(s->Sregm));
+            else if (!(s->Sflags & GTregcand))
+                printf("symbol '%s' is not a reg candidate\n",s->Sident);
             else
                 printf("symbol '%s' is not a candidate\n",s->Sident);
             #endif
             continue;
         }
 
-        char *pseq;
-        char *pseqmsw = NULL;
-
-        ty = s->ty();
-        sz = tysize(ty);
+        tym_t ty = s->ty();
+        unsigned sz = tysize(ty);
 
         #ifdef DEBUG
             if (debugr)
@@ -924,7 +921,15 @@ int cgreg_assign(Symbol *retsym)
             }
         #endif
 
-        if (I64)
+        // Select sequence of registers to try to map s onto
+        char *pseq;                     // sequence to try for LSW
+        char *pseqmsw = NULL;           // sequence to try for MSW, NULL if none
+        if (tyfloating(ty))
+        {
+            static char sequence[] = {XMM0,XMM1,XMM2,XMM3,XMM4,XMM5,XMM6,XMM7,NOREG};
+            pseq = sequence;
+        }
+        else if (I64)
         {
             if (sz == REGSIZE * 2)
             {
@@ -972,14 +977,17 @@ int cgreg_assign(Symbol *retsym)
 
         u.benefit = 0;
         for (int i = 0; pseq[i] != NOREG; i++)
-        {   int benefit;
+        {
+            unsigned reg = pseq[i];
 
-            reg = pseq[i];
-
-            if (reg != AX && s == retsym)
+            // Symbols used as return values should only be mapped into return value registers
+            if (s == retsym && !(mask[reg] & (mAX | mXMM0)))
                 continue;
+
+            // If BP isn't available, can't assign to it
             if (reg == BP && !(allregs & mBP))
                 continue;
+
 #if 0 && TARGET_LINUX
             // Need EBX for static pointer
             if (reg == BX && !(allregs & mBX))
@@ -990,7 +998,7 @@ int cgreg_assign(Symbol *retsym)
                 !(mask[reg] & BYTEREGS))
                     continue;
 
-            benefit = cgreg_benefit(s,reg,retsym);
+            int benefit = cgreg_benefit(s,reg,retsym);
 
             #ifdef DEBUG
             if (debugr)
@@ -1004,16 +1012,15 @@ int cgreg_assign(Symbol *retsym)
             {   // successful assigning of lsw
                 unsigned regmsw = NOREG;
 
-                // Now assign in MSW
-                if (sz > REGSIZE && sz <= 2 * REGSIZE)
-                {   unsigned regj;
-
-                    for (regj = 0; 1; regj++)
+                // Now assign MSW
+                if (pseqmsw)
+                {
+                    for (unsigned regj = 0; 1; regj++)
                     {
                         regmsw = pseqmsw[regj];
                         if (regmsw == NOREG)
-                            goto Ltried;
-                        if (regmsw == reg)
+                            goto Ltried;                // tried and failed to assign MSW
+                        if (regmsw == reg)              // can't assign msw and lsw to same reg
                             continue;
                         #ifdef DEBUG
                         if (debugr)
@@ -1045,16 +1052,23 @@ Ltried:     ;
         flag = TRUE;
     }
 
-    // See if any registers have become available that we can use.
-    if ((I32 || I64) && !flag && (mfuncreg & ~fregsaved) & ALLREGS &&
-        !(funcsym_p->Sflags & SFLexit))
+    /* See if any scratch registers have become available that we can use.
+     * Scratch registers are cheaper, as they don't need save/restore.
+     * All floating point registers are scratch registers, so no need
+     * to do this for them.
+     */
+    if ((I32 || I64) &&                       // not worth the bother for 16 bit code
+        !flag &&                              // if haven't already assigned registers in this pass
+        (mfuncreg & ~fregsaved) & ALLREGS &&  // if unused non-floating scratch registers
+        !(funcsym_p->Sflags & SFLexit))       // don't need save/restore if function never returns
     {
-        for (int i = 0; i < globsym.top; i++)
-        {   symbol *s;
+        for (size_t si = 0; si < globsym.top; si++)
+        {   symbol *s = globsym.tab[si];
 
-            s = globsym.tab[i];
-            if (s->Sfl == FLreg && mask[s->Sreglsw] & fregsaved &&
-                type_size(s->Stype) <= REGSIZE)
+            if (s->Sfl == FLreg &&                // if assigned to register
+                mask[s->Sreglsw] & fregsaved &&   // and that register is not scratch
+                type_size(s->Stype) <= REGSIZE && // don't bother with register pairs
+                !tyfloating(s->ty()))             // don't assign floating regs to non-floating regs
             {
                 s->Sreglsw = findreg((mfuncreg & ~fregsaved) & ALLREGS);
                 s->Sregm = mask[s->Sreglsw];

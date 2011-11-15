@@ -1,4 +1,4 @@
-// REQUIRED_ARGS: -d
+// REQUIRED_ARGS:
 
 module test42;
 
@@ -82,6 +82,7 @@ void test5()
 }
 
 /***************************************************/
+// Bug 1200. One case moved to deprecate1.d
 
 void foo6a() {
         do
@@ -104,7 +105,7 @@ void foo6d() {
 }
 
 void foo6e() {
-        volatile debug {}
+//        volatile debug {}
 }
 
 void test6()
@@ -412,22 +413,6 @@ void test25()
     }   
 }
 
-/***************************************************/
-
-struct BaseStruct {
-  int n;
-  char c;
-}
-
-typedef BaseStruct MyStruct26;
-
-void myFunction(MyStruct26) {}
-
-void test26()
-{
-  myFunction(MyStruct26(0, 'x'));
-}
-
 /************************************/
 
 const char[][7] DAY_NAME = [
@@ -471,21 +456,6 @@ void test29() {
     C29 c;
 
     //foo(c);
-}
-
-/***************************************************/
-
-class Foo30
-{
-    int i;
-}
-
-typedef Foo30 Bar30;
-
-void test30()
-{
-    Bar30 testBar = new Bar30();
-    auto j = testBar.i;
 }
 
 /***************************************************/
@@ -837,10 +807,11 @@ void test54()
 }
 
 /***************************************************/
+// bug 1767
 
 class DebugInfo 
 {
-    typedef int CVHeaderType ;
+    alias int CVHeaderType ;
     enum anon:CVHeaderType{ CV_NONE, CV_DOS, CV_NT, CV_DBG }
 }
 
@@ -1699,18 +1670,6 @@ void test101()
 
 /***************************************************/
 
-void test102()
-{
-    typedef const(char)[] A;
-    A stripl(A s)
-    {
-	uint i;
-	return s[i .. $];
-    }
-}
-
-/***************************************************/
-
 version(X86)
 {
 int x103;
@@ -1783,9 +1742,10 @@ void test105()
 }
 
 /***************************************************/
+// rejects-valid 2.012.
 
 class foo107 {}
-typedef foo107 bar107;
+alias foo107 bar107;
 void x107()
 {
    bar107 a = new bar107();
@@ -1989,7 +1949,7 @@ void test121()
 T[] find123(alias pred, T)(T[] input) {
    while (input.length > 0) {
       if (pred(input[0])) break;
-      input = input[1 .. length];
+      input = input[1 .. $];
    }
    return input;
 }
@@ -2303,7 +2263,7 @@ class A143
 
 class B143 : A143
 {
-    void fill() { }
+    override void fill() { }
 }
 
 void test143()
@@ -2650,8 +2610,8 @@ class A164
 
 abstract class B164 : A164
 {
-    final B164 foo() { return null; }
-    final B164 foo() const { return null; }
+    override final B164 foo() { return null; }
+    override final B164 foo() const { return null; }
 }
 
 /***************************************************/
@@ -2664,8 +2624,8 @@ class A165
 
 abstract class B165 : A165
 {
-    final B165 foo() { return null; }
-    final const(B165) foo() const { return null; }
+    override final B165 foo() { return null; }
+    override final const(B165) foo() const { return null; }
 }
 
 /***************************************************/
@@ -2676,15 +2636,6 @@ struct A166 {
 }
 
 struct B166 {}
-
-/***************************************************/
-
-void test167()
-{
-    typedef byte[] Foo;
-    Foo bar;
-    foreach(value; bar){}
-}
 
 /***************************************************/
 
@@ -2732,7 +2683,7 @@ class Class171 : Address {
 
     struct FwdStruct  {  }
 
-    int nameLen()    { return 0; }
+    override int nameLen()    { return 0; }
 }
 
 void test171 ()
@@ -2844,7 +2795,7 @@ double[100_000] arr = 0.0;
 
 /***************************************************/
 
-typedef ireal BUG3919;
+alias ireal BUG3919;
 alias typeof(BUG3919.init*BUG3919.init) ICE3919;
 alias typeof(BUG3919.init/BUG3919.init) ICE3920;
 
@@ -3286,8 +3237,9 @@ void test201() {
 
 
 /***************************************************/
+// This was the original varargs example in std.vararg
 
-import std.stdarg;
+import core.vararg;
 
 void foo202(int x, ...) {
     printf("%d arguments\n", _arguments.length);
@@ -3436,11 +3388,16 @@ alias tough4302!() tougher;
 
 /***************************************************/
 
-// Bugzilla 190
+template Bug6602A(T) {
+  Bug6602B!(T).Result result;
+}
 
-//typedef int avocado;
-//void test208(avocado x208 = .x208) { }
-//avocado x208;
+template Bug6602B(U) {
+  static assert(is(U == int));
+  alias bool Result;
+}
+
+enum bug6602Compiles = __traits(compiles, Bug6602A!short);
 
 /***************************************************/
 // Bugzilla 3493
@@ -3870,7 +3827,7 @@ static assert(mixin(ice4390()) == ``);
 /***************************************************/
 // 190
 
-typedef int avocado;
+alias int avocado;
 void eat(avocado x225 = .x225);
 avocado x225;
 
@@ -4234,6 +4191,186 @@ int test6229()
 }
 
 /***************************************************/
+// XMMBug
+
+class XMMPainter
+{
+  float call()
+  {
+    return sumFloats(0.0f, 0.0f);
+  }
+
+  static float sumFloats(float a, float b)
+  {
+    return a + b;
+  }
+}
+
+void test6270()
+{
+  auto painter = new XMMPainter;
+  assert(XMMPainter.sumFloats(20, painter.call()) == 20.0f);
+  auto dg = () { return XMMPainter.sumFloats(0.0f, 0.0f); };
+  assert(XMMPainter.sumFloats(20, dg()) == 20.0f);
+}
+
+/***************************************************/
+
+void test236()
+{
+    uint a;
+    int shift;
+    a = 7;
+    shift = 1;
+    int r;
+    r = (a >> shift) | (a << (int.sizeof * 8 - shift));
+    assert(r == 0x8000_0003);
+    r = (a << shift) | (a >> (int.sizeof * 8 - shift));
+    assert(a == 7);
+}
+
+/***************************************************/
+// 4460
+
+void test237()
+{
+    foreach (s, i; [ "a":1, "b":2 ])
+    {
+        writeln(s, i);
+    }
+}
+
+
+/***************************************************/
+
+void foo238(long a, long b)
+{
+  while (1)		// prevent inlining
+  {
+    long x = a / b;
+    long y = a % b;
+    assert(x == 3);
+    assert(y == 1);
+    break;
+  }
+}
+
+void test238()
+{
+    long a, b;
+    a = 10;
+    b = 3;
+    long x = a / b;
+    long y = a % b;	// evaluate at compile time
+    assert(x == 3);
+    assert(y == 1);
+
+    foo238(a, b);
+}
+
+/***************************************************/
+// 5239
+
+struct S239 { int x; }
+
+int test239()
+{
+   S239[4] w = void;
+   w[$-2].x = 217;
+   return w[2].x;
+}
+
+
+/***************************************************/
+
+void enforce6506b(bool condition, void delegate() m) {
+    assert(!condition);
+}
+void toImpl6506b(int value) {
+    void f(){}
+    enforce6506b(value >= 0, &f);
+}
+void test6506() {
+    toImpl6506b(-112345);
+}
+
+/***************************************************/
+// 6505
+
+double foo240() {
+    return 1.0;
+}
+
+void test240() {
+    double a = foo240();
+    double b = foo240();
+    double x = a*a + a*a + a*a + a*a + a*a + a*a + a*a +
+               a*b + a*b;
+    assert(x > 0);
+}
+
+/***************************************************/
+// 6563
+
+int foo6563(float a, float b, float c, float d, float e, float f, float g, float h)
+{
+    assert(a == 1);
+    return 0; // return something to prevent folding
+}
+
+void test6563()
+{
+    auto res = foo6563(1, 1, 1, 1, 1, 1, 1, 1);
+}
+
+/***************************************************/
+
+ubyte foo241(ubyte[] data)
+{
+    ubyte a, b, c, d;
+
+    a = data[0];
+    b = data[1];
+    c = data[2];
+    d = data[3];
+
+    c <<= 1;
+    if (c & 0x80)
+        c >>= 1;
+    d <<= 1;
+    if (d & 0x80)
+        d >>= 1;
+
+    return d;
+}
+
+void test241()
+{
+    ubyte[4] data;
+    data[3] = 0x40;
+    assert(foo241(data[]) == 0x40);
+    data[3] = 0x20;
+    assert(foo241(data[]) == 0x40);
+}
+
+/***************************************************/
+
+struct Foo6665
+{
+    double[2][2] dat;
+
+    double foo(size_t i, size_t j)
+    {
+        return dat[i][j] = 0;
+    }
+}
+
+void test6665()
+{
+    Foo6665 a;
+}
+
+/***************************************************/
 
 int main()
 {
@@ -4262,11 +4399,9 @@ int main()
     test23();
     test24();
     test25();
-    test26();
     test27();
     test28();
     test29();
-    test30();
     test31();
     test32();
     test33();
@@ -4338,7 +4473,6 @@ int main()
     test99();
     test100();
     test101();
-    test102();
     test103();
     test104();
     test105();
@@ -4398,7 +4532,6 @@ int main()
 
     test163();
 
-    test167();
 
     test169();
 
@@ -4459,6 +4592,17 @@ int main()
     test232();
     test233();
     bug6184();
+    test236();
+    test237();
+    test238();
+    test239();
+    test6229();
+    test6270();
+    test6506();
+    test240();
+    test6563();
+    test241();
+    test6665();
 
     writefln("Success");
     return 0;

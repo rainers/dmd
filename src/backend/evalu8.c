@@ -35,11 +35,13 @@
 #include        "cc.h"
 #include        "oper.h"                /* OPxxxx definitions           */
 #include        "global.h"
-#include        "parser.h"
 #include        "el.h"
 #include        "type.h"
-#include        "cpp.h"
 
+#if SCPP
+#include        "parser.h"
+#include        "cpp.h"
+#endif
 
 static char __file__[] = __FILE__;      /* for tassert.h                */
 #include        "tassert.h"
@@ -132,24 +134,25 @@ HINT boolres(elem *e)
                 case TYbool:
                 case TYwchar_t:
                 case TYenum:
+#if !MARS
                 case TYmemptr:
+#endif
                 case TYlong:
                 case TYulong:
                 case TYdchar:
                 case TYllong:
                 case TYullong:
-#if TX86
 #if JHANDLE
                 case TYjhandle:
 #endif
-                //case TYnullptr:
-                case TYnptr:
+#if TARGET_SEGMENTED
                 case TYsptr:
                 case TYcptr:
                 case TYhptr:
-#endif
                 case TYfptr:
                 case TYvptr:
+#endif
+                case TYnptr:
                     b = el_tolong(e) != 0;
                     break;
                 case TYfloat:
@@ -429,7 +432,7 @@ doit:
 #endif
             break;
 #if TX86
-        case OPptrlptr:
+        case OPnp_fp:
             e->E1 = e1 = poptelem(e->E1);
             // If casting a non-NULL constant pointer
             if (e1->Eoper == OPconst && el_tolong(e1) != 0)
@@ -437,11 +440,11 @@ doit:
             goto L5;
         case OPoffset:
             e->E1 = e1 = poptelem(e->E1);
-            if (e1->Eoper == OPptrlptr)
+            if (e1->Eoper == OPnp_fp)
                 goto L6;
             goto L5;
 #endif
-        case OPlngsht:
+        case OP32_16:
             e->E1 = e1 = poptelem(e->E1);
         L5:
             if (e1->Eoper == OPrelconst || e1->Eoper == OPstring)
@@ -602,6 +605,14 @@ elem * evalu8(elem *e)
             else
                 return e;
             tym2 = tybasic(typemask(e2));
+        }
+        else
+        {
+            tym2 = 0;
+            e2 = NULL;
+            i2 = 0;             // not used, but static analyzer complains
+            l2 = 0;             // "
+            d2 = 0;             // "
         }
         i1 = l1 = el_tolong(e1);
         d1 = el_toldouble(e1);
@@ -1469,6 +1480,10 @@ elem * evalu8(elem *e)
             case 4:
                 e->EV.Vllong = (rem << 32) | (quo & 0xFFFFFFFF);
                 break;
+            case 8:
+                e->EV.Vcent.lsw = quo;
+                e->EV.Vcent.msw = rem;
+                break;
             default:
                 assert(0);
                 break;
@@ -1649,7 +1664,7 @@ elem * evalu8(elem *e)
     case OPgt:
         if (!tyfloating(tym))
             goto Lnle;
-        i ^= d1 > d2;
+        i ^= (int)(d1 > d2);
         e->EV.Vint = i;
         break;
 
@@ -1659,14 +1674,14 @@ elem * evalu8(elem *e)
     case OPle:
         if (uns)
         {
-            i ^= ((targ_ullong) l1) <= ((targ_ullong) l2);
+            i ^= (int)(((targ_ullong) l1) <= ((targ_ullong) l2));
         }
         else
         {
             if (tyfloating(tym))
-                i ^= d1 <= d2;
+                i ^= (int)(d1 <= d2);
             else
-                i ^= l1 <= l2;
+                i ^= (int)(l1 <= l2);
         }
         e->EV.Vint = i;
         break;
@@ -1676,7 +1691,7 @@ elem * evalu8(elem *e)
     case OPge:
         if (!tyfloating(tym))
             goto Lnlt;
-        i ^= d1 >= d2;
+        i ^= (int)(d1 >= d2);
         e->EV.Vint = i;
         break;
 
@@ -1686,14 +1701,14 @@ elem * evalu8(elem *e)
     case OPlt:
         if (uns)
         {
-            i ^= ((targ_ullong) l1) < ((targ_ullong) l2);
+            i ^= (int)(((targ_ullong) l1) < ((targ_ullong) l2));
         }
         else
         {
             if (tyfloating(tym))
-                i ^= d1 < d2;
+                i ^= (int)(d1 < d2);
             else
-                i ^= l1 < l2;
+                i ^= (int)(l1 < l2);
         }
         e->EV.Vint = i;
         break;
@@ -1710,33 +1725,33 @@ elem * evalu8(elem *e)
                         isnan(e2->EV.Vcfloat.re) || isnan(e2->EV.Vcfloat.im))
                         i ^= 1;
                     else
-                        i ^= (e1->EV.Vcfloat.re == e2->EV.Vcfloat.re) &&
-                             (e1->EV.Vcfloat.im == e2->EV.Vcfloat.im);
+                        i ^= (int)((e1->EV.Vcfloat.re == e2->EV.Vcfloat.re) &&
+                                   (e1->EV.Vcfloat.im == e2->EV.Vcfloat.im));
                     break;
                 case TYcdouble:
                     if (isnan(e1->EV.Vcdouble.re) || isnan(e1->EV.Vcdouble.im) ||
                         isnan(e2->EV.Vcdouble.re) || isnan(e2->EV.Vcdouble.im))
                         i ^= 1;
                     else
-                        i ^= (e1->EV.Vcdouble.re == e2->EV.Vcdouble.re) &&
-                             (e1->EV.Vcdouble.im == e2->EV.Vcdouble.im);
+                        i ^= (int)((e1->EV.Vcdouble.re == e2->EV.Vcdouble.re) &&
+                                   (e1->EV.Vcdouble.im == e2->EV.Vcdouble.im));
                     break;
                 case TYcldouble:
                     if (isnan(e1->EV.Vcldouble.re) || isnan(e1->EV.Vcldouble.im) ||
                         isnan(e2->EV.Vcldouble.re) || isnan(e2->EV.Vcldouble.im))
                         i ^= 1;
                     else
-                        i ^= (e1->EV.Vcldouble.re == e2->EV.Vcldouble.re) &&
-                             (e1->EV.Vcldouble.im == e2->EV.Vcldouble.im);
+                        i ^= (int)((e1->EV.Vcldouble.re == e2->EV.Vcldouble.re) &&
+                                   (e1->EV.Vcldouble.im == e2->EV.Vcldouble.im));
                     break;
                 default:
-                    i ^= d1 == d2;
+                    i ^= (int)(d1 == d2);
                     break;
             }
             //printf("%Lg + %Lgi, %Lg + %Lgi\n", e1->EV.Vcldouble.re, e1->EV.Vcldouble.im, e2->EV.Vcldouble.re, e2->EV.Vcldouble.im);
         }
         else
-            i ^= l1 == l2;
+            i ^= (int)(l1 == l2);
         e->EV.Vint = i;
         break;
 
@@ -1806,11 +1821,11 @@ elem * evalu8(elem *e)
         break;
 
 #endif
-    case OPshtlng:
+    case OPs16_32:
         e->EV.Vlong = (targ_short) i1;
         break;
 #if TX86
-    case OPptrlptr:
+    case OPnp_fp:
 #endif
     case OPu16_32:
         e->EV.Vulong = (targ_ushort) i1;
@@ -1834,7 +1849,7 @@ elem * evalu8(elem *e)
     case OPs16_d:
         e->EV.Vdouble = (targ_short) i1;
         break;
-    case OPdbluns:
+    case OPd_u16:
         e->EV.Vushort = (targ_ushort)d1;
         break;
     case OPu16_d:
@@ -1894,19 +1909,19 @@ elem * evalu8(elem *e)
                 assert(0);
         }
         break;
-    case OPs8int:
+    case OPs8_16:
         e->EV.Vint = (targ_schar) i1;
         break;
-    case OPu8int:
+    case OPu8_16:
         e->EV.Vint = i1 & 0xFF;
         break;
-    case OPint8:
+    case OP16_8:
         e->EV.Vint = i1;
         break;
     case OPbool:
         e->EV.Vint = boolres(e1);
         break;
-    case OPlngsht:
+    case OP32_16:
 #if TX86
     case OPoffset:
 #endif
@@ -1962,6 +1977,35 @@ elem * evalu8(elem *e)
                      ((i1 <<  8) & 0x00FF0000) |
                      ((i1 << 24) & 0xFF000000);
         break;
+    case OProl:
+    case OPror:
+    {   unsigned n = i2;
+        if (op == OPror)
+            n = -n;
+        switch (tysize(tym))
+        {
+            case 1:
+                n &= 7;
+                e->EV.Vuchar = (unsigned char)((i1 << n) | ((i1 & 0xFF) >> (8 - n)));
+                break;
+            case 2:
+                n &= 0xF;
+                e->EV.Vushort = (targ_ushort)((i1 << n) | ((i1 & 0xFFFF) >> (16 - n)));
+                break;
+            case 4:
+                n &= 0x1F;
+                e->EV.Vulong = (targ_ulong)((i1 << n) | ((i1 & 0xFFFFFFFF) >> (32 - n)));
+                break;
+            case 8:
+                n &= 0x3F;
+                e->EV.Vullong = (targ_ullong)((l1 << n) | ((l1 & 0xFFFFFFFFFFFFFFFFLL) >> (64 - n)));
+                break;
+            //case 16:
+            default:
+                assert(0);
+        }
+        break;
+    }
     case OPind:
 #if 0 && MARS
         /* The problem with this is that although the only reaching definition

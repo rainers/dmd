@@ -22,8 +22,6 @@
 #include        "oper.h"
 #include        "global.h"
 #include        "type.h"
-#include        "parser.h"
-#include        "cpp.h"
 #include        "exh.h"
 #include        "list.h"
 
@@ -1348,6 +1346,11 @@ STATIC void getinfo(Cinfo *ci,code *c)
         case 0x3D:                              // CMP EAX,imm32
             // For CMP opcodes, always test for flags
             c->Iflags |= CFpsw;
+            break;
+
+        case ESCAPE:
+            if (c->Iop == (ESCAPE | ESCadjfpu))
+                ci->fpuadjust = c->IEV1.Vint;
             break;
 
         case 0xD0:
@@ -2693,7 +2696,9 @@ code *schedule(code *c,regm_t scratch)
     sch.initialize(0);                  // initialize scheduling table
     while (c)
     {
-        if ((c->Iop == NOP || (c->Iop & 0xFF) == ESCAPE || c->Iflags & CFclassinit) &&
+        if ((c->Iop == NOP ||
+             ((c->Iop & 0xFF) == ESCAPE && c->Iop != (ESCAPE | ESCadjfpu)) ||
+             c->Iflags & CFclassinit) &&
             !(c->Iflags & (CFtarg | CFtarg2)))
         {   code *cn;
 

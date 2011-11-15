@@ -202,10 +202,10 @@ Expression *VarExp::optimize(int result)
 Expression *TupleExp::optimize(int result)
 {
     for (size_t i = 0; i < exps->dim; i++)
-    {   Expression *e = (Expression *)exps->data[i];
+    {   Expression *e = exps->tdata()[i];
 
         e = e->optimize(WANTvalue | (result & WANTinterpret));
-        exps->data[i] = (void *)e;
+        exps->tdata()[i] = e;
     }
     return this;
 }
@@ -215,10 +215,10 @@ Expression *ArrayLiteralExp::optimize(int result)
     if (elements)
     {
         for (size_t i = 0; i < elements->dim; i++)
-        {   Expression *e = (Expression *)elements->data[i];
+        {   Expression *e = elements->tdata()[i];
 
             e = e->optimize(WANTvalue | (result & (WANTinterpret | WANTexpand)));
-            elements->data[i] = (void *)e;
+            elements->tdata()[i] = e;
         }
     }
     return this;
@@ -228,14 +228,14 @@ Expression *AssocArrayLiteralExp::optimize(int result)
 {
     assert(keys->dim == values->dim);
     for (size_t i = 0; i < keys->dim; i++)
-    {   Expression *e = (Expression *)keys->data[i];
+    {   Expression *e = keys->tdata()[i];
 
         e = e->optimize(WANTvalue | (result & (WANTinterpret | WANTexpand)));
-        keys->data[i] = (void *)e;
+        keys->tdata()[i] = e;
 
-        e = (Expression *)values->data[i];
+        e = values->tdata()[i];
         e = e->optimize(WANTvalue | (result & (WANTinterpret | WANTexpand)));
-        values->data[i] = (void *)e;
+        values->tdata()[i] = e;
     }
     return this;
 }
@@ -245,11 +245,11 @@ Expression *StructLiteralExp::optimize(int result)
     if (elements)
     {
         for (size_t i = 0; i < elements->dim; i++)
-        {   Expression *e = (Expression *)elements->data[i];
+        {   Expression *e = elements->tdata()[i];
             if (!e)
                 continue;
             e = e->optimize(WANTvalue | (result & (WANTinterpret | WANTexpand)));
-            elements->data[i] = (void *)e;
+            elements->tdata()[i] = e;
         }
     }
     return this;
@@ -468,20 +468,20 @@ Expression *NewExp::optimize(int result)
     if (newargs)
     {
         for (size_t i = 0; i < newargs->dim; i++)
-        {   Expression *e = (Expression *)newargs->data[i];
+        {   Expression *e = newargs->tdata()[i];
 
             e = e->optimize(WANTvalue);
-            newargs->data[i] = (void *)e;
+            newargs->tdata()[i] = e;
         }
     }
 
     if (arguments)
     {
         for (size_t i = 0; i < arguments->dim; i++)
-        {   Expression *e = (Expression *)arguments->data[i];
+        {   Expression *e = arguments->tdata()[i];
 
             e = e->optimize(WANTvalue);
-            arguments->data[i] = (void *)e;
+            arguments->tdata()[i] = e;
         }
     }
     if (result & WANTinterpret)
@@ -500,10 +500,10 @@ Expression *CallExp::optimize(int result)
     if (arguments)
     {
         for (size_t i = 0; i < arguments->dim; i++)
-        {   Expression *e = (Expression *)arguments->data[i];
+        {   Expression *e = arguments->tdata()[i];
 
             e = e->optimize(WANTvalue);
-            arguments->data[i] = (void *)e;
+            arguments->tdata()[i] = e;
         }
     }
 
@@ -834,6 +834,71 @@ Expression *XorExp::optimize(int result)
         e = Xor(type, e1, e2);
     else
         e = this;
+    return e;
+}
+
+Expression *PowExp::optimize(int result)
+{   Expression *e;
+
+    e1 = e1->optimize(result);
+    e2 = e2->optimize(result);
+    
+    // Replace 1 ^^ x or 1.0^^x by (x, 1)
+    if ((e1->op == TOKint64 && e1->toInteger() == 1) ||
+        (e1->op == TOKfloat64 && e1->toReal() == 1.0))
+    {
+        e = new CommaExp(loc, e2, e1);
+    }
+    // Replace -1 ^^ x by (x&1) ? -1 : 1, where x is integral
+    else if (e2->type->isintegral() && e1->op == TOKint64 && (sinteger_t)e1->toInteger() == -1L)
+    {
+        Type* resultType = type;
+        e = new AndExp(loc, e2, new IntegerExp(loc, 1, e2->type));
+        e = new CondExp(loc, e, new IntegerExp(loc, -1L, resultType), new IntegerExp(loc, 1L, resultType));
+    }
+    // Replace x ^^ 0 or x^^0.0 by (x, 1)
+    else if ((e2->op == TOKint64 && e2->toInteger() == 0) ||
+             (e2->op == TOKfloat64 && e2->toReal() == 0.0))
+    {
+        if (e1->type->isintegral())
+            e = new IntegerExp(loc, 1, e1->type);
+        else
+            e = new RealExp(loc, 1.0, e1->type);
+
+        e = new CommaExp(loc, e1, e);
+    }
+    // Replace x ^^ 1 or x^^1.0 by (x)
+    else if ((e2->op == TOKint64 && e2->toInteger() == 1) ||
+             (e2->op == TOKfloat64 && e2->toReal() == 1.0))
+    {
+        e = e1;
+    }
+    // Replace x ^^ -1.0 by (1.0 / x)
+    else if ((e2->op == TOKfloat64 && e2->toReal() == -1.0))
+    {
+        e = new DivExp(loc, new RealExp(loc, 1.0, e2->type), e1);
+    }
+    // All other negative integral powers are illegal
+    else if ((e1->type->isintegral()) && (e2->op == TOKint64) && (sinteger_t)e2->toInteger() < 0)
+    {
+        error("cannot raise %s to a negative integer power. Did you mean (cast(real)%s)^^%s ?",
+              e1->type->toBasetype()->toChars(), e1->toChars(), e2->toChars());
+        e = new ErrorExp();
+    }
+    else
+    {
+        // If e2 *could* have been an integer, make it one.
+        if (e2->op == TOKfloat64 && (e2->toReal() == (sinteger_t)(e2->toReal())))
+            e2 = new IntegerExp(loc, e2->toInteger(), Type::tint64);
+
+        if (e1->isConst() == 1 && e2->isConst() == 1)
+        {
+            e = Pow(type, e1, e2);
+            if (e != EXP_CANT_INTERPRET)
+                return e;
+        }
+        e = this;
+    }
     return e;
 }
 

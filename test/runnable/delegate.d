@@ -1,4 +1,4 @@
-// REQUIRED_ARGS: -d
+// REQUIRED_ARGS:
 
 import std.c.stdio;
 
@@ -13,7 +13,7 @@ class Foo
 
 class Bar : Foo
 {
-   int bar(int i, char[] s) { return 5; }
+   override int bar(int i, char[] s) { return 5; }
 }
 
 void test1()
@@ -42,7 +42,7 @@ int foo2()
 
 void test2()
 {
-    int (*fp)();
+    int function () fp;
 
     fp = &foo2;
     assert(fp() == 3);
@@ -72,9 +72,9 @@ class Foo3
 
 class Bar3 : Foo3
 {
-    int bar(int i, char[] s) { return 48; }
+    override int bar(int i, char[] s) { return 48; }
 
-    int result() { return 48; }
+    override int result() { return 48; }
 
     void test2()
     {
@@ -105,7 +105,7 @@ int foo4(int x, int y) { return 3; }
 
 void test4()
 {
-    int (*fp)(char);
+    int function (char) fp;
 
     fp = &foo4;
     assert(fp(0) == 2);
@@ -268,7 +268,7 @@ class A13
 
 class B13 : A13
 {
-    int f()
+    override int f()
     {
         return 2;
     }

@@ -1,6 +1,7 @@
 // PERMUTE_ARGS:
 // REQUIRED_ARGS: -H -Hdtest_results/compilable
 // POST_SCRIPT: compilable/extra-files/header-postscript.sh
+// REQUIRED_ARGS: -d
 
 module foo.bar;
 
@@ -310,6 +311,34 @@ int foo11(int function() fn)
 int bar11(T)()
 {
     return foo11(function int (){ return 0; });
+}
+
+
+struct S6360
+{
+    @property long weeks1() const pure nothrow { return 0; }
+
+    @property const pure nothrow long weeks2() { return 0; }
+}
+
+
+struct S12
+{
+    /// postfix storage class and constructor
+    this(int n) nothrow{}
+
+    /// prefix storage class (==StorageClassDeclaration) and constructor
+    nothrow this(string s){}
+}
+
+/// dummy
+struct T12
+{
+    /// postfix storage class and template constructor
+    this()(int args) immutable { }
+
+    /// prefix storage class (==StorageClassDeclaration) and template constructor
+    immutable this(A...)(A args){ }
 }
 
 
