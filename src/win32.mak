@@ -8,13 +8,12 @@
 #   http://www.digitalmars.com/ctg/make.html
 # which should be in \dm\bin or in \dmd\windows\bin 
 
-D=c:\l\dmc
+D=
 DMDSVN=\svnproj\dmd\trunk\src
 #DMDSVN=\svnproj\dmd\branches\dmd-1.x\src
 SCROOT=$D\dm
 INCLUDE=$(SCROOT)\include
-CC=$D\bin\dmc
-LIB=$D\bin\lib
+CC=dmc
 LIBNT=$(SCROOT)\lib
 SNN=$(SCROOT)\lib\snn
 DIR=\dmd2
@@ -24,13 +23,13 @@ C=backend
 TK=tk
 ROOT=root
 
-MAKE=$D\bin\make -fwin32.mak C=$C TK=$(TK) ROOT=$(ROOT)
+MAKE=make -fwin32.mak C=$C TK=$(TK) ROOT=$(ROOT)
 
 TARGET=dmd
 XFLG=
 MODEL=n
 OPT=
-DEBUG=-g -D -DUNITTEST
+DEBUG=-gl -D -DUNITTEST
 #PREC=-H -HItotal.h -HO
 PREC=
 LFLAGS=
@@ -38,7 +37,7 @@ LFLAGS=
 LINKN=$(SCROOT)\bin\link /de
 
 CFLAGS=-I$(ROOT);$(INCLUDE) $(XFLG) $(OPT) $(DEBUG) -cpp
-MFLAGS=-I$C;$(TK) -DMARS -cpp $(OPT) $(DEBUG) -e -wx
+MFLAGS=-I$C;$(TK) $(OPT) -DMARS -cpp $(DEBUG) -e -wx
 
 # Makerules:
 .c.obj:
@@ -64,9 +63,6 @@ trace:
 dmd:
 	$(MAKE) OPT=-o "DEBUG=" LFLAGS=-L/delexe dmd.exe
 #	$(MAKE) OPT=-o "DEBUG=" LFLAGS=-L/ma/co/delexe dmd.exe
-
-lib:
-	$(MAKE) OPT=-o "DEBUG=" LFLAGS=-L/delexe dmd.lib
 
 ################ NT COMMAND LINE DEBUG #########################
 
@@ -175,11 +171,7 @@ MAKEFILES=win32.mak posix.mak
 #########################################
 
 $(TARGET).exe : $(OBJS) win32.mak
-	$(CC) -o$(TARGET).exe $(OBJS) -cpp -mn -Ar $(LFLAGS)
-
-$(TARGET).lib : $(OBJS) win32.mak
-	$(LIB) -c -p128 $(TARGET).lib $(OBJ8) $(ROOTOBJS) msc.obj tk.obj util.obj entity.obj ph.obj eh.obj
-	$(LIB) -d $(TARGET).lib iasm.obj
+	dmc -o$(TARGET).exe $(OBJS) -cpp -mn -Ar $(LFLAGS)
 
 
 ##################### INCLUDE MACROS #####################
@@ -195,11 +187,11 @@ msgs.h msgs.c sj1041.msg sj1036.msg sj1031.msg : msgsx.exe
 	msgsx
 
 msgsx.exe : msgsx.c
-	$(CC) msgsx -mn -D$(TARGET) $(DEFINES) $(WINLIBS)
+	dmc msgsx -mn -D$(TARGET) $(DEFINES) $(WINLIBS)
 
 elxxx.c cdxxx.c optab.c debtab.c fltables.c tytab.c : \
 	$C\cdef.h $C\cc.h $C\oper.h $C\ty.h $C\optabgen.c
-	$(CC) -cpp -ooptabgen.exe $C\optabgen -DMARS -I$(TK) $(WINLIBS) #-L$(LINKS)
+	dmc -cpp -ooptabgen.exe $C\optabgen -DMARS -I$(TK) $(WINLIBS) #-L$(LINKS)
 	optabgen
 
 impcnvtab.c : impcnvgen.c
@@ -207,7 +199,7 @@ impcnvtab.c : impcnvgen.c
 	impcnvgen
 
 id.h id.c : idgen.c
-	$(CC) -cpp idgen
+	dmc -cpp idgen
 	idgen
 
 ##################### SPECIAL BUILDS #####################

@@ -3498,7 +3498,10 @@ Type *TypeSArray::semantic(Loc loc, Scope *sc)
     if (dim)
     {   dinteger_t n, n2;
 
+        int errors = global.errors;
         dim = semanticLength(sc, tbn, dim);
+        if (errors != global.errors)
+            goto Lerror;
 
         dim = dim->optimize(WANTvalue);
         if (sc && sc->parameterSpecialization && dim->op == TOKvar &&
@@ -3926,6 +3929,9 @@ MATCH TypeDArray::implicitConvTo(Type *to)
         if (!MODimplicitConv(next->mod, ta->next->mod))
             return MATCHnomatch;        // not const-compatible
 
+        if ((mod & MODwild) != (to->mod & MODwild))
+            return MATCHnomatch;
+
         /* Allow conversion to void[]
          */
         if (next->ty != Tvoid && ta->next->ty == Tvoid)
@@ -4323,6 +4329,9 @@ MATCH TypeAArray::implicitConvTo(Type *to)
 
         if (!MODimplicitConv(index->mod, ta->index->mod))
             return MATCHnomatch;        // not const-compatible
+
+        if ((mod & MODwild) != (to->mod & MODwild))
+            return MATCHnomatch;
 
         MATCH m = next->constConv(ta->next);
         MATCH mi = index->constConv(ta->index);
@@ -6362,6 +6371,8 @@ Type *TypeTypeof::semantic(Loc loc, Scope *sc)
             goto Lerr;
         }
 
+        t = t->addMod(mod);
+
         /* typeof should reflect the true type,
          * not what 'auto' would have gotten us.
          */
@@ -7251,7 +7262,8 @@ L1:
             e = e->semantic(sc);
             return e;
         }
-        if (d->needThis() && fd && fd->vthis)
+        else if (d->needThis() && fd && fd->vthis &&
+                 fd->toParent2()->isStructDeclaration() == sym)
         {
             e = new DotVarExp(e->loc, new ThisExp(e->loc), d);
             e = e->semantic(sc);
@@ -7268,7 +7280,7 @@ L1:
         accessCheck(e->loc, sc, e, d);
         ve = new VarExp(e->loc, d);
         e = new CommaExp(e->loc, e, ve);
-        e->type = d->type;
+        e = e->semantic(sc);
         return e;
     }
 
@@ -7824,7 +7836,7 @@ L1:
         accessCheck(e->loc, sc, e, d);
         ve = new VarExp(e->loc, d);
         e = new CommaExp(e->loc, e, ve);
-        e->type = d->type;
+        e = e->semantic(sc);
         return e;
     }
 

@@ -493,7 +493,14 @@ code *cdeq(elem *e,regm_t *pretregs)
                         cl = movregconst(cl,reg,*p,1 ^ (cs.Iop & 1));
                     if (sz == 2 * REGSIZE)
                     {   getlvalue_msw(&cs);
-                        cl = movregconst(cl,cs.Irm & 7,p[1],0);
+                        if (REGSIZE == 2)
+                            cl = movregconst(cl,cs.Irm & 7,((unsigned short *)p)[1],0);
+                        else if (REGSIZE == 4)
+                            cl = movregconst(cl,cs.Irm & 7,((unsigned *)p)[1],0);
+                        else if (REGSIZE == 8)
+                            cl = movregconst(cl,cs.Irm & 7,p[1],0);
+                        else
+                            assert(0);
                     }
                 }
                 else if (I64 && sz == 8 && *p >= 0x80000000)
@@ -2327,6 +2334,7 @@ code *longcmp(elem *e,bool jcond,unsigned fltarg,code *targ)
   static const unsigned char jopmsw[4] = {JL, JG, JL, JG };
   static const unsigned char joplsw[4] = {JBE, JA, JB, JAE };
 
+  //printf("longcmp(e = %p)\n", e);
   cr = CNIL;
   e1 = e->E1;
   e2 = e->E2;
@@ -2543,11 +2551,40 @@ code *cdcnvt(elem *e, regm_t *pretregs)
                 /* FALL-THROUGH */
             case OPs64_d:
             case OPs32_d:
+                if (I64 && *pretregs & XMMREGS)
+                {
+                LXMMint2double:
+                    unsigned retregs = ALLREGS;
+
+                    c1 = codelem(e->E1, &retregs, FALSE);
+                    unsigned reg = findreg(retregs);
+
+                    if (e->Eoper == OPu32_d)
+                    {   // MOV reg,reg to zero upper 32 bits
+                        c1 = genregs(c1,0x89,reg,reg);
+                    }
+
+                    unsigned xreg;
+                    retregs = XMMREGS & *pretregs;
+                    c1 = cat(c1,allocreg(&retregs,&xreg,TYdouble));
+                    xreg = findreg(retregs);
+
+                    // CVTSI2SD xreg,reg
+                    c2 = gen2(NULL, 0xF20F2A, modregxrmx(3,xreg-XMM0,reg));
+                    if (e->Eoper == OPs64_d || e->Eoper == OPu32_d)
+                        c2->Irex |= REX_W;
+                    *pretregs = mask[xreg];
+                    return cat(c1, c2);
+                }
+                /* FALL-THROUGH */
             case OPs16_d:
             case OPu16_d:
                 return load87(e,0,pretregs,NULL,-1);
             case OPu32_d:
-                if (!I16)
+                // load as 64-bit signed value
+                if (I64 && *pretregs & XMMREGS)
+                    goto LXMMint2double;
+                else if (!I16)
                 {
                     unsigned retregs = ALLREGS;
                     c1 = codelem(e->E1, &retregs, FALSE);

@@ -1,5 +1,14 @@
 ﻿// PERMUTE_ARGS: -inline
 
+template compiles(int T)
+{
+   bool compiles = true;
+}
+
+/**************************************************
+    3901 Arbitrary struct assignment, ref return
+**************************************************/
+
 struct ArrayRet{
    int x;
 }
@@ -166,11 +175,14 @@ int retRefTest4()
     return b.x;
 }
 
-
 static assert(retRefTest1()==2);
 static assert(retRefTest2()==2);
 static assert(retRefTest3()==26);
 static assert(retRefTest4()==218);
+
+/**************************************************
+    Bug 4389
+**************************************************/
 
 int bug4389()
 {
@@ -254,6 +266,18 @@ bool bug4837()
 }
 
 static assert(bug4837());
+
+/**************************************************
+   6972 ICE with cast()cast()assign
+**************************************************/
+
+int bug6972()
+{
+    ubyte n = 6;
+    n /= 2u;
+    return n;
+}
+static assert(bug6972()==3);
 
 /**************************************************
     Bug 6164
@@ -343,11 +367,6 @@ int cov3(TCov3 t)
 
 static assert(cov3(1, 2) == 7);
 
-template compiles(int T)
-{
-   bool compiles = true;
-}
-
 int badassert1(int z)
 {
    assert(z == 5, "xyz");
@@ -384,7 +403,7 @@ size_t bug5524(int x, int[] more...)
     return 7 + more.length + x;
 }
 
-//static assert(bug5524(3) == 10);
+static assert(bug5524(3) == 10);
 
 
 // 5722
@@ -3388,4 +3407,148 @@ int testsFromEH()
 }
 static assert(testsFromEH());
 
-/****************************************************/
+/**************************************************
+    With + synchronized statements + bug 6901
+**************************************************/
+
+struct With1
+{
+    int a;
+    int b;
+}
+
+class Foo6
+{
+}
+
+class Foo32
+{
+   struct Bar
+   {
+	int x;
+   }
+}
+
+class Base56
+{
+    private string myfoo;
+    private string mybar;
+
+    // Get/set properties that will be overridden.
+    void foo(string s) { myfoo = s; }
+    string foo() { return myfoo; }
+
+    // Get/set properties that will not be overridden.
+    void bar(string s) { mybar = s; }
+    string bar() { return mybar; }
+}
+
+class Derived56: Base56
+{
+    alias Base56.foo foo; // Bring in Base56's foo getter.
+    override void foo(string s) { super.foo = s; } // Override foo setter.
+}
+
+
+int testwith()
+{
+    With1 x = With1(7);
+    with(x)
+    {
+        a = 2;
+    }
+    assert(x.a == 2);
+
+    // from test11.d
+    Foo6 foo6 = new Foo6();
+
+    with (foo6)
+    {
+        int xx;
+        xx = 4;
+    }
+    with (new Foo32)
+    {
+        Bar z;
+        z.x = 5;
+    }
+    Derived56 d = new Derived56;
+    with (d)
+    {
+        foo = "hi";
+        d.foo = "hi";
+        bar = "hi";
+        assert(foo == "hi");
+        assert(d.foo == "hi");
+        assert(bar == "hi");
+    }
+    int w = 7;
+    synchronized {
+        ++w;
+    }
+    assert(w == 8);
+    return 1;
+}
+
+static assert(testwith());
+
+/**************************************************
+    6416 static struct declaration
+**************************************************/
+
+static assert({
+    static struct S { int y = 7; }
+    S a;
+    a.y += 6;
+    assert(a.y == 13);
+    return true;
+}());
+
+/**************************************************
+    6522 opAssign + foreach
+**************************************************/
+
+struct Foo6522 {
+    bool b = false;
+    void opAssign(int x) {
+        this.b = true;
+    }
+}
+
+bool foo6522() {
+    Foo6522[1] array;
+    foreach (ref item; array)
+        item = 1;
+    return true;
+}
+
+static assert(foo6522());
+
+/**************************************************
+    6919
+**************************************************/
+
+void bug6919(int* val)
+{
+    *val = 1;
+}
+void test6919()
+{
+    int n;
+    bug6919(&n);
+    assert(n == 1);
+}
+static assert({ test6919(); return true; }());
+
+void bug6919b(string* val)
+{
+    *val = "1";
+}
+
+void test6919b()
+{
+    string val;
+    bug6919b(&val);
+    assert(val == "1");
+}
+static assert({ test6919b(); return true; }());

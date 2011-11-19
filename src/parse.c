@@ -2372,7 +2372,9 @@ Type *Parser::parseBasicType()
             check(TOKlparen);
             t = parseType();
             check(TOKrparen);
-            if (t->isShared())
+            if (t->isImmutable())
+                ;
+            else if (t->isShared())
                 t = t->makeSharedConst();
             else
                 t = t->makeConst();
@@ -2396,7 +2398,9 @@ Type *Parser::parseBasicType()
             check(TOKlparen);
             t = parseType();
             check(TOKrparen);
-            if (t->isConst())
+            if (t->isImmutable())
+                ;
+            else if (t->isConst())
                 t = t->makeSharedConst();
             else if (t->isWild())
                 t = t->makeSharedWild();
@@ -2410,7 +2414,9 @@ Type *Parser::parseBasicType()
             check(TOKlparen);
             t = parseType();
             check(TOKrparen);
-            if (t->isShared())
+            if (t->isImmutable()/* || t->isConst()*/)
+                ;
+            else if (t->isShared())
                 t = t->makeSharedWild();
             else
                 t = t->makeWild();
@@ -2517,7 +2523,7 @@ Type *Parser::parseBasicType2(Type *t)
     return NULL;
 }
 
-Type *Parser::parseDeclarator(Type *t, Identifier **pident, TemplateParameters **tpl, StorageClass storage_class)
+Type *Parser::parseDeclarator(Type *t, Identifier **pident, TemplateParameters **tpl, StorageClass storage_class, int* pdisable)
 {   Type *ts;
 
     //printf("parseDeclarator(tpl = %p)\n", tpl);
@@ -2649,6 +2655,8 @@ Type *Parser::parseDeclarator(Type *t, Identifier **pident, TemplateParameters *
                 stc |= storage_class;   // merge prefix storage classes
                 Type *tf = new TypeFunction(arguments, t, varargs, linkage, stc);
                 tf = tf->addSTC(stc);
+                if (pdisable)
+                    *pdisable = stc & STCdisable ? 1 : 0;
 
                 /* Insert tf into
                  *   ts -> ... -> t
@@ -2679,6 +2687,7 @@ Type *Parser::parseDeclarator(Type *t, Identifier **pident, TemplateParameters *
 Dsymbols *Parser::parseDeclarations(StorageClass storage_class, unsigned char *comment)
 {
     StorageClass stc;
+    int disable;
     Type *ts;
     Type *t;
     Type *tfirst;
@@ -2847,7 +2856,7 @@ L2:
         TemplateParameters *tpl = NULL;
 
         ident = NULL;
-        t = parseDeclarator(ts, &ident, &tpl, storage_class);
+        t = parseDeclarator(ts, &ident, &tpl, storage_class, &disable);
         assert(t);
         if (!tfirst)
             tfirst = t;
@@ -2914,7 +2923,7 @@ L2:
             //printf("%s funcdecl t = %s, storage_class = x%lx\n", loc.toChars(), t->toChars(), storage_class);
 
             FuncDeclaration *f =
-                new FuncDeclaration(loc, 0, ident, storage_class, t);
+                new FuncDeclaration(loc, 0, ident, storage_class | (disable ? STCdisable : 0), t);
             addComment(f, comment);
             if (tpl)
                 constraint = parseConstraint();

@@ -3910,6 +3910,75 @@ void test6488()
 }
 
 /***************************************************/
+// 6836
+
+template map6836(fun...) if (fun.length >= 1)
+{
+    auto map6836(Range)(Range r)
+    {
+    }
+}
+void test6836()
+{
+    [1].map6836!"a"();
+}
+
+/***************************************************/
+// 6837
+
+struct Ref6837a(T)
+{
+    T storage;
+    alias storage this;
+}
+
+struct Ref6837b(T)
+{
+    T storage;
+    @property ref T get(){ return storage; }
+    alias get this;
+}
+
+int front6837(int[] arr){ return arr[0]; }
+
+void popFront6837(ref int[] arr){ arr = arr[1..$]; }
+
+void test6837()
+{
+    assert([1,2,3].front6837 == 1);
+
+    auto r1 = Ref6837a!(int[])([1,2,3]);
+    assert(r1.front6837() == 1);    // ng
+    assert(r1.front6837 == 1);      // ok
+    r1.popFront6837();              // ng
+    r1.storage.popFront6837();      // ok
+
+    auto r2 = Ref6837b!(int[])([1,2,3]);
+    assert(r2.front6837() == 1);    // ng
+    assert(r2.front6837 == 1);      // ok
+    r2.popFront6837();              // ng
+    r2.get.popFront6837();          // ng
+    r2.get().popFront6837();        // ok
+}
+
+/***************************************************/
+// 6927
+
+@property int[] foo6927()
+{
+    return [1, 2];
+}
+int[] bar6927(int[] a)
+{
+    return a;
+}
+void test6927()
+{
+    bar6927(foo6927); // OK
+    foo6927.bar6927(); // line 9, Error
+}
+
+/***************************************************/
 
 struct Foo6813(T)
 {
@@ -3980,6 +4049,156 @@ void test6859()
     auto t = new Child6859;
     t.fuga();
     printf("done.\n");
+}
+
+/***************************************************/
+// 6910
+
+template Test6910(alias i, B)
+{
+    void fn()
+    {
+        foreach(t; B.Types)
+        {
+            switch(i)
+            {
+                case 0://IndexOf!(t, B.Types):
+                {
+                    pragma(msg, __traits(allMembers, t));
+                    pragma(msg, __traits(hasMember, t, "m"));
+                    static assert(__traits(hasMember, t, "m")); // test
+                    break;
+                }
+                default: {}
+            }
+        }
+    }
+}
+void test6910()
+{
+    static struct Bag(S...)
+    {
+        alias S Types;
+    }
+    static struct A
+    {
+        int m;
+    }
+
+    int i;
+    alias Test6910!(i, Bag!(A)).fn func;
+}
+
+/***************************************************/
+// 6902
+
+void test6902()
+{
+    static assert(is(typeof({
+        return int.init; // int, long, real, etc.
+    })));
+
+    int f() pure nothrow { assert(0); }
+    alias int T() pure nothrow;
+    static if(is(typeof(&f) DT == delegate))
+    {
+        static assert(is(DT* == T*));  // ok
+
+        // Error: static assert  (is(pure nothrow int() == pure nothrow int())) is false
+        static assert(is(DT == T));
+    }
+}
+
+/***************************************************/
+// 6330
+
+struct S6330
+{
+    void opAssign(S6330 s) @disable
+    {
+        assert(0);  // This fails.
+    }
+}
+
+void test6330()
+{
+    S6330 s;
+    S6330 s2;
+    static assert(!is(typeof({ s2 = s; })));
+}
+
+/***************************************************/
+// 5311
+
+class C5311
+{
+    private static int globalData;
+
+    void breaksPure() pure const
+    {
+        static assert(!__traits(compiles, { globalData++; }));		// SHOULD BE ERROR
+        static assert(!__traits(compiles, { X.globalData++; }));	// SHOULD BE ERROR
+        static assert(!__traits(compiles, { this.globalData++; }));	// SHOULD BE ERROR
+
+        static assert(!__traits(compiles, { int a = this.globalData; }));
+    }
+}
+static void breaksPure5311a(C5311 x) pure
+{
+    static assert(!__traits(compiles, { x.globalData++; }));		// SHOULD BE ERROR
+
+    static assert(!__traits(compiles, { int a = x.globalData; }));
+}
+
+struct S5311
+{
+    private static int globalData;
+
+    void breaksPure() pure const
+    {
+        static assert(!__traits(compiles, { globalData++; }));		// SHOULD BE ERROR
+        static assert(!__traits(compiles, { X.globalData++; }));	// SHOULD BE ERROR
+        static assert(!__traits(compiles, { this.globalData++; }));	// SHOULD BE ERROR
+
+        static assert(!__traits(compiles, { int a = this.globalData; }));
+    }
+}
+static void breaksPure5311b(S5311 x) pure
+{
+    static assert(!__traits(compiles, { x.globalData++; }));		// SHOULD BE ERROR
+
+    static assert(!__traits(compiles, { int a = x.globalData; }));
+}
+
+/***************************************************/
+// 6868
+
+@property bool empty6868(T)(in T[] a) @safe pure nothrow
+{
+    return !a.length;
+}
+
+void test6868()
+{
+    alias int[] Range;
+    static if (is(char[1 + Range.empty6868]))  // Line 9
+        enum bool isInfinite = true;
+
+    char[0] s;  // need
+}
+
+/***************************************************/
+// 2856
+
+struct foo2856    { static void opIndex(int i) { printf("foo\n"); } }
+struct bar2856(T) { static void opIndex(int i) { printf("bar\n"); } }
+
+void test2856()
+{
+    foo2856[1];
+    bar2856!(float)[1];     // Error (# = __LINE__)
+    alias bar2856!(float) B;
+    B[1];                   // Okay
 }
 
 /***************************************************/
@@ -4173,9 +4392,17 @@ int main()
     test6084();
     test4237();
     test6488();
+    test6836();
+    test6837();
+    test6927();
     test6733();
     test6813();
     test6859();
+    test6910();
+    test6902();
+    test6330();
+    test6868();
+    test2856();
 
     printf("Success\n");
     return 0;
