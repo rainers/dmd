@@ -1493,9 +1493,10 @@ void Type::toCBuffer3(OutBuffer *buf, HdrGenState *hgs, int mod)
             MODtoBuffer(buf, this->mod & MODshared);
             buf->writeByte('(');
         }
-        if (this->mod & ~MODshared)
+        int m = (mod ^ (this->mod & ~MODshared)) & this->mod;
+        if (m)
         {
-            MODtoBuffer(buf, this->mod & ~MODshared);
+            MODtoBuffer(buf, m);
             buf->writeByte('(');
             toCBuffer2(buf, hgs, this->mod);
             buf->writeByte(')');
@@ -5854,7 +5855,10 @@ void TypeQualified::resolveHelper(Loc loc, Scope *sc,
                         else
                             e = e->type->dotExp(sc, e, id);
                     }
-                    *pe = e;
+                    if (e->op == TOKtype)
+                        *pt = e->type;
+                    else
+                        *pe = e;
                 }
                 else
                 {
