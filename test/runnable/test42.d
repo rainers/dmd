@@ -4398,6 +4398,69 @@ void test5364()
 
 /***************************************************/
 
+struct FPoint {
+  float x, y;
+}
+
+void constructBezier(FPoint p0, FPoint p1, FPoint p2, ref FPoint[3] quad) {
+  quad[0] = p0;
+  quad[1] = FPoint(p1.x, p1.y);
+  quad[$-1] = p2;
+}
+
+void test6189() {
+  auto p0 = FPoint(0, 0);
+  auto p1 = FPoint(1, 1);
+  auto p2 = FPoint(2, 2);
+
+  // avoid inline of call
+  FPoint[3] quad;
+  auto f = &constructBezier;
+  f(p0, p1, p2, quad);
+
+  assert(quad == [p0, p1, p2]);
+}
+
+/***************************************************/
+// 6997
+
+long fun6997(long a,long b,long c)
+{
+    return a < b ? a < c ? a : b < c ? b : c : b;
+}
+
+long baz6997(long a, long b)
+{
+    bool s = (a<0) != (b<0);
+    a = a > 0 ? a : -a;
+    return s ? a : a;
+}
+
+struct S6997
+{
+    ulong bar, qux;
+    bool c;
+
+    S6997 foo()
+    {
+        if(!c)
+        {
+            long a = baz6997(bar, 0),
+                b = baz6997(bar, 0),
+                c = baz6997(bar, 0);
+            return S6997(fun6997(a,b,c), fun6997(a,b,c));
+        }
+        return S6997();
+    }
+}
+
+void test6997()
+{
+    auto x = S6997().foo();
+}
+
+/***************************************************/
+
 int main()
 {
     test1();
@@ -4630,6 +4693,8 @@ int main()
     test241();
     test6665();
     test5364();
+    test6189();
+    test6997();
 
     writefln("Success");
     return 0;

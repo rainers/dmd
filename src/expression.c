@@ -157,6 +157,15 @@ FuncDeclaration *hasThis(Scope *sc)
     fdthis = sc->parent->isFuncDeclaration();
     //printf("fdthis = %p, '%s'\n", fdthis, fdthis ? fdthis->toChars() : "");
 
+    /* Special case for inside template constraint
+     */
+    if (fdthis && (sc->flags & SCOPEstaticif) && fdthis->parent->isTemplateDeclaration())
+    {
+        //TemplateDeclaration *td = fdthis->parent->isTemplateDeclaration();
+        //printf("[%s] td = %s, fdthis->vthis = %p\n", td->loc.toChars(), td->toChars(), fdthis->vthis);
+        return fdthis->vthis ? fdthis : NULL;
+    }
+
     // Go upwards until we find the enclosing member function
     fd = fdthis;
     while (1)
@@ -3013,7 +3022,7 @@ Expression *NullExp::semantic(Scope *sc)
 #endif
     // NULL is the same as (void *)0
     if (!type)
-        type = Type::tvoid->pointerTo();
+        type = Type::tnull;
     return this;
 }
 
@@ -3436,10 +3445,19 @@ void StringExp::toMangleBuffer(OutBuffer *buf)
         default:
             assert(0);
     }
+    buf->reserve(1 + 11 + 2 * qlen);
     buf->writeByte(m);
-    buf->printf("%d_", qlen);
-    for (size_t i = 0; i < qlen; i++)
-        buf->printf("%02x", q[i]);
+    buf->printf("%d_", qlen); // nbytes <= 11
+
+    for (unsigned char *p = buf->data + buf->offset, *pend = p + 2 * qlen;
+         p < pend; p += 2, ++q)
+    {
+        unsigned char hi = *q >> 4 & 0xF;
+        p[0] = (hi < 10 ? hi + '0' : hi - 10 + 'a');
+        unsigned char lo = *q & 0xF;
+        p[1] = (lo < 10 ? lo + '0' : lo - 10 + 'a');
+    }
+    buf->offset += 2 * qlen;
 }
 
 /************************ ArrayLiteralExp ************************************/
@@ -9041,6 +9059,8 @@ ArrayExp::ArrayExp(Loc loc, Expression *e1, Expressions *args)
         : UnaExp(loc, TOKarray, sizeof(ArrayExp), e1)
 {
     arguments = args;
+    lengthVar = NULL;
+    currentDimension = 0;
 }
 
 Expression *ArrayExp::syntaxCopy()
@@ -9585,6 +9605,29 @@ Expression *AssignExp::semantic(Scope *sc)
             // Rewrite (a[i] = value) to (a.opIndexAssign(value, i))
             if (search_function(ad, Id::indexass))
             {   Expression *e = new DotIdExp(loc, ae->e1, Id::indexass);
+                // Deal with $
+                for (size_t i = 0; i < ae->arguments->dim; i++)
+                {   Expression *x = ae->arguments->tdata()[i];
+                    // Create scope for '$' variable for this dimension
+                    ArrayScopeSymbol *sym = new ArrayScopeSymbol(sc, ae);
+                    sym->loc = loc;
+                    sym->parent = sc->scopesym;
+                    sc = sc->push(sym);
+                    ae->lengthVar = NULL;       // Create it only if required
+                    ae->currentDimension = i;   // Dimension for $, if required
+
+                    x = x->semantic(sc);
+                    if (!x->type)
+                        ae->error("%s has no value", x->toChars());
+                    if (ae->lengthVar)
+                    {   // If $ was used, declare it now
+                        Expression *av = new DeclarationExp(ae->loc, ae->lengthVar);
+                        x = new CommaExp(0, av, x);
+                        x->semantic(sc);
+                    }
+                    ae->arguments->tdata()[i] = x;
+                    sc = sc->pop();
+                }
                 Expressions *a = (Expressions *)ae->arguments->copy();
 
                 a->insert(0, e2);
@@ -11683,7 +11726,33 @@ Expression *CmpExp::semantic(Scope *sc)
         return new ErrorExp();
     }
 
+    Expression *eb1 = e1;
+    Expression *eb2 = e2;
+
     typeCombine(sc);
+
+#if 0
+    // For integer comparisons, ensure the combined type can hold both arguments.
+    if (type && type->isintegral() && (op == TOKlt || op == TOKle ||
+                                       op == TOKgt || op == TOKge))
+    {
+        IntRange trange = IntRange::fromType(type);
+
+        Expression *errorexp = 0;
+        if (!trange.contains(eb1->getIntRange()))
+            errorexp = eb1;
+        if (!trange.contains(eb2->getIntRange()))
+            errorexp = eb2;
+
+        if (errorexp)
+        {
+            error("implicit conversion of '%s' to '%s' is unsafe in '(%s) %s (%s)'",
+                  errorexp->toChars(), type->toChars(), eb1->toChars(), Token::toChars(op), eb2->toChars());
+            return new ErrorExp();
+        }
+    }
+#endif
+
     type = Type::tboolean;
 
     // Special handling for array comparisons
