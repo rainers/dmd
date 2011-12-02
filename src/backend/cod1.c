@@ -373,7 +373,7 @@ void gensaverestore2(regm_t regm,code **csave,code **crestore)
     code *cs2 = *crestore;
 
     //printf("gensaverestore2(%s)\n", regm_str(regm));
-    regm &= mBP | mES | ALLREGS | XMMREGS;
+    regm &= mBP | mES | ALLREGS | XMMREGS | mST0 | mST01;
     for (int i = 0; regm; i++)
     {
         if (regm & 1)
@@ -382,6 +382,10 @@ void gensaverestore2(regm_t regm,code **csave,code **crestore)
             {
                 cs1 = gen1(cs1, 0x06);                  // PUSH ES
                 cs2 = cat(gen1(CNIL, 0x07),cs2);        // POP  ES
+            }
+            else if (i == ST0 || i == ST01)
+            {
+                gensaverestore87(1 << i, &cs1, &cs2);
             }
             else if (i >= XMM0)
             {   unsigned idx;
@@ -1401,7 +1405,11 @@ code *getlvalue(code *pcs,elem *e,regm_t keepmsk)
         pcs->Irm = modregrm(0,0,BPRM);
     L2:
         if (fl == FLreg)
-        {   assert(s->Sregm & regcon.mvar);
+        {
+#ifdef DEBUG
+            if (!(s->Sregm & regcon.mvar)) symbol_print(s);
+#endif
+            assert(s->Sregm & regcon.mvar);
 
             /* Attempting to paint a float as an integer or an integer as a float
              * will cause serious problems since the EA is loaded separatedly from
@@ -1690,7 +1698,9 @@ code *tstresult(regm_t regm,tym_t tym,unsigned saveflag)
             if (tyfloating(tym) && sz == 2 * intsize)
                 ce = gen2(ce,0xD1,modregrm(3,4,reg));   // SHL reg,1
             ce = genorreg(ce,reg,findreglsw(regm));     // OR reg,reg+1
-        }
+            if (I64)
+                code_orrex(ce, REX_W);
+       }
         else if (sz == 8)
         {   assert(regm == DOUBLEREGS_16);
             ce = getregs(mAX);                          // allocate AX
@@ -2748,13 +2758,17 @@ STATIC code * funccall(elem *e,unsigned numpara,unsigned numalign,regm_t *pretre
                 fl = el_fl(e1);
             if (tym1 == TYifunc)
                 c1 = gen1(c1,0x9C);                             // PUSHF
-#if 0 && TARGET_LINUX
-            if (s->Sfl == FLgot || s->Sfl == FLgotoff)
-                fl = s->Sfl;
+            ce = CNIL;
+#if TARGET_LINUX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
+            if (s != tls_get_addr_sym)
+            {
+                //printf("call %s\n", s->Sident);
+                ce = load_localgot();
+            }
 #endif
-            ce = gencs(CNIL,farfunc ? 0x9A : 0xE8,0,fl,s);      // CALL extern
+            ce = gencs(ce,farfunc ? 0x9A : 0xE8,0,fl,s);      // CALL extern
             ce->Iflags |= farfunc ? (CFseg | CFoff) : (CFselfrel | CFoff);
-#if TARGET_LINUX
+#if TARGET_LINUX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
             if (s == tls_get_addr_sym)
             {
                 if (I32)
@@ -3291,6 +3305,7 @@ code *params(elem *e,unsigned stackalign)
                 goto L2;
         }
         break;
+#if TARGET_SEGMENTED
     case OPnp_fp:
         if (!e->Ecount)                         /* if (far *)e1 */
         {
@@ -3303,9 +3318,7 @@ code *params(elem *e,unsigned stackalign)
             switch (tym1)
             {
                 case TYnptr: segreg = 3<<3; break;
-#if TARGET_SEGMENTED
                 case TYcptr: segreg = 1<<3; break;
-#endif
                 default:     segreg = 2<<3; break;
             }
             if (I32 && stackalign == 2)
@@ -3319,6 +3332,7 @@ code *params(elem *e,unsigned stackalign)
             goto L2;
         }
         break;
+#endif
     case OPrelconst:
 #if TARGET_SEGMENTED
         /* Determine if we can just push the segment register           */

@@ -4461,6 +4461,47 @@ void test6997()
 
 /***************************************************/
 
+ubyte foo7026(uint n) {
+  ubyte[5] buf = void;
+  ubyte wsize;
+
+  while (true) {
+    if ((n & ~0x7F) == 0) {
+      buf[wsize++] = cast(ubyte)n;
+      break;
+    } else {
+      buf[wsize++] = cast(ubyte)((n & 0x7F) | 0x80);
+      n >>= 7;
+    }
+  }
+
+  printf("%hhu\n", wsize);
+  return buf[0];
+}
+
+void test7026() {
+    if (foo7026(3) != 3)
+	assert(0);
+}
+
+
+/***************************************************/
+
+void test6354()
+{
+    foreach(j; 0 .. 2)
+    {
+        scope(failure) int i = 0;
+
+        ushort left = 0xffU;
+        left <<= (ushort.sizeof - 1) * 8;
+
+        assert((((left & 0xff00U) >> 8) | ((left & 0x00ffU) << 8)) == 0xffu);
+    }
+}
+
+/***************************************************/
+
 int main()
 {
     test1();
@@ -4695,6 +4736,8 @@ int main()
     test5364();
     test6189();
     test6997();
+    test7026();
+    test6354();
 
     writefln("Success");
     return 0;

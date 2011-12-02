@@ -137,11 +137,8 @@ void flowrd()
 STATIC void rdgenkill()
 {       register unsigned i,deftopsave;
 
-#if TX86
         util_free(defnod);              /* free existing junk           */
-#else                                   /* might be from previous memory pool */
-        MEM_BEF_FREE(defnod);           /* free existing junk           */
-#endif
+
         defnod = NULL;
 
         /* Compute number of definition elems. */
@@ -158,11 +155,7 @@ STATIC void rdgenkill()
         /*      The elems are in dfo order.                     */
         /*      defnod[]s consist of a elem pointer and a pointer */
         /*      to the enclosing block.                         */
-#if TX86
         defnod = (dn *) util_calloc(sizeof(dn),deftop);
-#else
-        defnod = (dn *)MEM_BEF_CALLOC(sizeof(dn) * deftop);
-#endif
         deftopsave = deftop;
         deftop = 0;
         for (i = 0; i < dfotop; i++)
@@ -478,11 +471,8 @@ STATIC void aecpgenkill()
 {       register unsigned i;
         unsigned exptopsave;
 
-#if TX86
         util_free(expnod);              /* dump any existing one        */
-#else                                   /* might be from previous memory pool */
-        MEM_BEF_FREE(expnod);           /* dump any existing one        */
-#endif
+
         expnod = NULL;
 
         /* Compute number of expressions */
@@ -501,17 +491,10 @@ STATIC void aecpgenkill()
         /* (The elems are in order. Also, these expressions must not    */
         /* have any side effects, and possibly should not be machine    */
         /* dependent primitive addressing modes.)                       */
-#if TX86
         expnod = (elem **) util_calloc(sizeof(elem *),exptop);
         util_free(expblk);
         expblk = (flowxx == VBE)
                 ? (block **) util_calloc(sizeof(block *),exptop) : NULL;
-#else
-        expnod = (elem **) MEM_BEF_CALLOC(sizeof(elem *) * exptop);
-        MEM_BEF_FREE(expblk);
-        expblk = (flowxx == VBE)
-                ? (block **) MEM_BEF_CALLOC(sizeof(block *) * exptop) : NULL;
-#endif
 
         exptopsave = exptop;
         exptop = 1;
@@ -832,11 +815,12 @@ void main()
                         vec_setbit(i,starkill);
                         break;
 
-
+#if TARGET_SEGMENTED
                     case OPvp_fp:
                     case OPcvp_fp:
                         vec_setbit(i,vptrkill);
                         goto Lunary;
+#endif
 
                     default:
                         if (OTunary(op))
@@ -999,7 +983,6 @@ STATIC void accumaecpx(elem *n)
             vec_clear(GEN);                     // GEN nothing
             return;
 
-#if TX86
         case OPeq:
         case OPstreq:
             accumaecpx(n->E2);
@@ -1007,27 +990,22 @@ STATIC void accumaecpx(elem *n)
             accumaecpx(n->E1);
             t = Elvalue(n);
             break;
-#endif
 
+#if TARGET_SEGMENTED
         case OPvp_fp:
         case OPcvp_fp:                          // if vptr access
             if ((flowxx == AE) && n->Eexp)
                 vec_orass(KILL,vptrkill);       // kill all other vptr accesses
             break;
+#endif
 
         default:
             if (OTunary(op))
             {
-#if TX86
         case OPind:                             // most common unary operator
                 accumaecpx(n->E1);
 #ifdef DEBUG
                 assert(!OTassign(op));
-#endif
-#else
-                accumaecpx(n->E1);
-                if (OTassign(op))               // if assignment operator
-                    t = Elvalue(n);
 #endif
             }
             else if (OTbinary(op))
@@ -1689,11 +1667,13 @@ STATIC void accumvbe(vec_t GEN,vec_t KILL,elem *n)
                             }
                         }
                 }
+#if TARGET_SEGMENTED
                 if (op == OPvp_fp || op == OPcvp_fp)
                 {
                     vec_orass(KILL,vptrkill);   /* KILL all vptr accesses */
                     vec_subass(KILL,GEN);       /* except for GENed stuff */
                 }
+#endif
         }
         else if (OTdef(op))             /* if definition elem           */
         {

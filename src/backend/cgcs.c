@@ -289,11 +289,13 @@ STATIC void ecom(elem **pe)
         ecom(&e->E1);
         ecom(&e->E2);
         break;
+#if TARGET_SEGMENTED
     case OPvp_fp:
     case OPcvp_fp:
         ecom(&e->E1);
         touchaccess(e);
         break;
+#endif
     case OPind:
         ecom(&e->E1);
         /* Generally, CSEing a *(double *) results in worse code        */
@@ -352,13 +354,12 @@ STATIC void ecom(elem **pe)
         assert(0);              /* optelem() should have removed these  */
         /* NOTREACHED */
 
-#if TX86
     // Explicitly list all the unary ops for speed
     case OPnot: case OPcom: case OPneg: case OPuadd:
     case OPabs: case OPsqrt: case OPrndtol: case OPsin: case OPcos: case OPrint:
     case OPpreinc: case OPpredec:
     case OPbool: case OPstrlen: case OPs16_32: case OPu16_32:
-    case OPd_s32: case OPd_u32: case OPoffset:
+    case OPd_s32: case OPd_u32:
     case OPs32_d: case OPu32_d: case OPd_s16: case OPs16_d: case OP32_16:
     case OPd_f: case OPf_d:
     case OPd_ld: case OPld_d:
@@ -368,13 +369,15 @@ STATIC void ecom(elem **pe)
     case OPu64_128: case OPs64_128: case OP128_64:
     case OPd_s64: case OPs64_d: case OPd_u64: case OPu64_d:
     case OPstrctor: case OPu16_d: case OPd_u16:
-    case OPnp_fp: case OPnp_f16p: case OPf16p_np: case OParrow:
+    case OParrow:
     case OPvoid: case OPnullcheck:
     case OPbsf: case OPbsr: case OPbswap:
     case OPld_u64:
+#if TARGET_SEGMENTED
+    case OPoffset: case OPnp_fp: case OPnp_f16p: case OPf16p_np:
+#endif
         ecom(&e->E1);
         break;
-#endif
     case OPhalt:
         return;
   }
@@ -533,10 +536,8 @@ STATIC void touchlvalue(elem *e)
             break;
         case SCauto:
         case SCparameter:
-#if TX86
         case SCfastpar:
         case SCbprel:
-#endif
             if (e->EV.sp.Vsym->Sflags & SFLunambig)
                 break;
             /* FALL-THROUGH */
@@ -548,9 +549,7 @@ STATIC void touchlvalue(elem *e)
         case SCinline:
         case SCsinline:
         case SCeinline:
-#if TX86
         case SCcomdef:
-#endif
             touchstar();
             break;
         default:
@@ -595,19 +594,15 @@ STATIC void touchfunc(int flag)
                         break;
                     case SCauto:
                     case SCparameter:
-#if TX86
                     case SCfastpar:
                     case SCbprel:
-#endif
                         //printf("he = '%s'\n", he->EV.sp.Vsym->Sident);
                         if (he->EV.sp.Vsym->Sflags & SFLunambig)
                             break;
                         /* FALL-THROUGH */
                     case SCstatic:
                     case SCextern:
-#if TX86
                     case SCcomdef:
-#endif
                     case SCglobal:
                     case SClocstat:
                     case SCcomdat:
@@ -631,10 +626,12 @@ STATIC void touchfunc(int flag)
             case OPbt:
 #endif
                 goto L1;
+#if TARGET_SEGMENTED
             case OPvp_fp:
             case OPcvp_fp:
                 if (flag == 0)          /* function calls destroy vptrfptr's, */
                     break;              /* not indirect assignments     */
+#endif
             L1:
                 pe->Helem = NULL;
                 break;
@@ -661,6 +658,7 @@ STATIC void touchstar()
   touchstari = hcstop;
 }
 
+#if TARGET_SEGMENTED
 /*****************************************
  * Eliminate any common subexpressions that could be modified
  * if a handle pointer access occurs.
@@ -675,10 +673,10 @@ STATIC void touchaccess(elem *ev)
   {     e = hcstab[i].Helem;
         /* Invalidate any previous handle pointer accesses that */
         /* are not accesses of ev.                              */
-        if (e && (e->Eoper == OPvp_fp || e->Eoper == OPcvp_fp) &&
-            e->E1 != ev)
+        if (e && (e->Eoper == OPvp_fp || e->Eoper == OPcvp_fp) && e->E1 != ev)
             hcstab[i].Helem = NULL;
   }
 }
+#endif
 
 #endif // !SPP

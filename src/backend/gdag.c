@@ -341,9 +341,11 @@ STATIC void aewalk(register elem **pn,register vec_t ae)
         }
         if (n->Eexp)            // if an AE
         {
+#if TARGET_SEGMENTED
             if (op == OPvp_fp || op == OPcvp_fp)
                 /* Invalidate all other OPvp_fps     */
                 vec_subass(ae,vptrkill);
+#endif
 
             /*dbg_printf("available: ("); WReqn(n); dbg_printf(")\n");
             elem_print(n);*/
@@ -376,7 +378,6 @@ STATIC elem * delcse(elem **pe)
         assert(e->Ecount != 0);
         if (EOP(e))
         {
-#if 1 || !TX86
                 if (e->E1->Ecount == 0xFF-1)
                 {       elem *ereplace;
                         ereplace = el_calloc();
@@ -385,7 +386,6 @@ STATIC elem * delcse(elem **pe)
                         ereplace->Ecount = 0;
                 }
                 else
-#endif
                 {
                     e->E1->Ecount++;
 #ifdef DEBUG
@@ -394,7 +394,6 @@ STATIC elem * delcse(elem **pe)
                 }
                 if (EBIN(e))
                 {
-#if 1 || !TX86
                         if (e->E2->Ecount == 0xFF-1)
                         {       elem *ereplace;
                                 ereplace = el_calloc();
@@ -403,7 +402,6 @@ STATIC elem * delcse(elem **pe)
                                 ereplace->Ecount = 0;
                         }
                         else
-#endif
                         {   e->E2->Ecount++;
 #ifdef DEBUG
                             assert(e->E2->Ecount != 0);
@@ -505,24 +503,12 @@ L1:     e = *pe;
                 }
 
                 // Remove *e1 where it's a double
-                if (e->Ecount &&
-#if 1
-                    tyfloating(e->Ety)
-#else
-                    // Why not TYfloat? Same issue in cgcs.c
-                    (tybasic(e->Ety) == TYdouble ||
-                     tybasic(e->Ety) == TYdouble_alias ||
-                     tybasic(e->Ety) == TYldouble)
-#endif
-                   )
+                if (e->Ecount && tyfloating(e->Ety))
                     e = delcse(pe);
-
             }
-#if TX86
             // This CSE is too easy to regenerate
             else if (op == OPu16_32 && !I32 && e->Ecount)
                 e = delcse(pe);
-#endif
         }
         else if (OTbinary(op))
         {
@@ -758,9 +744,11 @@ STATIC void abewalk(elem *n,vec_t ae,vec_t aeval)
     }
     else if (n->Eexp)           /* if an AE                     */
     {
+#if TARGET_SEGMENTED
         if (op == OPvp_fp || op == OPcvp_fp)
             /* Invalidate all other OPvp_fps */
             vec_subass(ae,vptrkill);
+#endif
 
         /*dbg_printf("available: ("); WReqn(n); dbg_printf(")\n");
         elem_print(n);*/
