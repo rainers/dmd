@@ -454,6 +454,60 @@ void test2778get()
 }
 
 /**********************************/
+// 6208
+
+int getRefNonref(T)(ref T s){ return 1; }
+int getRefNonref(T)(    T s){ return 2; }
+
+int getAutoRef(T)(auto ref T s){ return __traits(isRef, s) ? 1 : 2; }
+
+void getOut(T)(out T s){ ; }
+
+void getLazy1(T=int)(lazy void s){ s(), s(); }
+void getLazy2(T)(lazy T s){  s(), s(); }
+
+void test6208a()
+{
+    int lvalue;
+    int rvalue(){ int t; return t; }
+
+    assert(getRefNonref(lvalue  ) == 1);
+    assert(getRefNonref(rvalue()) == 2);
+
+    assert(getAutoRef(lvalue  ) == 1);
+    assert(getAutoRef(rvalue()) == 2);
+
+    static assert( __traits(compiles, getOut(lvalue  )));
+    static assert(!__traits(compiles, getOut(rvalue())));
+
+    int n1; getLazy1(++n1); assert(n1 == 2);
+    int n2; getLazy2(++n2); assert(n2 == 2);
+
+    struct X
+    {
+        int f(T)(auto ref T t){ return 1; }
+        int f(T)(auto ref T t, ...){ return -1; }
+    }
+    auto xm =       X ();
+    auto xc = const(X)();
+    int n;
+    assert(xm.f!int(n) == 1);   // resolved 'auto ref'
+    assert(xm.f!int(0) == 1);   // ditto
+}
+
+/**********************************/
+
+void test6208b()
+{
+    void foo(T)(const T value) if (!is(T == int)) {}
+
+    int mn;
+    const int cn;
+    static assert(!__traits(compiles, foo(mn)));    // OK -> OK
+    static assert(!__traits(compiles, foo(cn)));    // NG -> OK
+}
+
+/**********************************/
 // 6805
 
 struct T6805
@@ -489,6 +543,74 @@ void test6994()
 }
 
 /**********************************/
+// 3467 & 6806
+
+struct Foo3467( uint n )
+{
+    Foo3467!( n ) bar( ) {
+        typeof( return ) result;
+        return result;
+    }
+}
+struct Vec3467(size_t N)
+{
+    void opBinary(string op:"~", size_t M)(Vec3467!M) {}
+}
+void test3467()
+{
+    Foo3467!( 4 ) baz;
+    baz = baz.bar;// FAIL
+
+    Vec3467!2 a1;
+    Vec3467!3 a2;
+    a1 ~ a2; // line 7, Error
+}
+
+struct TS6806(size_t n) { pragma(msg, typeof(n)); }
+static assert(is(TS6806!(1u) == TS6806!(1)));
+
+/**********************************/
+// 2550
+
+template pow10_2550(long n)
+{
+    const long pow10_2550 = 0;
+    static if (n < 0)
+        const long pow10_2550 = 0;
+    else
+        const long pow10_2550 = 10 * pow10_2550!(n - 1);
+}
+template pow10_2550(long n:0)
+{
+    const long pow10_2550 = 1;
+}
+static assert(pow10_2550!(0) == 1);
+
+/**********************************/
+
+void foo10(T)(T prm)
+{
+    pragma(msg, T);
+    static assert(is(T == const(int)[]));
+}
+void bar10(T)(T prm)
+{
+    pragma(msg, T);
+    static assert(is(T == const(int)*));
+}
+void test10()
+{
+    const a = [1,2,3];
+    static assert(is(typeof(a) == const(int[])));
+    foo10(a);
+
+    int n;
+    const p = &n;
+    static assert(is(typeof(p) == const(int*)));
+    bar10(p);
+}
+
+/**********************************/
 
 int main()
 {
@@ -512,7 +634,11 @@ int main()
     test2778();
     test2778aa();
     test2778get();
+    test6208a();
+    test6208b();
     test6994();
+    test3467();
+    test10();
 
     printf("Success\n");
     return 0;

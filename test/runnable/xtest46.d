@@ -3740,7 +3740,7 @@ void test6084()
 }
 
 /***************************************************/
-
+// 3133
 
 void test3133()
 {
@@ -3749,6 +3749,40 @@ void test3133()
 
     short[1] z = [1];
     static assert(!__traits(compiles, y = cast(int[1])z));
+}
+
+/***************************************************/
+// 6763
+
+template TypeTuple6763(TList...)
+{
+    alias TList TypeTuple6763;
+}
+
+alias TypeTuple6763!(int) T6763;
+
+void f6763(      T6763) { } ///
+void c6763(const T6763) { } ///T now is (const int)
+void r6763(ref   T6763) { } ///T now is(ref const int)
+void i6763(in    T6763) { } ///Uncomment to get an Assertion failure in 'mtype.c'
+void o6763(out   T6763) { } ///ditto
+
+void test6763()
+{
+    int n;
+
+    f6763(0);   //With D2: Error: function main.f ((ref const const(int) _param_0)) is not callable using argument types (int)
+    c6763(0);
+    r6763(n);   static assert(!__traits(compiles, r6763(0)));
+    i6763(0);
+    o6763(n);   static assert(!__traits(compiles, o6763(0)));
+
+    // 6755
+    static assert(typeof(f6763).stringof == "void(int _param_0)");
+    static assert(typeof(c6763).stringof == "void(const(int) _param_0)");
+    static assert(typeof(r6763).stringof == "void(ref int _param_0)");
+    static assert(typeof(i6763).stringof == "void(const(int) _param_0)");
+    static assert(typeof(o6763).stringof == "void(out int _param_0)");
 }
 
 /***************************************************/
@@ -4167,6 +4201,38 @@ void test2856()
 }
 
 /***************************************************/
+// 6056 fixup
+
+template ParameterTypeTuple6056(func)
+{
+    static if (is(func Fptr : Fptr*) && is(Fptr P == function))
+        alias P ParameterTypeTuple6056;
+    else
+        static assert(0, "argument has no parameters");
+}
+
+extern(C) alias void function() fpw_t;
+
+alias void function(fpw_t fp) cb_t;
+
+void bar6056(ParameterTypeTuple6056!(cb_t) args) {
+      pragma (msg, "TFunction1: " ~ typeof(args[0]).stringof);
+}
+
+extern(C) void foo6056() { }
+
+void test6056()
+{
+    bar6056(&foo6056);
+}
+
+/***************************************************/
+// 7108
+
+static assert(!__traits(hasMember, int, "x"));
+static assert( __traits(hasMember, int, "init"));
+
+/***************************************************/
 
 int main()
 {
@@ -4298,6 +4364,7 @@ int main()
     test124();
     test125();
     test3133();
+    test6763();
 
     test127();
     test128();
@@ -4366,6 +4433,7 @@ int main()
     test6330();
     test6868();
     test2856();
+    test6056();
 
     printf("Success\n");
     return 0;

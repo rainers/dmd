@@ -1209,6 +1209,9 @@ Lretry:
 #endif
             Type *argtype = farg->type;
 
+            // Apply function parameter storage classes to parameter types
+            fparam->type = fparam->type->addStorageClass(fparam->storageClass);
+
 #if DMDV2
             /* Allow string literals which are type [] to match with [dim]
              */
@@ -1221,6 +1224,14 @@ Lretry:
                     argtype = argtype->semantic(se->loc, NULL);
                     argtype = argtype->invariantOf();
                 }
+            }
+
+            /* Remove top const for dynamic array types and pointer types
+             */
+            if ((argtype->ty == Tarray || argtype->ty == Tpointer) &&
+                !argtype->isMutable())
+            {
+                argtype = argtype->mutableOf();
             }
 #endif
 
@@ -1269,6 +1280,18 @@ Lretry:
                     }
                 }
             }
+
+            if (m && (fparam->storageClass & (STCref | STCauto)) == STCref)
+            {   if (!farg->isLvalue())
+                    goto Lnomatch;
+            }
+            if (m && (fparam->storageClass & STCout))
+            {   if (!farg->isLvalue())
+                    goto Lnomatch;
+            }
+            if (!m && (fparam->storageClass & STClazy) && fparam->type->ty == Tvoid &&
+                    farg->type->ty != Tvoid)
+                m = MATCHconvert;
 
             if (m)
             {   if (m < match)
@@ -1606,7 +1629,7 @@ FuncDeclaration *TemplateDeclaration::deduceFunctionTemplate(Scope *sc, Loc loc,
     TemplateDeclaration *td_best = NULL;
     Objects *tdargs = new Objects();
     TemplateInstance *ti;
-    FuncDeclaration *fd;
+    FuncDeclaration *fd_best;
 
 #if 0
     printf("TemplateDeclaration::deduceFunctionTemplate() %s\n", toChars());
@@ -1641,6 +1664,7 @@ FuncDeclaration *TemplateDeclaration::deduceFunctionTemplate(Scope *sc, Loc loc,
 
         MATCH m;
         Objects dedargs;
+        FuncDeclaration *fd = NULL;
 
         m = td->deduceFunctionTemplateMatch(sc, loc, targsi, ethis, fargs, &dedargs);
         //printf("deduceFunctionTemplateMatch = %d\n", m);
@@ -1656,14 +1680,53 @@ FuncDeclaration *TemplateDeclaration::deduceFunctionTemplate(Scope *sc, Loc loc,
         // Disambiguate by picking the most specialized TemplateDeclaration
         MATCH c1 = td->leastAsSpecialized(td_best, fargs);
         MATCH c2 = td_best->leastAsSpecialized(td, fargs);
-        //printf("c1 = %d, c2 = %d\n", c1, c2);
+        //printf("1: c1 = %d, c2 = %d\n", c1, c2);
 
         if (c1 > c2)
             goto Ltd;
         else if (c1 < c2)
             goto Ltd_best;
-        else
-            goto Lambig;
+        }
+
+        if (!fd_best)
+        {
+            fd_best = td_best->doHeaderInstantiation(sc, tdargs, fargs);
+            if (!fd_best)
+                goto Lerror;
+        }
+        {
+            tdargs->setDim(dedargs.dim);
+            memcpy(tdargs->data, dedargs.data, tdargs->dim * sizeof(void *));
+            fd = td->doHeaderInstantiation(sc, tdargs, fargs);
+            if (!fd)
+                goto Lerror;
+        }
+        assert(fd && fd_best);
+
+        {
+        // Disambiguate by tf->callMatch
+        TypeFunction *tf1 = (TypeFunction *)fd->type;
+        TypeFunction *tf2 = (TypeFunction *)fd_best->type;
+        MATCH c1 = (MATCH) tf1->callMatch(fd->needThis() && !fd->isCtorDeclaration() ? ethis : NULL, fargs);
+        MATCH c2 = (MATCH) tf2->callMatch(fd_best->needThis() && !fd->isCtorDeclaration() ? ethis : NULL, fargs);
+        //printf("2: c1 = %d, c2 = %d\n", c1, c2);
+
+        if (c1 > c2)
+            goto Ltd;
+        if (c1 < c2)
+            goto Ltd_best;
+        }
+
+        {
+        // Disambiguate by picking the most specialized FunctionDeclaration
+        MATCH c1 = fd->leastAsSpecialized(fd_best);
+        MATCH c2 = fd_best->leastAsSpecialized(fd);
+        //printf("3: c1 = %d, c2 = %d\n", c1, c2);
+
+        if (c1 > c2)
+            goto Ltd;
+        if (c1 < c2)
+            goto Ltd_best;
         }
 
       Lambig:           // td_best and td are ambiguous
@@ -1678,6 +1741,7 @@ FuncDeclaration *TemplateDeclaration::deduceFunctionTemplate(Scope *sc, Loc loc,
         td_ambig = NULL;
         assert((size_t)td->scope > 0x10000);
         td_best = td;
+        fd_best = fd;
         m_best = m;
         tdargs->setDim(dedargs.dim);
         memcpy(tdargs->tdata(), dedargs.tdata(), tdargs->dim * sizeof(void *));
@@ -1703,10 +1767,10 @@ FuncDeclaration *TemplateDeclaration::deduceFunctionTemplate(Scope *sc, Loc loc,
     assert((size_t)td_best->scope > 0x10000);
     ti = new TemplateInstance(loc, td_best, tdargs);
     ti->semantic(sc, fargs);
-    fd = ti->toAlias()->isFuncDeclaration();
-    if (!fd)
+    fd_best = ti->toAlias()->isFuncDeclaration();
+    if (!fd_best)
         goto Lerror;
-    return fd;
+    return fd_best;
 
   Lerror:
 #if DMDV2
@@ -1733,6 +1797,78 @@ FuncDeclaration *TemplateDeclaration::deduceFunctionTemplate(Scope *sc, Loc loc,
                 bufa.toChars(), buf.toChars());
     }
     return NULL;
+}
+
+/*************************************************
+ * Limited function template instantiation for using fd->leastAsSpecialized()
+ */
+FuncDeclaration *TemplateDeclaration::doHeaderInstantiation(Scope *sc,
+        Objects *tdargs, Expressions *fargs)
+{
+    FuncDeclaration *fd = onemember->toAlias()->isFuncDeclaration();
+    if (!fd)
+        return NULL;
+
+#if 0
+    printf("doHeaderInstantiation this = %s\n", toChars());
+    for (size_t i = 0; i < tdargs->dim; ++i)
+        printf("\ttdargs[%d] = %s\n", i, ((Object *)tdargs->data[i])->toChars());
+#endif
+
+    assert((size_t)scope > 0x10000);
+    TemplateInstance *ti = new TemplateInstance(loc, this, tdargs);
+    ti->tinst = sc->tinst;
+    {
+        ti->tdtypes.setDim(ti->tempdecl->parameters->dim);
+        if (!ti->tempdecl->matchWithInstance(ti, &ti->tdtypes, fargs, 2))
+            return NULL;
+    }
+
+    ti->parent = parent;
+
+    // function body and contracts are not need
+    //fd = fd->syntaxCopy(NULL)->isFuncDeclaration();
+    fd = new FuncDeclaration(fd->loc, fd->endloc, fd->ident, fd->storage_class, fd->type->syntaxCopy());
+    fd->parent = ti;
+
+    Scope *scope = this->scope;
+
+    ti->argsym = new ScopeDsymbol();
+    ti->argsym->parent = scope->parent;
+    scope = scope->push(ti->argsym);
+
+    Scope *paramscope = scope->push();
+    paramscope->stc = 0;
+    ti->declareParameters(paramscope);
+    paramscope->pop();
+
+    {
+        TypeFunction *tf = (TypeFunction *)fd->type;
+        if (tf && tf->ty == Tfunction)
+            tf->fargs = fargs;
+    }
+
+    Scope *sc2;
+    sc2 = scope->push(ti);
+    sc2->parent = /*isnested ? sc->parent :*/ ti;
+    sc2->tinst = ti;
+
+    {
+        Scope *sc = sc2;
+        sc = sc->push();
+
+        if (fd->isCtorDeclaration())
+            sc->flags |= SCOPEctor;
+        fd->type = fd->type->semantic(fd->loc, sc);
+        sc = sc->pop();
+    }
+    //printf("\t[%s] fd->type = %s, mod = %x, ", loc.toChars(), fd->type->toChars(), fd->type->mod);
+    //printf("fd->needThis() = %d\n", fd->needThis());
+
+    sc2->pop();
+    scope->pop();
+
+    return fd;
 }
 
 bool TemplateDeclaration::hasStaticCtorOrDtor()
@@ -2270,6 +2406,7 @@ MATCH TypeFunction::deduceType(Scope *sc, Type *tparam, TemplateParameters *para
         {
             Parameter *fparam = Parameter::getNth(tp->parameters, i);
             fparam->type = fparam->type->addStorageClass(fparam->storageClass);
+            fparam->storageClass &= ~(STC_TYPECTOR | STCin);
         }
         //printf("\t-> this   = %d, ", ty); print();
         //printf("\t-> tparam = %d, ", tparam->ty); tparam->print();
@@ -3532,6 +3669,19 @@ MATCH TemplateValueParameter::matchArg(Scope *sc,
         ei = ei->optimize(WANTvalue | WANTinterpret);
     }
 
+    //printf("\tvalType: %s, ty = %d\n", valType->toChars(), valType->ty);
+    vt = valType->semantic(0, sc);
+    //printf("ei: %s, ei->type: %s\n", ei->toChars(), ei->type->toChars());
+    //printf("vt = %s\n", vt->toChars());
+
+    if (ei->type)
+    {
+        m = (MATCH)ei->implicitConvTo(vt);
+        //printf("m: %d\n", m);
+        if (!m)
+            goto Lnomatch;
+    }
+
     if (specValue)
     {
         if (!ei || ei == edummy)
@@ -3546,6 +3696,7 @@ MATCH TemplateValueParameter::matchArg(Scope *sc,
 
         ei = ei->syntaxCopy();
         ei = ei->semantic(sc);
+        ei = ei->implicitCastTo(sc, vt);
         ei = ei->optimize(WANTvalue | WANTinterpret);
         //ei->type = ei->type->toHeadMutable();
         //printf("\tei: %s, %s\n", ei->toChars(), ei->type->toChars());
@@ -3553,24 +3704,20 @@ MATCH TemplateValueParameter::matchArg(Scope *sc,
         if (!ei->equals(e))
             goto Lnomatch;
     }
-    else if (dedtypes->tdata()[i])
-    {   // Must match already deduced value
-        Expression *e = (Expression *)dedtypes->tdata()[i];
-
-        if (!ei || !ei->equals(e))
-            goto Lnomatch;
-    }
-
-    //printf("\tvalType: %s, ty = %d\n", valType->toChars(), valType->ty);
-    vt = valType->semantic(0, sc);
-    //printf("ei: %s, ei->type: %s\n", ei->toChars(), ei->type->toChars());
-    //printf("vt = %s\n", vt->toChars());
-    if (ei->type)
+    else
     {
-        m = (MATCH)ei->implicitConvTo(vt);
-        //printf("m: %d\n", m);
-        if (!m)
-            goto Lnomatch;
+        if (dedtypes->tdata()[i])
+        {   // Must match already deduced value
+            Expression *e = (Expression *)dedtypes->tdata()[i];
+
+            if (!ei || !ei->equals(e))
+                goto Lnomatch;
+        }
+        else if (m != MATCHexact)
+        {
+            ei = ei->implicitCastTo(sc, vt);
+            ei = ei->optimize(WANTvalue | WANTinterpret);
+        }
     }
     dedtypes->tdata()[i] = ei;
 
@@ -5119,7 +5266,7 @@ void TemplateInstance::printInstantiationTrace()
         return;
 
     const unsigned max_shown = 6;
-    const char format[] = "%s:        instantiated from here: %s\n";
+    const char format[] = "instantiated from here: %s";
 
     // determine instantiation depth and number of recursive instantiations
     int n_instantiations = 1;
@@ -5142,7 +5289,7 @@ void TemplateInstance::printInstantiationTrace()
     {
         for (TemplateInstance *cur = this; cur; cur = cur->tinst)
         {
-            fprintf(stdmsg, format, cur->loc.toChars(), cur->toChars());
+            errorSupplemental(cur->loc, format, cur->toChars());
         }
     }
     else if (n_instantiations - n_totalrecursions <= max_shown)
@@ -5160,9 +5307,9 @@ void TemplateInstance::printInstantiationTrace()
             else
             {
                 if (recursionDepth)
-                    fprintf(stdmsg, "%s:        %d recursive instantiations from here: %s\n", cur->loc.toChars(), recursionDepth+2, cur->toChars());
+                    errorSupplemental(cur->loc, "%d recursive instantiations from here: %s", recursionDepth+2, cur->toChars());
                 else
-                    fprintf(stdmsg,format, cur->loc.toChars(), cur->toChars());
+                    errorSupplemental(cur->loc, format, cur->toChars());
                 recursionDepth = 0;
             }
         }
@@ -5175,11 +5322,11 @@ void TemplateInstance::printInstantiationTrace()
         for (TemplateInstance *cur = this; cur; cur = cur->tinst)
         {
             if (i == max_shown / 2)
-                fprintf(stdmsg,"    ... (%d instantiations, -v to show) ...\n", n_instantiations - max_shown);
+                errorSupplemental(cur->loc, "... (%d instantiations, -v to show) ...", n_instantiations - max_shown);
 
             if (i < max_shown / 2 ||
                 i >= n_instantiations - max_shown + max_shown / 2)
-                fprintf(stdmsg, format, cur->loc.toChars(), cur->toChars());
+                errorSupplemental(cur->loc, format, cur->toChars());
             ++i;
         }
     }

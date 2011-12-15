@@ -334,6 +334,7 @@ struct Type : Object
 struct TypeError : Type
 {
     TypeError();
+    Type *syntaxCopy();
 
     void toCBuffer(OutBuffer *buf, Identifier *ident, HdrGenState *hgs);
 
@@ -901,6 +902,7 @@ struct TypeNull : Type
 {
     TypeNull();
 
+    Type *syntaxCopy();
     void toDecoBuffer(OutBuffer *buf, int flag);
     MATCH implicitConvTo(Type *to);
 
