@@ -751,6 +751,7 @@ code *movregconst (code *c , unsigned reg , targ_size_t value , regm_t flags );
 code *genjmp (code *c , unsigned op , unsigned fltarg , block *targ );
 code *prolog (void );
 void epilog (block *b);
+code *gen_spill_reg(Symbol *s, bool toreg);
 cd_t cdframeptr;
 cd_t cdgot;
 code *load_localgot();
@@ -919,21 +920,24 @@ void cgsched_pentium(code **pc,regm_t scratch);
 
 #if OMFOBJ
 
+struct Ledatarec;
+
 struct seg_data
 {
-    int                  SDseg;         // omf file segment index
+    int                  SDseg;         // index into SegData[]
     targ_size_t          SDoffset;      // starting offset for data
 
     bool isfarseg;
-    int seg;                            // segment number
+    int segidx;                         // internal object file segment number
     int lnameidx;                       // lname idx of segment name
     int classidx;                       // lname idx of class name
     unsigned attr;                      // segment attribute
     targ_size_t origsize;               // original size
     long seek;                          // seek position in output file
+    Ledatarec *ledata;                  // current one we're filling in
 };
 
-extern  targ_size_t Coffset;
+//extern  targ_size_t Coffset;
 
 #endif
 
@@ -955,7 +959,7 @@ struct linnum_data
 
 struct seg_data
 {
-    int                  SDseg;         // segment index
+    int                  SDseg;         // segment index into SegData[]
     IDXSEC               SDshtidx;      // section header table index
     targ_size_t          SDoffset;      // starting offset for data
     Outbuffer           *SDbuf;         // buffer to hold data
@@ -979,7 +983,6 @@ struct seg_data
     int isCode();
 };
 
-#define Coffset SegData[cseg]->SDoffset
 
 #endif
 
@@ -987,7 +990,7 @@ extern seg_data **SegData;
 #define Offset(seg) SegData[seg]->SDoffset
 #define Doffset SegData[DATA]->SDoffset
 #define CDoffset SegData[CDATA]->SDoffset
-#define UDoffset SegData[UDATA]->SDoffset
+#define Coffset SegData[cseg]->SDoffset
 
 #if __cplusplus && TX86
 }

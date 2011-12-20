@@ -1183,9 +1183,6 @@ void outjmptab(block *b)
   /* Any alignment bytes necessary */
   alignbytes = align(0,*poffset) - *poffset;
   obj_lidata(jmpseg,*poffset,alignbytes);
-#if OMFOBJ
-  *poffset += alignbytes;
-#endif
 
   def = list_block(b->Bsucc)->Boffset;  /* default address              */
   assert(vmin <= vmax);
@@ -1226,6 +1223,7 @@ void outswitab(block *b)
 
   if (config.flags & CFGromable)
   {     poffset = &Coffset;
+        assert(cseg == CODE);
         seg = cseg;
   }
   else
@@ -1235,11 +1233,7 @@ void outswitab(block *b)
   }
   offset = *poffset;
   alignbytes = align(0,*poffset) - *poffset;
-  //printf("\t*poffset = x%x, alignbytes = %d, intsize = %d\n", *poffset, alignbytes, intsize);
   obj_lidata(seg,*poffset,alignbytes);  /* any alignment bytes necessary */
-#if OMFOBJ
-  *poffset += alignbytes;
-#endif
   assert(*poffset == offset + alignbytes);
 
   sz = intsize;
@@ -3314,6 +3308,48 @@ code *cod3_load_got()
     assert(0);
     return NULL;
 #endif
+}
+
+code* gen_spill_reg(Symbol* s, bool toreg)
+{
+    code *c;
+    code cs;
+    regm_t keepmsk = toreg ? RMload : RMstore;
+    int sz = type_size(s->Stype);
+
+    elem* e = el_var(s); // so we can trick getlvalue() into working for us
+
+    if (mask[s->Sreglsw] & XMMREGS)
+    {   // Convert to save/restore of XMM register
+        assert(sz == 4 || sz == 8);                         // float or double
+        if (toreg)
+            cs.Iop = (sz == 4) ? 0xF30F10 : 0xF20F10;       // MOVSS/D xreg,mem
+        else
+            cs.Iop = (sz == 4) ? 0xF30F11 : 0xF20F11;       // MOVSS/D mem,xreg
+        c = getlvalue(&cs,e,keepmsk);
+        cs.orReg(s->Sreglsw - XMM0);
+        c = gen(c,&cs);
+    }
+    else
+    {
+        cs.Iop = toreg ? 0x8B : 0x89; // MOV reg,mem[ESP] : MOV mem[ESP],reg
+        cs.Iop ^= (sz == 1);
+        c = getlvalue(&cs,e,keepmsk);
+        cs.orReg(s->Sreglsw);
+        if (I64 && sz == 1 && s->Sreglsw >= 4)
+            cs.Irex |= REX;
+        c = gen(c,&cs);
+        if (sz > REGSIZE)
+        {
+            cs.setReg(s->Sregmsw);
+            getlvalue_msw(&cs);
+            c = gen(c,&cs);
+        }
+    }
+
+    el_free(e);
+
+    return c;
 }
 
 /****************************

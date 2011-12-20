@@ -3617,3 +3617,30 @@ void test6919b()
     assert(val == "1");
 }
 static assert({ test6919b(); return true; }());
+
+/**************************************************
+    6995
+**************************************************/
+
+struct Foo6995
+{
+    static size_t index(size_t v)()
+    {
+        return v;
+    }
+}
+
+static assert(Foo6995.index!(27)() == 27);
+
+/**************************************************
+    7043 ref with -inline
+**************************************************/
+
+int bug7043(S)(ref int x) {
+    return x;
+}
+
+static assert( {
+    int i = 416;
+    return bug7043!(char)(i);
+}() == 416 );

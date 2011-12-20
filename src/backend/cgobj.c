@@ -189,8 +189,6 @@ struct Ledatarec
     int pubnamidx;
 };
 
-#define list_ledata(dl) ((Ledatarec *)list_ptr(dl))
-
 /*****************************
  * For defining segments.
  */
@@ -217,24 +215,6 @@ struct Ledatarec
 
 #define USE32_CODE      (4+2)           // use32 + execute/read
 #define USE32_DATA      (4+3)           // use32 + read/write
-
-/**********************
- * Struct to keep track of far segments and comdats.
- */
-
-#if 0
-typedef struct Farseg
-{
-    bool isfarseg;
-    int seg;                            // segment number
-    int lnameidx;                       // lname idx of segment name
-    int classidx;                       // lname idx of class name
-    unsigned attr;                      // segment attribute
-    targ_size_t origsize;               // original size
-    targ_size_t SDoffset;               // current size
-    long seek;                          // seek position in output file
-} Farseg;
-#endif
 
 /*****************************
  * Line number support.
@@ -270,11 +250,7 @@ struct Objstate
     int fdsegattr;      // far data segment attribute
     int csegattr;       // code segment attribute
 
-    targ_size_t codeSegOffset;  // size of default code segment
-
-    int farsegi;                // how many in farseg[]
-    int lastfarcodesegi;        // index of last far code seg
-    int lastfardatasegi;        // index of last far data seg
+    int lastfardatasegi;        // SegData[] index of last far data seg
 
     int LOCoffset;
     int LOCpointer;
@@ -295,8 +271,7 @@ struct Objstate
     int fixup_count;
 #endif
 
-    Ledatarec *ledata;
-    list_t ledata_list;         // list of Ledatarec blocks
+    size_t ledatai;             // max index used in ledatas[]
 
     // Line numbers
     list_t linnum_list;
@@ -313,16 +288,13 @@ struct Objstate
     vec_t offvec;               // and offsets used
 #endif
 
-    int fiseg;                  // segment number of FI segment
-    int fisegi;                 // index into farseg[] of FI segment
+    int fisegi;                 // SegData[] index of FI segment
 
 #if MARS
-    int fmseg;                  // segment number of FM segment
-    int fmsegi;                 // index into farseg[] of FM segment
+    int fmsegi;                 // SegData[] of FM segment
 #endif
 
-    int tlsseg;                 // TLS segment
-    int tlssegi;                // index into farseg[] of tls segment
+    int tlssegi;                // SegData[] of tls segment
     int fardataidx;
 
     char pubdata[1024];
@@ -332,19 +304,19 @@ struct Objstate
     int extdatai;
 
     // For obj_far16thunk
-    int code16segi;
-    int code16;
+    int code16segi;             // SegData[] index
     targ_size_t CODE16offset;
 
     int fltused;
     int nullext;
 };
 
+Ledatarec **ledatas;
+size_t ledatamax;
+
 seg_data **SegData;
 static int seg_count;
 static int seg_max;
-
-targ_size_t     Coffset;        /* size of current code segment         */
 
 static Objstate obj;
 
@@ -360,7 +332,7 @@ STATIC void obj_modend();
 STATIC void objfixupp (struct FIXUP *);
 STATIC void outextdata();
 STATIC void outpubdata();
-STATIC void ledata_new (int seg,targ_size_t offset);
+STATIC Ledatarec *ledata_new(int seg,targ_size_t offset);
 
 char *id_compress(char *id, int idlen);
 
@@ -535,7 +507,7 @@ seg_data *getsegment()
     if (seg_count == seg_max)
     {
         seg_max += 10;
-        SegData = (seg_data **)mem_realloc(SegData, seg_max * sizeof(seg_data));
+        SegData = (seg_data **)mem_realloc(SegData, seg_max * sizeof(seg_data *));
         memset(&SegData[seg_count], 0, 10 * sizeof(seg_data *));
     }
     assert(seg_count < seg_max);
@@ -546,6 +518,7 @@ seg_data *getsegment()
 
     seg_data *pseg = SegData[seg];
     pseg->SDseg = seg;
+    pseg->segidx = 0;
     return pseg;
 }
 
@@ -564,9 +537,6 @@ void obj_init(Outbuffer *objbuf, const char *filename, const char *csegname)
         obj.buf = objbuf;
         obj.buf->reserve(40000);
 
-        obj.tlsseg = UNKNOWN;
-
-        obj.lastfarcodesegi = -1;
         obj.lastfardatasegi = -1;
 
         obj.mlidata = LIDATA;
@@ -625,12 +595,22 @@ void obj_init(Outbuffer *objbuf, const char *filename, const char *csegname)
         SegData[DATA]->SDseg = DATA;
         SegData[CDATA]->SDseg = CDATA;
         SegData[UDATA]->SDseg = UDATA;
+
+        SegData[CODE]->segidx = CODE;
+        SegData[DATA]->segidx = DATA;
+        SegData[CDATA]->segidx = CDATA;
+        SegData[UDATA]->segidx = UDATA;
+
         seg_count = UDATA;
 
         if (config.fulltypes)
         {
             SegData[DEBSYM]->SDseg = DEBSYM;
             SegData[DEBTYP]->SDseg = DEBTYP;
+
+            SegData[DEBSYM]->segidx = DEBSYM;
+            SegData[DEBTYP]->segidx = DEBTYP;
+
             seg_count = DEBTYP;
         }
 
@@ -670,7 +650,6 @@ void obj_termfile()
 void obj_term()
 {
         //printf("obj_term()\n");
-        int i;
         list_t dl;
         unsigned long size;
 
@@ -687,18 +666,18 @@ void obj_term()
         outpubdata();                   // finish writing PUBDEFs
 
         // Put out LEDATA records and associated fixups
-        obj.ledata_list = list_reverse(obj.ledata_list);
-        for (dl = obj.ledata_list; dl; dl = list_next(dl))
-        {   Ledatarec *d = list_ledata(dl);
+        for (size_t i = 0; i < obj.ledatai; i++)
+        {   Ledatarec *d = ledatas[i];
 
             if (d->i)                   // if any data in this record
             {   // Fill in header
                 int headersize;
                 int rectyp;
-                int lseg = d->lseg;
+                assert(d->lseg > 0 && d->lseg <= seg_count);
+                int lseg = SegData[d->lseg]->segidx;
                 char header[sizeof(d->header)];
 
-                if (lseg < 0)   // if COMDAT
+                if (seg_is_comdat(lseg))   // if COMDAT
                 {
                     header[0] = d->flags | (d->offset ? 1 : 0); // continuation flag
                     header[1] = d->alloctyp;
@@ -747,7 +726,7 @@ void obj_term()
             }
         }
 #if TERMCODE
-        list_free(&obj.ledata_list,mem_freefp);
+        //list_free(&obj.ledata_list,mem_freefp);
 #endif
 
         linnum_term();
@@ -758,15 +737,10 @@ void obj_term()
         obj_theadr(obj.modname);
         objheader(obj.csegname);
         mem_free(obj.csegname);
-        if (obj.lastfarcodesegi != -1)
-        {
-            SegData[obj.lastfarcodesegi]->SDoffset = Coffset;
-            Coffset = obj.codeSegOffset;                // reset for benefit of next line
-        }
-        objseggrp(Coffset,Doffset,0,UDoffset);  // do real sizes
+        objseggrp(SegData[CODE]->SDoffset,Doffset,0,SegData[UDATA]->SDoffset);  // do real sizes
 
         // Update any out-of-date far segment sizes
-        for (i = 0; i <= seg_count; i++)
+        for (size_t i = 0; i <= seg_count; i++)
         {   seg_data *f = SegData[i];
             if (f->isfarseg && f->origsize != f->SDoffset)
             {   obj.buf->setsize(f->seek);
@@ -775,6 +749,7 @@ void obj_term()
         }
         //mem_free(obj.farseg);
 
+        //printf("Ledata max = %d\n", obj.ledatai);
 #if 0
         printf("Max # of fixups = %d\n",obj.fixup_count);
 #endif
@@ -805,16 +780,16 @@ void objlinnum(Srcpos srcpos,targ_size_t offset)
     srcpos.print("");
 #endif
 
-    char linos2 = config.exe == EX_OS2 && cseg >= 0;
+    char linos2 = config.exe == EX_OS2 && !seg_is_comdat(SegData[cseg]->segidx);
 
 #if MARS
     if (!obj.term &&
-        (cseg < 0 || (srcpos.Sfilename && srcpos.Sfilename != obj.modname)))
+        (seg_is_comdat(SegData[cseg]->segidx) || (srcpos.Sfilename && srcpos.Sfilename != obj.modname)))
 #else
     if (!srcpos.Sfilptr)
         return;
     sfile_debug(&srcpos_sfile(srcpos));
-    if (!obj.term && (!(srcpos_sfile(srcpos).SFflags & SFtop) || (cseg < 0 && !obj.term)))
+    if (!obj.term && (!(srcpos_sfile(srcpos).SFflags & SFtop) || (seg_is_comdat(SegData[cseg]->segidx) && !obj.term)))
 #endif
     {   // Not original source file, or a COMDAT.
         // Save data away and deal with it at close of compile.
@@ -867,7 +842,7 @@ void objlinnum(Srcpos srcpos,targ_size_t offset)
         if (!obj.linrec)                        // if not allocated
         {       obj.linrec = (char *) mem_calloc(LINRECMAX);
                 obj.linrec[0] = 0;              // base group / flags
-                obj.linrecheader = 1 + insidx(obj.linrec + 1,cseg < 0 ? obj.pubnamidx : cseg);
+                obj.linrecheader = 1 + insidx(obj.linrec + 1,seg_is_comdat(SegData[cseg]->segidx) ? obj.pubnamidx : SegData[cseg]->segidx);
                 obj.linreci = obj.linrecheader;
                 obj.recseg = cseg;
 #if MULTISCOPE
@@ -884,14 +859,14 @@ void objlinnum(Srcpos srcpos,targ_size_t offset)
                 }
 
                 // Select record type to use
-                obj.mlinnum = (cseg < 0) ? LINSYM : LINNUM;
+                obj.mlinnum = seg_is_comdat(SegData[cseg]->segidx) ? LINSYM : LINNUM;
                 if (I32 && !(config.flags & CFGeasyomf))
                     obj.mlinnum++;
         }
         else if (obj.linreci > LINRECMAX - (2 + intsize))
         {       objrecord(obj.mlinnum,obj.linrec,obj.linreci);  // output data
                 obj.linreci = obj.linrecheader;
-                if (cseg < 0)                   // if LINSYM record
+                if (seg_is_comdat(SegData[cseg]->segidx))        // if LINSYM record
                     obj.linrec[0] |= 1;         // continuation bit
         }
 #if MULTISCOPE
@@ -1035,6 +1010,7 @@ STATIC void linnum_term()
         while (1)
         {
             cseg = ln->cseg;
+            assert(cseg > 0);
             obj.pubnamidx = ln->seg;
 #if MARS
             srcpos.Sfilename = ln->filename;
@@ -1071,6 +1047,7 @@ STATIC void linnum_term()
         }
     }
     cseg = csegsave;
+    assert(cseg > 0);
 #if MULTISCOPE
     vec_free(obj.linvec);
     vec_free(obj.offvec);
@@ -1565,9 +1542,6 @@ void obj_staticctor(Symbol *s,int dtor,int seg)
     static char lnamedtor[] = "\04XOFB\03XOF\04XOFE";
     static char lnamedtorf[] = "\03XOB\02XO\03XOE";
 
-    int dsegattr;
-    int i;
-
     symbol_debug(s);
 
     // Determine if near or far function
@@ -1576,11 +1550,11 @@ void obj_staticctor(Symbol *s,int dtor,int seg)
     // Put out LNAMES record
     objrecord(LNAMES,lnamector,sizeof(lnamector) - 1);
 
-    dsegattr = I32
+    int dsegattr = I32
         ? SEG_ATTR(SEG_ALIGN4,SEG_C_PUBLIC,0,USE32)
         : SEG_ATTR(SEG_ALIGN2,SEG_C_PUBLIC,0,USE16);
 
-    for (i = 0; i < 5; i++)
+    for (int i = 0; i < 5; i++)
     {   int sz;
 
         sz = (i == seg) ? 4 : 0;
@@ -1589,12 +1563,14 @@ void obj_staticctor(Symbol *s,int dtor,int seg)
         objsegdef(dsegattr,sz,obj.lnameidx,DATACLASS);
 
         if (i == seg)
-            reftoident(obj.segidx,0,s,0,0);     // put out function pointer
+        {
+            seg_data *pseg = getsegment();
+            pseg->segidx = obj.segidx;
+            reftoident(pseg->SDseg,0,s,0,0);     // put out function pointer
+        }
 
+        obj.segidx++;
         obj.lnameidx++;
-
-        seg_data *pseg = getsegment();
-        pseg->SDseg = obj.segidx++;
     }
 
     if (dtor)
@@ -1671,8 +1647,8 @@ void obj_funcptr(Symbol *s)
     // size is NPTRSIZE or FPTRSIZE
     objsegdef(dsegattr,(i & 2) + tysize[TYnptr],obj.lnameidx + 1,DATACLASS);
     seg_data *pseg = getsegment();
-    pseg->SDseg = obj.segidx;
-    reftoident(obj.segidx,0,s,0,0);     // put out function pointer
+    pseg->segidx = obj.segidx;
+    reftoident(pseg->SDseg,0,s,0,0);     // put out function pointer
     obj.segidx++;
 
     // Put out ending segment
@@ -1702,7 +1678,7 @@ void obj_ehtables(Symbol *sfunc,targ_size_t size,Symbol *ehsym)
 
     symbol_debug(sfunc);
 
-    if (obj.fiseg == 0)
+    if (obj.fisegi == 0)
     {
         // Put out LNAMES record
         objrecord(LNAMES,lnames,sizeof(lnames) - 1);
@@ -1720,7 +1696,7 @@ void obj_ehtables(Symbol *sfunc,targ_size_t size,Symbol *ehsym)
         obj.fisegi = obj_newfarseg(0,DATACLASS);
         objsegdef(dsegattr,0,obj.lnameidx,DATACLASS);
         SegData[obj.fisegi]->attr = dsegattr;
-        obj.fiseg = obj.segidx;
+        assert(SegData[obj.fisegi]->segidx == obj.segidx);
 
         // Put out ending segment
         objsegdef(dsegattr,0,obj.lnameidx + 1,DATACLASS);
@@ -1729,9 +1705,9 @@ void obj_ehtables(Symbol *sfunc,targ_size_t size,Symbol *ehsym)
         obj.segidx += 2;
     }
     offset = SegData[obj.fisegi]->SDoffset;
-    offset += reftoident(obj.fiseg,offset,sfunc,0,LARGECODE ? CFoff | CFseg : CFoff);   // put out function pointer
-    offset += reftoident(obj.fiseg,offset,ehsym,0,0);   // pointer to data
-    obj_bytes(obj.fiseg,offset,intsize,&size);          // size of function
+    offset += reftoident(obj.fisegi,offset,sfunc,0,LARGECODE ? CFoff | CFseg : CFoff);   // put out function pointer
+    offset += reftoident(obj.fisegi,offset,ehsym,0,0);   // pointer to data
+    obj_bytes(obj.fisegi,offset,intsize,&size);          // size of function
     SegData[obj.fisegi]->SDoffset = offset + intsize;
 }
 
@@ -1749,18 +1725,15 @@ void obj_moduleinfo(Symbol *scc)
     static char lnames[] =
     {   "\03FMB\02FM\03FME"
     };
-    int i;
-    int dsegattr;
-    targ_size_t offset;
 
     symbol_debug(scc);
 
-    if (obj.fmseg == 0)
+    if (obj.fmsegi == 0)
     {
         // Put out LNAMES record
         objrecord(LNAMES,lnames,sizeof(lnames) - 1);
 
-        dsegattr = I32
+        int dsegattr = I32
             ? SEG_ATTR(SEG_ALIGN4,SEG_C_PUBLIC,0,USE32)
             : SEG_ATTR(SEG_ALIGN2,SEG_C_PUBLIC,0,USE16);
 
@@ -1773,7 +1746,7 @@ void obj_moduleinfo(Symbol *scc)
         obj.fmsegi = obj_newfarseg(0,DATACLASS);
         objsegdef(dsegattr,0,obj.lnameidx,DATACLASS);
         SegData[obj.fmsegi]->attr = dsegattr;
-        obj.fmseg = obj.segidx;
+        assert(SegData[obj.fmsegi]->segidx == obj.segidx);
 
         // Put out ending segment
         objsegdef(dsegattr,0,obj.lnameidx + 1,DATACLASS);
@@ -1781,8 +1754,9 @@ void obj_moduleinfo(Symbol *scc)
         obj.lnameidx += 2;              // for next time
         obj.segidx += 2;
     }
-    offset = SegData[obj.fmsegi]->SDoffset;
-    offset += reftoident(obj.fmseg,offset,scc,0,LARGECODE ? CFoff | CFseg : CFoff);     // put out function pointer
+
+    targ_size_t offset = SegData[obj.fmsegi]->SDoffset;
+    offset += reftoident(obj.fmsegi,offset,scc,0,LARGECODE ? CFoff | CFseg : CFoff);     // put out function pointer
     SegData[obj.fmsegi]->SDoffset = offset;
 }
 
@@ -1825,30 +1799,31 @@ int obj_comdat(Symbol *s)
     objrecord(CEXTDEF,cextdef,p - cextdef);
     s->Sxtrnnum = ++obj.extidx;
 
+    seg_data *pseg = getsegment();
+    pseg->segidx = -obj.extidx;
+    assert(pseg->SDseg > 0);
+
     // Start new LEDATA record for this COMDAT
-    ledata_new(-obj.extidx,0);
-    obj.ledata->typidx = ti;
-    obj.ledata->pubnamidx = obj.lnameidx - 1;
+    Ledatarec *lr = ledata_new(pseg->SDseg,0);
+    lr->typidx = ti;
+    lr->pubnamidx = obj.lnameidx - 1;
     if (isfunc)
-    {   obj.ledata->pubbase = cseg;
-        if (s->Sclass == SCcomdat || s->Sclass == SCinline
-#if MARS
-            //|| s->Sclass == SCglobal
-#endif
-           )
-            obj.ledata->alloctyp = 0x10 | 0x00; // pick any instance | explicit allocation
-        cseg = obj.ledata->lseg;
+    {   lr->pubbase = SegData[cseg]->segidx;
+        if (s->Sclass == SCcomdat || s->Sclass == SCinline)
+            lr->alloctyp = 0x10 | 0x00; // pick any instance | explicit allocation
+        cseg = lr->lseg;
+        assert(cseg > 0 && cseg <= seg_count);
         obj.pubnamidx = obj.lnameidx - 1;
         Coffset = 0;
         if (tyfarfunc(ty) && strcmp(s->Sident,"main") == 0)
-            obj.ledata->alloctyp |= 1;  // because MS does for unknown reasons
+            lr->alloctyp |= 1;  // because MS does for unknown reasons
     }
     else
     {   unsigned char atyp;
 
         switch (ty & mTYLINK)
         {   case 0:
-            case mTYnear:       obj.ledata->pubbase = DATA;
+            case mTYnear:       lr->pubbase = DATA;
 #if 0
                                 atyp = 0;       // only one instance is allowed
 #else
@@ -1858,25 +1833,23 @@ int obj_comdat(Symbol *s)
                                 break;
 
 #if TARGET_SEGMENTED
-            case mTYcs:         obj.ledata->flags |= 0x08;      // data in code seg
+            case mTYcs:         lr->flags |= 0x08;      // data in code seg
                                 atyp = 0x11;    break;
 
             case mTYfar:        atyp = 0x12;    break;
 #endif
-            case mTYthread:     obj.ledata->pubbase = obj_tlsseg()->SDseg;
+            case mTYthread:     lr->pubbase = obj_tlsseg()->segidx;
                                 atyp = 0x10;    // pick any (also means it is
                                                 // not searched for in a library)
                                 break;
 
             default:            assert(0);
         }
-        obj.ledata->alloctyp = atyp;
+        lr->alloctyp = atyp;
     }
     if (s->Sclass == SCstatic)
-        obj.ledata->flags |= 0x04;      // local bit (make it an "LCOMDAT")
-    seg_data *pseg = getsegment();
-    pseg->SDseg = -obj.extidx;
-    return -obj.extidx;
+        lr->flags |= 0x04;      // local bit (make it an "LCOMDAT")
+    return pseg->SDseg;
 }
 
 /**********************************
@@ -1886,7 +1859,7 @@ int obj_comdat(Symbol *s)
 
 void obj_setcodeseg(int seg,targ_size_t offset)
 {
-    assert(0 < seg && seg < obj.segidx);
+    assert(0 < seg && seg <= seg_count);
     cseg = seg;
     Coffset = offset;
 }
@@ -1906,25 +1879,18 @@ void obj_setcodeseg(int seg,targ_size_t offset)
 
 int obj_codeseg(char *name,int suffix)
 {
-    char *lnames;
-    size_t lnamesize;
-
     if (!name)
     {
         if (cseg != CODE)
         {
-            if (obj.lastfarcodesegi != -1)
-                SegData[obj.lastfarcodesegi]->SDoffset = Coffset;
-            obj.lastfarcodesegi = -1;
-            Coffset = obj.codeSegOffset;
             cseg = CODE;
         }
         return cseg;
     }
 
     // Put out LNAMES record
-    lnamesize = strlen(name) + suffix * 5;
-    lnames = (char *) alloca(1 + lnamesize + 1);
+    size_t lnamesize = strlen(name) + suffix * 5;
+    char *lnames = (char *) alloca(1 + lnamesize + 1);
     lnames[0] = lnamesize;
     assert(lnamesize <= (255 - 2 - sizeof(int)*3));
     strcpy(lnames + 1,name);
@@ -1932,18 +1898,16 @@ int obj_codeseg(char *name,int suffix)
         strcat(lnames + 1,"_TEXT");
     objrecord(LNAMES,lnames,lnamesize + 1);
 
-    if (obj.lastfarcodesegi == -1)
-        obj.codeSegOffset = Coffset;            // size of default code seg
-    else
-        SegData[obj.lastfarcodesegi]->SDoffset = Coffset;
-    obj.lastfarcodesegi = obj_newfarseg(0,4);
-    SegData[obj.lastfarcodesegi]->attr = obj.csegattr;
-    cseg = obj.segidx;                  // new code segment index
+    cseg = obj_newfarseg(0,4);
+    SegData[cseg]->attr = obj.csegattr;
+    SegData[cseg]->segidx = obj.segidx;
+    assert(cseg > 0);
+    obj.segidx++;
     Coffset = 0;
 
     objsegdef(obj.csegattr,0,obj.lnameidx++,4);
 
-    return obj.segidx++;
+    return cseg;
 }
 
 /*********************************
@@ -1961,7 +1925,7 @@ seg_data *obj_tlsseg()
     //static char tlssegname[] = "\05.tls$\03tls";
     static const char tlssegname[] = "\05.tls$\03tls\04.tls\010.tls$ZZZ";
 
-    if (obj.tlsseg == UNKNOWN)
+    if (obj.tlssegi == 0)
     {   int segattr;
 
         objrecord(LNAMES,tlssegname,sizeof(tlssegname) - 1);
@@ -1976,10 +1940,9 @@ seg_data *obj_tlsseg()
 
         // Put out .tls$ segment definition record
         obj.tlssegi = obj_newfarseg(0,obj.lnameidx + 1);
-        obj.tlsseg = obj.segidx;
         objsegdef(segattr,0,obj.lnameidx,obj.lnameidx + 1);
         SegData[obj.tlssegi]->attr = segattr;
-        SegData[obj.tlssegi]->SDseg = obj.tlsseg;
+        SegData[obj.tlssegi]->segidx = obj.segidx;
 
         // Put out ending segment (.tls$ZZZ)
         objsegdef(segattr,0,obj.lnameidx + 3,obj.lnameidx + 1);
@@ -1998,6 +1961,7 @@ seg_data *obj_tlsseg()
  *      size    Size of the segment to be created
  * Returns:
  *      segment index of far data segment created
+ *      *poffset start of the data for the far data segment
  */
 
 int obj_fardata(char *name,targ_size_t size,targ_size_t *poffset)
@@ -2014,7 +1978,7 @@ int obj_fardata(char *name,targ_size_t size,targ_size_t *poffset)
         )
     {   *poffset = SegData[i]->SDoffset;        // BUG: should align this
         SegData[i]->SDoffset += size;
-        return SegData[i]->seg;
+        return i;
     }
 
     // No. We need to build a new far segment
@@ -2044,9 +2008,10 @@ int obj_fardata(char *name,targ_size_t size,targ_size_t *poffset)
 
     // Generate segment definition
     objsegdef(obj.fdsegattr,size,obj.lnameidx++,obj.fardataidx);
+    obj.segidx++;
 
     *poffset = 0;
-    return obj.segidx++;
+    return SegData[obj.lastfardatasegi]->SDseg;
 }
 
 /************************************
@@ -2061,27 +2026,16 @@ int obj_fardata(char *name,targ_size_t size,targ_size_t *poffset)
 
 STATIC int obj_newfarseg(targ_size_t size,int classidx)
 {
-#if 1
-    seg_data *f;
-    f = getsegment();
-    int i = seg_count;
-    f->SDseg = obj.segidx;
-#else
-    int i = obj.farsegi++;
-    Farseg *f;
-
-    obj.farseg = (Farseg *) mem_realloc(obj.farseg,sizeof(Farseg) * obj.farsegi);
-    f = &SegData[i];
-#endif
+    seg_data *f = getsegment();
     f->isfarseg = true;
     f->seek = obj.buf->size();
-    f->seg = obj.segidx;
     f->attr = obj.fdsegattr;
     f->origsize = size;
     f->SDoffset = size;
+    f->segidx = obj.segidx;
     f->lnameidx = obj.lnameidx;
     f->classidx = classidx;
-    return i;
+    return f->SDseg;
 }
 
 /******************************
@@ -2324,6 +2278,37 @@ void obj_export(Symbol *s,unsigned argsize)
     objrecord(COMENT,coment,4 + len + 1);       // module name record
 }
 
+/*******************************
+ * Update data information about symbol
+ *      align for output and assign segment
+ *      if not already specified.
+ *
+ * Input:
+ *      sdata           data symbol
+ *      datasize        output size
+ *      seg             default seg if not known
+ * Returns:
+ *      actual seg
+ */
+
+int elf_data_start(Symbol *sdata, targ_size_t datasize, int seg)
+{
+    targ_size_t alignbytes;
+    //printf("elf_data_start(%s,size %llx,seg %d)\n",sdata->Sident,datasize,seg);
+    //symbol_print(sdata);
+
+    if (sdata->Sseg == UNKNOWN) // if we don't know then there
+        sdata->Sseg = seg;      // wasn't any segment override
+    else
+        seg = sdata->Sseg;
+    targ_size_t offset = SegData[seg]->SDoffset;
+    alignbytes = align(datasize, offset) - offset;
+    if (alignbytes)
+        obj_lidata(seg, offset, alignbytes);
+    sdata->Soffset = offset + alignbytes;
+    return seg;
+}
+
 /********************************
  * Output a public definition.
  * Input:
@@ -2345,15 +2330,14 @@ void objpubdef(int seg,Symbol *s,targ_size_t offset)
     char *p;
     unsigned ti;
 
-    _chkstack();
-
+    int idx = SegData[seg]->segidx;
     if (obj.pubdatai + 1 + (IDMAX + IDOHD) + 4 + 2 > sizeof(obj.pubdata) ||
-        seg != getindex(obj.pubdata + 1))
+        idx != getindex(obj.pubdata + 1))
         outpubdata();
     if (obj.pubdatai == 0)
     {
         obj.pubdata[0] = (seg == DATA || seg == UDATA) ? 1 : 0; // group index
-        obj.pubdatai += 1 + insidx(obj.pubdata + 1,seg);        // segment index
+        obj.pubdatai += 1 + insidx(obj.pubdata + 1,idx);        // segment index
     }
     p = &obj.pubdata[obj.pubdatai];
     len = obj_mangle(s,p);              // mangle in name
@@ -2386,7 +2370,6 @@ int objextdef(const char *name)
 {   unsigned len;
     char *e;
 
-    _chkstack();
     //dbg_printf("objextdef('%s')\n",name);
     assert(name);
     len = strlen(name);                 // length of identifier
@@ -2410,17 +2393,14 @@ int objextdef(const char *name)
  */
 
 int objextern(Symbol *s)
-{   unsigned len;
-    char *e;
-
-    _chkstack();
+{
     //dbg_printf("objextern('%s')\n",s->Sident);
     symbol_debug(s);
     if (obj.extdatai + (IDMAX + IDOHD) + 3 > sizeof(obj.extdata))
         outextdata();
 
-    e = &obj.extdata[obj.extdatai];
-    len = obj_mangle(s,e);
+    char *e = &obj.extdata[obj.extdatai];
+    unsigned len = obj_mangle(s,e);
     e[len] = 0;                 // typidx = 0
     obj.extdatai += len + 1;
     s->Sxtrnnum = ++obj.extidx;
@@ -2510,7 +2490,7 @@ int obj_comdef(Symbol *s,int flag,targ_size_t size,targ_size_t count)
 void obj_write_zeros(seg_data *pseg, targ_size_t count)
 {
     obj_lidata(pseg->SDseg, pseg->SDoffset, count);
-    pseg->SDoffset += count;
+    //pseg->SDoffset += count;
 }
 
 /***************************************
@@ -2526,13 +2506,21 @@ void obj_lidata(int seg,targ_size_t offset,targ_size_t count)
     char __ss *di;
 
     //printf("obj_lidata(seg = %d, offset = x%x, count = %d)\n", seg, offset, count);
+
+    SegData[seg]->SDoffset += count;
+
+    if (seg == UDATA)
+        return;
+    int idx = SegData[seg]->segidx;
+
+Lagain:
     if (count <= sizeof(zero))          // if shorter to use ledata
     {
         obj_bytes(seg,offset,count,zero);
         return;
     }
 
-    if (seg < 0)
+    if (seg_is_comdat(idx))
     {
         while (count > sizeof(zero))
         {
@@ -2544,7 +2532,7 @@ void obj_lidata(int seg,targ_size_t offset,targ_size_t count)
         return;
     }
 
-    i = insidx(data,seg);
+    i = insidx(data,idx);
     di = data + i;
     TOOFFSET(di,offset);
 
@@ -2559,7 +2547,10 @@ void obj_lidata(int seg,targ_size_t offset,targ_size_t count)
             TOWORD(di + 4 + 2 + 2 + 2 + 2,1);   // 1 byte of 0
             reclen = i + 4 + 5 * 2;
             objrecord(obj.mlidata,data,reclen);
-            obj_lidata(seg,offset + (count & ~0x7FFFL),count & 0x7FFF);
+
+            offset += (count & ~0x7FFFL);
+            count &= 0x7FFF;
+            goto Lagain;
         }
         else
         {
@@ -2628,7 +2619,7 @@ STATIC void obj_modend()
             case SCglobal:
                 if (s->Sseg == UNKNOWN)
                     goto Ladd;
-                if (seg_is_comdat(s->Sseg))             // if in comdat
+                if (seg_is_comdat(SegData[s->Sseg]->segidx))   // if in comdat
                     goto case_SCcomdat;
             case SClocstat:
                 external = 0;           // identifier is static or global
@@ -2678,7 +2669,7 @@ STATIC void obj_modend()
         else
         {
             fd = FD_T0;                 // target is always a segment
-            targetdatum = s->Sseg;
+            targetdatum = SegData[s->Sseg]->segidx;
             assert(targetdatum != -1);
             switch (s->Sfl)
             {
@@ -2747,7 +2738,6 @@ STATIC void objfixupp(struct FIXUP *f)
 #if 1   // store in one record
   char data[1024];
 
-  _chkstack();
   i = 0;
   for (; f; f = fn)
   {     unsigned char fd;
@@ -2804,7 +2794,7 @@ STATIC void objfixupp(struct FIXUP *f)
  * Write things out if we overflow the list.
  */
 
-STATIC void addfixup(targ_size_t offset,unsigned lcfd,
+STATIC void addfixup(Ledatarec *lr, targ_size_t offset,unsigned lcfd,
         unsigned framedatum,unsigned targetdatum)
 {   struct FIXUP *f;
 
@@ -2819,8 +2809,8 @@ STATIC void addfixup(targ_size_t offset,unsigned lcfd,
     f->FUlcfd = lcfd;
     f->FUframedatum = framedatum;
     f->FUtargetdatum = targetdatum;
-    f->FUnext = obj.ledata->fixuplist;  // link f into list
-    obj.ledata->fixuplist = f;
+    f->FUnext = lr->fixuplist;  // link f into list
+    lr->fixuplist = f;
 #ifdef DEBUG
     obj.fixup_count++;                  // gather statistics
 #endif
@@ -2834,35 +2824,48 @@ STATIC void addfixup(targ_size_t offset,unsigned lcfd,
  *      offset  starting offset of start of data for this record
  */
 
-STATIC void ledata_new(int seg,targ_size_t offset)
+STATIC Ledatarec *ledata_new(int seg,targ_size_t offset)
 {
 
-    //dbg_printf("ledata_new(seg = %d, offset = x%lx)\n",seg,offset);
-    assert(seg <= 0x7FFF);
-    obj.ledata = (Ledatarec *) mem_calloc(sizeof(Ledatarec));
-    obj.ledata->lseg = seg;
-    obj.ledata->offset = offset;
-    if (seg < 0 && offset)      // if continuation of an existing COMDAT
-    {   list_t dl;
+    //printf("ledata_new(seg = %d, offset = x%lx)\n",seg,offset);
+    assert(seg > 0 && seg <= seg_count);
 
-        for (dl = obj.ledata_list; 1; dl = list_next(dl))
-        {   Ledatarec *d;
+    if (obj.ledatai == ledatamax)
+    {
+        size_t o = ledatamax;
+        ledatamax = o * 2 + 100;
+        ledatas = (Ledatarec **)mem_realloc(ledatas, ledatamax * sizeof(Ledatarec *));
+        memset(ledatas + o, 0, (ledatamax - o) * sizeof(Ledatarec *));
+    }
+    Ledatarec *lr = ledatas[obj.ledatai];
+    if (!lr)
+    {   lr = (Ledatarec *) mem_malloc(sizeof(Ledatarec));
+        ledatas[obj.ledatai] = lr;
+    }
+    memset(lr, 0, sizeof(Ledatarec));
+    ledatas[obj.ledatai] = lr;
+    obj.ledatai++;
 
-            assert(dl);
-            d = list_ledata(dl);
+    lr->lseg = seg;
+    lr->offset = offset;
+
+    if (seg_is_comdat(SegData[seg]->segidx) && offset)      // if continuation of an existing COMDAT
+    {
+        Ledatarec *d = SegData[seg]->ledata;
+        if (d)
+        {
             if (d->lseg == seg)                 // found existing COMDAT
-            {   obj.ledata->flags = d->flags;
-                obj.ledata->alloctyp = d->alloctyp;
-                obj.ledata->align = d->align;
-                obj.ledata->typidx = d->typidx;
-                obj.ledata->pubbase = d->pubbase;
-                obj.ledata->pubnamidx = d->pubnamidx;
-                break;
+            {   lr->flags = d->flags;
+                lr->alloctyp = d->alloctyp;
+                lr->align = d->align;
+                lr->typidx = d->typidx;
+                lr->pubbase = d->pubbase;
+                lr->pubnamidx = d->pubnamidx;
             }
         }
     }
-    list_prepend(&obj.ledata_list,obj.ledata);
-//    list_append(&obj.ledata_list,obj.ledata);
+    SegData[seg]->ledata = lr;
+    return lr;
 }
 
 /***********************************
@@ -2882,38 +2885,38 @@ void obj_write_byte(seg_data *pseg, unsigned byte)
 void obj_byte(int seg,targ_size_t offset,unsigned byte)
 {   unsigned i;
 
+    Ledatarec *lr = SegData[seg]->ledata;
+    if (!lr)
+        goto L2;
+
     if (
-        (seg != obj.ledata->lseg ||             // and segments don't match
-         obj.ledata->i > LEDATAMAX - 1 ||       // or it'll overflow
-         offset < obj.ledata->offset || // underflow
-         offset > obj.ledata->offset + obj.ledata->i
-        )
+         lr->i > LEDATAMAX - 1 ||       // if it'll overflow
+         offset < lr->offset || // underflow
+         offset > lr->offset + lr->i
      )
-    {   list_t dl;
-
+    {
         // Try to find an existing ledata
-        for (dl = obj.ledata_list; dl; dl = list_next(dl))
-        {   Ledatarec *d;
-
-            d = list_ledata(dl);
+        for (size_t i = obj.ledatai; i; )
+        {   Ledatarec *d = ledatas[--i];
             if (seg == d->lseg &&       // segments match
                 offset >= d->offset &&
                 offset + 1 <= d->offset + LEDATAMAX &&
                 offset <= d->offset + d->i
                )
             {
-                obj.ledata = d;
+                lr = SegData[seg]->ledata = d;
                 goto L1;
             }
         }
-        ledata_new(seg,offset);
+L2:
+        lr = ledata_new(seg,offset);
 L1:     ;
     }
 
-  i = offset - obj.ledata->offset;
-  if (obj.ledata->i <= i)
-        obj.ledata->i = i + 1;
-  obj.ledata->data[i] = byte;           // 1st byte of data
+  i = offset - lr->offset;
+  if (lr->i <= i)
+        lr->i = i + 1;
+  lr->data[i] = byte;           // 1st byte of data
 }
 
 /***********************************
@@ -2936,13 +2939,14 @@ unsigned obj_bytes(int seg,targ_size_t offset,unsigned nbytes, void *p)
 {   unsigned n = nbytes;
 
     //dbg_printf("obj_bytes(seg=%d, offset=x%lx, nbytes=x%x, p=%p)\n",seg,offset,nbytes,p);
+    Ledatarec *lr = SegData[seg]->ledata;
+    if (!lr)
+        lr = ledata_new(seg, offset);
  L1:
     if (
-        (seg != obj.ledata->lseg ||                     // and segments don't match
-         obj.ledata->i + nbytes > LEDATAMAX ||  // or it'll overflow
-         offset < obj.ledata->offset ||         // underflow
-         offset > obj.ledata->offset + obj.ledata->i
-        )
+         lr->i + nbytes > LEDATAMAX ||  // or it'll overflow
+         offset < lr->offset ||         // underflow
+         offset > lr->offset + lr->i
      )
     {
         while (nbytes)
@@ -2950,17 +2954,17 @@ unsigned obj_bytes(int seg,targ_size_t offset,unsigned nbytes, void *p)
             offset++;
             ((char *)p)++;
             nbytes--;
-            if (obj.ledata->i + nbytes <= LEDATAMAX)
+            lr = SegData[seg]->ledata;
+            if (lr->i + nbytes <= LEDATAMAX)
                 goto L1;
         }
     }
     else
-    {   unsigned i;
-
-        i = offset - obj.ledata->offset;
-        if (obj.ledata->i < i + nbytes)
-            obj.ledata->i = i + nbytes;
-        memcpy(obj.ledata->data + i,p,nbytes);
+    {
+        unsigned i = offset - lr->offset;
+        if (lr->i < i + nbytes)
+            lr->i = i + nbytes;
+        memcpy(lr->data + i,p,nbytes);
     }
     return n;
 }
@@ -2997,21 +3001,21 @@ void objledata(int seg,targ_size_t offset,targ_size_t data,
     else
         size = tysize[TYnptr];
 
+    Ledatarec *lr = SegData[seg]->ledata;
+    if (!lr)
+         lr = ledata_new(seg, offset);
+    assert(seg == lr->lseg);
     if (
-        (seg != obj.ledata->lseg ||             // and segments don't match
-         obj.ledata->i + size > LEDATAMAX ||    // or it'll overflow
-         offset < obj.ledata->offset || // underflow
-         offset > obj.ledata->offset + obj.ledata->i
-        )
+         lr->i + size > LEDATAMAX ||    // if it'll overflow
+         offset < lr->offset || // underflow
+         offset > lr->offset + lr->i
      )
-    {   list_t dl;
-
+    {
         // Try to find an existing ledata
 //dbg_printf("seg = %d, offset = x%lx, size = %d\n",seg,offset,size);
-        for (dl = obj.ledata_list; dl; dl = list_next(dl))
-        {   Ledatarec *d;
+        for (size_t i = obj.ledatai; i; )
+        {   Ledatarec *d = ledatas[--i];
 
-            d = list_ledata(dl);
 //dbg_printf("d: seg = %d, offset = x%lx, i = x%x\n",d->lseg,d->offset,d->i);
             if (seg == d->lseg &&       // segments match
                 offset >= d->offset &&
@@ -3020,24 +3024,24 @@ void objledata(int seg,targ_size_t offset,targ_size_t data,
                )
             {
 //dbg_printf("match\n");
-                obj.ledata = d;
+                lr = SegData[seg]->ledata = d;
                 goto L1;
             }
         }
-        ledata_new(seg,offset);
+        lr = ledata_new(seg,offset);
 L1:     ;
     }
 
-    i = offset - obj.ledata->offset;
-    if (obj.ledata->i < i + size)
-        obj.ledata->i = i + size;
+    i = offset - lr->offset;
+    if (lr->i < i + size)
+        lr->i = i + size;
     if (size == 2 || !I32)
-        TOWORD(obj.ledata->data + i,data);
+        TOWORD(lr->data + i,data);
     else
-        TOLONG(obj.ledata->data + i,data);
+        TOLONG(lr->data + i,data);
     if (size == ptrsize)         // if doing a seg:offset pair
-        TOWORD(obj.ledata->data + i + tysize[TYnptr],0);        // segment portion
-    addfixup(offset - obj.ledata->offset,lcfd,idx1,idx2);
+        TOWORD(lr->data + i + tysize[TYnptr],0);        // segment portion
+    addfixup(lr, offset - lr->offset,lcfd,idx1,idx2);
 }
 
 /************************************
@@ -3063,21 +3067,22 @@ void obj_long(int seg,targ_size_t offset,unsigned long data,
 #else
     unsigned sz = I64 ? 10 : 6;
 #endif
-  if (
-        (seg != obj.ledata->lseg ||             // or segments don't match
-         obj.ledata->i + sz > LEDATAMAX || // or it'll overflow
-         offset < obj.ledata->offset || // underflow
-         offset > obj.ledata->offset + obj.ledata->i
-        )
-     )
-        ledata_new(seg,offset);
-  unsigned i = offset - obj.ledata->offset;
-  if (obj.ledata->i < i + sz)
-        obj.ledata->i = i + sz;
-  TOLONG(obj.ledata->data + i,data);
-  if (I32)                              // if 6 byte far pointers
-        TOWORD(obj.ledata->data + i + LONGSIZE,0);              // fill out seg
-  addfixup(offset - obj.ledata->offset,lcfd,idx1,idx2);
+    Ledatarec *lr = SegData[seg]->ledata;
+    if (!lr)
+         lr = ledata_new(seg, offset);
+    if (
+         lr->i + sz > LEDATAMAX || // if it'll overflow
+         offset < lr->offset || // underflow
+         offset > lr->offset + lr->i
+       )
+        lr = ledata_new(seg,offset);
+    unsigned i = offset - lr->offset;
+    if (lr->i < i + sz)
+        lr->i = i + sz;
+    TOLONG(lr->data + i,data);
+    if (I32)                              // if 6 byte far pointers
+        TOWORD(lr->data + i + LONGSIZE,0);              // fill out seg
+    addfixup(lr, offset - lr->offset,lcfd,idx1,idx2);
 }
 
 /*******************************
@@ -3103,7 +3108,7 @@ void reftodatseg(int seg,targ_size_t offset,targ_size_t val,
     {
         // The frame datum is always 1, which is DGROUP
         objledata(seg,offset,val,
-            LOCATsegrel | obj.LOCoffset | FD_F1 | FD_T4,DGROUPIDX,targetdatum);
+            LOCATsegrel | obj.LOCoffset | FD_F1 | FD_T4,DGROUPIDX,SegData[targetdatum]->segidx);
         offset += intsize;
     }
 
@@ -3133,17 +3138,18 @@ void reftofarseg(int seg,targ_size_t offset,targ_size_t val,
 {
     assert(flags);
 
+    int idx = SegData[farseg]->segidx;
     if (flags == 0 || flags & CFoff)
     {
         objledata(seg,offset,val,
-            LOCATsegrel | obj.LOCoffset | FD_F0 | FD_T4,farseg,farseg);
+            LOCATsegrel | obj.LOCoffset | FD_F0 | FD_T4,idx,idx);
         offset += intsize;
     }
 
     if (flags & CFseg)
     {
         objledata(seg,offset,0,
-            LOCATsegrel | LOCbase | FD_F0 | FD_T4,farseg,farseg);
+            LOCATsegrel | LOCbase | FD_F0 | FD_T4,idx,idx);
     }
 }
 
@@ -3160,9 +3166,8 @@ void reftofarseg(int seg,targ_size_t offset,targ_size_t val,
 void reftocodseg(int seg,targ_size_t offset,targ_size_t val)
 {   unsigned framedatum;
     unsigned lcfd;
-    int idx;
 
-    idx = cseg;
+    int idx = SegData[cseg]->segidx;
     if (seg_is_comdat(idx))             // if comdat
     {   idx = -idx;
         framedatum = idx;
@@ -3213,8 +3218,9 @@ int reftoident(int seg,targ_size_t offset,Symbol *s,targ_size_t val,
     printf("reftoident('%s' seg %d, offset x%lx, val x%lx, flags x%x)\n",
         s->Sident,seg,offset,val,flags);
     printf("Sseg = %d, Sxtrnnum = %d\n",s->Sseg,s->Sxtrnnum);
-    //symbol_print(s);
+    symbol_print(s);
 #endif
+    assert(seg > 0);
 
     ty = s->ty();
     while (1)
@@ -3301,7 +3307,7 @@ int reftoident(int seg,targ_size_t offset,Symbol *s,targ_size_t val,
         case SCglobal:
             if (s->Sseg == UNKNOWN)
                 goto Ladd;
-            if (seg_is_comdat(s->Sseg))
+            if (seg_is_comdat(SegData[s->Sseg]->segidx))
                 goto case_SCcomdat;
         case SClocstat:
             external = 0;               // identifier is static or global
@@ -3353,8 +3359,8 @@ int reftoident(int seg,targ_size_t offset,Symbol *s,targ_size_t val,
     else
     {
         lc |= FD_T4;                    // target is always a segment
-        targetdatum = s->Sseg;
-        assert(targetdatum != UNKNOWN);
+        targetdatum = SegData[s->Sseg]->segidx;
+        assert(s->Sseg != UNKNOWN);
         switch (s->Sfl)
         {
             case FLextern:
@@ -3483,22 +3489,20 @@ void obj_far16thunk(Symbol *s)
 
     //------------------------------------------
     // Generate CODE16 segment if it isn't there already
-    if (obj.code16 == 0)
+    if (obj.code16segi == 0)
     {
         // Define CODE16 segment for far16 thunks
 
         static char lname[] = { "\06CODE16" };
-        unsigned attr;
 
         // Put out LNAMES record
         objrecord(LNAMES,lname,sizeof(lname) - 1);
 
         obj.code16segi = obj_newfarseg(0,4);
-        obj.code16 = obj.segidx;                        // code16 segment index
         obj.CODE16offset = 0;
 
         // class CODE
-        attr = SEG_ATTR(SEG_ALIGN2,SEG_C_PUBLIC,0,USE16);
+        unsigned attr = SEG_ATTR(SEG_ALIGN2,SEG_C_PUBLIC,0,USE16);
         SegData[obj.code16segi]->attr = attr;
         objsegdef(attr,0,obj.lnameidx++,4);
         obj.segidx++;
@@ -3520,7 +3524,8 @@ void obj_far16thunk(Symbol *s)
 
     // Put out fixup to CODE16 part of thunk
     objledata(cseg,Coffset,obj.CODE16offset,LOCATsegrel|LOC16pointer|FD_F0|FD_T4,
-        obj.code16,obj.code16);
+        SegData[obj.code16segi]->segidx,
+        SegData[obj.code16segi]->segidx);
     Coffset += 4;
 
     L2offset = Coffset;
@@ -3532,21 +3537,23 @@ void obj_far16thunk(Symbol *s)
     //------------------------------------------
     // Output the 16 bit thunk
 
-    obj_byte(obj.code16,obj.CODE16offset++,0x9A);       //      CALLF   function
+    obj_byte(obj.code16segi,obj.CODE16offset++,0x9A);       //      CALLF   function
 
     // Make function external
     idx = objextern(s);                         // use Pascal name mangling
 
     // Output fixup for function
-    objledata(obj.code16,obj.CODE16offset,0,LOCATsegrel|LOC16pointer|FD_F2|FD_T6,
+    objledata(obj.code16segi,obj.CODE16offset,0,LOCATsegrel|LOC16pointer|FD_F2|FD_T6,
         idx,idx);
     obj.CODE16offset += 4;
 
-    obj_bytes(obj.code16,obj.CODE16offset,3,"\x66\x67\xEA");    // JMPF L2
+    obj_bytes(obj.code16segi,obj.CODE16offset,3,"\x66\x67\xEA");    // JMPF L2
     obj.CODE16offset += 3;
 
-    objledata(obj.code16,obj.CODE16offset,L2offset,
-        LOCATsegrel | LOC32pointer | FD_F1 | FD_T4,DGROUPIDX,cseg);
+    objledata(obj.code16segi,obj.CODE16offset,L2offset,
+        LOCATsegrel | LOC32pointer | FD_F1 | FD_T4,
+        DGROUPIDX,
+        SegData[cseg]->segidx);
     obj.CODE16offset += 6;
 
     SegData[obj.code16segi]->SDoffset = obj.CODE16offset;
