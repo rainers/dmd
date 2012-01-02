@@ -191,6 +191,8 @@ void Type::init()
     sizeTy[Ttuple] = sizeof(TypeTuple);
     sizeTy[Tslice] = sizeof(TypeSlice);
     sizeTy[Treturn] = sizeof(TypeReturn);
+    sizeTy[Terror] = sizeof(TypeError);
+    sizeTy[Tnull] = sizeof(TypeNull);
 
     mangleChar[Tarray] = 'A';
     mangleChar[Tsarray] = 'G';
@@ -904,6 +906,7 @@ Type *Type::makeConst()
     t->wto = NULL;
     t->swto = NULL;
     t->vtinfo = NULL;
+    t->ctype = NULL;
     //printf("-Type::makeConst() %p, %s\n", t, toChars());
     return t;
 }
@@ -927,6 +930,7 @@ Type *Type::makeInvariant()
     t->wto = NULL;
     t->swto = NULL;
     t->vtinfo = NULL;
+    t->ctype = NULL;
     return t;
 }
 
@@ -949,6 +953,7 @@ Type *Type::makeShared()
     t->wto = NULL;
     t->swto = NULL;
     t->vtinfo = NULL;
+    t->ctype = NULL;
     return t;
 }
 
@@ -971,6 +976,7 @@ Type *Type::makeSharedConst()
     t->wto = NULL;
     t->swto = NULL;
     t->vtinfo = NULL;
+    t->ctype = NULL;
     return t;
 }
 
@@ -993,6 +999,7 @@ Type *Type::makeWild()
     t->wto = NULL;
     t->swto = NULL;
     t->vtinfo = NULL;
+    t->ctype = NULL;
     return t;
 }
 
@@ -1015,6 +1022,7 @@ Type *Type::makeSharedWild()
     t->wto = NULL;
     t->swto = NULL;
     t->vtinfo = NULL;
+    t->ctype = NULL;
     return t;
 }
 
@@ -1035,6 +1043,7 @@ Type *Type::makeMutable()
     t->wto = NULL;
     t->swto = NULL;
     t->vtinfo = NULL;
+    t->ctype = NULL;
     return t;
 }
 
@@ -4776,7 +4785,7 @@ int Type::covariant(Type *t)
         goto Lnotcovariant;
 
   {
-            // Return types
+    // Return types
     Type *t1n = t1->next;
     Type *t2n = t2->next;
 
@@ -4806,7 +4815,13 @@ int Type::covariant(Type *t)
             return 3;   // forward references
         }
     }
-    if (t1n->implicitConvTo(t2n))
+    if (t1n->ty == Tstruct && t2n->ty == Tstruct)
+    {
+        if (((TypeStruct *)t1n)->sym == ((TypeStruct *)t2n)->sym &&
+            MODimplicitConv(t1n->mod, t2n->mod))
+            goto Lcovariant;
+    }
+    else if (t1n->ty == t2n->ty && t1n->implicitConvTo(t2n))
         goto Lcovariant;
   }
     goto Lnotcovariant;
@@ -5435,6 +5450,13 @@ int TypeFunction::callMatch(Expression *ethis, Expressions *args, int flag)
         }
         arg = args->tdata()[u];
         assert(arg);
+
+        if (arg->op == TOKfunction)
+        {   arg = ((FuncExp *)arg)->inferType(NULL, p->type);
+            if (!arg)
+                goto Nomatch;
+        }
+
         //printf("arg: %s, type: %s\n", arg->toChars(), arg->type->toChars());
 
         // Non-lvalues do not match ref or out parameters
@@ -7197,6 +7219,7 @@ Expression *TypeStruct::dotExp(Scope *sc, Expression *e, Identifier *ident)
          * (e.field0, e.field1, e.field2, ...)
          */
         e = e->semantic(sc);    // do this before turning on noaccesscheck
+        e->type->size();        // do semantic of type
         Expressions *exps = new Expressions;
         exps->reserve(sym->fields.dim);
         for (size_t i = 0; i < sym->fields.dim; i++)
@@ -7293,8 +7316,7 @@ L1:
         return de;
     }
 
-    Import *timp = s->isImport();
-    if (timp)
+    if (s->isImport() || s->isModule() || s->isPackage())
     {
         e = new DsymbolExp(e->loc, s, 0);
         e = e->semantic(sc);
@@ -7651,6 +7673,7 @@ Expression *TypeClass::dotExp(Scope *sc, Expression *e, Identifier *ident)
         /* Create a TupleExp
          */
         e = e->semantic(sc);    // do this before turning on noaccesscheck
+        e->type->size();        // do semantic of type
         Expressions *exps = new Expressions;
         exps->reserve(sym->fields.dim);
         for (size_t i = 0; i < sym->fields.dim; i++)
@@ -7674,14 +7697,10 @@ L1:
     if (!s)
     {
         // See if it's a base class
-        ClassDeclaration *cbase;
-        for (cbase = sym->baseClass; cbase; cbase = cbase->baseClass)
+        if (Dsymbol *cbase = sym->searchBase(e->loc, ident))
         {
-            if (cbase->ident->equals(ident))
-            {
-                e = new DotTypeExp(0, e, cbase);
-                return e;
-            }
+            e = new DotTypeExp(0, e, cbase);
+            return e;
         }
 
         if (ident == Id::classinfo)
@@ -7825,6 +7844,15 @@ L1:
         return de;
     }
 
+#if 0 // shouldn't this be here?
+    if (s->isImport() || s->isModule() || s->isPackage())
+    {
+        e = new DsymbolExp(e->loc, s, 0);
+        e = e->semantic(sc);
+        return e;
+    }
+#endif
+
     OverloadSet *o = s->isOverloadSet();
     if (o)
     {
@@ -7906,7 +7934,6 @@ L1:
     if (d->parent && d->toParent()->isModule())
     {
         // (e, d)
-
         VarExp *ve = new VarExp(e->loc, d, 1);
         e = new CommaExp(e->loc, e, ve);
         e->type = d->type;
@@ -8527,8 +8554,7 @@ void Parameter::argsToDecoBuffer(OutBuffer *buf, Parameters *arguments)
 {
     //printf("Parameter::argsToDecoBuffer()\n");
     // Write argument types
-    if (arguments)
-        foreach(arguments, &argsToDecoBufferDg, buf);
+    foreach(arguments, &argsToDecoBufferDg, buf);
 }
 
 /****************************************
@@ -8546,9 +8572,7 @@ static int isTPLDg(void *ctx, size_t n, Parameter *arg)
 int Parameter::isTPL(Parameters *arguments)
 {
     //printf("Parameter::isTPL()\n");
-    if (arguments)
-        return foreach(arguments, &isTPLDg, NULL);
-    return 0;
+    return foreach(arguments, &isTPLDg, NULL);
 }
 
 /****************************************************
@@ -8628,8 +8652,7 @@ static int dimDg(void *ctx, size_t n, Parameter *)
 size_t Parameter::dim(Parameters *args)
 {
     size_t n = 0;
-    if (args)
-        foreach(args, &dimDg, &n);
+    foreach(args, &dimDg, &n);
     return n;
 }
 
@@ -8674,7 +8697,9 @@ Parameter *Parameter::getNth(Parameters *args, size_t nth, size_t *pn)
 
 int Parameter::foreach(Parameters *args, Parameter::ForeachDg dg, void *ctx, size_t *pn)
 {
-    assert(args && dg);
+    assert(dg);
+    if (!args)
+        return 0;
 
     size_t n = pn ? *pn : 0; // take over index
     int result = 0;

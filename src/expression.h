@@ -66,7 +66,6 @@ Expression *resolveProperties(Scope *sc, Expression *e);
 void accessCheck(Loc loc, Scope *sc, Expression *e, Declaration *d);
 Expression *build_overload(Loc loc, Scope *sc, Expression *ethis, Expression *earg, Dsymbol *d);
 Dsymbol *search_function(ScopeDsymbol *ad, Identifier *funcid);
-void inferApplyArgTypes(enum TOK op, Parameters *arguments, Expression *aggr);
 void argExpTypesToCBuffer(OutBuffer *buf, Expressions *arguments, HdrGenState *hgs);
 void argsToCBuffer(OutBuffer *buf, Expressions *arguments, HdrGenState *hgs);
 void expandTuples(Expressions *exps);
@@ -111,7 +110,7 @@ struct Expression : Object
     virtual void dump(int indent);
     void error(const char *format, ...);
     void warning(const char *format, ...);
-    virtual void rvalue();
+    virtual int rvalue();
 
     static Expression *combine(Expression *e1, Expression *e2);
     static Expressions *arraySyntaxCopy(Expressions *exps);
@@ -516,7 +515,7 @@ struct TypeExp : Expression
     TypeExp(Loc loc, Type *type);
     Expression *syntaxCopy();
     Expression *semantic(Scope *sc);
-    void rvalue();
+    int rvalue();
     void toCBuffer(OutBuffer *buf, HdrGenState *hgs);
     Expression *optimize(int result);
     elem *toElem(IRState *irs);
@@ -538,7 +537,7 @@ struct TemplateExp : Expression
     TemplateDeclaration *td;
 
     TemplateExp(Loc loc, TemplateDeclaration *td);
-    void rvalue();
+    int rvalue();
     void toCBuffer(OutBuffer *buf, HdrGenState *hgs);
 };
 
@@ -666,11 +665,20 @@ struct OverExp : Expression
 struct FuncExp : Expression
 {
     FuncLiteralDeclaration *fd;
+    TemplateDeclaration *td;
+    enum TOK tok;
+    Type *tded;
+    Scope *scope;
 
-    FuncExp(Loc loc, FuncLiteralDeclaration *fd);
+    FuncExp(Loc loc, FuncLiteralDeclaration *fd, TemplateDeclaration *td = NULL);
     Expression *syntaxCopy();
     Expression *semantic(Scope *sc);
+    Expression *semantic(Scope *sc, Expressions *arguments);
     Expression *interpret(InterState *istate, CtfeGoal goal = ctfeNeedRvalue);
+    MATCH implicitConvTo(Type *t);
+    Expression *castTo(Scope *sc, Type *t);
+    Expression *inferType(Scope *sc, Type *t);
+    void setType(Type *t);
     void scanForNestedRef(Scope *sc);
     char *toChars();
     void toCBuffer(OutBuffer *buf, HdrGenState *hgs);

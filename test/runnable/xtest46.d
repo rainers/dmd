@@ -1906,7 +1906,7 @@ void test100()
    /* Testing order of evaluation */
    void delegate(string, string) fun(string) {
       s ~= "b";
-      return delegate void(string, string) { s ~= "e"; };
+      return delegate void(string x, string y) { s ~= "e"; };
    }
    fun(s ~= "a")(s ~= "c", s ~= "d");
    assert(s == "abcde", s);
@@ -3725,6 +3725,32 @@ static assert(typeof(pfunc6596).stringof == "extern (C) int function()");
 static assert(typeof(cfunc6596).stringof == "extern (C) int()");
 
 /***************************************************/
+// 4647
+
+interface Timer
+{
+    final int run() { printf("Timer.run()\n"); return 1; };
+}
+
+interface Application
+{
+    final int run() { printf("Application.run()\n"); return 2; };
+}
+
+class TimedApp : Timer, Application
+{
+}
+
+void test4647()
+{
+    auto app = new TimedApp;
+    assert(app.Timer.run() == 1);       // error, no Timer property
+    assert(app.Application.run() == 2); // error, no Application property
+    assert(app.run() == 1);             // This would call Timer.run() if the two calls
+                                        // above were commented out
+}
+
+/***************************************************/
 // 5696
 
 template Seq5696(T...){ alias T Seq5696; }
@@ -4257,6 +4283,53 @@ static assert(!__traits(hasMember, int, "x"));
 static assert( __traits(hasMember, int, "init"));
 
 /***************************************************/
+// 7160
+
+class HomeController {
+    static if (false) {
+        mixin(q{ int a; });
+    }
+    void foo() {
+        foreach (m; __traits(derivedMembers, HomeController)) {
+        }
+    }
+}
+
+void test7160()
+{}
+
+/***************************************************/
+// 7168
+
+void test7168()
+{
+    static class X
+    {
+        void foo(){}
+    }
+    static class Y : X
+    {
+        void bar(){}
+    }
+
+    enum ObjectMembers = ["toString","toHash","opCmp","opEquals","Monitor","factory"];
+
+    static assert([__traits(allMembers, X)] == ["foo"]~ObjectMembers);          // pass
+    static assert([__traits(allMembers, Y)] == ["bar", "foo"]~ObjectMembers);   // fail
+    static assert([__traits(allMembers, Y)] != ["bar", "foo"]);                 // fail
+}
+
+/***************************************************/
+// 7170
+
+T to7170(T)(string x) { return 1; }
+void test7170()
+{
+//  auto i = to7170!int("1");   // OK
+    auto j = "1".to7170!int();  // NG, Internal error: e2ir.c 683
+}
+
+/***************************************************/
 
 int main()
 {
@@ -4444,6 +4517,7 @@ int main()
     test6630();
     test6690();
     test2953();
+    test4647();
     test5696();
     test6084();
     test6488();
@@ -4459,6 +4533,9 @@ int main()
     test6868();
     test2856();
     test6056();
+    test7160();
+    test7168();
+    test7170();
 
     printf("Success\n");
     return 0;

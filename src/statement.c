@@ -1403,44 +1403,19 @@ Statement *ForeachStatement::semantic(Scope *sc)
     if (func->fes)
         func = func->fes->func;
 
-Lretry:
-    aggr = aggr->semantic(sc);
-    aggr = resolveProperties(sc, aggr);
-    aggr = aggr->optimize(WANTvalue);
-    if (!aggr->type)
+    if (!inferAggregate(sc, sapply))
     {
         error("invalid foreach aggregate %s", aggr->toChars());
         return this;
     }
 
-    inferApplyArgTypes(op, arguments, aggr);
-
     /* Check for inference errors
      */
-    if (dim != arguments->dim)
+    if (!inferApplyArgTypes(sc, sapply))
     {
         //printf("dim = %d, arguments->dim = %d\n", dim, arguments->dim);
         error("cannot uniquely infer foreach argument types");
         return this;
-    }
-
-    Expression *prelude = NULL;
-    if (aggr->op == TOKcomma)
-    {
-        Expression **pe = &aggr;
-        while (((CommaExp *)(*pe))->e2->op == TOKcomma)
-            pe = &((CommaExp *)(*pe))->e2;
-        if (pe == &aggr)
-        {
-            prelude = ((CommaExp *)(*pe))->e1;
-            aggr = ((CommaExp *)(*pe))->e2;
-        }
-        else
-        {
-            prelude = aggr;
-            aggr = ((CommaExp *)(*pe))->e2;
-            *pe = ((CommaExp *)(*pe))->e1;
-        }
     }
 
     Type *tab = aggr->type->toBasetype();
@@ -1458,9 +1433,30 @@ Lretry:
         //printf("aggr: op = %d, %s\n", aggr->op, aggr->toChars());
         size_t n;
         TupleExp *te = NULL;
+        Expression *prelude = NULL;
         if (aggr->op == TOKtuple)       // expression tuple
         {   te = (TupleExp *)aggr;
             n = te->exps->dim;
+
+            if (te->exps->dim > 0 && (*te->exps)[0]->op == TOKcomma)
+            {
+                Expression *&e0 = (*te->exps)[0];
+
+                Expression **pe = &e0;
+                while (((CommaExp *)(*pe))->e2->op == TOKcomma)
+                    pe = &((CommaExp *)(*pe))->e2;
+                if (pe == &e0)
+                {
+                    prelude = ((CommaExp *)(*pe))->e1;
+                    e0 = ((CommaExp *)(*pe))->e2;
+                }
+                else
+                {
+                    prelude = e0;
+                    e0 = ((CommaExp *)(*pe))->e2;
+                    *pe = ((CommaExp *)(*pe))->e1;
+                }
+            }
         }
         else if (aggr->op == TOKtype)   // type tuple
         {
@@ -1556,9 +1552,6 @@ Lretry:
     sc->noctor++;
 
 Lagain:
-    Identifier *idapply = (op == TOKforeach_reverse)
-                    ? Id::applyReverse : Id::apply;
-    sapply = NULL;
     switch (tab->ty)
     {
         case Tarray:
@@ -1680,9 +1673,6 @@ Lagain:
             body = new CompoundStatement(loc, ds, body);
 
             s = new ForStatement(loc, forinit, cond, increment, body);
-            if (prelude)
-                s = new CompoundStatement(loc,
-                        new ExpStatement(prelude->loc, prelude), s);
             s = s->semantic(sc);
             break;
         }
@@ -1746,7 +1736,6 @@ Lagain:
 #if DMDV2
             /* Prefer using opApply, if it exists
              */
-            sapply = search_function((AggregateDeclaration *)tab->toDsymbol(sc), idapply);
             if (sapply)
                 goto Lapply;
 
@@ -1774,33 +1763,12 @@ Lagain:
             }
             Dsymbol *shead = search_function(ad, idhead);
             if (!shead)
-            {
-                if (ad->aliasthis)
-                {
-                    Identifier *id = Lexer::uniqueId("__tup");
-                    ExpInitializer *ei = new ExpInitializer(aggr->loc, aggr);
-                    VarDeclaration *vd = new VarDeclaration(loc, NULL, id, ei);
-                    vd->storage_class |= STCctfe | STCref | STCforeach;
-
-                    aggr = new CommaExp(aggr->loc,
-                        new DeclarationExp(loc, vd),
-                        new DotIdExp(aggr->loc,
-                            new VarExp(loc, vd),
-                            ad->aliasthis->ident));
-
-                    goto Lretry;
-                }
                 goto Lapply;
-            }
 
             /* Generate a temporary __r and initialize it with the aggregate.
              */
             Identifier *id = Identifier::generateId("__r");
-            Expression *rinit = new SliceExp(loc, aggr, NULL, NULL);
-            rinit = rinit->trySemantic(sc);
-            if (!rinit)                 // if application of [] failed
-                rinit = aggr;
-            VarDeclaration *r = new VarDeclaration(loc, NULL, id, new ExpInitializer(loc, rinit));
+            VarDeclaration *r = new VarDeclaration(loc, NULL, id, new ExpInitializer(loc, aggr));
             Statement *init = new ExpStatement(loc, r);
 
             // !__r.empty
@@ -1892,9 +1860,6 @@ Lagain:
             printf("increment: %s\n", increment->toChars());
             printf("body: %s\n", forbody->toChars());
 #endif
-            if (prelude)
-                s = new CompoundStatement(loc,
-                        new ExpStatement(prelude->loc, prelude), s);
             s = s->semantic(sc);
             break;
 
@@ -1908,7 +1873,6 @@ Lagain:
         {
             Expression *ec;
             Expression *e;
-            Parameter *a;
 
             if (!checkForArgTypes())
             {   body = body->semanticNoScope(sc);
@@ -1929,34 +1893,74 @@ Lagain:
                 sc->func->vresult = v;
             }
 
+            TypeFunction *tfld = NULL;
+            if (sapply)
+            {   FuncDeclaration *fdapply = sapply->isFuncDeclaration();
+                if (fdapply)
+                {   assert(fdapply->type && fdapply->type->ty == Tfunction);
+                    tfld = (TypeFunction *)fdapply->type->semantic(loc, sc);
+                    goto Lget;
+                }
+                else if (tab->ty == Tdelegate)
+                {
+                    tfld = (TypeFunction *)tab->nextOf();
+                Lget:
+                    //printf("tfld = %s\n", tfld->toChars());
+                    if (tfld->parameters->dim == 1)
+                    {
+                        Parameter *p = Parameter::getNth(tfld->parameters, 0);
+                        if (p->type && p->type->ty == Tdelegate)
+                        {   Type *t = p->type->semantic(loc, sc);
+                            assert(t->ty == Tdelegate);
+                            tfld = (TypeFunction *)t->nextOf();
+                        }
+                    }
+                }
+            }
+
             /* Turn body into the function literal:
              *  int delegate(ref T arg) { body }
              */
             Parameters *args = new Parameters();
             for (size_t i = 0; i < dim; i++)
             {   Parameter *arg = arguments->tdata()[i];
+                StorageClass stc = STCref;
                 Identifier *id;
 
                 arg->type = arg->type->semantic(loc, sc);
-                if (arg->storageClass & STCref)
+                if (tfld)
+                {   Parameter *prm = Parameter::getNth(tfld->parameters, i);
+                    //printf("\tprm = %s%s\n", (prm->storageClass&STCref?"ref ":""), prm->ident->toChars());
+                    stc = prm->storageClass & STCref;
+                    id = arg->ident;    // argument copy is not need.
+                    if ((arg->storageClass & STCref) != stc)
+                    {   if (!stc)
+                            error("foreach: cannot make %s ref", arg->ident->toChars());
+                        goto LcopyArg;
+                    }
+                }
+                else if (arg->storageClass & STCref)
+                {   // default delegate parameters are marked as ref, then
+                    // argument copy is not need.
                     id = arg->ident;
+                }
                 else
                 {   // Make a copy of the ref argument so it isn't
                     // a reference.
-
+                LcopyArg:
                     id = Lexer::uniqueId("__applyArg", i);
+
                     Initializer *ie = new ExpInitializer(0, new IdentifierExp(0, id));
                     VarDeclaration *v = new VarDeclaration(0, arg->type, arg->ident, ie);
                     s = new ExpStatement(0, v);
                     body = new CompoundStatement(loc, s, body);
                 }
-                a = new Parameter(STCref, arg->type, id, NULL);
-                args->push(a);
+                args->push(new Parameter(stc, arg->type, id, NULL));
             }
-            Type *t = new TypeFunction(args, Type::tint32, 0, LINKd);
+            tfld = new TypeFunction(args, Type::tint32, 0, LINKd);
             cases = new Statements();
             gotos = new CompoundStatements();
-            FuncLiteralDeclaration *fld = new FuncLiteralDeclaration(loc, 0, t, TOKdelegate, this);
+            FuncLiteralDeclaration *fld = new FuncLiteralDeclaration(loc, 0, tfld, TOKdelegate, this);
             fld->fbody = body;
             Expression *flde = new FuncExp(loc, fld);
             flde = flde->semantic(sc);
@@ -2070,8 +2074,7 @@ Lagain:
             {
                 assert(tab->ty == Tstruct || tab->ty == Tclass);
                 Expressions *exps = new Expressions();
-                if (!sapply)
-                    sapply = search_function((AggregateDeclaration *)tab->toDsymbol(sc), idapply);
+                assert(sapply);
 #if 0
                 TemplateDeclaration *td;
                 if (sapply &&
@@ -2081,7 +2084,7 @@ Lagain:
                      */
                     Objects *tiargs = new Objects();
                     tiargs->push(fld);
-                    ec = new DotTemplateInstanceExp(loc, aggr, idapply, tiargs);
+                    ec = new DotTemplateInstanceExp(loc, aggr, sapply->ident, tiargs);
                 }
                 else
 #endif
@@ -2089,7 +2092,7 @@ Lagain:
                     /* Call:
                      *  aggr.apply(flde)
                      */
-                    ec = new DotIdExp(loc, aggr, idapply);
+                    ec = new DotIdExp(loc, aggr, sapply->ident);
                     exps->push(flde);
                 }
                 e = new CallExp(loc, ec, exps);
@@ -2122,9 +2125,6 @@ Lagain:
                 s = new CompoundStatement(loc, a);
                 s = new SwitchStatement(loc, e, s, FALSE);
             }
-            if (prelude)
-                s = new CompoundStatement(loc,
-                        new ExpStatement(prelude->loc, prelude), s);
             s = s->semantic(sc);
             break;
         }
@@ -3542,6 +3542,9 @@ Statement *ReturnStatement::semantic(Scope *sc)
     if (exp)
     {
         fd->hasReturnExp |= 1;
+
+        if (exp->op == TOKfunction && tbret)
+            ((FuncExp *)exp)->setType(tbret);
 
         exp = exp->semantic(sc);
         exp = resolveProperties(sc, exp);

@@ -64,7 +64,8 @@ FuncDeclaration::FuncDeclaration(Loc loc, Loc endloc, Identifier *id, StorageCla
     vtblIndex = -1;
     hasReturnExp = 0;
     naked = 0;
-    inlineStatus = ILSuninitialized;
+    inlineStatusExp = ILSuninitialized;
+    inlineStatusStmt = ILSuninitialized;
     inlineNest = 0;
     isArrayOp = 0;
     semanticRun = PASSinit;
@@ -1755,7 +1756,7 @@ int FuncDeclaration::equals(Object *o)
 void FuncDeclaration::bodyToCBuffer(OutBuffer *buf, HdrGenState *hgs)
 {
     if (fbody &&
-        (!hgs->hdrgen || hgs->tpltMember || canInline(1,1))
+        (!hgs->hdrgen || hgs->tpltMember || canInline(1,1,1))
        )
     {   buf->writenl();
 
@@ -2316,6 +2317,11 @@ if (arguments)
         {
             HdrGenState hgs;
 
+            for (size_t i = 0; i < arguments->dim; i++)
+            {   Expression *arg = (*arguments)[i];
+                if (!arg->type) // inference failed
+                    arg->type = Type::terror;
+            }
             argExpTypesToCBuffer(&buf, arguments, &hgs);
             buf.writeByte(')');
             if (ethis)
@@ -2398,7 +2404,7 @@ MATCH FuncDeclaration::leastAsSpecialized(FuncDeclaration *g)
     {
         if (tf->mod != tg->mod)
         {
-            if (tg->mod == MODconst)
+            if (MODimplicitConv(tf->mod, tg->mod))
                 match = MATCHconst;
             else
                 return MATCHnomatch;
@@ -3013,6 +3019,8 @@ FuncLiteralDeclaration::FuncLiteralDeclaration(Loc loc, Loc endloc, Type *type,
 
     if (fes)
         id = "__foreachbody";
+    else if (tok == TOKreserved)
+        id = "__lambda";
     else if (tok == TOKdelegate)
         id = "__dgliteral";
     else
@@ -3041,7 +3049,7 @@ Dsymbol *FuncLiteralDeclaration::syntaxCopy(Dsymbol *s)
 int FuncLiteralDeclaration::isNested()
 {
     //printf("FuncLiteralDeclaration::isNested() '%s'\n", toChars());
-    return (tok == TOKdelegate);
+    return (tok != TOKfunction);
 }
 
 int FuncLiteralDeclaration::isVirtual()
@@ -3052,7 +3060,7 @@ int FuncLiteralDeclaration::isVirtual()
 const char *FuncLiteralDeclaration::kind()
 {
     // GCC requires the (char*) casts
-    return (tok == TOKdelegate) ? (char*)"delegate" : (char*)"function";
+    return (tok != TOKfunction) ? (char*)"delegate" : (char*)"function";
 }
 
 void FuncLiteralDeclaration::toCBuffer(OutBuffer *buf, HdrGenState *hgs)

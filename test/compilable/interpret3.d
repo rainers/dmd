@@ -3056,6 +3056,7 @@ auto classtest1(int n)
     if (n==7)
     {   // bad cast -- should fail
         Unrelated u = cast(Unrelated)d;
+        assert(u is null);
     }
     SomeClass e = cast(SomeClass)d;
     d.q = 35;
@@ -3079,8 +3080,8 @@ auto classtest1(int n)
     return 6;
 }
 static assert(classtest1(1));
-static assert(is(typeof(compiles!(classtest1(2)))));
-static assert(!is(typeof(compiles!(classtest1(7)))));
+static assert(classtest1(2));
+static assert(classtest1(7)); // bug 7154
 
 // can't return classes literals outside CTFE
 SomeClass classtest2(int n)
@@ -3646,6 +3647,28 @@ static assert( {
 }() == 416 );
 
 /**************************************************
+    6037 recursive ref
+**************************************************/
+
+void bug6037(ref int x, bool b){
+    int w = 3;
+    if (b) {
+        bug6037(w, false);
+        assert(w==6);
+    } else {
+        x = 6;
+        assert(w==3); // fails
+    }
+}
+
+int bug6037outer(){
+    int q;
+    bug6037(q, true);
+    return 401;
+}
+static assert(bug6037outer() == 401);
+
+/**************************************************
     7143 'is' for classes
 **************************************************/
 
@@ -3727,3 +3750,62 @@ int test7147()
 }
 
 static assert(test7147() == 1);
+
+/**************************************************
+    7158
+**************************************************/
+
+class C7158 {
+    bool b() {return true;}
+}
+struct S7158 {
+    C7158 c;
+}
+
+bool test7158() {
+    S7158 s = S7158(new C7158);
+    return s.c.b;
+}
+static assert(test7158());
+
+/**************************************************
+    7162 and 4711
+**************************************************/
+
+void f7162() { }
+
+bool ice7162()
+{
+    false && f7162();
+    false || f7162();
+    false && f7162();  // bug 4711
+    true && f7162();
+    return true;
+}
+
+static assert(ice7162());
+
+/**************************************************
+    7165
+**************************************************/
+
+struct S7165 {
+    int* ptr;
+    bool f() const { return !!ptr; }
+}
+
+static assert(!S7165().f());
+
+/**************************************************
+    7187
+**************************************************/
+
+int[] f7187() { return [0]; }
+
+int g7187(int[] r)
+{
+    auto t = r[0..0];
+    return 1;
+}
+
+static assert(g7187(f7187()));

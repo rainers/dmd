@@ -842,7 +842,7 @@ Expression *PowExp::optimize(int result)
 
     e1 = e1->optimize(result);
     e2 = e2->optimize(result);
-    
+
     // Replace 1 ^^ x or 1.0^^x by (x, 1)
     if ((e1->op == TOKint64 && e1->toInteger() == 1) ||
         (e1->op == TOKfloat64 && e1->toReal() == 1.0))
@@ -1069,8 +1069,12 @@ Expression *AndAndExp::optimize(int result)
     e = this;
     if (e1->isBool(FALSE))
     {
-        e = new CommaExp(loc, e1, new IntegerExp(loc, 0, type));
-        e->type = type;
+        if (type->toBasetype()->ty == Tvoid)
+            e = e2;
+        else
+        {   e = new CommaExp(loc, e1, new IntegerExp(loc, 0, type));
+            e->type = type;
+        }
         e = e->optimize(result);
     }
     else
@@ -1087,7 +1091,11 @@ Expression *AndAndExp::optimize(int result)
                 e = new IntegerExp(loc, n1 && n2, type);
             }
             else if (e1->isBool(TRUE))
-                e = new BoolExp(loc, e2, type);
+            {
+                if (type->toBasetype()->ty == Tvoid)
+                    e = e2;
+                else e = new BoolExp(loc, e2, type);
+            }
         }
     }
     return e;
@@ -1118,7 +1126,12 @@ Expression *OrOrExp::optimize(int result)
                 e = new IntegerExp(loc, n1 || n2, type);
             }
             else if (e1->isBool(FALSE))
-                e = new BoolExp(loc, e2, type);
+            {
+                if (type->toBasetype()->ty == Tvoid)
+                    e = e2;
+                else
+                    e = new BoolExp(loc, e2, type);
+            }
         }
     }
     return e;

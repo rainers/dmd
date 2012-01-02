@@ -481,7 +481,7 @@ class.obj : $(TOTALH) enum.h class.c
 clone.obj : $(TOTALH) clone.c
 constfold.obj : $(TOTALH) expression.h constfold.c
 cond.obj : $(TOTALH) identifier.h declaration.h cond.h cond.c
-declaration.obj : $(TOTALH) identifier.h attrib.h declaration.h declaration.c
+declaration.obj : $(TOTALH) identifier.h attrib.h declaration.h declaration.c expression.h
 delegatize.obj : $(TOTALH) delegatize.c
 doc.obj : $(TOTALH) doc.h doc.c
 enum.obj : $(TOTALH) identifier.h enum.h enum.c
@@ -507,7 +507,7 @@ opover.obj : $(TOTALH) expression.h opover.c
 optimize.obj : $(TOTALH) expression.h optimize.c
 parse.obj : $(TOTALH) attrib.h lexer.h parse.h parse.c
 scope.obj : $(TOTALH) scope.h scope.c
-statement.obj : $(TOTALH) statement.h statement.c
+statement.obj : $(TOTALH) statement.h statement.c expression.h
 staticassert.obj : $(TOTALH) staticassert.h staticassert.c
 struct.obj : $(TOTALH) identifier.h enum.h struct.c
 traits.obj : $(TOTALH) traits.c
