@@ -85,7 +85,8 @@ OBJ1= mars.obj enum.obj struct.obj dsymbol.obj import.obj id.obj \
 	builtin.obj clone.obj libomf.obj arrayop.obj irstate.obj \
 	glue.obj msc.obj ph.obj tk.obj s2ir.obj todt.obj e2ir.obj tocsym.obj \
 	util.obj eh.obj toobj.obj toctype.obj tocvdebug.obj toir.obj \
-	json.obj unittests.obj imphint.obj argtypes.obj apply.obj
+	json.obj unittests.obj imphint.obj argtypes.obj apply.obj canthrow.obj \
+	sideeffect.obj
 
 # from C/C++ compiler optimizer and back end
 
@@ -125,7 +126,7 @@ SRCS= mars.c enum.c struct.c dsymbol.c import.c idgen.c impcnvgen.c utf.h \
 	delegatize.c toir.h toir.c interpret.c traits.c builtin.c \
 	clone.c lib.h libomf.c libelf.c libmach.c arrayop.c intrange.c \
 	aliasthis.h aliasthis.c json.h json.c unittests.c imphint.c argtypes.c \
-	apply.c
+	apply.c canthrow.c sideeffect.c
 
 # From C++ compiler
 
@@ -478,6 +479,7 @@ argtypes.obj : $(TOTALH) mtype.h argtypes.c
 arrayop.obj : $(TOTALH) identifier.h declaration.h arrayop.c
 attrib.obj : $(TOTALH) identifier.h declaration.h attrib.h attrib.c
 builtin.obj : $(TOTALH) builtin.c
+canthrow.obj : $(TOTALH) canthrow.c
 cast.obj : $(TOTALH) expression.h mtype.h cast.c
 class.obj : $(TOTALH) enum.h class.c
 clone.obj : $(TOTALH) clone.c
@@ -509,6 +511,7 @@ opover.obj : $(TOTALH) expression.h opover.c
 optimize.obj : $(TOTALH) expression.h optimize.c
 parse.obj : $(TOTALH) attrib.h lexer.h parse.h parse.c
 scope.obj : $(TOTALH) scope.h scope.c
+sideeffect.obj : $(TOTALH) sideeffect.c
 statement.obj : $(TOTALH) statement.h statement.c expression.h
 staticassert.obj : $(TOTALH) staticassert.h staticassert.c
 struct.obj : $(TOTALH) identifier.h enum.h struct.c
