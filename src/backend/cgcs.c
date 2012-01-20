@@ -1,5 +1,5 @@
 // Copyright (C) 1985-1998 by Symantec
-// Copyright (C) 2000-2009 by Digital Mars
+// Copyright (C) 2000-2012 by Digital Mars
 // All Rights Reserved
 // http://www.digitalmars.com
 // Written by Walter Bright
@@ -261,7 +261,6 @@ STATIC void ecom(elem **pe)
 #if TX86
     case OPinp:                 /* never CSE the I/O instruction itself */
 #endif
-    case OPdctor:
         ecom(&e->E1);
         /* FALL-THROUGH */
     case OPasm:
@@ -270,6 +269,7 @@ STATIC void ecom(elem **pe)
     case OPgot:
     case OPctor:
     case OPdtor:
+    case OPdctor:
     case OPmark:
         return;
 
@@ -371,7 +371,7 @@ STATIC void ecom(elem **pe)
     case OPstrctor: case OPu16_d: case OPd_u16:
     case OParrow:
     case OPvoid: case OPnullcheck:
-    case OPbsf: case OPbsr: case OPbswap:
+    case OPbsf: case OPbsr: case OPbswap: case OPvector:
     case OPld_u64:
 #if TARGET_SEGMENTED
     case OPoffset: case OPnp_fp: case OPnp_f16p: case OPf16p_np:
@@ -387,7 +387,8 @@ STATIC void ecom(elem **pe)
       tym == TYvoid ||
       e->Ety & mTYvolatile
 #if TX86
-    // don't CSE doubles if inline 8087 code (code generator can't handle it)
+      || tyxmmreg(tym)
+      // don't CSE doubles if inline 8087 code (code generator can't handle it)
       || (tyfloating(tym) && config.inline8087)
 #endif
      )

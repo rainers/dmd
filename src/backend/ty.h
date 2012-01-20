@@ -108,59 +108,93 @@ enum TYM
     TYvtshape           = 0x32, // virtual function table
 #endif
 
+    // SIMD vector types        // D type
+    TYfloat4            = 0x3E, // float[4]
+    TYdouble2           = 0x3F, // double[2]
+    TYschar16           = 0x40, // byte[16]
+    TYuchar16           = 0x41, // ubyte[16]
+    TYshort8            = 0x42, // short[8]
+    TYushort8           = 0x43, // ushort[8]
+    TYlong4             = 0x44, // int[4]
+    TYulong4            = 0x45, // uint[4]
+    TYllong2            = 0x46, // long[2]
+    TYullong2           = 0x47, // ulong[2]
+
 #if MARS
 #define TYaarray        TYnptr
 #define TYdelegate      (I64 ? TYcent : TYllong)
 #define TYdarray        (I64 ? TYucent : TYullong)
 #endif
 
-    TYMAX               = 0x3E,
+    TYMAX               = 0x48,
 };
+
+#define mTYbasic        0xFF    /* bit mask for basic types     */
+#define tybasic(ty)     ((ty) & mTYbasic)
 
 #if TX86
 // These change depending on memory model
 extern int TYptrdiff, TYsize, TYsize_t;
 
 /* Linkage type                 */
-#define mTYnear         0x100
+#define mTYnear         0x0800
 #if TARGET_SEGMENTED
-#define mTYfar          0x200
-#define mTYcs           0x400           // in code segment
+#define mTYfar          0x1000
+#define mTYcs           0x2000           // in code segment
 #endif
-#define mTYthread       0x800
-#define mTYLINK         0xF00           // all linkage bits
+#define mTYthread       0x4000
+#define mTYLINK         0x7800           // all linkage bits
 
-#define mTYloadds       0x1000
-#define mTYexport       0x2000
-#define mTYweak         0x0000
-#define mTYimport       0x4000
-#define mTYnaked        0x8000
-#define mTYMOD          0xF000          // all modifier bits
+#define mTYloadds       0x08000
+#define mTYexport       0x10000
+#define mTYweak         0x00000
+#define mTYimport       0x20000
+#define mTYnaked        0x40000
+#define mTYMOD          0x78000          // all modifier bits
 
 #else
 #define TYTARG          0x11
 #include "TGty.h"               /* Target types */
 #endif
 
-#define mTYbasic        0x3F    /* bit mask for basic types     */
-#define tybasic(ty)     ((ty) & mTYbasic)
-
 /* Modifiers to basic types     */
 
 #ifdef JHANDLE
-#define mTYarrayhandle  0x80
+#define mTYarrayhandle  0x200
 #else
 #define mTYarrayhandle  0x0
 #endif
-#define mTYconst        0x40
-#define mTYvolatile     0x80
+#define mTYconst        0x100
+#define mTYvolatile     0x200
 #define mTYrestrict     0               // BUG: add for C99
 #define mTYmutable      0               // need to add support
 #define mTYunaligned    0               // non-zero for PowerPC
 
-#define mTYimmutable    0x1000000       // immutable data
-#define mTYshared       0x2000000       // shared data
-#define mTYnothrow      0x4000000       // nothrow function
+#define mTYimmutable    0x00080000       // immutable data
+#define mTYshared       0x00100000       // shared data
+#define mTYnothrow      0x00200000       // nothrow function
+
+#if !MARS
+#if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
+#define mTYnoret        0x01000000        // function has no return
+#define mTYtransu       0x01000000        // transparent union
+#else
+#define mTYfar16        0x01000000
+#endif
+#define mTYstdcall      0x02000000
+#define mTYfastcall     0x04000000
+#define mTYinterrupt    0x08000000
+#define mTYcdecl        0x10000000
+#define mTYpascal       0x20000000
+#define mTYsyscall      0x40000000
+#define mTYjava         0x80000000
+
+#if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
+#define mTYTFF          0xFE000000
+#else
+#define mTYTFF          0xFF000000
+#endif
+#endif
 
 /* Flags in tytab[] array       */
 extern unsigned tytab[];
@@ -177,6 +211,7 @@ extern unsigned tytab[];
 #define TYFLfarfunc     0x100
 #define TYFLpascal      0x200       // callee cleans up stack
 #define TYFLrevparam    0x400       // function parameters are reversed
+#define TYFLxmmreg      0x10000     // can be put in XMM register
 #else
 #define TYFLcallstkc    0x100       // callee cleans up stack
 #define TYFLrevparam    0x200       // function parameters are reversed
@@ -209,7 +244,10 @@ extern unsigned tytab[];
 #define ty64reg(ty)     (tytab[(ty) & 0xFF] & (TYFLintegral | TYFLptr) && tysize(ty) <= NPTRSIZE)
 
 // Can go in XMM floating point register
-#define tyxmmreg(ty)    ((tytab[(ty) & 0xFF] & (TYFLreal | TYFLimaginary)) && tysize(ty) <= 8)
+#define tyxmmreg(ty)    (tytab[(ty) & 0xFF] & TYFLxmmreg)
+
+// Is a vector type
+#define tyvector(ty)    (tybasic(ty) >= TYfloat4 && tybasic(ty) <= TYullong2)
 
 #ifndef tyshort
 /* Types that are chars or shorts       */

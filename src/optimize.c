@@ -262,6 +262,7 @@ Expression *TypeExp::optimize(int result)
 
 Expression *UnaExp::optimize(int result)
 {
+    //printf("UnaExp::optimize() %s\n", toChars());
     e1 = e1->optimize(result);
     return this;
 }
@@ -633,7 +634,6 @@ Expression *CastExp::optimize(int result)
 
     // We can convert 'head const' to mutable
     if (to->constOf()->equals(e1->type->constOf()))
-//    if (to->constConv(e1->type) >= MATCHconst)
     {
         e1->type = type;
         if (X) printf(" returning5 %s\n", e1->toChars());

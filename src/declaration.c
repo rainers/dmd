@@ -1234,14 +1234,22 @@ Lnomatch:
         if (ei && ei->exp->op == TOKfunction && !inferred)
             ((FuncExp *)ei->exp)->setType(type);
 
-        // See if initializer is a NewExp that can be allocated on the stack
-        if (ei && isScope() && ei->exp->op == TOKnew)
-        {   NewExp *ne = (NewExp *)ei->exp;
-            if (!(ne->newargs && ne->newargs->dim))
-            {   ne->onstack = 1;
-                onstack = 1;
-                if (type->isBaseOf(ne->newtype->semantic(loc, sc), NULL))
-                    onstack = 2;
+        if (ei && isScope())
+        {
+            // See if initializer is a NewExp that can be allocated on the stack
+            if (ei->exp->op == TOKnew)
+            {   NewExp *ne = (NewExp *)ei->exp;
+                if (!(ne->newargs && ne->newargs->dim))
+                {   ne->onstack = 1;
+                    onstack = 1;
+                    if (type->isBaseOf(ne->newtype->semantic(loc, sc), NULL))
+                        onstack = 2;
+                }
+            }
+            // or a delegate that doesn't escape a reference to the function
+            else if (ei->exp->op == TOKfunction)
+            {   FuncDeclaration *f = ((FuncExp *)ei->exp)->fd;
+                f->tookAddressOf--;
             }
         }
 
@@ -1328,6 +1336,13 @@ Lnomatch:
                                      * variable with a bit copy of the default
                                      * initializer
                                      */
+
+                                    /* Remove ref if this declaration is ref binding.
+                                     * ref Type __self = (__ctmp = 0, __ctmp).this(...);
+                                     * ->  Type __self = (__self = 0, __self.this(...));
+                                     */
+                                    storage_class &= ~(STCref | STCforeach | STCparameter);
+
                                     Expression *e;
                                     if (sd->zeroInit == 1)
                                     {
@@ -2147,6 +2162,18 @@ TypeInfoAssociativeArrayDeclaration::TypeInfoAssociativeArrayDeclaration(Type *t
         ObjectNotFound(Id::TypeInfo_AssociativeArray);
     }
     type = Type::typeinfoassociativearray->type;
+}
+
+/***************************** TypeInfoVectorDeclaration ***********************/
+
+TypeInfoVectorDeclaration::TypeInfoVectorDeclaration(Type *tinfo)
+    : TypeInfoDeclaration(tinfo, 0)
+{
+    if (!Type::typeinfoarray)
+    {
+        ObjectNotFound(Id::TypeInfo_Vector);
+    }
+    type = Type::typeinfovector->type;
 }
 
 /***************************** TypeInfoEnumDeclaration ***********************/

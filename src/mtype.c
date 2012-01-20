@@ -99,6 +99,7 @@ ClassDeclaration *Type::typeinfopointer;
 ClassDeclaration *Type::typeinfoarray;
 ClassDeclaration *Type::typeinfostaticarray;
 ClassDeclaration *Type::typeinfoassociativearray;
+ClassDeclaration *Type::typeinfovector;
 ClassDeclaration *Type::typeinfoenum;
 ClassDeclaration *Type::typeinfofunction;
 ClassDeclaration *Type::typeinfodelegate;
@@ -240,6 +241,7 @@ void Type::init()
     mangleChar[Ttuple] = 'B';
     mangleChar[Tslice] = '@';
     mangleChar[Treturn] = '@';
+    mangleChar[Tvector] = '@';
 
     mangleChar[Tnull] = 'n';    // same as TypeNone
 
@@ -2443,11 +2445,29 @@ Type *TypeNext::makeMutable()
 }
 
 MATCH TypeNext::constConv(Type *to)
-{   MATCH m = Type::constConv(to);
+{
+    //printf("TypeNext::constConv from = %s, to = %s\n", toChars(), to->toChars());
+    if (equals(to))
+        return MATCHexact;
 
-    if (m == MATCHconst &&
-        next->constConv(((TypeNext *)to)->next) == MATCHnomatch)
-        m = MATCHnomatch;
+    if (!(ty == to->ty && MODimplicitConv(mod, to->mod)))
+        return MATCHnomatch;
+
+    Type *tn = to->nextOf();
+    if (!(tn && next->ty == tn->ty))
+        return MATCHnomatch;
+
+    MATCH m;
+    if (to->isConst())  // whole tail const conversion
+    {   // Recursive shared level check
+        m = next->constConv(tn);
+        if (m == MATCHexact)
+            m = MATCHconst;
+    }
+    else
+    {   //printf("\tnext => %s, to->next => %s\n", next->toChars(), tn->toChars());
+        m = next->equals(tn) ? MATCHconst : MATCHnomatch;
+    }
     return m;
 }
 
@@ -2488,51 +2508,53 @@ TypeBasic::TypeBasic(TY ty)
 #define TFLAGSreal      8
 #define TFLAGSimaginary 0x10
 #define TFLAGScomplex   0x20
+#define TFLAGSvector    0x40    // valid for a SIMD vector type
 
     flags = 0;
     switch (ty)
     {
         case Tvoid:     d = Token::toChars(TOKvoid);
+                        flags |= TFLAGSvector;
                         break;
 
         case Tint8:     d = Token::toChars(TOKint8);
-                        flags |= TFLAGSintegral;
+                        flags |= TFLAGSintegral | TFLAGSvector;
                         break;
 
         case Tuns8:     d = Token::toChars(TOKuns8);
-                        flags |= TFLAGSintegral | TFLAGSunsigned;
+                        flags |= TFLAGSintegral | TFLAGSunsigned | TFLAGSvector;
                         break;
 
         case Tint16:    d = Token::toChars(TOKint16);
-                        flags |= TFLAGSintegral;
+                        flags |= TFLAGSintegral | TFLAGSvector;
                         break;
 
         case Tuns16:    d = Token::toChars(TOKuns16);
-                        flags |= TFLAGSintegral | TFLAGSunsigned;
+                        flags |= TFLAGSintegral | TFLAGSunsigned | TFLAGSvector;
                         break;
 
         case Tint32:    d = Token::toChars(TOKint32);
-                        flags |= TFLAGSintegral;
+                        flags |= TFLAGSintegral | TFLAGSvector;
                         break;
 
         case Tuns32:    d = Token::toChars(TOKuns32);
-                        flags |= TFLAGSintegral | TFLAGSunsigned;
+                        flags |= TFLAGSintegral | TFLAGSunsigned | TFLAGSvector;
                         break;
 
         case Tfloat32:  d = Token::toChars(TOKfloat32);
-                        flags |= TFLAGSfloating | TFLAGSreal;
+                        flags |= TFLAGSfloating | TFLAGSreal | TFLAGSvector;
                         break;
 
         case Tint64:    d = Token::toChars(TOKint64);
-                        flags |= TFLAGSintegral;
+                        flags |= TFLAGSintegral | TFLAGSvector;
                         break;
 
         case Tuns64:    d = Token::toChars(TOKuns64);
-                        flags |= TFLAGSintegral | TFLAGSunsigned;
+                        flags |= TFLAGSintegral | TFLAGSunsigned | TFLAGSvector;
                         break;
 
         case Tfloat64:  d = Token::toChars(TOKfloat64);
-                        flags |= TFLAGSfloating | TFLAGSreal;
+                        flags |= TFLAGSfloating | TFLAGSreal | TFLAGSvector;
                         break;
 
         case Tfloat80:  d = Token::toChars(TOKfloat80);
@@ -3180,10 +3202,18 @@ MATCH TypeBasic::implicitConvTo(Type *to)
         return MATCHnomatch;
     if (to->ty == Tbool)
         return MATCHnomatch;
-    if (!to->isTypeBasic())
+
+    TypeBasic *tob;
+    if (to->ty == Tvector)
+    {
+        TypeVector *tv = (TypeVector *)to;
+        tob = tv->elementType();
+    }
+    else
+        tob = to->isTypeBasic();
+    if (!tob)
         return MATCHnomatch;
 
-    TypeBasic *tob = (TypeBasic *)to;
     if (flags & TFLAGSintegral)
     {
         // Disallow implicit conversion of integers to imaginary or complex
@@ -3192,7 +3222,7 @@ MATCH TypeBasic::implicitConvTo(Type *to)
 
 #if DMDV2
         // If converting from integral to integral
-        if (1 && tob->flags & TFLAGSintegral)
+        if (tob->flags & TFLAGSintegral)
         {   d_uns64 sz = size(0);
             d_uns64 tosz = tob->size(0);
 
@@ -3236,6 +3266,152 @@ MATCH TypeBasic::implicitConvTo(Type *to)
 TypeBasic *TypeBasic::isTypeBasic()
 {
     return (TypeBasic *)this;
+}
+
+/* ============================= TypeVector =========================== */
+
+/* The basetype must be one of:
+ *   byte[16],ubyte[16],short[8],ushort[8],int[4],uint[4],long[2],ulong[2],float[4],double[2]
+ */
+TypeVector::TypeVector(Loc loc, Type *basetype)
+        : Type(Tvector)
+{
+    this->basetype = basetype;
+}
+
+Type *TypeVector::syntaxCopy()
+{
+    return new TypeVector(0, basetype->syntaxCopy());
+}
+
+Type *TypeVector::semantic(Loc loc, Scope *sc)
+{
+    int errors = global.errors;
+    basetype = basetype->semantic(loc, sc);
+    if (errors != global.errors)
+        return terror;
+    basetype = basetype->toBasetype()->mutableOf();
+    if (basetype->ty != Tsarray || basetype->size() != 16)
+    {   error(loc, "base type of __vector must be a 16 byte static array, not %s", basetype->toChars());
+        return terror;
+    }
+    TypeSArray *t = (TypeSArray *)basetype;
+    TypeBasic *tb = t->nextOf()->isTypeBasic();
+    if (!tb || !(tb->flags & TFLAGSvector))
+    {   error(loc, "base type of __vector must be a static array of an arithmetic type, not %s", t->toChars());
+        return terror;
+    }
+    return merge();
+}
+
+TypeBasic *TypeVector::elementType()
+{
+    assert(basetype->ty == Tsarray);
+    TypeSArray *t = (TypeSArray *)basetype;
+    TypeBasic *tb = t->nextOf()->isTypeBasic();
+    assert(tb);
+    return tb;
+}
+
+int TypeVector::checkBoolean()
+{
+    return FALSE;
+}
+
+char *TypeVector::toChars()
+{
+    return Type::toChars();
+}
+
+void TypeVector::toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod)
+{
+    //printf("TypeVector::toCBuffer2(mod = %d, this->mod = %d)\n", mod, this->mod);
+    if (mod != this->mod)
+    {   toCBuffer3(buf, hgs, mod);
+        return;
+    }
+    buf->writestring("__vector(");
+    basetype->toCBuffer2(buf, hgs, this->mod);
+    buf->writestring(")");
+}
+
+void TypeVector::toDecoBuffer(OutBuffer *buf, int flag)
+{
+    if (flag != mod && flag != 0x100)
+    {
+        MODtoDecoBuffer(buf, mod);
+    }
+    buf->writestring("Nh");
+    basetype->toDecoBuffer(buf, (flag & 0x100) ? 0 : mod);
+}
+
+d_uns64 TypeVector::size(Loc loc)
+{
+    return 16;
+}
+
+unsigned TypeVector::alignsize()
+{
+    return 16;
+}
+
+Expression *TypeVector::getProperty(Loc loc, Identifier *ident)
+{
+    return basetype->getProperty(loc, ident);
+}
+
+Expression *TypeVector::dotExp(Scope *sc, Expression *e, Identifier *ident)
+{
+#if LOGDOTEXP
+    printf("TypeVector::dotExp(e = '%s', ident = '%s')\n", e->toChars(), ident->toChars());
+#endif
+    if (ident == Id::array)
+    {
+        e = e->castTo(sc, basetype);
+        return e;
+    }
+    return basetype->dotExp(sc, e->castTo(sc, basetype), ident);
+}
+
+Expression *TypeVector::defaultInit(Loc loc)
+{
+    return basetype->defaultInit(loc);
+}
+
+int TypeVector::isZeroInit(Loc loc)
+{
+    return basetype->isZeroInit(loc);
+}
+
+int TypeVector::isintegral()
+{
+    //printf("TypeVector::isintegral('%s') x%x\n", toChars(), flags);
+    return basetype->nextOf()->isintegral();
+}
+
+int TypeVector::isfloating()
+{
+    return basetype->nextOf()->isfloating();
+}
+
+int TypeVector::isunsigned()
+{
+    return basetype->nextOf()->isunsigned();
+}
+
+int TypeVector::isscalar()
+{
+    return basetype->nextOf()->isscalar();
+}
+
+MATCH TypeVector::implicitConvTo(Type *to)
+{
+    //printf("TypeVector::implicitConvTo(%s) from %s\n", to->toChars(), toChars());
+    if (this == to)
+        return MATCHexact;
+    if (ty == to->ty)
+        return MATCHconvert;
+    return MATCHnomatch;
 }
 
 /***************************** TypeArray *****************************/
@@ -3723,21 +3899,27 @@ MATCH TypeSArray::implicitConvTo(Type *to)
         return MATCHnomatch;
     }
     if (to->ty == Tarray)
-    {   int offset = 0;
+    {
         TypeDArray *ta = (TypeDArray *)to;
 
         if (!MODimplicitConv(next->mod, ta->next->mod))
             return MATCHnomatch;
 
-        if (next->equals(ta->next) ||
-//          next->implicitConvTo(ta->next) >= MATCHconst ||
-            next->constConv(ta->next) != MATCHnomatch ||
-            (ta->next->isBaseOf(next, &offset) && offset == 0 &&
-             !ta->next->isMutable()) ||
-            ta->next->ty == Tvoid)
+        /* Allow conversion to void[]
+         */
+        if (ta->next->ty == Tvoid)
+        {
             return MATCHconvert;
+        }
+
+        MATCH m = next->constConv(ta->next);
+        if (m != MATCHnomatch)
+        {
+            return MATCHconvert;
+        }
         return MATCHnomatch;
     }
+
     if (to->ty == Tsarray)
     {
         if (this == to)
@@ -3966,7 +4148,7 @@ MATCH TypeDArray::implicitConvTo(Type *to)
     }
 
     if (to->ty == Tarray)
-    {   int offset = 0;
+    {
         TypeDArray *ta = (TypeDArray *)to;
 
         if (!MODimplicitConv(next->mod, ta->next->mod))
@@ -3993,23 +4175,6 @@ MATCH TypeDArray::implicitConvTo(Type *to)
                 m = MATCHconst;
             return m;
         }
-
-#if 0
-        /* Allow conversions of T[][] to const(T)[][]
-         */
-        if (mod == ta->mod && next->ty == Tarray && ta->next->ty == Tarray)
-        {
-            m = next->implicitConvTo(ta->next);
-            if (m == MATCHconst)
-                return m;
-        }
-#endif
-
-        /* Conversion of array of derived to array of const(base)
-         */
-        if (ta->next->isBaseOf(next, &offset) && offset == 0 &&
-            !ta->next->isMutable())
-            return MATCHconvert;
     }
     return Type::implicitConvTo(to);
 }
@@ -4419,8 +4584,7 @@ MATCH TypeAArray::constConv(Type *to)
         // Pick the worst match
         return mkey < mindex ? mkey : mindex;
     }
-    else
-        return Type::constConv(to);
+    return Type::constConv(to);
 }
 
 /***************************** TypePointer *****************************/
@@ -4510,7 +4674,8 @@ MATCH TypePointer::implicitConvTo(Type *to)
         return MATCHnomatch;
     }
     else if (to->ty == Tpointer)
-    {   TypePointer *tp = (TypePointer *)to;
+    {
+        TypePointer *tp = (TypePointer *)to;
         assert(tp->next);
 
         if (!MODimplicitConv(next->mod, tp->next->mod))
@@ -4537,12 +4702,6 @@ MATCH TypePointer::implicitConvTo(Type *to)
                 m = MATCHconst;
             return m;
         }
-
-        /* Conversion of ptr to derived to ptr to base
-         */
-        int offset = 0;
-        if (tp->next->isBaseOf(next, &offset) && offset == 0)
-            return MATCHconvert;
     }
     return MATCHnomatch;
 }
@@ -5401,7 +5560,7 @@ int TypeFunction::callMatch(Expression *ethis, Expressions *args, int flag)
 {
     //printf("TypeFunction::callMatch() %s\n", toChars());
     MATCH match = MATCHexact;           // assume exact match
-    bool wildmatch = FALSE;
+    unsigned wildmatch = 0;
 
     if (ethis)
     {   Type *t = ethis->type;
@@ -5419,6 +5578,17 @@ int TypeFunction::callMatch(Expression *ethis, Expressions *args, int flag)
             else
                 return MATCHnomatch;
         }
+        if (isWild())
+        {
+            if (t->isWild())
+                wildmatch |= MODwild;
+            else if (t->isConst())
+                wildmatch |= MODconst;
+            else if (t->isImmutable())
+                wildmatch |= MODimmutable;
+            else
+                wildmatch |= MODmutable;
+        }
     }
 
     size_t nparams = Parameter::dim(parameters);
@@ -5432,9 +5602,40 @@ int TypeFunction::callMatch(Expression *ethis, Expressions *args, int flag)
         match = MATCHconvert;           // match ... with a "conversion" match level
     }
 
+    for (size_t u = 0; u < nargs; u++)
+    {
+        if (u >= nparams)
+            break;
+        Parameter *p = Parameter::getNth(parameters, u);
+        Expression *arg = args->tdata()[u];
+        assert(arg);
+
+        if (!(p->storageClass & STClazy && p->type->ty == Tvoid && arg->type->ty != Tvoid))
+        {
+            unsigned mod = arg->type->wildConvTo(p->type);
+            if (mod)
+            {
+                wildmatch |= mod;
+            }
+        }
+    }
+    if (wildmatch)
+    {   /* Calculate wild matching modifier
+         */
+        if (wildmatch & MODconst || wildmatch & (wildmatch - 1))
+            wildmatch = MODconst;
+        else if (wildmatch & MODimmutable)
+            wildmatch = MODimmutable;
+        else if (wildmatch & MODwild)
+            wildmatch = MODwild;
+        else
+        {   assert(wildmatch & MODmutable);
+            wildmatch = MODmutable;
+        }
+    }
+
     for (size_t u = 0; u < nparams; u++)
     {   MATCH m;
-        Expression *arg;
 
         // BUG: what about out and ref?
 
@@ -5446,7 +5647,8 @@ int TypeFunction::callMatch(Expression *ethis, Expressions *args, int flag)
                 continue;
             goto L1;        // try typesafe variadics
         }
-        arg = args->tdata()[u];
+        {
+        Expression *arg = args->tdata()[u];
         assert(arg);
 
         if (arg->op == TOKfunction)
@@ -5459,6 +5661,9 @@ int TypeFunction::callMatch(Expression *ethis, Expressions *args, int flag)
 
         //printf("arg: %s, type: %s\n", arg->toChars(), arg->type->toChars());
 
+        Type *targ = arg->type;
+        Type *tprm = wildmatch ? p->type->substWildTo(wildmatch) : p->type;
+
         // Non-lvalues do not match ref or out parameters
         if (p->storageClass & (STCref | STCout))
         {   if (!arg->isLvalue())
@@ -5470,32 +5675,31 @@ int TypeFunction::callMatch(Expression *ethis, Expressions *args, int flag)
             /* Don't allow static arrays to be passed to mutable references
              * to static arrays if the argument cannot be modified.
              */
-            Type *targb = arg->type->toBasetype();
-            Type *tparb = p->type->toBasetype();
+            Type *targb = targ->toBasetype();
+            Type *tprmb = tprm->toBasetype();
             //printf("%s\n", targb->toChars());
-            //printf("%s\n", tparb->toChars());
-            if (targb->nextOf() && tparb->ty == Tsarray &&
-                !MODimplicitConv(targb->nextOf()->mod, tparb->nextOf()->mod))
+            //printf("%s\n", tprmb->toChars());
+            if (targb->nextOf() && tprmb->ty == Tsarray &&
+                !MODimplicitConv(targb->nextOf()->mod, tprmb->nextOf()->mod))
+                goto Nomatch;
+
+            // ref variable behaves like head-const reference
+            if (arg->op != TOKstring && !targb->constConv(tprmb))
                 goto Nomatch;
         }
 
-        if (p->storageClass & STClazy && p->type->ty == Tvoid &&
-                arg->type->ty != Tvoid)
+        if (p->storageClass & STClazy && tprm->ty == Tvoid && targ->ty != Tvoid)
             m = MATCHconvert;
         else
         {
-            //printf("%s of type %s implicitConvTo %s\n", arg->toChars(), arg->type->toChars(), p->type->toChars());
+            //printf("%s of type %s implicitConvTo %s\n", arg->toChars(), targ->toChars(), tprm->toChars());
             if (flag)
                 // for partial ordering, value is an irrelevant mockup, just look at the type
-                m = arg->type->implicitConvTo(p->type);
+                m = targ->implicitConvTo(tprm);
             else
-                m = arg->implicitConvTo(p->type);
+                m = arg->implicitConvTo(tprm);
             //printf("match %d\n", m);
-            if (m == MATCHnomatch && arg->type->wildConvTo(p->type))
-            {
-                wildmatch = TRUE;       // mod matched to wild
-                m = MATCHconst;
-            }
+        }
         }
 
         /* prefer matching the element type rather than the array
@@ -5524,7 +5728,7 @@ int TypeFunction::callMatch(Expression *ethis, Expressions *args, int flag)
                     {   TypeArray *ta = (TypeArray *)tb;
                         for (; u < nargs; u++)
                         {
-                            arg = args->tdata()[u];
+                            Expression *arg = args->tdata()[u];
                             assert(arg);
 #if 1
                             if (arg->op == TOKfunction)
@@ -7230,9 +7434,25 @@ Expression *TypeStruct::dotExp(Scope *sc, Expression *e, Identifier *ident)
         e->type->size();        // do semantic of type
         Expressions *exps = new Expressions;
         exps->reserve(sym->fields.dim);
+
+        Expression *ev = e;
         for (size_t i = 0; i < sym->fields.dim; i++)
         {   VarDeclaration *v = sym->fields.tdata()[i];
-            Expression *fe = new DotVarExp(e->loc, e, v);
+            Expression *fe;
+            if (i == 0 && sc->func && sym->fields.dim > 1 &&
+                e->hasSideEffect())
+            {
+                Identifier *id = Lexer::uniqueId("__tup");
+                ExpInitializer *ei = new ExpInitializer(e->loc, e);
+                VarDeclaration *vd = new VarDeclaration(e->loc, NULL, id, ei);
+                vd->storage_class |= STCctfe | STCref | STCforeach;
+
+                ev = new VarExp(e->loc, vd);
+                fe = new CommaExp(e->loc, new DeclarationExp(e->loc, vd), ev);
+                fe = new DotVarExp(e->loc, fe, v);
+            }
+            else
+                fe = new DotVarExp(ev->loc, ev, v);
             exps->push(fe);
         }
         e = new TupleExp(e->loc, exps);
@@ -7684,12 +7904,28 @@ Expression *TypeClass::dotExp(Scope *sc, Expression *e, Identifier *ident)
         e->type->size();        // do semantic of type
         Expressions *exps = new Expressions;
         exps->reserve(sym->fields.dim);
+
+        Expression *ev = e;
         for (size_t i = 0; i < sym->fields.dim; i++)
         {   VarDeclaration *v = sym->fields.tdata()[i];
             // Don't include hidden 'this' pointer
             if (v->isThisDeclaration())
                 continue;
-            Expression *fe = new DotVarExp(e->loc, e, v);
+            Expression *fe;
+            if (i == 0 && sc->func && sym->fields.dim > 1 &&
+                e->hasSideEffect())
+            {
+                Identifier *id = Lexer::uniqueId("__tup");
+                ExpInitializer *ei = new ExpInitializer(e->loc, e);
+                VarDeclaration *vd = new VarDeclaration(e->loc, NULL, id, ei);
+                vd->storage_class |= STCctfe | STCref | STCforeach;
+
+                ev = new VarExp(e->loc, vd);
+                fe = new CommaExp(e->loc, new DeclarationExp(e->loc, vd), ev);
+                fe = new DotVarExp(e->loc, fe, v);
+            }
+            else
+                fe = new DotVarExp(e->loc, ev, v);
             exps->push(fe);
         }
         e = new TupleExp(e->loc, exps);
@@ -8008,6 +8244,13 @@ MATCH TypeClass::constConv(Type *to)
     if (ty == to->ty && sym == ((TypeClass *)to)->sym &&
         MODimplicitConv(mod, to->mod))
         return MATCHconst;
+
+    /* Conversion derived to const(base)
+     */
+    int offset = 0;
+    if (to->isBaseOf(this, &offset) && offset == 0 && !to->isMutable())
+        return MATCHconvert;
+
     return MATCHnomatch;
 }
 

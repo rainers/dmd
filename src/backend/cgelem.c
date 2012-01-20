@@ -1274,7 +1274,7 @@ STATIC elem * elbitwise(elem *e)
                 break;
 #endif
         }
-        if (OPTIMIZER)
+        if (OPTIMIZER && sz < 16)
         {   targ_ullong ul = el_tolong(e2);
 
             if (e->Eoper == OPor && op == OPand && e1->E2->Eoper == OPconst)
@@ -2806,10 +2806,10 @@ STATIC elem * eleq(elem *e)
         // If floating point, replace (x = -y) with (x = y ^ signbit)
         if (op2 == OPneg && (tyreal(e2->Ety) || tyimaginary(e2->Ety)) &&
             (e2->E1->Eoper == OPvar || e2->E1->Eoper == OPind) &&
-           /* Turned off for 64 bits because XMM registers don't play well with
+           /* Turned off for XMM registers because they don't play well with
             * int registers.
             */
-           !I64)
+           !config.fpxmmregs)
         {   elem *es;
             tym_t ty;
 

@@ -14,6 +14,7 @@
 #include <assert.h>
 
 #include "root.h"
+#include "aav.h"
 #include "rmem.h"
 #include "stringtable.h"
 
@@ -379,13 +380,10 @@ TemplateDeclaration::TemplateDeclaration(Loc loc, Identifier *id,
     if (members)
     {
         Dsymbol *s;
-        if (Dsymbol::oneMembers(members, &s))
+        if (Dsymbol::oneMembers(members, &s, ident) && s)
         {
-            if (s && s->ident && s->ident->equals(ident))
-            {
-                onemember = s;
-                s->parent = this;
-            }
+            onemember = s;
+            s->parent = this;
         }
     }
 }
@@ -509,13 +507,10 @@ void TemplateDeclaration::semantic(Scope *sc)
     if (members)
     {
         Dsymbol *s;
-        if (Dsymbol::oneMembers(members, &s))
+        if (Dsymbol::oneMembers(members, &s, ident) && s)
         {
-            if (s && s->ident && s->ident->equals(ident))
-            {
-                onemember = s;
-                s->parent = this;
-            }
+            onemember = s;
+            s->parent = this;
         }
     }
 
@@ -1245,7 +1240,9 @@ Lretry:
             /* Remove top const for dynamic array types and pointer types
              */
             if ((argtype->ty == Tarray || argtype->ty == Tpointer) &&
-                !argtype->isMutable())
+                !argtype->isMutable() &&
+                (!(fparam->storageClass & STCref) ||
+                 (fparam->storageClass & STCauto) && !farg->isLvalue()))
             {
                 argtype = argtype->mutableOf();
             }
@@ -1804,7 +1801,7 @@ FuncDeclaration *TemplateDeclaration::deduceFunctionTemplate(Scope *sc, Loc loc,
     ti = new TemplateInstance(loc, td_best, tdargs);
     ti->semantic(sc, fargs);
     fd_best = ti->toAlias()->isFuncDeclaration();
-    if (!fd_best)
+    if (!fd_best || !((TypeFunction*)fd_best->type)->callMatch(ethis, fargs, flags))
         goto Lerror;
     return fd_best;
 
@@ -3586,7 +3583,7 @@ Object *TemplateAliasParameter::defaultArg(Loc loc, Scope *sc)
 
 // value-parameter
 
-Expression *TemplateValueParameter::edummy = NULL;
+AA *TemplateValueParameter::edummies = NULL;
 
 TemplateValueParameter::TemplateValueParameter(Loc loc, Identifier *ident, Type *valType,
         Expression *specValue, Expression *defaultValue)
@@ -3736,7 +3733,7 @@ MATCH TemplateValueParameter::matchArg(Scope *sc, Objects *tiargs,
 
     if (specValue)
     {
-        if (!ei || ei == edummy)
+        if (!ei || _aaGetRvalue(edummies, ei->type) == ei)
             goto Lnomatch;
 
         Expression *e = specValue;
@@ -3819,9 +3816,10 @@ void *TemplateValueParameter::dummyArg()
     if (!e)
     {
         // Create a dummy value
-        if (!edummy)
-            edummy = valType->defaultInit();
-        e = edummy;
+        Expression **pe = (Expression **)_aaGet(&edummies, valType);
+        if (!*pe)
+            *pe = valType->defaultInit();
+        e = *pe;
     }
     return (void *)e;
 }
@@ -4379,16 +4377,13 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
     if (members->dim)
     {
         Dsymbol *s;
-        if (Dsymbol::oneMembers(members, &s) && s)
+        if (Dsymbol::oneMembers(members, &s, tempdecl->ident) && s)
         {
             //printf("s->kind = '%s'\n", s->kind());
             //s->print();
             //printf("'%s', '%s'\n", s->ident->toChars(), tempdecl->ident->toChars());
-            if (s->ident && s->ident->equals(tempdecl->ident))
-            {
-                //printf("setting aliasdecl\n");
-                aliasdecl = new AliasDeclaration(loc, s->ident, s);
-            }
+            //printf("setting aliasdecl\n");
+            aliasdecl = new AliasDeclaration(loc, s->ident, s);
         }
     }
 

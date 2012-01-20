@@ -1272,9 +1272,8 @@ elem *ThisExp::toElem(IRState *irs)
  */
 
 elem *IntegerExp::toElem(IRState *irs)
-{   elem *e;
-
-    e = el_long(type->totym(), value);
+{
+    elem *e = el_long(type->totym(), value);
     el_setLoc(e,loc);
     return e;
 }
@@ -1867,13 +1866,30 @@ elem *NewExp::toElem(IRState *irs)
 
 elem *NegExp::toElem(IRState *irs)
 {
-    elem *e = el_una(OPneg, type->totym(), e1->toElem(irs));
-
+    elem *e = e1->toElem(irs);
     Type *tb1 = e1->type->toBasetype();
-    if (tb1->ty == Tarray || tb1->ty == Tsarray)
+    switch (tb1->ty)
     {
-        error("Array operation %s not implemented", toChars());
-        e = el_long(type->totym(), 0);  // error recovery
+        case Tarray:
+        case Tsarray:
+            error("Array operation %s not implemented", toChars());
+            e = el_long(type->totym(), 0);  // error recovery
+            break;
+
+        case Tvector:
+        {   // rewrite (-e) as (0-e)
+            elem *ez = el_calloc();
+            ez->Eoper = OPconst;
+            ez->Ety = e->Ety;
+            ez->EV.Vcent.lsw = 0;
+            ez->EV.Vcent.msw = 0;
+            e = el_bin(OPmin, type->totym(), ez, e);
+            break;
+        }
+
+        default:
+            e = el_una(OPneg, type->totym(), e);
+            break;
     }
 
     el_setLoc(e,loc);
@@ -1884,14 +1900,34 @@ elem *NegExp::toElem(IRState *irs)
  */
 
 elem *ComExp::toElem(IRState *irs)
-{   elem *e;
-
+{
     elem *e1 = this->e1->toElem(irs);
+    Type *tb1 = this->e1->type->toBasetype();
     tym_t ty = type->totym();
-    if (this->e1->type->toBasetype()->ty == Tbool)
-        e = el_bin(OPxor, ty, e1, el_long(ty, 1));
-    else
-        e = el_una(OPcom,ty,e1);
+
+    elem *e;
+    switch (tb1->ty)
+    {
+        case Tbool:
+            e = el_bin(OPxor, ty, e1, el_long(ty, 1));
+            break;
+
+        case Tvector:
+        {   // rewrite (~e) as (e^~0)
+            elem *ec = el_calloc();
+            ec->Eoper = OPconst;
+            ec->Ety = e1->Ety;
+            ec->EV.Vcent.lsw = ~0LL;
+            ec->EV.Vcent.msw = ~0LL;
+            e = el_bin(OPxor, ty, e1, ec);
+            break;
+        }
+
+        default:
+            e = el_una(OPcom,ty,e1);
+            break;
+    }
+
     el_setLoc(e,loc);
     return e;
 }
@@ -1932,6 +1968,8 @@ elem *AssertExp::toElem(IRState *irs)
     if (global.params.useAssert)
     {
         e = e1->toElem(irs);
+        symbol *ts = NULL;
+        elem *einv = NULL;
 
         InvariantDeclaration *inv = (InvariantDeclaration *)(void *)1;
 
@@ -1939,10 +1977,11 @@ elem *AssertExp::toElem(IRState *irs)
         if (global.params.useInvariants && t1->ty == Tclass &&
             !((TypeClass *)t1)->sym->isInterfaceDeclaration())
         {
+            ts = symbol_genauto(t1->toCtype());
 #if TARGET_LINUX || TARGET_FREEBSD || TARGET_SOLARIS
-            e = el_bin(OPcall, TYvoid, el_var(rtlsym[RTLSYM__DINVARIANT]), e);
+            einv = el_bin(OPcall, TYvoid, el_var(rtlsym[RTLSYM__DINVARIANT]), el_var(ts));
 #else
-            e = el_bin(OPcall, TYvoid, el_var(rtlsym[RTLSYM_DINVARIANT]), e);
+            einv = el_bin(OPcall, TYvoid, el_var(rtlsym[RTLSYM_DINVARIANT]), el_var(ts));
 #endif
         }
         // If e1 is a struct object, call the struct invariant on it
@@ -1951,81 +1990,87 @@ elem *AssertExp::toElem(IRState *irs)
             t1->nextOf()->ty == Tstruct &&
             (inv = ((TypeStruct *)t1->nextOf())->sym->inv) != NULL)
         {
-            e = callfunc(loc, irs, 1, inv->type->nextOf(), e, e1->type, inv, inv->type, NULL, NULL);
+            ts = symbol_genauto(t1->toCtype());
+            einv = callfunc(loc, irs, 1, inv->type->nextOf(), el_var(ts), e1->type, inv, inv->type, NULL, NULL);
         }
-        else
-        {
-            // Construct: (e1 || ModuleAssert(line))
-            Module *m = irs->blx->module;
-            char *mname = m->srcfile->toChars();
 
-            //printf("filename = '%s'\n", loc.filename);
-            //printf("module = '%s'\n", m->srcfile->toChars());
+        // Construct: (e1 || ModuleAssert(line))
+        Module *m = irs->blx->module;
+        char *mname = m->srcfile->toChars();
 
-            /* Determine if we are in a unittest
+        //printf("filename = '%s'\n", loc.filename);
+        //printf("module = '%s'\n", m->srcfile->toChars());
+
+        /* Determine if we are in a unittest
+         */
+        FuncDeclaration *fd = irs->getFunc();
+        UnitTestDeclaration *ud = fd ? fd->isUnitTestDeclaration() : NULL;
+
+        /* If the source file name has changed, probably due
+         * to a #line directive.
+         */
+        if (loc.filename && (msg || strcmp(loc.filename, mname) != 0))
+        {   elem *efilename;
+
+            /* Cache values.
              */
-            FuncDeclaration *fd = irs->getFunc();
-            UnitTestDeclaration *ud = fd ? fd->isUnitTestDeclaration() : NULL;
+            //static Symbol *assertexp_sfilename = NULL;
+            //static char *assertexp_name = NULL;
+            //static Module *assertexp_mn = NULL;
 
-            /* If the source file name has changed, probably due
-             * to a #line directive.
-             */
-            if (loc.filename && (msg || strcmp(loc.filename, mname) != 0))
-            {   elem *efilename;
+            if (!assertexp_sfilename || strcmp(loc.filename, assertexp_name) != 0 || assertexp_mn != m)
+            {
+                dt_t *dt = NULL;
+                const char *id;
+                int len;
 
-                /* Cache values.
-                 */
-                //static Symbol *assertexp_sfilename = NULL;
-                //static char *assertexp_name = NULL;
-                //static Module *assertexp_mn = NULL;
+                id = loc.filename;
+                len = strlen(id);
+                dtsize_t(&dt, len);
+                dtabytes(&dt,TYnptr, 0, len + 1, id);
 
-                if (!assertexp_sfilename || strcmp(loc.filename, assertexp_name) != 0 || assertexp_mn != m)
-                {
-                    dt_t *dt = NULL;
-                    const char *id;
-                    int len;
-
-                    id = loc.filename;
-                    len = strlen(id);
-                    dtsize_t(&dt, len);
-                    dtabytes(&dt,TYnptr, 0, len + 1, id);
-
-                    assertexp_sfilename = symbol_generate(SCstatic,type_fake(TYdarray));
-                    assertexp_sfilename->Sdt = dt;
-                    assertexp_sfilename->Sfl = FLdata;
+                assertexp_sfilename = symbol_generate(SCstatic,type_fake(TYdarray));
+                assertexp_sfilename->Sdt = dt;
+                assertexp_sfilename->Sfl = FLdata;
 #if ELFOBJ
-                    assertexp_sfilename->Sseg = CDATA;
+                assertexp_sfilename->Sseg = CDATA;
 #endif
 #if MACHOBJ
-                    assertexp_sfilename->Sseg = DATA;
+                assertexp_sfilename->Sseg = DATA;
 #endif
-                    outdata(assertexp_sfilename);
+                outdata(assertexp_sfilename);
 
-                    assertexp_mn = m;
-                    assertexp_name = id;
-                }
+                assertexp_mn = m;
+                assertexp_name = id;
+            }
 
-                efilename = el_var(assertexp_sfilename);
+            efilename = el_var(assertexp_sfilename);
 
-                if (msg)
-                {   elem *emsg = msg->toElem(irs);
-                    ea = el_var(rtlsym[ud ? RTLSYM_DUNITTEST_MSG : RTLSYM_DASSERT_MSG]);
-                    ea = el_bin(OPcall, TYvoid, ea, el_params(el_long(TYint, loc.linnum), efilename, emsg, NULL));
-                }
-                else
-                {
-                    ea = el_var(rtlsym[ud ? RTLSYM_DUNITTEST : RTLSYM_DASSERT]);
-                    ea = el_bin(OPcall, TYvoid, ea, el_param(el_long(TYint, loc.linnum), efilename));
-                }
+            if (msg)
+            {   elem *emsg = msg->toElem(irs);
+                ea = el_var(rtlsym[ud ? RTLSYM_DUNITTEST_MSG : RTLSYM_DASSERT_MSG]);
+                ea = el_bin(OPcall, TYvoid, ea, el_params(el_long(TYint, loc.linnum), efilename, emsg, NULL));
             }
             else
             {
-                Symbol *sassert = ud ? m->toModuleUnittest() : m->toModuleAssert();
-                ea = el_bin(OPcall,TYvoid,el_var(sassert),
-                    el_long(TYint, loc.linnum));
+                ea = el_var(rtlsym[ud ? RTLSYM_DUNITTEST : RTLSYM_DASSERT]);
+                ea = el_bin(OPcall, TYvoid, ea, el_param(el_long(TYint, loc.linnum), efilename));
             }
-            e = el_bin(OPoror,TYvoid,e,ea);
         }
+        else
+        {
+            Symbol *sassert = ud ? m->toModuleUnittest() : m->toModuleAssert();
+            ea = el_bin(OPcall,TYvoid,el_var(sassert),
+                el_long(TYint, loc.linnum));
+        }
+        if (einv)
+        {   // tmp = e, e || assert, e->inv
+            elem *eassign = el_bin(OPeq, e->Ety, el_var(ts), e);
+            e = el_combine(eassign, el_bin(OPoror, TYvoid, el_var(ts), ea));
+            e = el_combine(e, einv);
+        }
+        else
+            e = el_bin(OPoror,TYvoid,e,ea);
     }
     else
     {   // BUG: should replace assert(0); with a HLT instruction
@@ -3683,6 +3728,62 @@ elem *DeleteExp::toElem(IRState *irs)
     return e;
 }
 
+elem *VectorExp::toElem(IRState *irs)
+{
+#if 0
+    printf("VectorExp::toElem()\n");
+    print();
+    printf("\tfrom: %s\n", e1->type->toChars());
+    printf("\tto  : %s\n", to->toChars());
+#endif
+
+    dinteger_t d;
+    real_t r;
+    if (e1->type->isfloating())
+        r = e1->toReal();
+    else if (e1->type->isintegral())
+        d = e1->toInteger();
+    else
+        assert(0);
+    elem *e = el_calloc();
+    e->Eoper = OPconst;
+    e->Ety = type->totym();
+    switch (tybasic(e->Ety))
+    {
+        case TYfloat4:
+                        for (size_t i = 0; i < 4; i++)
+                            ((targ_float *)&e->EV.Vcent)[i] = r;
+                        break;
+        case TYdouble2:
+                        ((targ_double *)&e->EV.Vcent.lsw)[0] = r;
+                        ((targ_double *)&e->EV.Vcent.msw)[0] = r;
+                        break;
+        case TYschar16:
+        case TYuchar16:
+                        for (size_t i = 0; i < 16; i++)
+                            ((targ_uchar *)&e->EV.Vcent)[i] = d;
+                        break;
+        case TYshort8:
+        case TYushort8:
+                        for (size_t i = 0; i < 8; i++)
+                            ((targ_ushort *)&e->EV.Vcent)[i] = d;
+                        break;
+        case TYlong4:
+        case TYulong4:
+                        for (size_t i = 0; i < 4; i++)
+                            ((targ_ulong *)&e->EV.Vcent)[i] = d;
+                        break;
+        case TYllong2:
+        case TYullong2: e->EV.Vcent.lsw = d;
+                        e->EV.Vcent.msw = d;
+                        break;
+        default:
+            assert(0);
+    }
+    el_setLoc(e, loc);
+    return e;
+}
+
 elem *CastExp::toElem(IRState *irs)
 {
     TY fty;
@@ -3841,6 +3942,12 @@ elem *CastExp::toElem(IRState *irs)
         elem *ep = el_param(el_ptr(cdto->toSymbol()), e);
         e = el_bin(OPcall, TYnptr, el_var(rtlsym[rtl]), ep);
         goto Lret;
+    }
+
+    if (fty == Tvector && tty == Tsarray)
+    {
+        if (tfrom->size() == t->size())
+            goto Lret;
     }
 
     ftym = tybasic(e->Ety);

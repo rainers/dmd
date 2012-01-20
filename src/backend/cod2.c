@@ -169,7 +169,7 @@ code *cdorth(elem *e,regm_t *pretregs)
   ty1 = tybasic(e1->Ety);
   if (tyfloating(ty1))
   {
-        if (*pretregs & XMMREGS)
+        if (*pretregs & XMMREGS || tyvector(ty1))
             return orthxmm(e,pretregs);
 #if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
         return orth87(e,pretregs);
@@ -178,6 +178,8 @@ code *cdorth(elem *e,regm_t *pretregs)
                                                        : CLIBdsub);
 #endif
   }
+  if (tyxmmreg(ty1))
+        return orthxmm(e,pretregs);
   tym_t ty2 = tybasic(e2->Ety);
   int e2oper = e2->Eoper;
   tym_t ty = tybasic(e->Ety);
@@ -872,6 +874,9 @@ code *cdmul(elem *e,regm_t *pretregs)
         return opdouble(e,pretregs,(oper == OPmul) ? CLIBdmul : CLIBddiv);
 #endif
     }
+
+    if (tyxmmreg(tyml))
+        return orthxmm(e,pretregs);
 
     opunslng = I16 ? OPu16_32 : OPu32_64;
     switch (oper)
@@ -2115,6 +2120,8 @@ code *cdshift(elem *e,regm_t *pretregs)
                         cs.Iop = 0x8D;
                         code_newreg(&cs,resreg);
                         cs.Iflags = 0;
+                        if (I64 && sz == 8)
+                            cs.Irex |= REX_W;
                         cg = gen(NULL,&cs);             // LEA resreg,[reg * ss]
                         freenode(e1);
                         freenode(e2);
@@ -2622,8 +2629,8 @@ code *cdind(elem *e,regm_t *pretregs)
         }
         if (retregs & XMMREGS)
         {
-            assert(sz == 4 || sz == 8);         // float or double
-            cs.Iop = (sz == 4) ? 0xF30F10 : 0xF20F10;
+            assert(sz == 4 || sz == 8 || sz == 16); // float, double or vector
+            cs.Iop = xmmload(tym);
             reg -= XMM0;
             goto L2;
         }
@@ -4140,7 +4147,7 @@ code *cdneg(elem *e,regm_t *pretregs)
   if (tyfloating(tyml))
   {     if (tycomplex(tyml))
             return neg_complex87(e, pretregs);
-        if (config.fpxmmregs && tyxmmreg(tyml) && e->Eoper == OPneg && *pretregs & XMMREGS)
+        if (tyxmmreg(tyml) && e->Eoper == OPneg && *pretregs & XMMREGS)
             return xmmneg(e,pretregs);
         if (config.inline8087 &&
             ((*pretregs & (ALLREGS | mBP)) == 0 || e->Eoper == OPsqrt || I64))

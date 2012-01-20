@@ -61,6 +61,7 @@ int _unary[] =
          OPctor,OPdtor,OPsetjmp,OPvoid,OParraylength,
          OPbsf,OPbsr,OPbswap,
          OPddtor,
+         OPvector,
 #if TARGET_SEGMENTED
          OPvp_fp,OPcvp_fp,OPnp_fp,OPnp_f16p,OPf16p_np,OPoffset,
 #endif
@@ -163,7 +164,7 @@ int _exp[] = {OPvar,OPconst,OPrelconst,OPneg,OPabs,OPsqrt,OPrndtol,OPrint,
                 OPaddass,OPminass,OPmulass,OPdivass,OPmodass,OPandass,
                 OPorass,OPxorass,OPshlass,OPshrass,OPashrass,OPoror,OPandand,OPcond,
                 OPbsf,OPbsr,OPbt,OPbtc,OPbtr,OPbts,OPbswap,
-                OProl,OPror,
+                OProl,OPror,OPvector,
                 OPpair,OPrpair,OPframeptr,OPgot,OPremquo,
                 OPcolon,OPcolon2,OPasm,OPstrcpy,OPmemcpy,OPmemset,OPstrcat,OPnegass,
 #if TARGET_SEGMENTED
@@ -622,6 +623,7 @@ void dotab()
         case OPbts:     X("bts",        elzot,  cdbt);
 
         case OPbswap:   X("bswap",      evalu8, cdbswap);
+        case OPvector:  X("vector",     elzot,  cdvector);
 
         default:
                 printf("opcode hole x%x\n",i);
@@ -783,6 +785,7 @@ void dotytab()
     static tym_t _ptr_nflat[]= { TYsptr,TYcptr,TYf16ptr,TYfptr,TYhptr,TYvptr };
 #endif
     static tym_t _real[]     = { TYfloat,TYdouble,TYdouble_alias,TYldouble,
+                                 TYfloat4,TYdouble2,
                                };
     static tym_t _imaginary[] = {
                                  TYifloat,TYidouble,TYildouble,
@@ -793,6 +796,8 @@ void dotytab()
     static tym_t _integral[] = { TYbool,TYchar,TYschar,TYuchar,TYshort,
                                  TYwchar_t,TYushort,TYenum,TYint,TYuint,
                                  TYlong,TYulong,TYllong,TYullong,TYdchar,
+                                 TYschar16,TYuchar16,TYshort8,TYushort8,
+                                 TYlong4,TYulong4,TYllong2,TYullong2,
                                  TYchar16, TYcent, TYucent };
     static tym_t _ref[]      = { TYnref,TYref };
     static tym_t _func[]     = { TYnfunc,TYnpfunc,TYnsfunc,TYifunc,TYmfunc,TYjfunc,TYhfunc };
@@ -804,6 +809,7 @@ void dotytab()
 #if MARS
                                 TYwchar_t,
 #endif
+                                TYuchar16,TYushort8,TYulong4,TYullong2,
                                 TYdchar,TYullong,TYucent,TYchar16 };
 #if !MARS
     static tym_t _mptr[]    = { TYmemptr };
@@ -828,6 +834,14 @@ void dotytab()
     static tym_t _short[]     = { TYbool,TYchar,TYschar,TYuchar,TYshort,
                                   TYwchar_t,TYushort,TYchar16 };
     static tym_t _aggregate[] = { TYstruct,TYarray };
+#if TX86
+    static tym_t _xmmreg[] = {
+                                 TYfloat,TYdouble,TYifloat,TYidouble,
+                                 TYfloat4,TYdouble2,
+                                 TYschar16,TYuchar16,TYshort8,TYushort8,
+                                 TYlong4,TYulong4,TYllong2,TYullong2,
+                             };
+#endif
 
     static struct
     {
@@ -874,6 +888,17 @@ void dotytab()
 "complex float",        TYcfloat,       TYcfloat,   TYcfloat,   2*FLOATSIZE, 0x88,0x50,
 "complex double",       TYcdouble,      TYcdouble,  TYcdouble,  2*DOUBLESIZE,0x89,0x51,
 "complex long double",  TYcldouble,     TYcldouble, TYcldouble, 2*LNGDBLSIZE,0x89,0x52,
+
+"float[4]",              TYfloat4,    TYfloat4,  TYfloat4,    16,     0,      0,
+"double[2]",             TYdouble2,   TYdouble2, TYdouble2,   16,     0,      0,
+"signed char[16]",       TYschar16,   TYuchar16, TYschar16,   16,     0,      0,
+"unsigned char[16]",     TYuchar16,   TYuchar16, TYuchar16,   16,     0,      0,
+"short[8]",              TYshort8,    TYushort8, TYshort8,    16,     0,      0,
+"unsigned short[8]",     TYushort8,   TYushort8, TYushort8,   16,     0,      0,
+"long[4]",               TYlong4,     TYulong4,  TYlong4,     16,     0,      0,
+"unsigned long[4]",      TYulong4,    TYulong4,  TYulong4,    16,     0,      0,
+"long long[2]",          TYllong2,    TYullong2, TYllong2,    16,     0,      0,
+"unsigned long long[2]", TYullong2,   TYullong2, TYullong2,   16,     0,      0,
 
 "__near *",     TYjhandle,      TYjhandle, TYjhandle,   2,  0x20,       0x100,
 "nullptr_t",    TYnullptr,      TYnullptr, TYptr,       2,  0x20,       0x100,
@@ -926,18 +951,11 @@ void dotytab()
     static unsigned short dttab4[TYMAX];
     int i;
 
-/* Repeat everything 4 times to account for the mTYconst and mTYvolatile bits */
 #define T1(arr,mask) for (i=0; i<arraysize(arr); i++) \
                      {  tytab[arr[i]] |= mask; \
-                        tytab[arr[i] + 64] |= mask; \
-                        tytab[arr[i] + 128] |= mask; \
-                        tytab[arr[i] + 192] |= mask; \
                      };
 #define T2(arr,mask) for (i=0; i<arraysize(arr); i++) \
                      {  tytab[arr[i]] |= mask; \
-                        tytab[arr[i] + 64] |= mask; \
-                        tytab[arr[i] + 128] |= mask; \
-                        tytab[arr[i] + 192] |= mask; \
                      };
 
     T1(_ptr,      TYFLptr);
@@ -970,6 +988,9 @@ void dotytab()
     T2(_ref_nflat,  TYFLref);
     T2(_func_nflat, TYFLfunc);
 #endif
+#if TX86
+    T1(_xmmreg,    TYFLxmmreg);
+#endif
 #undef T1
 #undef T2
 
@@ -995,10 +1016,6 @@ void dotytab()
 
     for (i = 0; i < arraysize(typetab); i++)
     {   tytouns[typetab[i].ty] = typetab[i].unsty;
-        tytouns[typetab[i].ty | mTYconst] = typetab[i].unsty | mTYconst;
-        tytouns[typetab[i].ty | mTYvolatile] = typetab[i].unsty | mTYvolatile;
-        tytouns[typetab[i].ty | mTYconst | mTYvolatile] =
-                typetab[i].unsty | mTYconst | mTYvolatile;
     }
     fprintf(f,"const tym_t tytouns[] =\n{ ");
     for (i = 0; i < arraysize(tytouns); i++)
@@ -1010,9 +1027,6 @@ void dotytab()
 
     for (i = 0; i < arraysize(typetab); i++)
     {   tysize[typetab[i].ty | 0x00] = typetab[i].size;
-        tysize[typetab[i].ty | 0x40] = typetab[i].size;
-        tysize[typetab[i].ty | 0x80] = typetab[i].size;
-        tysize[typetab[i].ty | 0xC0] = typetab[i].size;
         /*printf("tysize[%d] = %d\n",typetab[i].ty,typetab[i].size);*/
     }
     fprintf(f,"signed char tysize[] =\n{ ");
@@ -1044,9 +1058,6 @@ void dotytab()
                 break;
         }
         tysize[typetab[i].ty | 0x00] = sz;
-        tysize[typetab[i].ty | 0x40] = sz;
-        tysize[typetab[i].ty | 0x80] = sz;
-        tysize[typetab[i].ty | 0xC0] = sz;
         /*printf("tyalignsize[%d] = %d\n",typetab[i].ty,typetab[i].size);*/
     }
     fprintf(f,"signed char tyalignsize[] =\n{ ");

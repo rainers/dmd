@@ -2328,6 +2328,18 @@ struct Foo126
 
 /***************************************************/
 
+void test796()
+{
+    struct S { invariant() { throw new Exception(""); } }
+    S* s;
+    try {
+        assert(s);
+    } catch (Error) {
+    }
+}
+
+/***************************************************/
+
 struct Tuple127(S...)
 {
     S expand;
@@ -3717,6 +3729,21 @@ void test2953()
 }
 
 /***************************************************/
+// 2997
+
+abstract class B2997 { void foo(); }
+interface I2997 { void bar(); }
+abstract class C2997 : B2997, I2997 {}
+//pragma(msg, __traits(allMembers, C).stringof);
+
+void test2997()
+{
+    enum ObjectMembers = ["toString","toHash","opCmp","opEquals","Monitor","factory"];
+
+    static assert([__traits(allMembers, C2997)] == ["foo"] ~ ObjectMembers ~ ["bar"]);
+}
+
+/***************************************************/
 // 6596
 
 extern (C) int function() pfunc6596;
@@ -4353,6 +4380,23 @@ void test7196()
 }
 
 /***************************************************/
+// 7285
+
+int[2] spam7285()
+{
+    int[2] ab;
+    if (true)
+        return (true) ? ab : [0, 0]; // Error
+    else
+        return (true) ? [0, 0] : ab; // OK
+}
+
+void test7285()
+{
+    auto sa = spam7285();
+}
+
+/***************************************************/
 
 int main()
 {
@@ -4405,6 +4449,7 @@ int main()
     test47();
     test48();
     test49();
+    test796();
     test50();
     test51();
     test52();
@@ -4540,6 +4585,7 @@ int main()
     test6630();
     test6690();
     test2953();
+    test2997();
     test4647();
     test5696();
     test6084();
@@ -4561,6 +4607,7 @@ int main()
     test7168();
     test7170();
     test7196();
+    test7285();
 
     printf("Success\n");
     return 0;

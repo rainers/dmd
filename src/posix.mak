@@ -47,7 +47,8 @@ else
     LDFLAGS=-lm -lstdc++ -lpthread
 endif
 
-CC=g++ -m$(MODEL) $(TARGET_CFLAGS)
+HOST_CC=g++
+CC=$(HOST_CC) -m$(MODEL) $(TARGET_CFLAGS)
 
 #OPT=-g -g3
 #OPT=-O2
@@ -126,6 +127,7 @@ SRC = win32.mak posix.mak \
 	$C/dwarf.c $C/dwarf.h $C/aa.h $C/aa.c $C/tinfo.h $C/ti_achar.c \
 	$C/ti_pvoid.c \
 	$C/machobj.c \
+	$C/xmm.h \
 	$(TK)/filespec.h $(TK)/mem.h $(TK)/list.h $(TK)/vec.h \
 	$(TK)/filespec.c $(TK)/mem.c $(TK)/vec.c $(TK)/list.c \
 	$(ROOT)/dchar.h $(ROOT)/dchar.c $(ROOT)/lstring.h \
@@ -141,7 +143,7 @@ SRC = win32.mak posix.mak \
 all: dmd
 
 dmd: $(DMD_OBJS)
-	$(ENVP) g++ -o dmd -m$(MODEL) $(COV) $(DMD_OBJS) $(LDFLAGS)
+	$(ENVP) $(HOST_CC) -o dmd -m$(MODEL) $(COV) $(DMD_OBJS) $(LDFLAGS)
 
 clean:
 	rm -f $(DMD_OBJS) dmd optab.o id.o impcnvgen idgen id.c id.h \

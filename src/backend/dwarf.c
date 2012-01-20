@@ -1460,6 +1460,7 @@ unsigned dwarf_typidx(type *t)
     unsigned pvoididx;
     unsigned code;
     type *tnext;
+    type *tbase;
     const char *p;
 
     static unsigned char abbrevTypeBasic[] =
@@ -1496,6 +1497,7 @@ unsigned dwarf_typidx(type *t)
         DW_AT_byte_size,        DW_FORM_data1,
         0,                      0,
     };
+#ifdef USE_DWARF_D_EXTENSIONS
     static unsigned char abbrevTypeDArray[] =
     {
         DW_TAG_darray_type,
@@ -1529,6 +1531,7 @@ unsigned dwarf_typidx(type *t)
         DW_AT_type,             DW_FORM_ref4,   // function type
         0,                      0,
     };
+#endif // USE_DWARF_D_EXTENSIONS
     static unsigned char abbrevTypeConst[] =
     {
         DW_TAG_const_type,
@@ -1625,9 +1628,33 @@ unsigned dwarf_typidx(type *t)
             {   p = (tybasic(t->Tty) == TYullong) ? "unsigned long long" : "ucent";
                 goto Lsigned;
             }
+
+#ifndef USE_DWARF_D_EXTENSIONS
+            static unsigned char abbrevTypeStruct[] =
+            {
+                DW_TAG_structure_type,
+                1,                      // children
+                DW_AT_sibling,          DW_FORM_ref4,
+                DW_AT_name,             DW_FORM_string,
+                DW_AT_byte_size,        DW_FORM_data1,
+                0,                      0,
+            };
+
+            static unsigned char abbrevTypeMember[] =
+            {
+                DW_TAG_member,
+                0,                      // no children
+                DW_AT_name,             DW_FORM_string,
+                DW_AT_type,             DW_FORM_ref4,
+                DW_AT_data_member_location, DW_FORM_block1,
+                0,                      0,
+            };
+#endif
+
             /* It's really TYdarray, and Tnext is the
              * element type
              */
+#ifdef USE_DWARF_D_EXTENSIONS
             nextidx = dwarf_typidx(t->Tnext);
             code = nextidx
                 ? dwarf_abbrev_code(abbrevTypeDArray, sizeof(abbrevTypeDArray))
@@ -1637,6 +1664,56 @@ unsigned dwarf_typidx(type *t)
             infobuf->writeByte(tysize(t->Tty)); // DW_AT_byte_size
             if (nextidx)
                 infobuf->write32(nextidx);      // DW_AT_type
+#else
+            {
+            unsigned lenidx = I64 ? dwarf_typidx(tsulong) : dwarf_typidx(tsuns);
+
+            {
+                type *tdata = type_alloc(TYnptr);
+                tdata->Tnext = t->Tnext;
+                t->Tnext->Tcount++;
+                tdata->Tcount++;
+                nextidx = dwarf_typidx(tdata);
+                type_free(tdata);
+            }
+
+            code = dwarf_abbrev_code(abbrevTypeStruct, sizeof(abbrevTypeStruct));
+            idx = infobuf->size();
+            infobuf->writeuLEB128(code);        // abbreviation code
+            unsigned siblingoffset = infobuf->size();
+            unsigned idxsibling = 0;
+            infobuf->write32(idxsibling);       // DW_AT_sibling
+            infobuf->write("_Array_", 7);       // DW_AT_name
+            if (tybasic(t->Tnext->Tty))
+                infobuf->writeString(tystring[tybasic(t->Tnext->Tty)]);
+            else
+                infobuf->writeByte(0);
+            infobuf->writeByte(tysize(t->Tty)); // DW_AT_byte_size
+
+            // length
+            code = dwarf_abbrev_code(abbrevTypeMember, sizeof(abbrevTypeMember));
+            infobuf->writeuLEB128(code);        // abbreviation code
+            infobuf->writeString("length");     // DW_AT_name
+            infobuf->write32(lenidx);           // DW_AT_type
+
+            infobuf->writeByte(2);              // DW_AT_data_member_location
+            infobuf->writeByte(DW_OP_plus_uconst);
+            infobuf->writeByte(0);
+
+            // ptr
+            infobuf->writeuLEB128(code);        // abbreviation code
+            infobuf->writeString("ptr");        // DW_AT_name
+            infobuf->write32(nextidx);          // DW_AT_type
+
+            infobuf->writeByte(2);              // DW_AT_data_member_location
+            infobuf->writeByte(DW_OP_plus_uconst);
+            infobuf->writeByte(I64 ? 8 : 4);
+
+            infobuf->writeByte(0);              // no more siblings
+            idxsibling = infobuf->size();
+            *(unsigned *)(infobuf->buf + siblingoffset) = idxsibling;
+            }
+#endif
             break;
 
         case TYllong:
@@ -1648,6 +1725,7 @@ unsigned dwarf_typidx(type *t)
             /* It's really TYdelegate, and Tnext is the
              * function type
              */
+#ifdef USE_DWARF_D_EXTENSIONS
             {   type *tv = type_fake(TYnptr);
                 tv->Tcount++;
                 pvoididx = dwarf_typidx(tv);    // void* is the 'this' type
@@ -1660,6 +1738,52 @@ unsigned dwarf_typidx(type *t)
             infobuf->writeByte(tysize(t->Tty)); // DW_AT_byte_size
             infobuf->write32(pvoididx);         // DW_AT_containing_type
             infobuf->write32(nextidx);          // DW_AT_type
+#else
+            {
+            {
+                type *tp = type_fake(TYnptr);
+                tp->Tcount++;
+                pvoididx = dwarf_typidx(tp);    // void*
+
+                tp->Tnext = t->Tnext;           // fptr*
+                tp->Tnext->Tcount++;
+                nextidx = dwarf_typidx(tp);
+                type_free(tp);
+            }
+
+            code = dwarf_abbrev_code(abbrevTypeStruct, sizeof(abbrevTypeStruct));
+            idx = infobuf->size();
+            infobuf->writeuLEB128(code);        // abbreviation code
+            unsigned siblingoffset = infobuf->size();
+            unsigned idxsibling = 0;
+            infobuf->write32(idxsibling);       // DW_AT_sibling
+            infobuf->writeString("_Delegate");  // DW_AT_name
+            infobuf->writeByte(tysize(t->Tty)); // DW_AT_byte_size
+
+            // ctxptr
+            code = dwarf_abbrev_code(abbrevTypeMember, sizeof(abbrevTypeMember));
+            infobuf->writeuLEB128(code);        // abbreviation code
+            infobuf->writeString("ctxptr");     // DW_AT_name
+            infobuf->write32(pvoididx);         // DW_AT_type
+
+            infobuf->writeByte(2);              // DW_AT_data_member_location
+            infobuf->writeByte(DW_OP_plus_uconst);
+            infobuf->writeByte(0);
+
+            // funcptr
+            infobuf->writeuLEB128(code);        // abbreviation code
+            infobuf->writeString("funcptr");    // DW_AT_name
+            infobuf->write32(nextidx);          // DW_AT_type
+
+            infobuf->writeByte(2);              // DW_AT_data_member_location
+            infobuf->writeByte(DW_OP_plus_uconst);
+            infobuf->writeByte(I64 ? 8 : 4);
+
+            infobuf->writeByte(0);              // no more siblings
+            idxsibling = infobuf->size();
+            *(unsigned *)(infobuf->buf + siblingoffset) = idxsibling;
+            }
+#endif
             break;
 
         case TYnref:
@@ -1671,6 +1795,7 @@ unsigned dwarf_typidx(type *t)
             /* It's really TYaarray, and Tnext is the
              * element type, Tkey is the key type
              */
+#ifdef USE_DWARF_D_EXTENSIONS
             keyidx = dwarf_typidx(t->Tkey);
             nextidx = dwarf_typidx(t->Tnext);
             code = dwarf_abbrev_code(abbrevTypeAArray, sizeof(abbrevTypeAArray));
@@ -1679,6 +1804,51 @@ unsigned dwarf_typidx(type *t)
             infobuf->writeByte(tysize(t->Tty)); // DW_AT_byte_size
             infobuf->write32(nextidx);          // DW_AT_type
             infobuf->write32(keyidx);           // DW_AT_containing_type
+#else
+            {
+            {
+                type *tp = type_fake(TYnptr);
+                tp->Tcount++;
+                pvoididx = dwarf_typidx(tp);    // void*
+            }
+
+            code = dwarf_abbrev_code(abbrevTypeStruct, sizeof(abbrevTypeStruct));
+            idx = infobuf->size();
+            infobuf->writeuLEB128(code);        // abbreviation code
+            unsigned siblingoffset = infobuf->size();
+            unsigned idxsibling = 0;
+            infobuf->write32(idxsibling);       // DW_AT_sibling
+            infobuf->write("_AArray_", 8);      // DW_AT_name
+            if (tybasic(t->Tkey->Tty))
+                p = tystring[tybasic(t->Tkey->Tty)];
+            else
+                p = "key";
+            infobuf->write(p, strlen(p));
+
+            infobuf->writeByte('_');
+            if (tybasic(t->Tnext->Tty))
+                p = tystring[tybasic(t->Tnext->Tty)];
+            else
+                p = "value";
+            infobuf->writeString(p);
+
+            infobuf->writeByte(tysize(t->Tty)); // DW_AT_byte_size
+
+            // ptr
+            code = dwarf_abbrev_code(abbrevTypeMember, sizeof(abbrevTypeMember));
+            infobuf->writeuLEB128(code);        // abbreviation code
+            infobuf->writeString("ptr");        // DW_AT_name
+            infobuf->write32(pvoididx);         // DW_AT_type
+
+            infobuf->writeByte(2);              // DW_AT_data_member_location
+            infobuf->writeByte(DW_OP_plus_uconst);
+            infobuf->writeByte(0);
+
+            infobuf->writeByte(0);              // no more siblings
+            idxsibling = infobuf->size();
+            *(unsigned *)(infobuf->buf + siblingoffset) = idxsibling;
+            }
+#endif
             break;
 
         case TYvoid:        return 0;
@@ -1855,7 +2025,7 @@ unsigned dwarf_typidx(type *t)
             unsigned code2 = (t->Tflags & TFsizeunknown)
                 ? dwarf_abbrev_code(abbrevTypeSubrange2, sizeof(abbrevTypeSubrange2))
                 : dwarf_abbrev_code(abbrevTypeSubrange, sizeof(abbrevTypeSubrange));
-            unsigned idxbase = dwarf_typidx(tsuns);     // should be tssize_t
+            unsigned idxbase = dwarf_typidx(tssize);
             unsigned idxsibling = 0;
             unsigned siblingoffset;
             nextidx = dwarf_typidx(t->Tnext);
@@ -1877,6 +2047,62 @@ unsigned dwarf_typidx(type *t)
             infobuf->writeByte(0);              // no more siblings
             idxsibling = infobuf->size();
             *(unsigned *)(infobuf->buf + siblingoffset) = idxsibling;
+            break;
+        }
+
+        // SIMD vector types
+        case TYfloat4:   tbase = tsfloat;  goto Lvector;
+        case TYdouble2:  tbase = tsdouble; goto Lvector;
+        case TYschar16:  tbase = tsschar;  goto Lvector;
+        case TYuchar16:  tbase = tsuchar;  goto Lvector;
+        case TYshort8:   tbase = tsshort;  goto Lvector;
+        case TYushort8:  tbase = tsushort; goto Lvector;
+        case TYlong4:    tbase = tslong;   goto Lvector;
+        case TYulong4:   tbase = tsulong;  goto Lvector;
+        case TYllong2:   tbase = tsllong;  goto Lvector;
+        case TYullong2:  tbase = tsullong; goto Lvector;
+        Lvector:
+        {   static unsigned char abbrevTypeArray[] =
+            {
+                DW_TAG_array_type,
+                1,                      // child (the subrange type)
+                (DW_AT_GNU_vector & 0x7F) | 0x80, DW_AT_GNU_vector >> 7,        DW_FORM_flag,
+                DW_AT_type,             DW_FORM_ref4,
+                DW_AT_sibling,          DW_FORM_ref4,
+                0,                      0,
+            };
+            static unsigned char abbrevTypeBaseTypeSibling[] =
+            {
+                DW_TAG_base_type,
+                0,                      // no children
+                DW_AT_byte_size,        DW_FORM_data1,  // sizeof(tssize_t)
+                DW_AT_encoding,         DW_FORM_data1,  // DW_ATE_unsigned
+                0,                      0,
+            };
+
+            unsigned code2 = dwarf_abbrev_code(abbrevTypeBaseTypeSibling, sizeof(abbrevTypeBaseTypeSibling));
+            unsigned code1 = dwarf_abbrev_code(abbrevTypeArray, sizeof(abbrevTypeArray));
+            unsigned idxbase = dwarf_typidx(tbase);
+            unsigned idxsibling = 0;
+            unsigned siblingoffset;
+
+            idx = infobuf->size();
+
+            infobuf->writeuLEB128(code1);       // DW_TAG_array_type
+            infobuf->writeByte(1);              // DW_AT_GNU_vector
+            infobuf->write32(idxbase);          // DW_AT_type
+            siblingoffset = infobuf->size();
+            infobuf->write32(idxsibling);       // DW_AT_sibling
+
+            idxsibling = infobuf->size();
+            *(unsigned *)(infobuf->buf + siblingoffset) = idxsibling;
+
+            // Not sure why this is necessary instead of using dwarf_typidx(tssize), but gcc does it
+            infobuf->writeuLEB128(code2);       // DW_TAG_base_type
+            infobuf->writeByte(tysize(tssize->Tty));              // DW_AT_byte_size
+            infobuf->writeByte(DW_ATE_unsigned);        // DT_AT_encoding
+
+            infobuf->writeByte(0);              // no more siblings
             break;
         }
 

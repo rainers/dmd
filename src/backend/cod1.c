@@ -1,5 +1,5 @@
 // Copyright (C) 1984-1998 by Symantec
-// Copyright (C) 2000-2011 by Digital Mars
+// Copyright (C) 2000-2012 by Digital Mars
 // All Rights Reserved
 // http://www.digitalmars.com
 // Written by Walter Bright
@@ -27,6 +27,7 @@
 #include        "code.h"
 #include        "global.h"
 #include        "type.h"
+#include        "xmm.h"
 
 static char __file__[] = __FILE__;      /* for tassert.h                */
 #include        "tassert.h"
@@ -1348,8 +1349,8 @@ code *getlvalue(code *pcs,elem *e,regm_t keepmsk)
              * the opcode. The only way to deal with this is to prevent enregistering
              * such variables.
              */
-            if (tyfloating(ty) && !(s->Sregm & XMMREGS) ||
-                !tyfloating(ty) && (s->Sregm & XMMREGS))
+            if (tyxmmreg(ty) && !(s->Sregm & XMMREGS) ||
+                !tyxmmreg(ty) && (s->Sregm & XMMREGS))
                 cgreg_unregister(s->Sregm);
 
             if (
@@ -1737,30 +1738,28 @@ code *fixresult(elem *e,regm_t retregs,regm_t *pretregs)
         else
         {
             c = allocreg(pretregs,&rreg,tym); /* allocate return regs   */
-            if (sz > REGSIZE)
-            {
-                unsigned msreg = findregmsw(retregs);
-                unsigned lsreg = findreglsw(retregs);
-                unsigned msrreg = findregmsw(*pretregs);
-                unsigned lsrreg = findreglsw(*pretregs);
-
-                ce = genmovreg(ce,msrreg,msreg); /* MOV msrreg,msreg    */
-                ce = genmovreg(ce,lsrreg,lsreg); /* MOV lsrreg,lsreg    */
-            }
-            else if (retregs & XMMREGS)
+            if (retregs & XMMREGS)
             {
                 reg = findreg(retregs & XMMREGS);
                 // MOVSD floatreg, XMM?
-                ce = genfltreg(ce,0xF20F11,reg - XMM0,0);
+                ce = genfltreg(ce,xmmstore(tym),reg - XMM0,0);
                 if (mask[rreg] & XMMREGS)
                     // MOVSD XMM?, floatreg
-                    ce = genfltreg(ce,0xF20F10,rreg - XMM0,0);
+                    ce = genfltreg(ce,xmmload(tym),rreg - XMM0,0);
                 else
                 {
                     // MOV rreg,floatreg
                     ce = genfltreg(ce,0x8B,rreg,0);
                     if (sz == 8)
-                        code_orrex(ce,REX_W);
+                    {
+                        if (I32)
+                        {
+                            rreg = findregmsw(*pretregs);
+                            ce = genfltreg(ce,0x8B,rreg,4);
+                        }
+                        else
+                            code_orrex(ce,REX_W);
+                    }
                 }
             }
             else if (forregs & XMMREGS)
@@ -1769,9 +1768,27 @@ code *fixresult(elem *e,regm_t retregs,regm_t *pretregs)
                 // MOV floatreg,reg
                 ce = genfltreg(ce,0x89,reg,0);
                 if (sz == 8)
-                    code_orrex(ce,REX_W);
+                {
+                    if (I32)
+                    {
+                        reg = findregmsw(retregs);
+                        ce = genfltreg(ce,0x89,reg,4);
+                    }
+                    else
+                        code_orrex(ce,REX_W);
+                }
                 // MOVSS/MOVSD XMMreg,floatreg
-                ce = genfltreg(ce,0xF20F10,rreg - XMM0,0);
+                ce = genfltreg(ce,xmmload(tym),rreg - XMM0,0);
+            }
+            else if (sz > REGSIZE)
+            {
+                unsigned msreg = findregmsw(retregs);
+                unsigned lsreg = findreglsw(retregs);
+                unsigned msrreg = findregmsw(*pretregs);
+                unsigned lsrreg = findreglsw(*pretregs);
+
+                ce = genmovreg(ce,msrreg,msreg); /* MOV msrreg,msreg    */
+                ce = genmovreg(ce,lsrreg,lsreg); /* MOV lsrreg,lsreg    */
             }
             else
             {
@@ -2422,7 +2439,7 @@ code *cdfunc(elem *e,regm_t *pretregs)
                 }
                 if (xmmcnt <= XMM7)
                 {
-                    if (tyfloating(ty) && tysize(ty) <= 8 && !tycomplex(ty))
+                    if (tyxmmreg(ty))
                     {
                         parameters[i].reg = xmmcnt;
                         xmmcnt++;
@@ -3439,7 +3456,19 @@ code *params(elem *e,unsigned stackalign)
         break;
   }
   retregs = tybyte(tym) ? BYTEREGS : allregs;
-  if (tyfloating(tym))
+  if (tyvector(tym))
+  {
+        retregs = XMMREGS;
+        c = cat(c,codelem(e,&retregs,FALSE));
+        stackpush += sz;
+        c = genadjesp(c,sz);
+        c = genc2(c,0x81,grex | modregrm(3,5,SP),sz);      // SUB SP,sz
+        unsigned op = xmmstore(tym);
+        unsigned r = findreg(retregs);
+        c = gen2sib(c,op,modregxrm(0,r - XMM0,4),modregrm(0,4,SP));   // MOV [ESP],r
+        goto ret;
+  }
+  else if (tyfloating(tym))
   {     if (config.inline8087)
         {   code *c1,*c2;
             unsigned op;
@@ -3733,7 +3762,7 @@ code *loaddata(elem *e,regm_t *pretregs)
                 if (sz == 8)
                     code_orrex(ce, REX_W);
                 assert(sz == 4 || sz == 8);             // float or double
-                unsigned op = (sz == 4) ? 0xF30F10 : 0xF20F10;
+                unsigned op = xmmload(tym);
                 ce = genfltreg(ce,op,reg - XMM0,0);     // MOVSS/MOVSD XMMreg,floatreg
             }
             else
@@ -3772,9 +3801,29 @@ code *loaddata(elem *e,regm_t *pretregs)
         else if (sz == 8)
         {
             if (I32)
-            {   targ_long *p = (targ_long *) &e->EV.Vdouble;
-                ce = movregconst(CNIL,findreglsw(forregs),p[0],0);
-                ce = movregconst(ce,findregmsw(forregs),p[1],0);
+            {
+                targ_long *p = (targ_long *) &e->EV.Vdouble;
+                if (reg >= XMM0)
+                {   /* This comes about because 0, 1, pi, etc., constants don't get stored
+                     * in the data segment, because they are x87 opcodes.
+                     * Not so efficient. We should at least do a PXOR for 0.
+                     */
+                    unsigned r;
+                    regm_t rm = ALLREGS;
+                    ce = allocreg(&rm,&r,TYint);            // allocate scratch register
+                    ce = movregconst(ce,r,p[0],0);
+                    ce = genfltreg(ce,0x89,r,0);            // MOV floatreg,r
+                    ce = movregconst(ce,r,p[1],0);
+                    ce = genfltreg(ce,0x89,r,4);            // MOV floatreg+4,r
+
+                    unsigned op = xmmload(tym);
+                    ce = genfltreg(ce,op,reg - XMM0,0);     // MOVSS/MOVSD XMMreg,floatreg
+                }
+                else
+                {
+                    ce = movregconst(CNIL,findreglsw(forregs),p[0],0);
+                    ce = movregconst(ce,findregmsw(forregs),p[1],0);
+                }
             }
             else
             {   targ_short *p = (targ_short *) &e->EV.Vdouble;
@@ -3849,12 +3898,11 @@ code *loaddata(elem *e,regm_t *pretregs)
 //printf("test2 %s\n", e->EV.sp.Vsym->Sident);
         //e->EV.sp.Vsym->Sflags &= ~GTregcand;
 
-        assert(sz == 4 || sz == 8);             // float or double
-        unsigned op = (sz == 4) ? 0xF30F10 : 0xF20F10;
+        op = xmmload(tym);
         if (e->Eoper == OPvar)
         {   symbol *s = e->EV.sp.Vsym;
             if (s->Sfl == FLreg && !(mask[s->Sreglsw] & XMMREGS))
-            {   op = 0x660F6E;          // MOVD/MOVQ
+            {   op = LODD;          // MOVD/MOVQ
                 /* getlvalue() will unwind this and unregister s; could use a better solution */
             }
         }

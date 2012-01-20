@@ -739,6 +739,18 @@ auto bug5852(const(string) s) {
 
 static assert(bug5852("abc")==3);
 
+// 7217
+
+struct S7217 { int[] arr; }
+
+bool f7217() {
+    auto s = S7217();
+    auto t = s.arr;
+    return true;
+}
+
+static assert(f7217());
+
 /*******************************************
     Set array length
 *******************************************/
@@ -753,6 +765,22 @@ static assert(
     assert(w.z.length == 6);
     return true;
 }());
+
+// 7185 char[].length = n
+
+bool bug7185() {
+    auto arr = new char[2];
+    auto arr2 = new char[2];
+    arr2[] = "ab";
+    arr.length = 1;
+    arr2.length = 7;
+    assert(arr.length == 1);
+    assert(arr2.length == 7);
+    assert(arr2[0..2] == "ab");
+    return true;
+}
+
+static assert(bug7185());
 
 /*******************************************
     6934
@@ -1943,6 +1971,50 @@ struct AList
 }
 
 static assert(AList.checkList()==2);
+
+/**************************************************
+    7194 pointers as struct members
+**************************************************/
+
+struct S7194 { int* p, p2; }
+
+int f7194() {
+    assert(S7194().p == null);
+    assert(!S7194().p);
+    assert(S7194().p == S7194().p2);
+    S7194 s = S7194();
+    assert(!s.p);
+    assert(s.p == null);
+    assert(s.p == s.p2);
+    int x;
+    s.p = &x;
+    s.p2 = s.p;
+    assert(s.p == &x);
+    return 0;
+}
+
+int g7194() {
+    auto s = S7194();
+    assert(s.p);  // should fail
+    return 0;
+}
+
+static assert(f7194() == 0);
+static assert(!is(typeof(compiles!( g7194() ))));
+
+/**************************************************
+    7248 recursive struct pointers in array
+**************************************************/
+struct S7248 { S7248* ptr; }
+
+bool bug7248() {
+    S7248[2] sarr;
+    sarr[0].ptr = &sarr[1];
+    sarr[0].ptr = null;
+    S7248* t = sarr[0].ptr;
+    return true;
+}
+static assert(bug7248());
 
 /**************************************************
     4065 [CTFE] AA "in" operator doesn't work
@@ -3571,7 +3643,7 @@ static assert({
 }());
 
 /**************************************************
-    6522 opAssign + foreach
+    6522 opAssign + foreach ref
 **************************************************/
 
 struct Foo6522 {
@@ -3589,6 +3661,30 @@ bool foo6522() {
 }
 
 static assert(foo6522());
+
+/**************************************************
+    7245 pointers + foreach ref
+**************************************************/
+
+int bug7245(int testnum) {
+    int[3] arr;
+    arr[0] = 4;
+    arr[1] = 6;
+    arr[2] = 8;
+    int* ptr;
+
+    foreach(i, ref p; arr) {
+        if(i == 1)
+            ptr = &p;
+        if (testnum == 1)
+            p = 5;
+    }
+
+    return *ptr;
+}
+
+static assert(bug7245(0)==6);
+static assert(bug7245(1)==5);
 
 /**************************************************
     6919
@@ -3667,6 +3763,37 @@ int bug6037outer(){
     return 401;
 }
 static assert(bug6037outer() == 401);
+
+/**************************************************
+    7266 dotvar ref parameters
+**************************************************/
+
+struct S7266 { int a; }
+
+bool bug7266()
+{
+    S7266 s;
+    s.a = 4;
+    bar7266(s.a);
+    assert(s.a == 5);
+    out7266(s.a);
+    assert(s.a == 7);
+    return true;
+}
+
+void bar7266(ref int b)
+{
+    b = 5;
+    assert(b == 5);
+}
+
+void out7266(out int b)
+{
+    b = 7;
+    assert(b == 7);
+}
+
+static assert( bug7266());
 
 /**************************************************
     7143 'is' for classes
@@ -3801,6 +3928,7 @@ static assert(!S7165().f());
 **************************************************/
 
 int[] f7187() { return [0]; }
+int[] f7187b(int n) { return [0]; }
 
 int g7187(int[] r)
 {
@@ -3809,3 +3937,37 @@ int g7187(int[] r)
 }
 
 static assert(g7187(f7187()));
+static assert(g7187(f7187b(7)));
+
+struct S7187 { const(int)[] field; }
+
+const(int)[] f7187c() {
+    auto s = S7187([0]);
+    return s.field;
+}
+
+bool g7187c(const(int)[] r)
+{
+    auto t = r[0..0];
+    return true;
+}
+
+static assert(g7187c(f7187c()));
+
+
+/**************************************************
+    6933 struct destructors
+**************************************************/
+
+struct Bug6933 {
+    int x = 3;
+    ~this()     { }
+}
+
+int test6933() {
+    Bug6933 q;
+    assert(q.x == 3);
+    return 3;
+}
+
+static assert(test6933());

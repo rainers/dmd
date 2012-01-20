@@ -591,6 +591,24 @@ void test4413()
 }
 
 /**********************************/
+// 4675
+
+template isNumeric(T)
+{
+    enum bool test1 = is(T : long);     // should be hidden
+    enum bool test2 = is(T : real);     // should be hidden
+    enum bool isNumeric = test1 || test2;
+}
+void test4675()
+{
+    static assert( isNumeric!int);
+    static assert(!isNumeric!string);
+    static assert(!__traits(compiles, isNumeric!int.test1));   // should be an error
+    static assert(!__traits(compiles, isNumeric!int.test2));   // should be an error
+    static assert(!__traits(compiles, isNumeric!int.isNumeric));
+}
+
+/**********************************/
 // 5801
 
 int a5801;
@@ -626,6 +644,21 @@ void foo10(T)(T prm)
     pragma(msg, T);
     static assert(is(T == const(int)[]));
 }
+void boo10(T)(ref T val)        // ref paramter doesn't remove top const
+{
+    pragma(msg, T);
+    static assert(is(T == const(int[])));
+}
+void goo10(T)(auto ref T val)   // auto ref with lvalue doesn't
+{
+    pragma(msg, T);
+    static assert(is(T == const(int[])));
+}
+void hoo10(T)(auto ref T val)   // auto ref with rvalue does
+{
+    pragma(msg, T);
+    static assert(is(T == const(int)[]));
+}
 void bar10(T)(T prm)
 {
     pragma(msg, T);
@@ -636,6 +669,9 @@ void test10()
     const a = [1,2,3];
     static assert(is(typeof(a) == const(int[])));
     foo10(a);
+    boo10(a);
+    goo10(a);
+    hoo10(cast(const(int[]))[1,2,3]);
 
     int n;
     const p = &n;
