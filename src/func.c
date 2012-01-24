@@ -119,6 +119,7 @@ void FuncDeclaration::semantic(Scope *sc)
     ClassDeclaration *cd;
     InterfaceDeclaration *id;
     Dsymbol *pd;
+    bool doesoverride;
 
 #if 0
     printf("FuncDeclaration::semantic(sc = %p, this = %p, '%s', linkage = %d)\n", sc, this, toPrettyChars(), sc->linkage);
@@ -440,6 +441,7 @@ void FuncDeclaration::semantic(Scope *sc)
         vi = cd->baseClass ? findVtblIndex((Dsymbols*)&cd->baseClass->vtbl, cd->baseClass->vtbl.dim)
                            : -1;
 
+        doesoverride = FALSE;
         switch (vi)
         {
             case -1:
@@ -462,8 +464,9 @@ void FuncDeclaration::semantic(Scope *sc)
 
                 if (isFinal())
                 {
-                    if (isOverride())
-                        error("is marked as override, but does not override any function");
+                    // Don't check here, as it may override an interface function
+                    //if (isOverride())
+                        //error("is marked as override, but does not override any function");
                     cd->vtblFinal.push(this);
                 }
                 else
@@ -488,6 +491,7 @@ void FuncDeclaration::semantic(Scope *sc)
                 if (fdv->isFinal())
                     error("cannot override final function %s", fdv->toPrettyChars());
 
+                doesoverride = TRUE;
 #if DMDV2
                 if (!isOverride())
                     warning(loc, "overrides base class function %s, but is not marked with 'override'", fdv->toPrettyChars());
@@ -569,6 +573,14 @@ void FuncDeclaration::semantic(Scope *sc)
                      */
                     foverrides.push(fdv);
 
+#if DMDV2
+                    /* Should we really require 'override' when implementing
+                     * an interface function?
+                     */
+                    //if (!isOverride())
+                        //warning(loc, "overrides base class function %s, but is not marked with 'override'", fdv->toPrettyChars());
+#endif
+
                     if (fdv->tintro)
                         ti = fdv->tintro;
                     else if (!type->equals(fdv->type))
@@ -607,7 +619,7 @@ void FuncDeclaration::semantic(Scope *sc)
             }
         }
 
-        if (introducing && isOverride())
+        if (!doesoverride && isOverride())
         {
             error("does not override any function");
         }
@@ -2676,6 +2688,21 @@ int FuncDeclaration::isVirtual()
         !(isStatic() || protection == PROTprivate || protection == PROTpackage) &&
         p->isClassDeclaration() &&
         !(p->isInterfaceDeclaration() && isFinal());
+}
+
+// Determine if a function is pedantically virtual
+
+int FuncDeclaration::isVirtualMethod()
+{
+    //printf("FuncDeclaration::isVirtualMethod() %s\n", toChars());
+    if (!isVirtual())
+        return 0;
+    // If it's a final method, and does not override anything, then it is not virtual
+    if (isFinal() && foverrides.dim == 0)
+    {
+        return 0;
+    }
+    return 1;
 }
 
 int FuncDeclaration::isFinal()
