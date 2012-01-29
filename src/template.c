@@ -1,6 +1,6 @@
 
 // Compiler implementation of the D programming language
-// Copyright (c) 1999-2011 by Digital Mars
+// Copyright (c) 1999-2012 by Digital Mars
 // All Rights Reserved
 // written by Walter Bright
 // http://www.digitalmars.com
@@ -1287,12 +1287,17 @@ Lretry:
                     ad = ((TypeStruct *)tba)->sym;
             Lad:
                     if (ad->aliasthis)
-                    {
+                    {   /* If a semantic error occurs while doing alias this,
+                         * eg purity(bug 7295), just regard it as not a match.
+                         */
+                        unsigned olderrors = global.startGagging();
                         Expression *e = new DotIdExp(farg->loc, farg, ad->aliasthis->ident);
                         e = e->semantic(sc);
                         e = resolveProperties(sc, e);
-                        farg = e;
-                        goto Lretry;
+                        if (!global.endGagging(olderrors))
+                        {   farg = e;
+                            goto Lretry;
+                        }
                     }
                 }
             }
@@ -5097,6 +5102,8 @@ Identifier *TemplateInstance::genIdent(Objects *args)
             }
             // Now that we know it is not an alias, we MUST obtain a value
             ea = ea->optimize(WANTvalue | WANTinterpret);
+            if (ea->op == TOKerror)
+                continue;
 #if 1
             /* Use deco that matches what it would be for a function parameter
              */
@@ -5648,7 +5655,7 @@ void TemplateMixin::semantic(Scope *sc)
 
     // Run semantic on each argument, place results in tiargs[]
     semanticTiargs(sc);
-    if (errors)
+    if (errors || arrayObjectIsError(tiargs))
         return;
 
     tempdecl = findBestMatch(sc, NULL);
@@ -5884,15 +5891,17 @@ int TemplateMixin::oneMember(Dsymbol **ps)
 int TemplateMixin::hasPointers()
 {
     //printf("TemplateMixin::hasPointers() %s\n", toChars());
-    for (size_t i = 0; i < members->dim; i++)
-    {
-        Dsymbol *s = members->tdata()[i];
-        //printf(" s = %s %s\n", s->kind(), s->toChars());
-        if (s->hasPointers())
+
+    if (members)
+        for (size_t i = 0; i < members->dim; i++)
         {
-            return 1;
+            Dsymbol *s = (*members)[i];
+            //printf(" s = %s %s\n", s->kind(), s->toChars());
+            if (s->hasPointers())
+            {
+                return 1;
+            }
         }
-    }
     return 0;
 }
 
