@@ -3995,7 +3995,8 @@ float parse(ref string p)
 void test230()
 {
     float f;
-    f = parse( "123e+2" );
+    string s = "123e+2";
+    f = parse( s );
     //printf("f = %g\n", f);
     assert( f == 123e+2f );
 }
@@ -4630,6 +4631,41 @@ void test7367()
 } 
 
 /***************************************************/
+// 7375
+
+class A7375 {}
+class B7375(int i) : A7375 {}
+class C7375(int i) : B7375!i {}
+
+template DerivedAlias(int i)
+{
+    alias B7375!i DerivedAlias;
+}
+
+alias DerivedAlias!22 X7375;
+
+void test7375()
+{
+    A7375 foo = new C7375!11();
+    assert(cast(B7375!22)foo is null);
+}
+
+/***************************************************/
+
+void test6504()
+{
+    for (int i=0; i<3; ++i)
+    {
+/+
+	char[] x2 = "xxx" ~ ['c'];
+	if (i == 0)
+	    assert(x2[1] == 'x');
+	x2[1] = 'q';
++/
+    }
+}
+
+/***************************************************/
 
 int main()
 {
@@ -4872,6 +4908,8 @@ int main()
     test242();
     test7290();
     test7367();
+    test7375();
+    test6504();
 
     writefln("Success");
     return 0;

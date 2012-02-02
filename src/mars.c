@@ -282,7 +282,7 @@ void fatal()
 void halt()
 {
 #if 0 //def DEBUG
-    *(char*)0=0;
+    *(volatile char*)0=0;
 #endif
 }
 

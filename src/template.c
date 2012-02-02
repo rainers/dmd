@@ -281,6 +281,8 @@ int arrayObjectMatch(Objects *oa1, Objects *oa2, TemplateDeclaration *tempdecl, 
 }
 
 /****************************************
+ * This makes a 'pretty' version of the template arguments.
+ * It's analogous to genIdent() which makes a mangled version.
  */
 
 void ObjectToCBuffer(OutBuffer *buf, HdrGenState *hgs, Object *oarg)
@@ -290,12 +292,21 @@ void ObjectToCBuffer(OutBuffer *buf, HdrGenState *hgs, Object *oarg)
     Expression *e = isExpression(oarg);
     Dsymbol *s = isDsymbol(oarg);
     Tuple *v = isTuple(oarg);
+    /* The logic of this should match what genIdent() does. The _dynamic_cast()
+     * function relies on all the pretty strings to be unique for different classes
+     * (see Bugzilla 7375).
+     * Perhaps it would be better to demangle what genIdent() does.
+     */
     if (t)
     {   //printf("\tt: %s ty = %d\n", t->toChars(), t->ty);
         t->toCBuffer(buf, NULL, hgs);
     }
     else if (e)
+    {
+        if (e->op == TOKvar)
+            e = e->optimize(WANTvalue);         // added to fix Bugzilla 7375
         e->toCBuffer(buf, hgs);
+    }
     else if (s)
     {
         char *p = s->ident ? s->ident->toChars() : s->toChars();
@@ -308,7 +319,7 @@ void ObjectToCBuffer(OutBuffer *buf, HdrGenState *hgs, Object *oarg)
         {
             if (i)
                 buf->writeByte(',');
-            Object *o = args->tdata()[i];
+            Object *o = (*args)[i];
             ObjectToCBuffer(buf, hgs, o);
         }
     }
@@ -749,6 +760,13 @@ MATCH TemplateDeclaration::matchWithInstance(TemplateInstance *ti,
         makeParamNamesVisibleInConstraint(paramscope, fargs);
         Expression *e = constraint->syntaxCopy();
         Scope *sc = paramscope->push();
+
+        /* There's a chicken-and-egg problem here. We don't know yet if this template
+         * instantiation will be a local one (isnested is set), and we won't know until
+         * after selecting the correct template. Thus, function we're nesting inside
+         * is not on the sc scope chain, and this can cause errors in FuncDeclaration::getLevel().
+         * Workaround the problem by setting a flag to relax the checking on frame errors.
+         */
         sc->flags |= SCOPEstaticif;
 
         FuncDeclaration *fd = onemember && onemember->toAlias() ?
@@ -1462,6 +1480,7 @@ Lmatch:
 #if DMDV2
     if (constraint)
     {   /* Check to see if constraint is satisfied.
+         * Most of this code appears twice; this is a good candidate for refactoring.
          */
         makeParamNamesVisibleInConstraint(paramscope, fargs);
         Expression *e = constraint->syntaxCopy();

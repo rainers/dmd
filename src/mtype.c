@@ -5673,13 +5673,18 @@ int TypeFunction::callMatch(Expression *ethis, Expressions *args, int flag)
         Type *tprm = wildmatch ? p->type->substWildTo(wildmatch) : p->type;
 
         // Non-lvalues do not match ref or out parameters
-        if (p->storageClass & (STCref | STCout))
-        {   if (!arg->isLvalue())
-                goto Nomatch;
-        }
-
         if (p->storageClass & STCref)
-        {
+        {   if (!arg->isLvalue())
+            {   if (arg->op == TOKstring && tprm->ty == Tsarray)
+                {   if (targ->ty != Tsarray)
+                        targ = new TypeSArray(targ->nextOf(),
+                                new IntegerExp(0, ((StringExp *)arg)->len,
+                                Type::tindex));
+                }
+                else
+                    goto Nomatch;
+            }
+
             /* Don't allow static arrays to be passed to mutable references
              * to static arrays if the argument cannot be modified.
              */
@@ -5692,7 +5697,11 @@ int TypeFunction::callMatch(Expression *ethis, Expressions *args, int flag)
                 goto Nomatch;
 
             // ref variable behaves like head-const reference
-            if (arg->op != TOKstring && !targb->constConv(tprmb))
+            if (!targb->constConv(tprmb))
+                goto Nomatch;
+        }
+        else if (p->storageClass & STCout)
+        {   if (!arg->isLvalue())
                 goto Nomatch;
         }
 
@@ -6483,7 +6492,9 @@ void TypeInstance::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymb
     //printf("TypeInstance::resolve(sc = %p, idents = '%s')\n", sc, id->toChars());
     s = tempinst;
     if (s)
+    {   //printf("s = %s\n", s->toChars());
         s->semantic(sc);
+    }
     resolveHelper(loc, sc, s, NULL, pe, pt, ps);
     if (*pt)
         *pt = (*pt)->addMod(mod);
@@ -6650,6 +6661,7 @@ Type *TypeTypeof::semantic(Loc loc, Scope *sc)
     {
         Scope *sc2 = sc->push();
         sc2->intypeof++;
+        sc2->flags |= sc->flags & SCOPEstaticif;
         exp = exp->semantic(sc2);
 #if DMDV2
         if (exp->type && exp->type->ty == Tfunction &&

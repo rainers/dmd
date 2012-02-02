@@ -941,7 +941,10 @@ void FuncDeclaration::semantic3(Scope *sc)
                 Type *t = new TypeIdentifier(loc, Id::va_argsave_t);
                 t = t->semantic(loc, sc);
                 if (t == Type::terror)
+                {
                     error("must import core.vararg to use variadic functions");
+                    return;
+                }
                 else
                 {
                     v_argsave = new VarDeclaration(loc, t, Id::va_argsave, NULL);
@@ -1820,6 +1823,22 @@ void FuncDeclaration::bodyToCBuffer(OutBuffer *buf, HdrGenState *hgs)
 
 Statement *FuncDeclaration::mergeFrequire(Statement *sf)
 {
+    /* If a base function and its override both have an IN contract, then
+     * only one of them needs to succeed. This is done by generating:
+     *
+     * void derived.in() {
+     *  try {
+     *    base.in();
+     *  }
+     *  catch () {
+     *    ... body of derived.in() ...
+     *  }
+     * }
+     *
+     * So if base.in() doesn't throw, derived.in() need not be executed, and the contract is valid.
+     * If base.in() throws, then derived.in()'s body is executed.
+     */
+
     /* Implementing this is done by having the overriding function call
      * nested functions (the fdrequire functions) nested inside the overridden
      * function. This requires that the stack layout of the calling function's
@@ -1865,6 +1884,7 @@ Statement *FuncDeclaration::mergeFrequire(Statement *sf)
             Statement *s2 = new ExpStatement(loc, e);
 
             Catch *c = new Catch(loc, NULL, NULL, sf);
+            c->internalCatch = true;
             Catches *catches = new Catches();
             catches->push(c);
             sf = new TryCatchStatement(loc, s2, catches);
@@ -2563,7 +2583,7 @@ AggregateDeclaration *FuncDeclaration::isMember2()
  *      >0      decrease nesting by number
  */
 
-int FuncDeclaration::getLevel(Loc loc, FuncDeclaration *fd)
+int FuncDeclaration::getLevel(Loc loc, Scope *sc, FuncDeclaration *fd)
 {   int level;
     Dsymbol *s;
     Dsymbol *fdparent;
@@ -2600,7 +2620,9 @@ int FuncDeclaration::getLevel(Loc loc, FuncDeclaration *fd)
     return level;
 
 Lerr:
-    error(loc, "cannot access frame of function %s", fd->toPrettyChars());
+    // Don't give error if in template constraint
+    if (!((sc->flags & SCOPEstaticif) && parent->isTemplateDeclaration()))
+        error(loc, "cannot access frame of function %s", fd->toPrettyChars());
     return 1;
 }
 
@@ -2939,7 +2961,7 @@ void FuncDeclaration::checkNestedReference(Scope *sc, Loc loc)
 
         if (fdv && fdthis && fdv != fdthis)
         {
-            int lv = fdthis->getLevel(loc, fdv);
+            int lv = fdthis->getLevel(loc, sc, fdv);
             if (lv == -1)
                 return; // OK
             if (lv == 0)
@@ -3750,6 +3772,7 @@ void InvariantDeclaration::semantic(Scope *sc)
 
     sc = sc->push();
     sc->stc &= ~STCstatic;              // not a static invariant
+    sc->stc |= STCconst;                // invariant() is always const
     sc->incontract++;
     sc->linkage = LINKd;
 

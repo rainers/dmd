@@ -3379,13 +3379,22 @@ int StringExp::isBool(int result)
 #if DMDV2
 int StringExp::isLvalue()
 {
-    return 1;
+    /* string literal is rvalue in default, but
+     * conversion to reference of static array is only allowed.
+     */
+    return 0;
 }
 #endif
 
 Expression *StringExp::toLvalue(Scope *sc, Expression *e)
 {
     //printf("StringExp::toLvalue(%s)\n", toChars());
+    return this;
+}
+
+Expression *StringExp::modifiableLvalue(Scope *sc, Expression *e)
+{
+    error("Cannot modify '%s'", toChars());
     return this;
 }
 
@@ -4737,7 +4746,7 @@ void VarExp::checkEscape()
         // if reference type
         if (tb->ty == Tarray || tb->ty == Tsarray || tb->ty == Tclass || tb->ty == Tdelegate)
         {
-            if (v->isScope() && !v->noscope)
+            if (v->isScope() && (!v->noscope || tb->ty == Tclass))
                 error("escaping reference to scope local %s", v->toChars());
             else if (v->storage_class & STCvariadic)
                 error("escaping reference to variadic parameter %s", v->toChars());
@@ -8469,6 +8478,13 @@ Expression *CastExp::semantic(Scope *sc)
 
         if (!to->equals(e1->type))
         {
+#if 0 // attempt at fixing 6720
+            if (e1->type->ty == Tvoid)
+            {
+                error("cannot cast from void to %s", to->toChars());
+                return new ErrorExp();
+            }
+#endif
             Expression *e = op_overload(sc);
             if (e)
             {
@@ -10148,6 +10164,13 @@ Ltupleassign:
     {
         type = e1->type;
         return arrayOp(sc);
+    }
+
+    if (e1->op == TOKvar &&
+        (((VarExp *)e1)->var->storage_class & STCscope) &&
+        op == TOKassign)
+    {
+        error("cannot rebind scope variables");
     }
 
     type = e1->type;
