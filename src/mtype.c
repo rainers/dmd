@@ -1337,6 +1337,31 @@ int MODimplicitConv(unsigned char modfrom, unsigned char modto)
 }
 
 /***************************
+ * Return !=0 if a method of type '() modfrom' can call a method of type '() modto'.
+ */
+int MODmethodConv(unsigned char modfrom, unsigned char modto)
+{
+    if (MODimplicitConv(modfrom, modto))
+        return 1;
+
+    #define X(m, n) (((m) << 4) | (n))
+    switch (X(modfrom, modto))
+    {
+        case X(0, MODwild):
+        case X(MODimmutable, MODwild):
+        case X(MODconst, MODwild):
+        case X(MODshared, MODshared|MODwild):
+        case X(MODshared|MODimmutable, MODshared|MODwild):
+        case X(MODshared|MODconst, MODshared|MODwild):
+            return 1;
+
+        default:
+            return 0;
+    }
+    #undef X
+}
+
+/***************************
  * Merge mod bits to form common mod.
  */
 int MODmerge(unsigned char mod1, unsigned char mod2)
@@ -4976,6 +5001,8 @@ int Type::covariant(Type *t)
 
         // If t1n is forward referenced:
         ClassDeclaration *cd = ((TypeClass *)t1n)->sym;
+//        if (cd->scope)
+//            cd->semantic(NULL);
 #if 0
         if (!cd->baseClass && cd->baseclasses->dim && !cd->isInterfaceDeclaration())
 #else
@@ -7923,7 +7950,18 @@ Expression *TypeClass::dotExp(Scope *sc, Expression *e, Identifier *ident)
         /* Create a TupleExp
          */
         e = e->semantic(sc);    // do this before turning on noaccesscheck
-        e->type->size();        // do semantic of type
+
+        /* If this is called in the middle of a class declaration,
+         *  class Inner {
+         *    int x;
+         *    alias typeof(Inner.tupleof) T;
+         *    int y;
+         *  }
+         * then Inner.y will be omitted from the tuple.
+         */
+        // Detect that error, and at least try to run semantic() on it if we can
+        sym->size(e->loc);
+
         Expressions *exps = new Expressions;
         exps->reserve(sym->fields.dim);
 
@@ -8240,9 +8278,14 @@ MATCH TypeClass::implicitConvTo(Type *to)
         return m;
 
     ClassDeclaration *cdto = to->isClassHandle();
-    if (cdto && cdto->isBaseOf(sym, NULL))
-    {   //printf("'to' is base\n");
-        return MATCHconvert;
+    if (cdto)
+    {
+        if (cdto->scope)
+            cdto->semantic(NULL);
+        if (cdto->isBaseOf(sym, NULL))
+        {   //printf("'to' is base\n");
+            return MATCHconvert;
+        }
     }
 
     if (global.params.Dversion == 1)

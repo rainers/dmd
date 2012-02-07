@@ -1167,7 +1167,7 @@ L2:
                 mod &= ~STCwild;
             if (tthis->mod != mod)
             {
-                if (!MODimplicitConv(tthis->mod, mod))
+                if (!MODmethodConv(tthis->mod, mod))
                     goto Lnomatch;
                 if (MATCHconst < match)
                     match = MATCHconst;
@@ -4452,6 +4452,12 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
         error("recursive expansion");
         fatal();
     }
+
+    for (size_t i = 0; i < members->dim; i++)
+    {   Dsymbol *s = (*members)[i];
+        s->setScope(sc2);
+    }
+
     for (size_t i = 0; i < members->dim; i++)
     {
         Dsymbol *s = members->tdata()[i];
