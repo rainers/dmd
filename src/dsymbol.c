@@ -94,7 +94,7 @@ Dsymbol *Dsymbol::syntaxCopy(Dsymbol *s)
  *      TRUE,  *ps = symbol: The one and only one symbol
  */
 
-int Dsymbol::oneMember(Dsymbol **ps)
+int Dsymbol::oneMember(Dsymbol **ps, Identifier *ident)
 {
     //printf("Dsymbol::oneMember()\n");
     *ps = this;
@@ -115,7 +115,7 @@ int Dsymbol::oneMembers(Dsymbols *members, Dsymbol **ps, Identifier *ident)
         for (size_t i = 0; i < members->dim; i++)
         {   Dsymbol *sx = (*members)[i];
 
-            int x = sx->oneMember(ps);
+            int x = sx->oneMember(ps, ident);
             //printf("\t[%d] kind %s = %d, s = %p\n", i, sx->kind(), x, *ps);
             if (!x)
             {
@@ -641,22 +641,49 @@ void Dsymbol::checkDeprecated(Loc loc, Scope *sc)
 
 Module *Dsymbol::getModule()
 {
-    Module *m;
-    Dsymbol *s;
-
     //printf("Dsymbol::getModule()\n");
     TemplateDeclaration *td = getFuncTemplateDecl(this);
     if (td)
         return td->getModule();
 
-    s = this;
+    Dsymbol *s = this;
     while (s)
     {
-        //printf("\ts = '%s'\n", s->toChars());
-        m = s->isModule();
+        //printf("\ts = %s '%s'\n", s->kind(), s->toPrettyChars());
+        Module *m = s->isModule();
         if (m)
             return m;
         s = s->parent;
+    }
+    return NULL;
+}
+
+/**********************************
+ * Determine which Module a Dsymbol is in, as far as access rights go.
+ */
+
+Module *Dsymbol::getAccessModule()
+{
+    //printf("Dsymbol::getAccessModule()\n");
+    TemplateDeclaration *td = getFuncTemplateDecl(this);
+    if (td)
+        return td->getAccessModule();
+
+    Dsymbol *s = this;
+    while (s)
+    {
+        //printf("\ts = %s '%s'\n", s->kind(), s->toPrettyChars());
+        Module *m = s->isModule();
+        if (m)
+            return m;
+        TemplateInstance *ti = s->isTemplateInstance();
+        if (ti && ti->isnested)
+            /* Because of local template instantiation, the parent isn't where the access
+             * rights come from - it's the template declaration
+             */
+            s = ti->tempdecl;
+        else
+            s = s->parent;
     }
     return NULL;
 }
