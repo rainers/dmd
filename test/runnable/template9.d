@@ -585,8 +585,6 @@ static assert(is(T6805.xxx.Type == int));
 /**********************************/
 // 6738
 
-version (none)
-{
 struct Foo6738
 {
     int _val = 10;
@@ -602,9 +600,6 @@ void test6738()
     assert(x == 10);
     assert(foo.get() == 10);
 }
-}
-else
-    void test6738() { }
 
 /**********************************/
 // 7498
@@ -726,6 +721,22 @@ void test4675()
     static assert(!__traits(compiles, isNumeric!int.test1));   // should be an error
     static assert(!__traits(compiles, isNumeric!int.test2));   // should be an error
     static assert(!__traits(compiles, isNumeric!int.isNumeric));
+}
+
+/**********************************/
+// 5525
+
+template foo5525(T)
+{
+    T foo5525(T t)      { return t; }
+    T foo5525(T t, T u) { return t + u; }
+}
+
+void test5525()
+{
+    alias foo5525!int f;
+    assert(f(1) == 1);
+    assert(f(1, 2) == 3);
 }
 
 /**********************************/
@@ -944,6 +955,7 @@ int main()
     test6994();
     test3467();
     test4413();
+    test5525();
     test5801();
     test10();
     test7037();

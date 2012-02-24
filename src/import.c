@@ -113,10 +113,13 @@ void Import::load(Scope *sc)
     {
         // Load module
         mod = Module::load(loc, packages, id);
-        dst->insert(id, mod);           // id may be different from mod->ident,
-                                        // if so then insert alias
-        if (!mod->importedFrom)
-            mod->importedFrom = sc ? sc->module->importedFrom : Module::rootModule;
+        if (mod)
+        {
+            dst->insert(id, mod);           // id may be different from mod->ident,
+                                            // if so then insert alias
+            if (!mod->importedFrom)
+                mod->importedFrom = sc ? sc->module->importedFrom : Module::rootModule;
+        }
     }
     if (!pkg)
         pkg = mod;
@@ -167,7 +170,8 @@ void Import::semantic(Scope *sc)
     // Load if not already done so
     if (!mod)
     {   load(sc);
-        mod->importAll(0);
+        if (mod)
+            mod->importAll(0);
     }
 
     if (mod)
@@ -367,8 +371,15 @@ Dsymbol *Import::search(Loc loc, Identifier *ident, int flags)
 
 int Import::overloadInsert(Dsymbol *s)
 {
-    // Allow multiple imports of the same name
-    return s->isImport() != NULL;
+    /* Allow multiple imports with the same package base, but disallow
+     * alias collisions (Bugzilla 5412).
+     */
+    assert(ident && ident == s->ident);
+    Import *imp;
+    if (!aliasId && (imp = s->isImport()) != NULL && !imp->aliasId)
+        return TRUE;
+    else
+        return FALSE;
 }
 
 void Import::toCBuffer(OutBuffer *buf, HdrGenState *hgs)

@@ -81,6 +81,10 @@ int REALALIGNSIZE = 4;
 int REALSIZE = 10;
 int REALPAD = 0;
 int REALALIGNSIZE = 2;
+#elif IN_GCC
+int REALSIZE = 0;
+int REALPAD = 0;
+int REALALIGNSIZE = 0;
 #else
 #error "fix this"
 #endif
@@ -4865,6 +4869,7 @@ TypeFunction::TypeFunction(Parameters *parameters, Type *treturn, int varargs, e
     this->purity = PUREimpure;
     this->isproperty = false;
     this->isref = false;
+    this->iswild = false;
     this->fargs = NULL;
 
     if (stc & STCpure)
@@ -4910,9 +4915,10 @@ Type *TypeFunction::syntaxCopy()
  *      2       arguments match as far as overloading goes,
  *              but types are not covariant
  *      3       cannot determine covariance because of forward references
+ *      *pstc   STCxxxx which would make it covariant
  */
 
-int Type::covariant(Type *t)
+int Type::covariant(Type *t, StorageClass *pstc)
 {
 #if 0
     printf("Type::covariant(t = %s) %s\n", t->toChars(), toChars());
@@ -4920,6 +4926,10 @@ int Type::covariant(Type *t)
 //    printf("ty = %d\n", next->ty);
     printf("mod = %x, %x\n", mod, t->mod);
 #endif
+
+    if (pstc)
+        *pstc = 0;
+    StorageClass stc = 0;
 
     int inoutmismatch = 0;
 
@@ -5024,35 +5034,39 @@ int Type::covariant(Type *t)
     goto Lnotcovariant;
 
 Lcovariant:
+    if (t1->isref != t2->isref)
+        goto Lnotcovariant;
+
     /* Can convert mutable to const
      */
     if (!MODimplicitConv(t2->mod, t1->mod))
-        goto Lnotcovariant;
-#if 0
-    if (t1->mod != t2->mod)
     {
-        if (!(t1->mod & MODconst) && (t2->mod & MODconst))
-            goto Lnotcovariant;
-        if (!(t1->mod & MODshared) && (t2->mod & MODshared))
+        // If adding 'const' will make it covariant
+        if (MODimplicitConv(t2->mod, MODmerge(t1->mod, MODconst)))
+            stc |= STCconst;
+        else
             goto Lnotcovariant;
     }
-#endif
 
     /* Can convert pure to impure, and nothrow to throw
      */
     if (!t1->purity && t2->purity)
-        goto Lnotcovariant;
+        stc |= STCpure;
 
     if (!t1->isnothrow && t2->isnothrow)
-        goto Lnotcovariant;
-
-    if (t1->isref != t2->isref)
-        goto Lnotcovariant;
+        stc |= STCnothrow;
 
     /* Can convert safe/trusted to system
      */
     if (t1->trust <= TRUSTsystem && t2->trust >= TRUSTtrusted)
+        // Should we infer trusted or safe? Go with safe.
+        stc |= STCsafe;
+
+    if (stc)
+    {   if (pstc)
+            *pstc = stc;
         goto Lnotcovariant;
+    }
 
     //printf("\tcovaraint: 1\n");
     return 1;
@@ -5328,13 +5342,15 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
 
     /* If the parent is @safe, then this function defaults to safe
      * too.
+     * If the parent's @safe-ty is inferred, then this function's @safe-ty needs
+     * to be inferred first.
      */
     if (tf->trust == TRUSTdefault)
         for (Dsymbol *p = sc->func; p; p = p->toParent2())
         {   FuncDeclaration *fd = p->isFuncDeclaration();
             if (fd)
             {
-                if (fd->isSafe())
+                if (fd->isSafeBypassingInference())
                     tf->trust = TRUSTsafe;              // default to @safe
                 break;
             }
@@ -5371,7 +5387,6 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
     }
 
     bool wildparams = FALSE;
-    bool wildsubparams = FALSE;
     if (tf->parameters)
     {
         /* Create a scope for evaluating the default arguments for the parameters
@@ -5413,11 +5428,9 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
                 !(t->ty == Tpointer && t->nextOf()->ty == Tfunction || t->ty == Tdelegate))
             {
                 wildparams = TRUE;
-                if (tf->next && !wildreturn)
-                    error(loc, "inout on parameter means inout must be on return type as well (if from D1 code, replace with 'ref')");
+                //if (tf->next && !wildreturn)
+                //    error(loc, "inout on parameter means inout must be on return type as well (if from D1 code, replace with 'ref')");
             }
-            else if (!wildsubparams && t->hasWild())
-                wildsubparams = TRUE;
 
             if (fparam->defaultArg)
             {
@@ -5484,8 +5497,7 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
 
     if (wildreturn && !wildparams)
         error(loc, "inout on return means inout must be on a parameter as well for %s", toChars());
-    if (wildsubparams && wildparams)
-        error(loc, "inout must be all or none on top level for %s", toChars());
+    tf->iswild = wildparams;
 
     if (tf->next)
         tf->deco = tf->merge()->deco;
@@ -5906,6 +5918,36 @@ Expression *TypeFunction::defaultInit(Loc loc)
 {
     error(loc, "function does not have a default initializer");
     return new ErrorExp();
+}
+
+Type *TypeFunction::addStorageClass(StorageClass stc)
+{
+    TypeFunction *t = (TypeFunction *)Type::addStorageClass(stc);
+    if ((stc & STCpure && !t->purity) ||
+        (stc & STCnothrow && !t->isnothrow) ||
+        (stc & STCsafe && t->trust < TRUSTtrusted))
+    {
+        // Klunky to change these
+        TypeFunction *tf = new TypeFunction(t->parameters, t->next, t->varargs, t->linkage, 0);
+        tf->mod = t->mod;
+        tf->fargs = fargs;
+        tf->purity = t->purity;
+        tf->isnothrow = t->isnothrow;
+        tf->isproperty = t->isproperty;
+        tf->isref = t->isref;
+        tf->trust = t->trust;
+
+        if (stc & STCpure)
+            tf->purity = PUREfwdref;
+        if (stc & STCnothrow)
+            tf->isnothrow = true;
+        if (stc & STCsafe)
+            tf->trust = TRUSTsafe;
+
+        tf->deco = tf->merge()->deco;
+        t = tf;
+    }
+    return t;
 }
 
 /***************************** TypeDelegate *****************************/
@@ -6437,10 +6479,6 @@ Type *TypeIdentifier::semantic(Loc loc, Scope *sc)
     }
     else
     {
-#ifdef DEBUG
-        if (!global.gag)
-            printf("1: ");
-#endif
         if (s)
         {
             s->error(loc, "is used as a type");
@@ -6692,7 +6730,12 @@ Type *TypeTypeof::semantic(Loc loc, Scope *sc)
         Scope *sc2 = sc->push();
         sc2->intypeof++;
         sc2->flags |= sc->flags & SCOPEstaticif;
+        unsigned oldspecgag = global.speculativeGag;
+        if (global.gag)
+            global.speculativeGag = global.gag;
         exp = exp->semantic(sc2);
+        global.speculativeGag = oldspecgag;
+
 #if DMDV2
         if (exp->type && exp->type->ty == Tfunction &&
             ((TypeFunction *)exp->type)->isproperty)
@@ -6883,9 +6926,6 @@ unsigned TypeEnum::alignsize()
 {
     if (!sym->memtype)
     {
-#ifdef DEBUG
-        printf("1: ");
-#endif
         error(0, "enum %s is forward referenced", sym->toChars());
         return 4;
     }
@@ -6912,9 +6952,6 @@ Type *TypeEnum::toBasetype()
     }
     if (!sym->memtype)
     {
-#ifdef DEBUG
-        printf("2: ");
-#endif
         error(sym->loc, "enum %s is forward referenced", sym->toChars());
         return tint32;
     }
@@ -7099,9 +7136,6 @@ int TypeEnum::isZeroInit(Loc loc)
     }
     if (!sym->defaultval)
     {
-#ifdef DEBUG
-        printf("3: ");
-#endif
         error(loc, "enum %s is forward referenced", sym->toChars());
         return 0;
     }
@@ -7707,7 +7741,7 @@ Expression *TypeStruct::defaultInitLiteral(Loc loc)
                 e = vd->init->toExpression();
         }
         else
-            e = vd->type->defaultInitLiteral();
+            e = vd->type->defaultInitLiteral(loc);
         structelems->tdata()[j] = e;
     }
     StructLiteralExp *structinit = new StructLiteralExp(loc, (StructDeclaration *)sym, structelems);
@@ -8244,7 +8278,7 @@ L1:
         return e;
     }
 
-    DotVarExp *de = new DotVarExp(e->loc, e, d);
+    DotVarExp *de = new DotVarExp(e->loc, e, d, d->hasOverloads());
     return de->semantic(sc);
 }
 
@@ -8538,12 +8572,32 @@ Expression *TypeTuple::getProperty(Loc loc, Identifier *ident)
     {
         e = new IntegerExp(loc, arguments->dim, Type::tsize_t);
     }
+    else if (ident == Id::init)
+    {
+        e = defaultInitLiteral(loc);
+    }
     else
     {
         error(loc, "no property '%s' for tuple '%s'", ident->toChars(), toChars());
         e = new ErrorExp();
     }
     return e;
+}
+
+Expression *TypeTuple::defaultInit(Loc loc)
+{
+    Expressions *exps = new Expressions();
+    exps->setDim(arguments->dim);
+    for (size_t i = 0; i < arguments->dim; i++)
+    {
+        Parameter *p = (*arguments)[i];
+        assert(p->type);
+        Expression *e = p->type->defaultInitLiteral(loc);
+        if (e->op == TOKerror)
+            return e;
+        (*exps)[i] = e;
+    }
+    return new TupleExp(loc, exps);
 }
 
 /***************************** TypeSlice *****************************/

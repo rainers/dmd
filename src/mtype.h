@@ -223,7 +223,7 @@ struct Type : Object
     virtual Type *syntaxCopy();
     int equals(Object *o);
     int dyncast() { return DYNCAST_TYPE; } // kludge for template.isType()
-    int covariant(Type *t);
+    int covariant(Type *t, StorageClass *pstc = NULL);
     char *toChars();
     static char needThisPrefix();
     static void init();
@@ -275,7 +275,7 @@ struct Type : Object
     Type *addSTC(StorageClass stc);
     Type *castMod(unsigned mod);
     Type *addMod(unsigned mod);
-    Type *addStorageClass(StorageClass stc);
+    virtual Type *addStorageClass(StorageClass stc);
     Type *pointerTo();
     Type *referenceTo();
     Type *arrayOf();
@@ -301,7 +301,7 @@ struct Type : Object
     Expression *noMember(Scope *sc, Expression *e, Identifier *ident);
     virtual unsigned memalign(unsigned salign);
     virtual Expression *defaultInit(Loc loc = 0);
-    virtual Expression *defaultInitLiteral(Loc loc = 0);
+    virtual Expression *defaultInitLiteral(Loc loc);
     virtual int isZeroInit(Loc loc = 0);                // if initializer is 0
     virtual dt_t **toDt(dt_t **pdt);
     Identifier *getTypeInfoIdent(int internal);
@@ -612,6 +612,7 @@ struct TypeFunction : TypeNext
     enum LINK linkage;  // calling convention
     enum TRUST trust;   // level of trust
     enum PURE purity;   // PURExxxx
+    bool iswild;        // is inout function
     Expressions *fargs; // function arguments
 
     int inuse;
@@ -633,6 +634,7 @@ struct TypeFunction : TypeNext
     void toCppMangle(OutBuffer *buf, CppMangleState *cms);
 #endif
     bool parameterEscapes(Parameter *p);
+    Type *addStorageClass(StorageClass stc);
 
     int callMatch(Expression *ethis, Expressions *toargs, int flag = 0);
     type *toCtype();
@@ -915,6 +917,7 @@ struct TypeTuple : Type
     void toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod);
     void toDecoBuffer(OutBuffer *buf, int flag);
     Expression *getProperty(Loc loc, Identifier *ident);
+    Expression *defaultInit(Loc loc);
     TypeInfoDeclaration *getTypeInfoDeclaration();
 };
 
@@ -979,6 +982,7 @@ struct Parameter : Object
 extern int PTRSIZE;
 extern int REALSIZE;
 extern int REALPAD;
+extern int REALALIGNSIZE;
 extern int Tsize_t;
 extern int Tptrdiff_t;
 

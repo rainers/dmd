@@ -3377,7 +3377,7 @@ elem *CondExp::toElem(IRState *irs)
 
 elem *TypeExp::toElem(IRState *irs)
 {
-#ifdef DEBUG
+#if 0
     printf("TypeExp::toElem()\n");
 #endif
     error("type %s is not an expression", toChars());
@@ -3460,8 +3460,7 @@ elem *DelegateExp::toElem(IRState *irs)
             ep = el_una(OPind, TYnptr, ep);
             vindex = func->vtblIndex;
 
-            if ((int)vindex < 0)
-                error("Internal compiler error: malformed delegate. See Bugzilla 4860");
+            assert((int)vindex >= 0);
 
             // Build *(ep + vindex * 4)
             ep = el_bin(OPadd,TYnptr,ep,el_long(TYsize_t, vindex * PTRSIZE));
@@ -3541,6 +3540,9 @@ elem *CallExp::toElem(IRState *irs)
     {
         fd = ((VarExp *)e1)->var->isFuncDeclaration();
 
+#if 0 // This optimization is not valid if alloca can be called
+      // multiple times within the same function, eg in a loop
+      // see issue 3822
         if (fd && fd->ident == Id::alloca &&
             !fd->fbody && fd->linkage == LINKc &&
             arguments && arguments->dim == 1)
@@ -3567,6 +3569,7 @@ elem *CallExp::toElem(IRState *irs)
                 }
             }
         }
+#endif
 
         ec = e1->toElem(irs);
     }
@@ -4427,6 +4430,9 @@ Lagain:
                 e = el_una(OPld_d, TYcdouble, e);
                 fty = Tcomplex64;
                 goto Lagain;
+
+        case X(Tnull, Tarray):
+            goto Lzero;
 
         /* ============================= */
 

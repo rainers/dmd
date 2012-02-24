@@ -1,6 +1,6 @@
 
 // Compiler implementation of the D programming language
-// Copyright (c) 1999-2011 by Digital Mars
+// Copyright (c) 1999-2012 by Digital Mars
 // All Rights Reserved
 // written by Walter Bright
 // http://www.digitalmars.com
@@ -45,6 +45,7 @@ Dsymbol::Dsymbol()
     this->loc = 0;
     this->comment = NULL;
     this->scope = NULL;
+    this->errors = false;
 }
 
 Dsymbol::Dsymbol(Identifier *ident)
@@ -58,6 +59,7 @@ Dsymbol::Dsymbol(Identifier *ident)
     this->loc = 0;
     this->comment = NULL;
     this->scope = NULL;
+    this->errors = false;
 }
 
 int Dsymbol::equals(Object *o)
@@ -130,12 +132,15 @@ int Dsymbol::oneMembers(Dsymbols *members, Dsymbol **ps, Identifier *ident)
                     if (!(*ps)->ident || !(*ps)->ident->equals(ident))
                         continue;
                 }
-                if (s)                  // more than one symbol
+                if (!s)
+                    s = *ps;
+                else if (s->isOverloadable() && (*ps)->isOverloadable())
+                    ;   // keep head of overload set
+                else                    // more than one symbol
                 {   *ps = NULL;
                     //printf("\tfalse 2\n");
                     return FALSE;
                 }
-                s = *ps;
             }
         }
     }
@@ -274,6 +279,23 @@ TemplateInstance *Dsymbol::inTemplateInstance()
     return NULL;
 }
 
+// Check if this function is a member of a template which has only been
+// instantiated speculatively, eg from inside is(typeof()).
+// Return the speculative template instance it is part of,
+// or NULL if not speculative.
+TemplateInstance *Dsymbol::isSpeculative()
+{
+    Dsymbol * par = parent;
+    while (par)
+    {
+        TemplateInstance *ti = par->isTemplateInstance();
+        if (ti && ti->speculative)
+            return ti;
+        par = par->toParent();
+    }
+    return NULL;
+}
+
 int Dsymbol::isAnonymous()
 {
     return ident ? 0 : 1;
@@ -358,11 +380,21 @@ Dsymbol *Dsymbol::search(Loc loc, Identifier *ident, int flags)
 
 void *symbol_search_fp(void *arg, const char *seed)
 {
+    /* If not in the lexer's string table, it certainly isn't in the symbol table.
+     * Doing this first is a lot faster.
+     */
+    size_t len = strlen(seed);
+    if (!len)
+        return NULL;
+    StringValue *sv = Lexer::stringtable.lookup(seed, len);
+    if (!sv)
+        return NULL;
+    Identifier *id = (Identifier *)sv->ptrvalue;
+    assert(id);
+
     Dsymbol *s = (Dsymbol *)arg;
-    Identifier id(seed, 0);
     Module::clearCache();
-    s = s->search(0, &id, 4|2);
-    return s;
+    return s->search(0, id, 4|2);
 }
 
 Dsymbol *Dsymbol::search_correct(Identifier *ident)
@@ -487,6 +519,11 @@ int Dsymbol::isDeprecated()
 
 #if DMDV2
 int Dsymbol::isOverloadable()
+{
+    return 0;
+}
+
+int Dsymbol::hasOverloads()
 {
     return 0;
 }

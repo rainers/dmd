@@ -490,7 +490,8 @@ void AliasDeclaration::semantic(Scope *sc)
         if (s)
             goto L2;
 
-        error("cannot alias an expression %s", e->toChars());
+        if (e->op != TOKerror)
+            error("cannot alias an expression %s", e->toChars());
         t = e->type;
     }
     else if (t)
@@ -502,7 +503,7 @@ void AliasDeclaration::semantic(Scope *sc)
         ScopeDsymbol::multiplyDefined(0, this, overnext);
     this->inSemantic = 0;
 
-    if (errors != global.errors)
+    if (global.gag && errors != global.errors)
         type = savedtype;
     return;
 
@@ -538,7 +539,7 @@ void AliasDeclaration::semantic(Scope *sc)
             assert(global.errors);
             s = NULL;
         }
-        if (errors != global.errors)
+        if (global.gag && errors != global.errors)
         {
             type = savedtype;
             overnext = savedovernext;
@@ -1126,7 +1127,7 @@ Lnomatch:
         {
             if (func->fes)
                 func = func->fes->func;
-            if (!func->type->hasWild())
+            if (!((TypeFunction *)func->type)->iswild)
             {
                 error("inout variables can only be declared inside inout functions");
             }

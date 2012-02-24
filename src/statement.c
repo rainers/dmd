@@ -1512,6 +1512,10 @@ Statement *ForeachStatement::semantic(Scope *sc)
                     if (arg->storageClass & STCref)
                         error("symbol %s cannot be ref", s->toChars());
                 }
+                else if (e->op == TOKtype)
+                {
+                    var = new AliasDeclaration(loc, arg->ident, e->type);
+                }
                 else
                 {
                     arg->type = e->type;
@@ -3323,7 +3327,7 @@ DefaultStatement::DefaultStatement(Loc loc, Statement *s)
 {
     this->statement = s;
 #if IN_GCC
-+    cblock = NULL;
+    cblock = NULL;
 #endif
 }
 
@@ -4077,6 +4081,8 @@ Statement *SynchronizedStatement::semantic(Scope *sc)
     {
         exp = exp->semantic(sc);
         exp = resolveProperties(sc, exp);
+        if (exp->op == TOKerror)
+            goto Lbody;
         ClassDeclaration *cd = exp->type->isClassHandle();
         if (!cd)
             error("can only synchronize on class objects, not '%s'", exp->type->toChars());
@@ -4155,6 +4161,7 @@ Statement *SynchronizedStatement::semantic(Scope *sc)
         return s->semantic(sc);
     }
 #endif
+Lbody:
     if (body)
         body = body->semantic(sc);
     return this;
@@ -4254,6 +4261,13 @@ Statement *WithStatement::semantic(Scope *sc)
         }
         else if (t->ty == Tstruct)
         {
+            if (!exp->isLvalue())
+            {
+                init = new ExpInitializer(loc, exp);
+                wthis = new VarDeclaration(loc, exp->type, Lexer::uniqueId("__withtmp"), init);
+                exp = new CommaExp(loc, new DeclarationExp(loc, wthis), new VarExp(loc, wthis));
+                exp = exp->semantic(sc);
+            }
             Expression *e = exp->addressOf(sc);
             init = new ExpInitializer(loc, e);
             wthis = new VarDeclaration(loc, e->type, Id::withSym, init);

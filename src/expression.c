@@ -1,6 +1,6 @@
 
 // Compiler implementation of the D programming language
-// Copyright (c) 1999-2011 by Digital Mars
+// Copyright (c) 1999-2012 by Digital Mars
 // All Rights Reserved
 // written by Walter Bright
 // http://www.digitalmars.com
@@ -670,23 +670,6 @@ Expression *callCpCtor(Loc loc, Scope *sc, Expression *e, int noscope)
 }
 #endif
 
-// Check if this function is a member of a template which has only been
-// instantiated speculatively, eg from inside is(typeof()).
-// Return the speculative template instance it is part of,
-// or NULL if not speculative.
-TemplateInstance *isSpeculativeFunction(FuncDeclaration *fd)
-{
-    Dsymbol * par = fd->parent;
-    while (par)
-    {
-        TemplateInstance *ti = par->isTemplateInstance();
-        if (ti && ti->speculative)
-            return ti;
-        par = par->toParent();
-    }
-    return NULL;
-}
-
 /****************************************
  * Now that we know the exact type of the function we're calling,
  * the arguments[] need to be adjusted:
@@ -716,7 +699,7 @@ Type *functionParameters(Loc loc, Scope *sc, TypeFunction *tf,
     // If inferring return type, and semantic3() needs to be run if not already run
     if (!tf->next && fd->inferRetType)
     {
-        TemplateInstance *spec = isSpeculativeFunction(fd);
+        TemplateInstance *spec = fd->isSpeculative();
         int olderrs = global.errors;
         fd->semantic3(fd->scope);
         // Update the template instantiation with the number
@@ -1355,9 +1338,6 @@ void Expression::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 void Expression::toMangleBuffer(OutBuffer *buf)
 {
     error("expression %s is not a valid template value argument", toChars());
-#ifdef DEBUG
-dump(0);
-#endif
 }
 
 /***************************************
@@ -1547,7 +1527,7 @@ void Expression::checkPurity(Scope *sc, VarDeclaration *v, Expression *ethis)
                     break;
                 if (ff->setImpure() && !msg)
                 {   error("pure function '%s' cannot access mutable static data '%s'",
-                        sc->func->toChars(), v->toChars());
+                        sc->func->toPrettyChars(), v->toChars());
                     msg = TRUE;                     // only need the innermost message
                 }
             }
@@ -1619,6 +1599,7 @@ Expression *Expression::checkToBoolean(Scope *sc)
 #ifdef DEBUG
     if (!type)
         dump(0);
+    assert(type);
 #endif
 
     // Structs can be converted to bool using opCast(bool)()
@@ -2155,7 +2136,7 @@ char *RealExp::toChars()
 dinteger_t RealExp::toInteger()
 {
 #ifdef IN_GCC
-    return toReal().toInt();
+    return (sinteger_t) toReal().toInt();
 #else
     return (sinteger_t) toReal();
 #endif
@@ -2633,6 +2614,8 @@ DsymbolExp::DsymbolExp(Loc loc, Dsymbol *s, int hasOverloads)
     this->hasOverloads = hasOverloads;
 }
 
+AggregateDeclaration *isAggregate(Type *t);
+
 Expression *DsymbolExp::semantic(Scope *sc)
 {
 #if LOGSEMANTIC
@@ -2690,6 +2673,7 @@ Lagain:
     if (em)
     {
         e = em->value;
+        e->loc = loc;
         e = e->semantic(sc);
         return e;
     }
@@ -2736,12 +2720,18 @@ Lagain:
     {   //printf("'%s' is a function\n", f->toChars());
 
         if (!f->originalType && f->scope)       // semantic not yet run
+        {
+            unsigned oldgag = global.gag;
+            if (global.isSpeculativeGagging() && !f->isSpeculative())
+                global.gag = 0;
             f->semantic(f->scope);
+            global.gag = oldgag;
+        }
 
         // if inferring return type, sematic3 needs to be run
         if (f->inferRetType && f->scope && f->type && !f->type->nextOf())
         {
-            TemplateInstance *spec = isSpeculativeFunction(f);
+            TemplateInstance *spec = f->isSpeculative();
             int olderrs = global.errors;
             f->semantic3(f->scope);
             // Update the template instantiation with the number
@@ -2833,12 +2823,14 @@ Lagain:
     TemplateDeclaration *td = s->isTemplateDeclaration();
     if (td)
     {
-#if 0 // This was the fix for Bugzilla 6738, but it breaks 7498
         Dsymbol *p = td->toParent2();
-        if (hasThis(sc) && p && p->isAggregateDeclaration())
+        FuncDeclaration *fdthis = hasThis(sc);
+        AggregateDeclaration *ad = p ? p->isAggregateDeclaration() : NULL;
+        if (fdthis && ad && isAggregate(fdthis->vthis->type) == ad)
+        {
             e = new DotTemplateExp(loc, new ThisExp(loc), td);
+        }
         else
-#endif
             e = new TemplateExp(loc, td);
         e = e->semantic(sc);
         return e;
@@ -3941,19 +3933,6 @@ int StructLiteralExp::getFieldIndex(Type *type, unsigned offset)
     return -1;
 }
 
-#if DMDV2
-int StructLiteralExp::isLvalue()
-{
-    return 1;
-}
-#endif
-
-Expression *StructLiteralExp::toLvalue(Scope *sc, Expression *e)
-{
-    return this;
-}
-
-
 void StructLiteralExp::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 {
     buf->writestring(sd->toChars());
@@ -4053,8 +4032,9 @@ Expression *ScopeExp::semantic(Scope *sc)
 #endif
 Lagain:
     ti = sds->isTemplateInstance();
-    if (ti && !global.errors)
+    if (ti && !ti->errors)
     {
+        unsigned olderrs = global.errors;
         if (!ti->semanticRun)
             ti->semantic(sc);
         if (ti->inst)
@@ -4084,7 +4064,7 @@ Lagain:
             }
             //printf("sds = %s, '%s'\n", sds->kind(), sds->toChars());
         }
-        if (global.errors)
+        if (olderrs != global.errors)
             return new ErrorExp();
     }
     else
@@ -5871,44 +5851,122 @@ Expression *BinExp::semanticp(Scope *sc)
 }
 
 
-// generate an error if this is a nonsensical *=,/=, or %=, eg real *= imaginary
-void BinExp::checkComplexMulAssign()
+Expression *BinExp::checkComplexOpAssign(Scope *sc)
 {
-    // Any multiplication by an imaginary or complex number yields a complex result.
-    // r *= c, i*=c, r*=i, i*=i are all forbidden operations.
-    const char *opstr = Token::toChars(op);
-    if ( e1->type->isreal() && e2->type->iscomplex())
+    // generate an error if this is a nonsensical *=,/=, or %=, eg real *= imaginary
+    if (op == TOKmulass || op == TOKdivass || op == TOKmodass)
     {
-        error("%s %s %s is undefined. Did you mean %s %s %s.re ?",
-            e1->type->toChars(), opstr, e2->type->toChars(),
-            e1->type->toChars(), opstr, e2->type->toChars());
+        // Any multiplication by an imaginary or complex number yields a complex result.
+        // r *= c, i*=c, r*=i, i*=i are all forbidden operations.
+        const char *opstr = Token::toChars(op);
+        if ( e1->type->isreal() && e2->type->iscomplex())
+        {
+            error("%s %s %s is undefined. Did you mean %s %s %s.re ?",
+                e1->type->toChars(), opstr, e2->type->toChars(),
+                e1->type->toChars(), opstr, e2->type->toChars());
+        }
+        else if (e1->type->isimaginary() && e2->type->iscomplex())
+        {
+            error("%s %s %s is undefined. Did you mean %s %s %s.im ?",
+                e1->type->toChars(), opstr, e2->type->toChars(),
+                e1->type->toChars(), opstr, e2->type->toChars());
+        }
+        else if ((e1->type->isreal() || e1->type->isimaginary()) &&
+            e2->type->isimaginary())
+        {
+            error("%s %s %s is an undefined operation", e1->type->toChars(),
+                    opstr, e2->type->toChars());
+        }
     }
-    else if (e1->type->isimaginary() && e2->type->iscomplex())
-    {
-        error("%s %s %s is undefined. Did you mean %s %s %s.im ?",
-            e1->type->toChars(), opstr, e2->type->toChars(),
-            e1->type->toChars(), opstr, e2->type->toChars());
-    }
-    else if ((e1->type->isreal() || e1->type->isimaginary()) &&
-        e2->type->isimaginary())
-    {
-        error("%s %s %s is an undefined operation", e1->type->toChars(),
-                opstr, e2->type->toChars());
-    }
-}
 
-// generate an error if this is a nonsensical += or -=, eg real += imaginary
-void BinExp::checkComplexAddAssign()
-{
-    // Addition or subtraction of a real and an imaginary is a complex result.
-    // Thus, r+=i, r+=c, i+=r, i+=c are all forbidden operations.
-    if ( (e1->type->isreal() && (e2->type->isimaginary() || e2->type->iscomplex())) ||
-         (e1->type->isimaginary() && (e2->type->isreal() || e2->type->iscomplex()))
-        )
+    // generate an error if this is a nonsensical += or -=, eg real += imaginary
+    if (op == TOKaddass || op == TOKminass)
     {
-        error("%s %s %s is undefined (result is complex)",
-            e1->type->toChars(), Token::toChars(op), e2->type->toChars());
+        // Addition or subtraction of a real and an imaginary is a complex result.
+        // Thus, r+=i, r+=c, i+=r, i+=c are all forbidden operations.
+        if ( (e1->type->isreal() && (e2->type->isimaginary() || e2->type->iscomplex())) ||
+             (e1->type->isimaginary() && (e2->type->isreal() || e2->type->iscomplex()))
+            )
+        {
+            error("%s %s %s is undefined (result is complex)",
+                e1->type->toChars(), Token::toChars(op), e2->type->toChars());
+        }
+        if (type->isreal() || type->isimaginary())
+        {
+            assert(global.errors || e2->type->isfloating());
+            e2 = e2->castTo(sc, e1->type);
+        }
     }
+
+    if (op == TOKmulass)
+    {
+        if (e2->type->isfloating())
+        {
+            Type *t1 = e1->type;
+            Type *t2 = e2->type;
+            if (t1->isreal())
+            {
+                if (t2->isimaginary() || t2->iscomplex())
+                {
+                    e2 = e2->castTo(sc, t1);
+                }
+            }
+            else if (t1->isimaginary())
+            {
+                if (t2->isimaginary() || t2->iscomplex())
+                {
+                    switch (t1->ty)
+                    {
+                        case Timaginary32: t2 = Type::tfloat32; break;
+                        case Timaginary64: t2 = Type::tfloat64; break;
+                        case Timaginary80: t2 = Type::tfloat80; break;
+                        default:
+                            assert(0);
+                    }
+                    e2 = e2->castTo(sc, t2);
+                }
+            }
+        }
+    } else if (op == TOKdivass)
+    {
+        if (e2->type->isimaginary())
+        {
+            Type *t1 = e1->type;
+            if (t1->isreal())
+            {   // x/iv = i(-x/v)
+                // Therefore, the result is 0
+                e2 = new CommaExp(loc, e2, new RealExp(loc, 0, t1));
+                e2->type = t1;
+                Expression *e = new AssignExp(loc, e1, e2);
+                e->type = t1;
+                return e;
+            }
+            else if (t1->isimaginary())
+            {   Type *t2;
+
+                switch (t1->ty)
+                {
+                    case Timaginary32: t2 = Type::tfloat32; break;
+                    case Timaginary64: t2 = Type::tfloat64; break;
+                    case Timaginary80: t2 = Type::tfloat80; break;
+                    default:
+                        assert(0);
+                }
+                e2 = e2->castTo(sc, t2);
+                Expression *e = new AssignExp(loc, e1, e2);
+                e->type = t1;
+                return e;
+            }
+        }
+    } else if (op == TOKmodass)
+    {
+        if (e2->type->iscomplex())
+        {
+            error("cannot perform modulo complex arithmetic");
+            return new ErrorExp();
+        }
+    }
+    return this;
 }
 
 void BinExp::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
@@ -5930,9 +5988,18 @@ Expression *BinExp::incompatibleTypes()
     if (e1->type->toBasetype() != Type::terror &&
         e2->type->toBasetype() != Type::terror
        )
-    {   error("incompatible types for ((%s) %s (%s)): '%s' and '%s'",
+    {
+        if (e1->op == TOKtype || e2->op == TOKtype)
+        {
+            error("incompatible types for ((%s) %s (%s)): cannot use '%s' with types",
+                e1->toChars(), Token::toChars(op), e2->toChars(), Token::toChars(op));
+        }
+        else
+        {
+            error("incompatible types for ((%s) %s (%s)): '%s' and '%s'",
              e1->toChars(), Token::toChars(op), e2->toChars(),
              e1->type->toChars(), e2->type->toChars());
+        }
         return new ErrorExp();
     }
     return this;
@@ -5940,94 +6007,91 @@ Expression *BinExp::incompatibleTypes()
 
 /********************** BinAssignExp **************************************/
 
-/***************************
- * Common semantic routine for some xxxAssignExp's.
- */
+Expression *BinAssignExp::semantic(Scope *sc)
+{
+    Expression *e;
 
-Expression *BinAssignExp::commonSemanticAssign(Scope *sc)
-{   Expression *e;
+    if (type)
+        return this;
 
-    if (!type)
+    e = op_overload(sc);
+    if (e)
+        return e;
+
+    if (e1->op == TOKarraylength)
     {
-        if (e1->op == TOKarraylength)
-        {
-            e = ArrayLengthExp::rewriteOpAssign(this);
-            e = e->semantic(sc);
-            return e;
-        }
-
-        if (e1->op == TOKslice)
-        {   // T[] op= ...
-            e = typeCombine(sc);
-            if (e->op == TOKerror)
-                return e;
-            type = e1->type;
-            return arrayOp(sc);
-        }
-
-        e1 = e1->modifiableLvalue(sc, e1);
-        e1->checkScalar();
-        type = e1->type;
-        if (type->toBasetype()->ty == Tbool)
-        {
-            error("operator not allowed on bool expression %s", toChars());
-            return new ErrorExp();
-        }
-        typeCombine(sc);
-        e1->checkArithmetic();
-        e2->checkArithmetic();
-
-        if (op == TOKmodass)
-        {
-            if (e2->type->iscomplex())
-            {   error("cannot perform modulo complex arithmetic");
-                return new ErrorExp();
-            }
-            else if (type->toBasetype()->ty == Tvector)
-                return incompatibleTypes();
-        }
+        e = ArrayLengthExp::rewriteOpAssign(this);
+        e = e->semantic(sc);
+        return e;
     }
-    return this;
-}
 
-Expression *BinAssignExp::commonSemanticAssignIntegral(Scope *sc)
-{   Expression *e;
-
-    if (!type)
+    if (e1->op == TOKslice)
     {
-        e = op_overload(sc);
-        if (e)
+        // T[] op= ...
+        e = typeCombine(sc);
+        if (e->op == TOKerror)
             return e;
-
-        if (e1->op == TOKarraylength)
-        {
-            e = ArrayLengthExp::rewriteOpAssign(this);
-            e = e->semantic(sc);
-            return e;
-        }
-
-        if (e1->op == TOKslice)
-        {   // T[] op= ...
-            e = typeCombine(sc);
-            if (e->op == TOKerror)
-                return e;
-            type = e1->type;
-            return arrayOp(sc);
-        }
-
-        e1 = e1->modifiableLvalue(sc, e1);
-        e1->checkScalar();
         type = e1->type;
-        if (type->toBasetype()->ty == Tbool)
-        {
-            e2 = e2->implicitCastTo(sc, type);
-        }
-
-        typeCombine(sc);
-        e1->checkIntegral();
-        e2->checkIntegral();
+        return arrayOp(sc);
     }
-    return this;
+
+    e1 = e1->modifiableLvalue(sc, e1);
+    e1 = e1->semantic(sc);
+    type = e1->type;
+    checkScalar();
+
+    int arith = (op == TOKaddass || op == TOKminass || op == TOKmulass ||
+                 op == TOKdivass || op == TOKmodass || op == TOKpowass);
+    int bitwise = (op == TOKandass || op == TOKorass || op == TOKxorass);
+    int shift = (op == TOKshlass || op == TOKshrass || op == TOKushrass);
+
+    if (bitwise && type->toBasetype()->ty == Tbool)
+         e2 = e2->implicitCastTo(sc, type);
+    else
+        checkNoBool();
+
+    if ((op == TOKaddass || op == TOKminass) &&
+        e1->type->toBasetype()->ty == Tpointer &&
+        e2->type->toBasetype()->isintegral())
+        return scaleFactor(sc);
+
+    typeCombine(sc);
+    if (arith)
+    {
+        e1 = e1->checkArithmetic();
+        e2 = e2->checkArithmetic();
+    }
+    if (bitwise || shift)
+    {
+        e1 = e1->checkIntegral();
+        e2 = e2->checkIntegral();
+    }
+    if (shift)
+    {
+        e2 = e2->castTo(sc, Type::tshiftcnt);
+    }
+
+    // vectors
+    if (shift && (e1->type->toBasetype()->ty == Tvector ||
+                  e2->type->toBasetype()->ty == Tvector))
+        return incompatibleTypes();
+
+    int isvector = type->toBasetype()->ty == Tvector;
+
+    if (op == TOKmulass && isvector && !e2->type->isfloating() &&
+        ((TypeVector *)type->toBasetype())->elementType()->size(loc) != 2)
+        return incompatibleTypes(); // Only short[8] and ushort[8] work with multiply
+
+    if (op == TOKdivass && isvector && !e1->type->isfloating())
+        return incompatibleTypes();
+
+    if (op == TOKmodass && isvector)
+        return incompatibleTypes();
+
+    if (e1->op == TOKerror || e2->op == TOKerror)
+        return new ErrorExp();
+
+    return checkComplexOpAssign(sc);
 }
 
 #if DMDV2
@@ -6886,8 +6950,8 @@ L1:
         return e;
     if (e->op == TOKdottd)
     {
-        if (global.errors)
-            return new ErrorExp();      // TemplateInstance::semantic() will fail anyway
+        if (ti->errors)
+            return new ErrorExp();
         DotTemplateExp *dte = (DotTemplateExp *)e;
         TemplateDeclaration *td = dte->td;
         eleft = dte->e1;
@@ -7281,7 +7345,10 @@ Expression *CallExp::semantic(Scope *sc)
             /* Attempt to instantiate ti. If that works, go with it.
              * If not, go with partial explicit specialization.
              */
+            unsigned olderrors = global.errors;
             ti->semanticTiargs(sc);
+            if (olderrors != global.errors)
+                return new ErrorExp();
             if (ti->needsTypeInference(sc))
             {
                 /* Go with partial explicit specialization
@@ -7514,6 +7581,17 @@ Lagain:
     if (e1->op == TOKerror)
         return e1;
 
+    // If there was an error processing any template argument,
+    // return an error without trying to resolve the template.
+    if (targsi && targsi->dim)
+    {
+        for (size_t k = 0; k < targsi->dim; k++)
+        {   Object *o = targsi->tdata()[k];
+            if (isError(o))
+                return new ErrorExp();
+        }
+    }
+
     if (e1->op == TOKdotvar && t1->ty == Tfunction ||
         e1->op == TOKdottd)
     {
@@ -7651,8 +7729,8 @@ Lagain:
         // Base class constructor call
         ClassDeclaration *cd = NULL;
 
-        if (sc->func)
-            cd = sc->func->toParent()->isClassDeclaration();
+        if (sc->func && sc->func->isThis())
+            cd = sc->func->isThis()->isClassDeclaration();
         if (!cd || !cd->baseClass || !sc->func->isCtorDeclaration())
         {
             error("super class constructor call must be in a constructor");
@@ -7697,8 +7775,8 @@ Lagain:
         // same class constructor call
         AggregateDeclaration *cd = NULL;
 
-        if (sc->func)
-            cd = sc->func->toParent()->isAggregateDeclaration();
+        if (sc->func && sc->func->isThis())
+            cd = sc->func->isThis()->isAggregateDeclaration();
         if (!cd || !sc->func->isCtorDeclaration())
         {
             error("constructor call must be in a constructor");
@@ -7916,11 +7994,14 @@ Lcheckargs:
 #if DMDV2
 int CallExp::isLvalue()
 {
-//    if (type->toBasetype()->ty == Tstruct)
-//      return 1;
     Type *tb = e1->type->toBasetype();
     if (tb->ty == Tfunction && ((TypeFunction *)tb)->isref)
+    {
+        if (e1->op == TOKdotvar)
+            if (((DotVarExp *)e1)->var->isCtorDeclaration())
+                return 0;
         return 1;               // function returns a reference
+    }
     return 0;
 }
 #endif
@@ -8075,7 +8156,7 @@ Expression *AddrExp::semantic(Scope *sc)
                      * mark here that we took its address because castTo()
                      * may not be called with an exact match.
                      */
-                    f->toParent2()->isFuncDeclaration())
+                    f->isNested())
                     f->tookAddressOf++;
                 if (f->isNested())
                 {
@@ -9473,10 +9554,18 @@ Expression *PostExp::semantic(Scope *sc)
         if (e)
             return e;
 
-        e1 = e1->modifiableLvalue(sc, e1);
+        if (e1->op == TOKslice)
+        {
+            const char *s = op == TOKplusplus ? "increment" : "decrement";
+            error("cannot post-%s array slice '%s', use pre-%s instead", s, e1->toChars(), s);
+            return new ErrorExp();
+        }
+
+        if (e1->op != TOKarraylength)
+            e1 = e1->modifiableLvalue(sc, e1);
 
         Type *t1 = e1->type->toBasetype();
-        if (t1->ty == Tclass || t1->ty == Tstruct)
+        if (t1->ty == Tclass || t1->ty == Tstruct || e1->op == TOKarraylength)
         {   /* Check for operator overloading,
              * but rewrite in terms of ++e instead of e++
              */
@@ -9484,7 +9573,7 @@ Expression *PostExp::semantic(Scope *sc)
             /* If e1 is not trivial, take a reference to it
              */
             Expression *de = NULL;
-            if (e1->op != TOKvar)
+            if (e1->op != TOKvar && e1->op != TOKarraylength)
             {
                 // ref v = e1;
                 Identifier *id = Lexer::uniqueId("__postref");
@@ -10229,165 +10318,11 @@ AddAssignExp::AddAssignExp(Loc loc, Expression *e1, Expression *e2)
 {
 }
 
-Expression *AddAssignExp::semantic(Scope *sc)
-{   Expression *e;
-
-    if (type)
-        return this;
-
-    e = op_overload(sc);
-    if (e)
-        return e;
-
-    Type *tb1 = e1->type->toBasetype();
-    Type *tb2 = e2->type->toBasetype();
-
-    if (e1->op == TOKarraylength)
-    {
-        e = ArrayLengthExp::rewriteOpAssign(this);
-        e = e->semantic(sc);
-        return e;
-    }
-
-    if (e1->op == TOKslice)
-    {
-        e = typeCombine(sc);
-        if (e->op == TOKerror)
-            return e;
-        type = e1->type;
-        return arrayOp(sc);
-    }
-    else
-    {
-        e1 = e1->modifiableLvalue(sc, e1);
-    }
-
-    if ((tb1->ty == Tarray || tb1->ty == Tsarray) &&
-        (tb2->ty == Tarray || tb2->ty == Tsarray) &&
-        tb1->nextOf()->equals(tb2->nextOf())
-       )
-    {
-        type = e1->type;
-        typeCombine(sc);
-        e = this;
-    }
-    else
-    {
-        e1->checkScalar();
-        e1->checkNoBool();
-        if (tb1->ty == Tpointer && tb2->isintegral())
-            e = scaleFactor(sc);
-        else if (tb1->ty == Tbool)
-        {
-#if 0
-            // Need to rethink this
-            if (e1->op != TOKvar)
-            {   // Rewrite e1+=e2 to (v=&e1),*v=*v+e2
-                VarDeclaration *v;
-                Expression *ea;
-                Expression *ex;
-
-                Identifier *id = Lexer::uniqueId("__name");
-
-                v = new VarDeclaration(loc, tb1->pointerTo(), id, NULL);
-                v->semantic(sc);
-                if (!sc->insert(v))
-                    assert(0);
-                v->parent = sc->func;
-
-                ea = new AddrExp(loc, e1);
-                ea = new AssignExp(loc, new VarExp(loc, v), ea);
-
-                ex = new VarExp(loc, v);
-                ex = new PtrExp(loc, ex);
-                e = new AddExp(loc, ex, e2);
-                e = new CastExp(loc, e, e1->type);
-                e = new AssignExp(loc, ex->syntaxCopy(), e);
-
-                e = new CommaExp(loc, ea, e);
-            }
-            else
-#endif
-            {   // Rewrite e1+=e2 to e1=e1+e2
-                // BUG: doesn't account for side effects in e1
-                // BUG: other assignment operators for bits aren't handled at all
-                e = new AddExp(loc, e1, e2);
-                e = new CastExp(loc, e, e1->type);
-                e = new AssignExp(loc, e1->syntaxCopy(), e);
-            }
-            e = e->semantic(sc);
-        }
-        else
-        {
-            type = e1->type;
-            typeCombine(sc);
-            e1->checkArithmetic();
-            e2->checkArithmetic();
-            checkComplexAddAssign();
-            if (type->isreal() || type->isimaginary())
-            {
-                assert(global.errors || e2->type->isfloating());
-                e2 = e2->castTo(sc, e1->type);
-            }
-            e = this;
-        }
-    }
-    return e;
-}
-
 /************************************************************/
 
 MinAssignExp::MinAssignExp(Loc loc, Expression *e1, Expression *e2)
         : BinAssignExp(loc, TOKminass, sizeof(MinAssignExp), e1, e2)
 {
-}
-
-Expression *MinAssignExp::semantic(Scope *sc)
-{   Expression *e;
-
-    if (type)
-        return this;
-
-    e = op_overload(sc);
-    if (e)
-        return e;
-
-    if (e1->op == TOKarraylength)
-    {
-        e = ArrayLengthExp::rewriteOpAssign(this);
-        e = e->semantic(sc);
-        return e;
-    }
-
-    if (e1->op == TOKslice)
-    {   // T[] -= ...
-        e = typeCombine(sc);
-        if (e->op == TOKerror)
-            return e;
-        type = e1->type;
-        return arrayOp(sc);
-    }
-
-    e1 = e1->modifiableLvalue(sc, e1);
-    e1->checkScalar();
-    e1->checkNoBool();
-    if (e1->type->ty == Tpointer && e2->type->isintegral())
-        e = scaleFactor(sc);
-    else
-    {
-        e1 = e1->checkArithmetic();
-        e2 = e2->checkArithmetic();
-        checkComplexAddAssign();
-        type = e1->type;
-        typeCombine(sc);
-        if (type->isreal() || type->isimaginary())
-        {
-            assert(e2->type->isfloating());
-            e2 = e2->castTo(sc, e1->type);
-        }
-        e = this;
-    }
-    return e;
 }
 
 /************************************************************/
@@ -10475,145 +10410,11 @@ MulAssignExp::MulAssignExp(Loc loc, Expression *e1, Expression *e2)
 {
 }
 
-Expression *MulAssignExp::semantic(Scope *sc)
-{   Expression *e;
-
-    e = op_overload(sc);
-    if (e)
-        return e;
-
-#if DMDV2
-    if (e1->op == TOKarraylength)
-    {
-        e = ArrayLengthExp::rewriteOpAssign(this);
-        e = e->semantic(sc);
-        return e;
-    }
-#endif
-
-    if (e1->op == TOKslice)
-    {   // T[] *= ...
-        e = typeCombine(sc);
-        if (e->op == TOKerror)
-            return e;
-        return arrayOp(sc);
-    }
-
-    e1 = e1->modifiableLvalue(sc, e1);
-    e1->checkScalar();
-    e1->checkNoBool();
-    type = e1->type;
-    typeCombine(sc);
-    e1->checkArithmetic();
-    e2->checkArithmetic();
-    checkComplexMulAssign();
-    if (e2->type->isfloating())
-    {
-        Type *t1 = e1->type;
-        Type *t2 = e2->type;
-        if (t1->isreal())
-        {
-            if (t2->isimaginary() || t2->iscomplex())
-            {
-                e2 = e2->castTo(sc, t1);
-            }
-        }
-        else if (t1->isimaginary())
-        {
-            if (t2->isimaginary() || t2->iscomplex())
-            {
-                switch (t1->ty)
-                {
-                    case Timaginary32: t2 = Type::tfloat32; break;
-                    case Timaginary64: t2 = Type::tfloat64; break;
-                    case Timaginary80: t2 = Type::tfloat80; break;
-                    default:
-                        assert(0);
-                }
-                e2 = e2->castTo(sc, t2);
-            }
-        }
-    }
-    else if (type->toBasetype()->ty == Tvector &&
-             ((TypeVector *)type->toBasetype())->elementType()->size(loc) != 2)
-    {   // Only short[8] and ushort[8] work with multiply
-        return incompatibleTypes();
-    }
-    return this;
-}
-
 /************************************************************/
 
 DivAssignExp::DivAssignExp(Loc loc, Expression *e1, Expression *e2)
         : BinAssignExp(loc, TOKdivass, sizeof(DivAssignExp), e1, e2)
 {
-}
-
-Expression *DivAssignExp::semantic(Scope *sc)
-{   Expression *e;
-
-    e = op_overload(sc);
-    if (e)
-        return e;
-
-#if DMDV2
-    if (e1->op == TOKarraylength)
-    {
-        e = ArrayLengthExp::rewriteOpAssign(this);
-        e = e->semantic(sc);
-        return e;
-    }
-#endif
-
-    if (e1->op == TOKslice)
-    {   // T[] /= ...
-        e = typeCombine(sc);
-        if (e->op == TOKerror)
-            return e;
-        type = e1->type;
-        return arrayOp(sc);
-    }
-
-    e1 = e1->modifiableLvalue(sc, e1);
-    e1->checkScalar();
-    e1->checkNoBool();
-    type = e1->type;
-    typeCombine(sc);
-    e1->checkArithmetic();
-    e2->checkArithmetic();
-    checkComplexMulAssign();
-    if (e2->type->isimaginary())
-    {
-        Type *t1 = e1->type;
-        if (t1->isreal())
-        {   // x/iv = i(-x/v)
-            // Therefore, the result is 0
-            e2 = new CommaExp(loc, e2, new RealExp(loc, 0, t1));
-            e2->type = t1;
-            e = new AssignExp(loc, e1, e2);
-            e->type = t1;
-            return e;
-        }
-        else if (t1->isimaginary())
-        {   Type *t2;
-
-            switch (t1->ty)
-            {
-                case Timaginary32: t2 = Type::tfloat32; break;
-                case Timaginary64: t2 = Type::tfloat64; break;
-                case Timaginary80: t2 = Type::tfloat80; break;
-                default:
-                    assert(0);
-            }
-            e2 = e2->castTo(sc, t2);
-            Expression *e = new AssignExp(loc, e1, e2);
-            e->type = t1;
-            return e;
-        }
-    }
-    else if (type->toBasetype()->ty == Tvector && !e1->type->isfloating())
-        return incompatibleTypes();
-    return this;
 }
 
 /************************************************************/
@@ -10623,54 +10424,11 @@ ModAssignExp::ModAssignExp(Loc loc, Expression *e1, Expression *e2)
 {
 }
 
-Expression *ModAssignExp::semantic(Scope *sc)
-{
-    if (!type)
-    {
-        Expression *e = op_overload(sc);
-        if (e)
-            return e;
-
-        checkComplexMulAssign();
-        return commonSemanticAssign(sc);
-    }
-    return this;
-}
-
 /************************************************************/
 
 ShlAssignExp::ShlAssignExp(Loc loc, Expression *e1, Expression *e2)
         : BinAssignExp(loc, TOKshlass, sizeof(ShlAssignExp), e1, e2)
 {
-}
-
-Expression *ShlAssignExp::semantic(Scope *sc)
-{   Expression *e;
-
-    //printf("ShlAssignExp::semantic()\n");
-
-    e = op_overload(sc);
-    if (e)
-        return e;
-
-    if (e1->op == TOKarraylength)
-    {
-        e = ArrayLengthExp::rewriteOpAssign(this);
-        e = e->semantic(sc);
-        return e;
-    }
-
-    e1 = e1->modifiableLvalue(sc, e1);
-    e1->checkScalar();
-    e1->checkNoBool();
-    type = e1->type;
-    if (e1->type->toBasetype()->ty == Tvector || e2->type->toBasetype()->ty == Tvector)
-        return incompatibleTypes();
-    typeCombine(sc);
-    e1->checkIntegral();
-    e2 = e2->checkIntegral();
-    e2 = e2->castTo(sc, Type::tshiftcnt);
-    return this;
 }
 
 /************************************************************/
@@ -10680,65 +10438,11 @@ ShrAssignExp::ShrAssignExp(Loc loc, Expression *e1, Expression *e2)
 {
 }
 
-Expression *ShrAssignExp::semantic(Scope *sc)
-{   Expression *e;
-
-    e = op_overload(sc);
-    if (e)
-        return e;
-
-    if (e1->op == TOKarraylength)
-    {
-        e = ArrayLengthExp::rewriteOpAssign(this);
-        e = e->semantic(sc);
-        return e;
-    }
-
-    e1 = e1->modifiableLvalue(sc, e1);
-    e1->checkScalar();
-    e1->checkNoBool();
-    type = e1->type;
-    if (e1->type->toBasetype()->ty == Tvector || e2->type->toBasetype()->ty == Tvector)
-        return incompatibleTypes();
-    typeCombine(sc);
-    e1->checkIntegral();
-    e2 = e2->checkIntegral();
-    e2 = e2->castTo(sc, Type::tshiftcnt);
-    return this;
-}
-
 /************************************************************/
 
 UshrAssignExp::UshrAssignExp(Loc loc, Expression *e1, Expression *e2)
         : BinAssignExp(loc, TOKushrass, sizeof(UshrAssignExp), e1, e2)
 {
-}
-
-Expression *UshrAssignExp::semantic(Scope *sc)
-{   Expression *e;
-
-    e = op_overload(sc);
-    if (e)
-        return e;
-
-    if (e1->op == TOKarraylength)
-    {
-        e = ArrayLengthExp::rewriteOpAssign(this);
-        e = e->semantic(sc);
-        return e;
-    }
-
-    e1 = e1->modifiableLvalue(sc, e1);
-    e1->checkScalar();
-    e1->checkNoBool();
-    type = e1->type;
-    if (e1->type->toBasetype()->ty == Tvector || e2->type->toBasetype()->ty == Tvector)
-        return incompatibleTypes();
-    typeCombine(sc);
-    e1->checkIntegral();
-    e2 = e2->checkIntegral();
-    e2 = e2->castTo(sc, Type::tshiftcnt);
-    return this;
 }
 
 /************************************************************/
@@ -10748,11 +10452,6 @@ AndAssignExp::AndAssignExp(Loc loc, Expression *e1, Expression *e2)
 {
 }
 
-Expression *AndAssignExp::semantic(Scope *sc)
-{
-    return commonSemanticAssignIntegral(sc);
-}
-
 /************************************************************/
 
 OrAssignExp::OrAssignExp(Loc loc, Expression *e1, Expression *e2)
@@ -10760,21 +10459,11 @@ OrAssignExp::OrAssignExp(Loc loc, Expression *e1, Expression *e2)
 {
 }
 
-Expression *OrAssignExp::semantic(Scope *sc)
-{
-    return commonSemanticAssignIntegral(sc);
-}
-
 /************************************************************/
 
 XorAssignExp::XorAssignExp(Loc loc, Expression *e1, Expression *e2)
         : BinAssignExp(loc, TOKxorass, sizeof(XorAssignExp), e1, e2)
 {
-}
-
-Expression *XorAssignExp::semantic(Scope *sc)
-{
-    return commonSemanticAssignIntegral(sc);
 }
 
 /***************** PowAssignExp *******************************************/
