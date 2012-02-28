@@ -79,7 +79,9 @@ int arrayExpressionCanThrow(Expressions *exps, bool mustNotThrow);
 TemplateDeclaration *getFuncTemplateDecl(Dsymbol *s);
 void valueNoDtor(Expression *e);
 void modifyFieldVar(Loc loc, Scope *sc, VarDeclaration *var, Expression *e1);
-
+#if DMDV2
+Expression *resolveAliasThis(Scope *sc, Expression *e);
+#endif
 
 /* Interpreter: what form of return value expression is required?
  */
@@ -473,6 +475,7 @@ struct StructLiteralExp : Expression
                                 // NULL entries for fields to skip
     Type *stype;                // final type of result (can be different from sd's type)
 
+    Symbol *sinit;              // if this is a defaultInitLiteral, this symbol contains the default initializer
     Symbol *sym;                // back end symbol to initialize with literal
     size_t soffset;             // offset from start of s
     int fillHoles;              // fill alignment 'holes' with zero

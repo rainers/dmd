@@ -1620,9 +1620,7 @@ Expression *Expression::checkToBoolean(Scope *sc)
         // Forward to aliasthis.
         if (ad->aliasthis)
         {
-            Expression *e = new DotIdExp(loc, this, ad->aliasthis->ident);
-            e = e->semantic(sc);
-            e = resolveProperties(sc, e);
+            Expression *e = resolveAliasThis(sc, this);
             e = e->checkToBoolean(sc);
             return e;
         }
@@ -3731,6 +3729,7 @@ StructLiteralExp::StructLiteralExp(Loc loc, StructDeclaration *sd, Expressions *
     this->sd = sd;
     this->elements = elements;
     this->stype = stype;
+    this->sinit = NULL;
     this->sym = NULL;
     this->soffset = 0;
     this->fillHoles = 1;
@@ -4957,7 +4956,8 @@ FuncExp::FuncExp(Loc loc, FuncLiteralDeclaration *fd, TemplateDeclaration *td)
 
 Expression *FuncExp::syntaxCopy()
 {
-    return new FuncExp(loc, (FuncLiteralDeclaration *)fd->syntaxCopy(NULL));
+    TemplateDeclaration *td2 = td ? (TemplateDeclaration *)td->syntaxCopy(NULL) : NULL;
+    return new FuncExp(loc, (FuncLiteralDeclaration *)fd->syntaxCopy(NULL), td2);
 }
 
 Expression *FuncExp::semantic(Scope *sc)
@@ -4969,6 +4969,18 @@ Expression *FuncExp::semantic(Scope *sc)
     {
         // save for later use
         scope = sc;
+
+        // Set target of return type inference
+        if (tded && !fd->type->nextOf())
+        {   TypeFunction *tfv = NULL;
+            if (tded->ty == Tdelegate ||
+                (tded->ty == Tpointer && tded->nextOf()->ty == Tfunction))
+                tfv = (TypeFunction *)tded->nextOf();
+            if (tfv)
+            {   TypeFunction *tfl = (TypeFunction *)fd->type;
+                tfl->next = tfv->nextOf();
+            }
+        }
 
         //printf("td = %p, tded = %p\n", td, tded);
         if (td)
@@ -5125,7 +5137,8 @@ Expression *FuncExp::inferType(Scope *sc, Type *to)
                         {   p = Parameter::getNth(tfv->parameters, u);
                             if (p->type->ty == Tident)
                                 return NULL;
-                            tiargs->push(p->type);
+                            Type *tprm = p->type->semantic(loc, sc);
+                            tiargs->push(tprm);
                             u = dim;    // break inner loop
                         }
                     }
@@ -7198,9 +7211,7 @@ Lagain:
         L1:
             if (ad->aliasthis)
             {
-                ethis = new DotIdExp(ethis->loc, ethis, ad->aliasthis->ident);
-                ethis = ethis->semantic(sc);
-                ethis = resolveProperties(sc, ethis);
+                ethis = resolveAliasThis(sc, ethis);
                 goto Lagain;
             }
         }
@@ -8903,7 +8914,7 @@ Lagain:
         }
         if (ad->aliasthis)
         {
-            e1 = new DotIdExp(e1->loc, e1, ad->aliasthis->ident);
+            e1 = resolveAliasThis(sc, e1);
             goto Lagain;
         }
         goto Lerror;
@@ -9762,18 +9773,17 @@ Expression *AssignExp::semantic(Scope *sc)
 
         // No opIndexAssign found yet, but there might be an alias this to try.
         if (ad && ad->aliasthis)
-        {   Expression *at = new DotIdExp(loc, ae->e1, ad->aliasthis->ident);
-            at = at->semantic(sc);
-            Type *attype = at->type->toBasetype();
+        {   Expression *e = resolveAliasThis(sc, ae->e1);
+            Type *t = e->type->toBasetype();
 
-            if (attype->ty == Tstruct)
+            if (t->ty == Tstruct)
             {
-                ad = ((TypeStruct *)attype)->sym;
+                ad = ((TypeStruct *)t)->sym;
                 goto L1;
             }
-            else if (attype->ty == Tclass)
+            else if (t->ty == Tclass)
             {
-                ad = ((TypeClass *)attype)->sym;
+                ad = ((TypeClass *)t)->sym;
                 goto L1;
             }
         }
@@ -9821,18 +9831,17 @@ Expression *AssignExp::semantic(Scope *sc)
 
         // No opSliceAssign found yet, but there might be an alias this to try.
         if (ad && ad->aliasthis)
-        {   Expression *at = new DotIdExp(loc, ae->e1, ad->aliasthis->ident);
-            at = at->semantic(sc);
-            Type *attype = at->type->toBasetype();
+        {   Expression *e = resolveAliasThis(sc, ae->e1);
+            Type *t = e->type->toBasetype();
 
-            if (attype->ty == Tstruct)
+            if (t->ty == Tstruct)
             {
-                ad = ((TypeStruct *)attype)->sym;
+                ad = ((TypeStruct *)t)->sym;
                 goto L2;
             }
-            else if (attype->ty == Tclass)
+            else if (t->ty == Tclass)
             {
-                ad = ((TypeClass *)attype)->sym;
+                ad = ((TypeClass *)t)->sym;
                 goto L2;
             }
         }

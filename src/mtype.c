@@ -1294,6 +1294,32 @@ Type *Type::aliasthisOf()
             Type *t = ed->type;
             return t;
         }
+        TemplateDeclaration *td = ad->aliasthis->isTemplateDeclaration();
+        if (td)
+        {   assert(td->scope);
+            Expression *ethis = defaultInit(0);
+            FuncDeclaration *fd = td->deduceFunctionTemplate(td->scope, 0, NULL, ethis, NULL, 1);
+            if (fd)
+            {
+                //if (!fd->type->nextOf() && fd->inferRetType)
+                {
+                    TemplateInstance *spec = fd->isSpeculative();
+                    int olderrs = global.errors;
+                    fd->semantic3(fd->scope);
+                    // Update the template instantiation with the number
+                    // of errors which occured.
+                    if (spec && global.errors != olderrs)
+                        spec->errors = global.errors - olderrs;
+                }
+                if (!global.errors)
+                {
+                    Type *t = fd->type->nextOf();
+                    t = t->substWildTo(mod == 0 ? MODmutable : mod);
+                    return t;
+                }
+            }
+            return Type::terror;
+        }
         //printf("%s\n", ad->aliasthis->kind());
     }
     return NULL;
@@ -1982,35 +2008,6 @@ Expression *Type::dotExp(Scope *sc, Expression *e, Identifier *ident)
         }
         else if (ident == Id::init)
         {
-#if 0
-            if (v->init)
-            {
-                if (v->init->isVoidInitializer())
-                    error(e->loc, "%s.init is void", v->toChars());
-                else
-                {   Loc loc = e->loc;
-                    e = v->init->toExpression();
-                    if (e->op == TOKassign || e->op == TOKconstruct || e->op == TOKblit)
-                    {
-                        e = ((AssignExp *)e)->e2;
-
-                        /* Take care of case where we used a 0
-                         * to initialize the struct.
-                         */
-                        if (e->type == Type::tint32 &&
-                            e->isBool(0) &&
-                            v->type->toBasetype()->ty == Tstruct)
-                        {
-                            e = v->type->defaultInit(e->loc);
-                        }
-                    }
-                    e = e->optimize(WANTvalue | WANTinterpret);
-//                  if (!e->isConst())
-//                      error(loc, ".init cannot be evaluated at compile time");
-                }
-                goto Lreturn;
-            }
-#endif
             e = defaultInitLiteral(e->loc);
             goto Lreturn;
         }
@@ -2097,7 +2094,7 @@ Expression *Type::noMember(Scope *sc, Expression *e, Identifier *ident)
         {   /* Rewrite e.ident as:
              *  e.aliasthis.ident
              */
-            e = new DotIdExp(e->loc, e, sym->aliasthis->ident);
+            e = resolveAliasThis(sc, e);
             e = new DotIdExp(e->loc, e, ident);
             return e->semantic(sc);
         }
@@ -6729,6 +6726,7 @@ Type *TypeTypeof::semantic(Loc loc, Scope *sc)
     {
         Scope *sc2 = sc->push();
         sc2->intypeof++;
+        sc2->speculative = true;
         sc2->flags |= sc->flags & SCOPEstaticif;
         unsigned oldspecgag = global.speculativeGag;
         if (global.gag)
@@ -7742,9 +7740,16 @@ Expression *TypeStruct::defaultInitLiteral(Loc loc)
         }
         else
             e = vd->type->defaultInitLiteral(loc);
-        structelems->tdata()[j] = e;
+        (*structelems)[j] = e;
     }
     StructLiteralExp *structinit = new StructLiteralExp(loc, (StructDeclaration *)sym, structelems);
+
+    /* Copy from the initializer symbol for larger symbols,
+     * otherwise the literals expressed as code get excessively large.
+     */
+    if (size(loc) > PTRSIZE * 4)
+        structinit->sinit = sym->toInitializer();
+
     // Why doesn't the StructLiteralExp constructor do this, when
     // sym->type != NULL ?
     structinit->type = sym->type;
