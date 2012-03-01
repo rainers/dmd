@@ -1382,7 +1382,9 @@ void test73()
     static assert(!is(Bari!(const(T))));
     static assert(!is(Bari!(shared(T))));
     static assert(!is(Bari!(const(shared(T)))));
-    static assert(!is(Barc!(shared(T))));
+
+    static assert(is(Barc!(shared(T))));
+
     static assert(!is(Bars!(T)));
     static assert(!is(Bars!(const(T))));
     static assert(!is(Bars!(immutable(T))));
@@ -4691,6 +4693,26 @@ mixin template ProxyOf(alias a)
     void test1(this X)(){}
     void test2(this Y)(){}
 }
+
+/***************************************************/
+// 7583
+
+template Tup7583(E...) { alias E Tup7583; }
+
+struct S7583
+{
+    Tup7583!(float, char) field;
+    alias field this;
+    this(int x) {    }
+}
+
+int bug7583() {
+    S7583[] arr;
+    arr ~= S7583(0);
+    return 1;
+}
+
+static assert (bug7583());
 
 /***************************************************/
 
