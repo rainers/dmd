@@ -1415,19 +1415,22 @@ Lretry:
             if (farg->op == TOKfunction)
             {   FuncExp *fe = (FuncExp *)farg;
                 Type *tp = fparam->type;
-                if (tp->ty == Tdelegate &&
-                    fe->type->ty == Tpointer && fe->type->nextOf()->ty == Tfunction &&
-                    fe->tok == TOKreserved)
-                {   Type *tdg = new TypeDelegate(fe->type->nextOf());
-                    tdg = tdg->semantic(loc, sc);
-                    farg = fe->inferType(sc, tdg);
-                }
-                else if (fe->type == Type::tvoid)
+                Expression *e = fe->inferType(tp, 1);
+                if (!e)
                 {
-                    farg = fe->inferType(sc, tp);
-                    if (!farg)
-                        goto Lvarargs;
+                    if (tp->ty == Tdelegate &&
+                        fe->tok == TOKreserved &&
+                        fe->type->ty == Tpointer && fe->type->nextOf()->ty == Tfunction)
+                    {
+                        fe = (FuncExp *)fe->copy();
+                        fe->tok = TOKdelegate;
+                        fe->type = (new TypeDelegate(fe->type->nextOf()))->merge();
+                        e = fe;
+                    }
+                    else
+                        e = farg;
                 }
+                farg = e;
                 argtype = farg->type;
             }
 
@@ -1541,19 +1544,23 @@ Lretry:
                     if (arg->op == TOKfunction)
                     {   FuncExp *fe = (FuncExp *)arg;
                         Type *tp = tb->nextOf();
-                        if (tp->ty == Tdelegate &&
-                            fe->type->ty == Tpointer && fe->type->nextOf()->ty == Tfunction &&
-                            fe->tok == TOKreserved)
-                        {   tp = new TypeDelegate(fe->type->nextOf());
-                            tp = tp->semantic(loc, sc);
-                            arg = fe->inferType(sc, tp);
-                        }
-                        else if (arg->type == Type::tvoid)
+
+                        Expression *e = fe->inferType(tp, 1);
+                        if (!e)
                         {
-                            arg = fe->inferType(sc, tp);
-                            if (!arg)
-                                goto Lnomatch;
+                            if (tp->ty == Tdelegate &&
+                                fe->tok == TOKreserved &&
+                                fe->type->ty == Tpointer && fe->type->nextOf()->ty == Tfunction)
+                            {
+                                fe = (FuncExp *)fe->copy();
+                                fe->tok = TOKdelegate;
+                                fe->type = (new TypeDelegate(fe->type->nextOf()))->merge();
+                                e = fe;
+                            }
+                            else
+                                e = arg;
                         }
+                        arg = e;
                     }
 
                     MATCH m;
@@ -5486,12 +5493,33 @@ int TemplateInstance::needsTypeInference(Scope *sc)
         /* Determine if the instance arguments, tiargs, are all that is necessary
          * to instantiate the template.
          */
-        TemplateTupleParameter *tp = td->isVariadic();
         //printf("tp = %p, td->parameters->dim = %d, tiargs->dim = %d\n", tp, td->parameters->dim, tiargs->dim);
         TypeFunction *fdtype = (TypeFunction *)fd->type;
-        if (Parameter::dim(fdtype->parameters) &&
-            ((tp && td->parameters->dim > 1) || tiargs->dim < td->parameters->dim))
-            return TRUE;
+        if (Parameter::dim(fdtype->parameters))
+        {
+            TemplateParameter *tp = td->isVariadic();
+            if (tp && td->parameters->dim > 1)
+                return TRUE;
+
+            if (tiargs->dim < td->parameters->dim)
+            {   // Can remain tiargs be filled by default arguments?
+                for (size_t i = tiargs->dim; i < td->parameters->dim; i++)
+                {   tp = (*td->parameters)[i];
+                    if (TemplateTypeParameter *ttp = tp->isTemplateTypeParameter())
+                    {   if (!ttp->defaultType)
+                            return TRUE;
+                    }
+                    else if (TemplateAliasParameter *tap = tp->isTemplateAliasParameter())
+                    {   if (!tap->defaultAlias)
+                            return TRUE;
+                    }
+                    else if (TemplateValueParameter *tvp = tp->isTemplateValueParameter())
+                    {   if (!tvp->defaultValue)
+                            return TRUE;
+                    }
+                }
+            }
+        }
         /* If there is more than one function template which matches, we may
          * need type inference (see Bugzilla 4430)
          */
