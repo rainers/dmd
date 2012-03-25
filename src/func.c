@@ -1,5 +1,5 @@
 // Compiler implementation of the D programming language
-// Copyright (c) 1999-2011 by Digital Mars
+// Copyright (c) 1999-2012 by Digital Mars
 // All Rights Reserved
 // written by Walter Bright
 // http://www.digitalmars.com
@@ -441,6 +441,7 @@ void FuncDeclaration::semantic(Scope *sc)
         switch (vi)
         {
             case -1:
+        Lintro:
                 /* Didn't find one, so
                  * This is an 'introducing' function which gets a new
                  * slot in the vtbl[].
@@ -477,7 +478,7 @@ void FuncDeclaration::semantic(Scope *sc)
                 break;
 
             case -2:    // can't determine because of fwd refs
-                cd->sizeok = 2; // can't finish due to forward reference
+                cd->sizeok = SIZEOKfwd; // can't finish due to forward reference
                 Module::dprogress = dprogress_save;
                 return;
 
@@ -496,9 +497,12 @@ void FuncDeclaration::semantic(Scope *sc)
                 FuncDeclaration *fdc = ((Dsymbol *)cd->vtbl.data[vi])->isFuncDeclaration();
                 if (fdc->toParent() == parent)
                 {
+                    // fdc overrides fdv exactly, then this introduces new function.
+                    if (fdc->type->mod == fdv->type->mod && this->type->mod != fdv->type->mod)
+                        goto Lintro;
+
                     // If both are mixins, then error.
                     // If either is not, the one that is not overrides the other.
-
                     if (this->parent->isClassDeclaration() && fdc->parent->isClassDeclaration())
                         error("multiple overrides of same function");
 
@@ -562,7 +566,7 @@ void FuncDeclaration::semantic(Scope *sc)
                     break;
 
                 case -2:
-                    cd->sizeok = 2;     // can't finish due to forward reference
+                    cd->sizeok = SIZEOKfwd;     // can't finish due to forward reference
                     Module::dprogress = dprogress_save;
                     return;
 
@@ -598,7 +602,7 @@ void FuncDeclaration::semantic(Scope *sc)
                         {
                             // any error in isBaseOf() is a forward reference error, so we bail out
                             global.errors = errors;
-                            cd->sizeok = 2;    // can't finish due to forward reference
+                            cd->sizeok = SIZEOKfwd;    // can't finish due to forward reference
                             Module::dprogress = dprogress_save;
                             return;
                         }

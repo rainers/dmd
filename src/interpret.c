@@ -2047,6 +2047,8 @@ Expression *getVarExp(Loc loc, InterState *istate, Declaration *d, CtfeGoal goal
             e = e->semantic(NULL);
             if (e->op == TOKerror)
                 e = EXP_CANT_INTERPRET;
+            else // Convert NULL to VoidExp
+                e = e->interpret(istate, goal);
         }
         else
             error(loc, "cannot interpret symbol %s at compile time", v->toChars());
@@ -5206,6 +5208,12 @@ Expression *IndexExp::interpret(InterState *istate, CtfeGoal goal)
         return e;
     if (goal == ctfeNeedRvalue && (e->op == TOKslice || e->op == TOKdotvar))
         e = e->interpret(istate);
+    if (goal == ctfeNeedRvalue && e->op == TOKvoid)
+    {
+        error("%s is used before initialized", toChars());
+        errorSupplemental(e->loc, "originally uninitialized here");
+        return EXP_CANT_INTERPRET;
+    }
     e = paintTypeOntoLiteral(type, e);
     return e;
 }
@@ -5448,8 +5456,12 @@ bool isAssocArray(Type *t)
     if (t->ty != Tstruct)
         return false;
     StructDeclaration *sym = ((TypeStruct *)t)->sym;
-    if (sym->ident == Id::AssociativeArray)
+    if (sym->ident == Id::AssociativeArray && sym->parent &&
+        sym->parent->parent &&
+        sym->parent->parent->ident == Id::object)
+    {
         return true;
+    }
 #endif
     return false;
 }

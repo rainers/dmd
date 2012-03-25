@@ -130,7 +130,7 @@ Dsymbols *Parser::parseModule()
 
     decldefs = parseDeclDefs(0);
     if (token.value != TOKeof)
-    {   error("unrecognized declaration");
+    {   error(loc, "unrecognized declaration");
         goto Lerr;
     }
     return decldefs;
@@ -5479,15 +5479,18 @@ Expression *Parser::parsePrimaryExp()
         }
 
         case TOKlparen:
-        {   enum TOK past = peekPastParen(&token)->value;
-
-            if (past == TOKgoesto)
-            {   // (arguments) => expression
-                goto case_delegate;
-            }
-            else if (past == TOKlcurly)
-            {   // (arguments) { statements... }
-                goto case_delegate;
+        {   Token *tk = peekPastParen(&token);
+            if (skipAttributes(tk, &tk))
+            {
+                enum TOK past = tk->value;
+                if (past == TOKgoesto)
+                {   // (arguments) => expression
+                    goto case_delegate;
+                }
+                else if (past == TOKlcurly)
+                {   // (arguments) { statements... }
+                    goto case_delegate;
+                }
             }
             // ( expression )
             nextToken();

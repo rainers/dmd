@@ -1110,6 +1110,14 @@ MATCH TemplateDeclaration::deduceFunctionTemplateMatch(Scope *sc, Loc loc, Objec
                 t->objects.setDim(tuple_dim);
                 for (size_t i = 0; i < tuple_dim; i++)
                 {   Expression *farg = fargs->tdata()[fptupindex + i];
+
+                    // Check invalid arguments to detect errors early.
+                    if (farg->op == TOKerror || farg->type->ty == Terror)
+                        goto Lnomatch;
+
+                    if (!(fparam->storageClass & STClazy) && farg->type->ty == Tvoid)
+                        goto Lnomatch;
+
                     unsigned mod = farg->type->mod;
                     Type *tt;
                     MATCH m;
@@ -1386,6 +1394,11 @@ L2:
         else
         {
             Expression *farg = fargs->tdata()[i];
+
+            // Check invalid arguments to detect errors early.
+            if (farg->op == TOKerror || farg->type->ty == Terror)
+                goto Lnomatch;
+
 Lretry:
 #if 0
             printf("\tfarg->type   = %s\n", farg->type->toChars());
@@ -1415,24 +1428,15 @@ Lretry:
             if (farg->op == TOKfunction)
             {   FuncExp *fe = (FuncExp *)farg;
                 Type *tp = fparam->type;
-                Expression *e = fe->inferType(tp, 1);
+                Expression *e = fe->inferType(tp, 1, parameters);
                 if (!e)
-                {
-                    if (tp->ty == Tdelegate &&
-                        fe->tok == TOKreserved &&
-                        fe->type->ty == Tpointer && fe->type->nextOf()->ty == Tfunction)
-                    {
-                        fe = (FuncExp *)fe->copy();
-                        fe->tok = TOKdelegate;
-                        fe->type = (new TypeDelegate(fe->type->nextOf()))->merge();
-                        e = fe;
-                    }
-                    else
-                        e = farg;
-                }
+                    goto Lvarargs;
                 farg = e;
                 argtype = farg->type;
             }
+
+            if (!(fparam->storageClass & STClazy) && argtype->ty == Tvoid)
+                goto Lnomatch;
 
             /* Remove top const for dynamic array types and pointer types
              */
@@ -1545,21 +1549,9 @@ Lretry:
                     {   FuncExp *fe = (FuncExp *)arg;
                         Type *tp = tb->nextOf();
 
-                        Expression *e = fe->inferType(tp, 1);
+                        Expression *e = fe->inferType(tp, 1, parameters);
                         if (!e)
-                        {
-                            if (tp->ty == Tdelegate &&
-                                fe->tok == TOKreserved &&
-                                fe->type->ty == Tpointer && fe->type->nextOf()->ty == Tfunction)
-                            {
-                                fe = (FuncExp *)fe->copy();
-                                fe->tok = TOKdelegate;
-                                fe->type = (new TypeDelegate(fe->type->nextOf()))->merge();
-                                e = fe;
-                            }
-                            else
-                                e = arg;
-                        }
+                            goto Lnomatch;
                         arg = e;
                     }
 
@@ -5963,7 +5955,7 @@ void TemplateMixin::semantic(Scope *sc)
             semanticRun = PASSinit;
             AggregateDeclaration *ad = toParent()->isAggregateDeclaration();
             if (ad)
-                ad->sizeok = 2;
+                ad->sizeok = SIZEOKfwd;
             else
             {
                 // Forward reference

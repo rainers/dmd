@@ -1288,7 +1288,19 @@ Type *Type::aliasthisOf()
                 Expression *ethis = this->defaultInit(0);
                 fd = fd->overloadResolve(0, ethis, NULL);
                 if (fd)
+                {   TypeFunction *tf = (TypeFunction *)fd->type;
+                    if (!tf->next && fd->inferRetType)
+                    {
+                        TemplateInstance *spec = fd->isSpeculative();
+                        int olderrs = global.errors;
+                        fd->semantic3(fd->scope);
+                        // Update the template instantiation with the number
+                        // of errors which occured.
+                        if (spec && global.errors != olderrs)
+                            spec->errors = global.errors - olderrs;
+                    }
                     t = ((TypeFunction *)fd->type)->next;
+                }
             }
             return t;
         }
@@ -2171,11 +2183,15 @@ void Type::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps)
 }
 
 /*******************************
- * If one of the subtypes of this type is a TypeIdentifier,
- * i.e. it's an unresolved type, return that type.
+ * tparams == NULL:
+ *     If one of the subtypes of this type is a TypeIdentifier,
+ *     i.e. it's an unresolved type, return that type.
+ * tparams != NULL:
+ *     Only when the TypeIdentifier is one of template parameters,
+ *     return that type.
  */
 
-Type *Type::reliesOnTident()
+Type *Type::reliesOnTident(TemplateParameters *tparams)
 {
     return NULL;
 }
@@ -2295,9 +2311,9 @@ void TypeNext::checkDeprecated(Loc loc, Scope *sc)
 }
 
 
-Type *TypeNext::reliesOnTident()
+Type *TypeNext::reliesOnTident(TemplateParameters *tparams)
 {
-    return next->reliesOnTident();
+    return next->reliesOnTident(tparams);
 }
 
 int TypeNext::hasWild()
@@ -5932,16 +5948,16 @@ Nomatch:
     return MATCHnomatch;
 }
 
-Type *TypeFunction::reliesOnTident()
+Type *TypeFunction::reliesOnTident(TemplateParameters *tparams)
 {
     size_t dim = Parameter::dim(parameters);
     for (size_t i = 0; i < dim; i++)
     {   Parameter *fparam = Parameter::getNth(parameters, i);
-        Type *t = fparam->type->reliesOnTident();
+        Type *t = fparam->type->reliesOnTident(tparams);
         if (t)
             return t;
     }
-    return next ? next->reliesOnTident() : NULL;
+    return next ? next->reliesOnTident(tparams) : NULL;
 }
 
 /********************************************
@@ -6583,9 +6599,23 @@ Type *TypeIdentifier::semantic(Loc loc, Scope *sc)
     return t;
 }
 
-Type *TypeIdentifier::reliesOnTident()
+Type *TypeIdentifier::reliesOnTident(TemplateParameters *tparams)
 {
-    return this;
+    if (tparams)
+    {
+        if (idents.dim == 0)
+        {
+            for (size_t i = 0; i < tparams->dim; i++)
+            {   TemplateParameter *tp = tparams->tdata()[i];
+
+                if (tp->ident->equals(ident))
+                    return this;
+            }
+        }
+        return NULL;
+    }
+    else
+        return this;
 }
 
 Expression *TypeIdentifier::toExpression()
@@ -8612,14 +8642,14 @@ int TypeTuple::equals(Object *o)
     return 0;
 }
 
-Type *TypeTuple::reliesOnTident()
+Type *TypeTuple::reliesOnTident(TemplateParameters *tparams)
 {
     if (arguments)
     {
         for (size_t i = 0; i < arguments->dim; i++)
         {
             Parameter *arg = arguments->tdata()[i];
-            Type *t = arg->type->reliesOnTident();
+            Type *t = arg->type->reliesOnTident(tparams);
             if (t)
                 return t;
         }

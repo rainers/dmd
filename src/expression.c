@@ -3750,6 +3750,8 @@ Expression *StructLiteralExp::semantic(Scope *sc)
     if (type)
         return this;
 
+//printf("sizeok = %d\n", sd->sizeok);
+
     elements = arrayExpressionSemantic(elements, sc);   // run semantic() on each element
     expandTuples(elements);
     size_t offset = 0;
@@ -9699,6 +9701,7 @@ Expression *AssignExp::semantic(Scope *sc)
         Identifier *id = Id::index;
 
         ae->e1 = ae->e1->semantic(sc);
+        ae->e1 = resolveProperties(sc, ae->e1);
         Type *t1 = ae->e1->type->toBasetype();
         if (t1->ty == Tstruct)
         {
