@@ -4840,6 +4840,18 @@ void test7618(const int x = 1)
 }
 
 /***************************************************/
+// 7621
+
+void test7621()
+{
+    enum uint N = 4u;
+    char[] A = "hello".dup;
+    uint[immutable char[4u]] dict;
+    dict[*cast(immutable char[4]*)(A[0 .. N].ptr)] = 0; // OK
+    dict[*cast(immutable char[N]*)(A[0 .. N].ptr)] = 0; // line 6, error
+}
+
+/***************************************************/
 // 7682
 
 template ConstOf7682(T)
@@ -4858,6 +4870,35 @@ void test7682()
     shared(S3) sh3;
     shared(int[]) sh3sub = sh3.a[];
     assert(pointsTo7682(sh3sub));   // line B
+}
+
+/***************************************************/
+// 7735
+
+void a7735(void[][] data...)
+{
+    //writeln(data);
+    assert(data.length == 1);
+    b7735(data);
+}
+
+void b7735(void[][] data...)
+{
+    //writeln(data);
+    assert(data.length == 1);
+    c7735(data);
+}
+
+void c7735(void[][] data...)
+{
+    //writeln(data);
+    assert(data.length == 1);
+}
+
+void test7735()
+{
+    a7735([]);
+    a7735([]);
 }
 
 /***************************************************/
@@ -5084,7 +5125,9 @@ int main()
     test7534();
     test7534cov();
     test7618();
+    test7621();
     test7682();
+    test7735();
 
     printf("Success\n");
     return 0;

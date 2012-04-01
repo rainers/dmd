@@ -1061,6 +1061,27 @@ void test7684()
 }
 
 /**********************************/
+// 7694
+
+void match7694(alias m)()
+{
+    m.foo();    //removing this line supresses ice in both cases
+}
+
+struct T7694
+{
+    void foo(){}
+    void bootstrap()
+    {
+    //next line causes ice
+        match7694!(this)();
+    //while this works:
+        alias this p;
+        match7694!(p)();
+    }
+}
+
+/**********************************/
 // 7755
 
 template to7755(T)
@@ -1115,6 +1136,15 @@ void test11b()
 }
 
 /**********************************/
+// 7769
+
+void f7769(K)(inout(K) value){}
+void test7769()
+{
+    f7769("abc");
+}
+
+/**********************************/
 
 int main()
 {
@@ -1160,6 +1190,7 @@ int main()
     test7684();
     test11a();
     test11b();
+    test7769();
 
     printf("Success\n");
     return 0;

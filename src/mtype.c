@@ -1626,6 +1626,8 @@ Type *Type::merge()
     if (ty == Ttypeof) return this;
     if (ty == Tident) return this;
     if (ty == Tinstance) return this;
+    if (ty == Taarray && !((TypeAArray *)this)->index->merge()->deco)
+        return this;
     if (nextOf() && !nextOf()->merge()->deco)
         return this;
 
@@ -1880,7 +1882,10 @@ Type *Type::substWildTo(unsigned mod)
             else if (ty == Tsarray)
                 t = new TypeSArray(t, ((TypeSArray *)this)->dim->syntaxCopy());
             else if (ty == Taarray)
+            {
                 t = new TypeAArray(t, ((TypeAArray *)this)->index->syntaxCopy());
+                ((TypeAArray *)t)->sc = ((TypeAArray *)this)->sc;   // duplicate scope
+            }
             else
                 assert(0);
 
@@ -4430,8 +4435,8 @@ StructDeclaration *TypeAArray::getImpl()
          * which has Tident's instead of real types.
          */
         Objects *tiargs = new Objects();
-        tiargs->push(index);
-        tiargs->push(next);
+        tiargs->push(index->substWildTo(MODconst)); // hack for bug7757
+        tiargs->push(next ->substWildTo(MODconst)); // hack for bug7757
 
         // Create AssociativeArray!(index, next)
 #if 1
@@ -5605,8 +5610,8 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
         return terror;
     }
 
-    if (tf->isproperty && (tf->varargs || Parameter::dim(tf->parameters) > 1))
-        error(loc, "properties can only have zero or one parameter");
+    if (tf->isproperty && (tf->varargs || Parameter::dim(tf->parameters) > 2))
+        error(loc, "properties can only have zero, one, or two parameter");
 
     if (tf->varargs == 1 && tf->linkage != LINKd && Parameter::dim(tf->parameters) == 0)
         error(loc, "variadic functions with non-D linkage must have at least one parameter");
