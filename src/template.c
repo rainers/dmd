@@ -471,8 +471,10 @@ void TemplateDeclaration::semantic(Scope *sc)
     /* Remember Scope for later instantiations, but make
      * a copy since attributes can change.
      */
-    this->scope = new Scope(*sc);
-    this->scope->setNoFree();
+    if (!this->scope)
+    {   this->scope = new Scope(*sc);
+        this->scope->setNoFree();
+    }
 
     // Set up scope for parameters
     ScopeDsymbol *paramsym = new ScopeDsymbol();
@@ -2317,7 +2319,7 @@ MATCH Type::deduceType(Scope *sc, Type *tparam, TemplateParameters *parameters,
                             *wildmatch |= MODmutable;
                         else
                             *wildmatch |= (mod & ~MODshared);
-                        tt = mutableOf();
+                        tt = mutableOf()->substWildTo(MODmutable);
                         dedtypes->tdata()[i] = tt;
                         goto Lconst;
                     }

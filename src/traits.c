@@ -396,7 +396,8 @@ Expression *TraitsExp::semantic(Scope *sc)
         };
 
         Identifiers *idents = new Identifiers;
-        ScopeDsymbol::foreach(sd->members, &PushIdentsDg::dg, idents);
+
+        ScopeDsymbol::foreach(sc, sd->members, &PushIdentsDg::dg, idents);
 
         ClassDeclaration *cd = sd->isClassDeclaration();
         if (cd && ident == Id::allMembers)
@@ -407,7 +408,7 @@ Expression *TraitsExp::semantic(Scope *sc)
                 {
                     for (size_t i = 0; i < cd->baseclasses->dim; i++)
                     {   ClassDeclaration *cb = (*cd->baseclasses)[i]->base;
-                        ScopeDsymbol::foreach(cb->members, &PushIdentsDg::dg, idents);
+                        ScopeDsymbol::foreach(NULL, cb->members, &PushIdentsDg::dg, idents);
                         if (cb->baseclasses->dim)
                             dg(cb, idents);
                     }
@@ -526,6 +527,11 @@ Expression *TraitsExp::semantic(Scope *sc)
 
         s1 = s1->toAlias();
         s2 = s2->toAlias();
+
+        if (s1->isFuncAliasDeclaration())
+            s1 = ((FuncAliasDeclaration *)s1)->toAliasFunc();
+        if (s2->isFuncAliasDeclaration())
+            s2 = ((FuncAliasDeclaration *)s2)->toAliasFunc();
 
         if (s1 == s2)
             goto Ltrue;

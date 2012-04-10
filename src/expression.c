@@ -314,7 +314,15 @@ void checkPropertyCall(Expression *e, Expression *emsg)
     {   CallExp *ce = (CallExp *)e;
         TypeFunction *tf;
         if (ce->f)
+        {
             tf = (TypeFunction *)ce->f->type;
+            /* If a forward reference to ce->f, try to resolve it
+             */
+            if (!tf->deco && ce->f->scope)
+            {   ce->f->semantic(ce->f->scope);
+                tf = (TypeFunction *)ce->f->type;
+            }
+        }
         else if (ce->e1->type->ty == Tfunction)
             tf = (TypeFunction *)ce->e1->type;
         else if (ce->e1->type->ty == Tdelegate)
@@ -366,46 +374,54 @@ Expression *resolveUFCSProperties(Scope *sc, Expression *e1, Expression *e2 = NU
         else
             e = new DotIdExp(loc, e, ident);
 
-        Expressions *arguments = new Expressions();
-        /* .f(e1, e2)
-         */
         if (e2)
         {
-            arguments->setDim(2);
-            (*arguments)[0] = eleft;
-            (*arguments)[1] = e2;
-
+            /* .f(e1) = e2
+             */
             Expression *ex = e->syntaxCopy();
-            e = new CallExp(loc, e, arguments);
-            e = e->trySemantic(sc);
-            if (e)
-            {   checkPropertyCall(e, e1);
-                return e->semantic(sc);
-            }
-            e = ex;
-        }
+            Expressions *a1 = new Expressions();
+            a1->setDim(1);
+            (*a1)[0] = eleft;
+            ex = new CallExp(loc, ex, a1);
+            ex = ex->trySemantic(sc);
 
-        /* .f(e1)
-         * .f(e1) = e2
-         */
+            /* .f(e1, e2)
+             */
+            Expressions *a2 = new Expressions();
+            a2->setDim(2);
+            (*a2)[0] = eleft;
+            (*a2)[1] = e2;
+            e = new CallExp(loc, e, a2);
+            if (ex)
+            {   // if fallback setter exists, gag errors
+                e = e->trySemantic(sc);
+                if (!e)
+                {   checkPropertyCall(ex, e1);
+                    ex = new AssignExp(loc, ex, e2);
+                    return ex->semantic(sc);
+                }
+            }
+            else
+            {   // strict setter prints errors if fails
+                e = e->semantic(sc);
+            }
+            checkPropertyCall(e, e1);
+            return e;
+        }
+        else
         {
+            /* .f(e1)
+             */
+            Expressions *arguments = new Expressions();
             arguments->setDim(1);
             (*arguments)[0] = eleft;
             e = new CallExp(loc, e, arguments);
-            e = e->trySemantic(sc);
-            if (!e)
-                goto Leprop;
+            e = e->semantic(sc);
             checkPropertyCall(e, e1);
-            if (e2)
-                e = new AssignExp(loc, e, e2);
             return e->semantic(sc);
         }
     }
     return e;
-
-Leprop:
-    e1->error("not a property %s", e1->toChars());
-    return new ErrorExp();
 }
 
 /******************************
@@ -2917,7 +2933,7 @@ Lagain:
     if (ti)
     {   if (!ti->semanticRun)
             ti->semantic(sc);
-        s = ti->inst->toAlias();
+        s = ti->toAlias();
         if (!s->isTemplateInstance())
             goto Lagain;
         e = new ScopeExp(loc, ti);
@@ -6674,9 +6690,25 @@ Expression *DotIdExp::semantic(Scope *sc, int flag)
         {   goto L2;
         }
 
-        unsigned errors = global.startGagging();
+        if (t1b->ty == Taarray)
+        {
+            TypeAArray *taa = (TypeAArray *)t1b;
+            if (!taa->impl &&
+                ident != Id::__sizeof &&
+                ident != Id::__xalignof &&
+                ident != Id::init &&
+                ident != Id::mangleof &&
+                ident != Id::stringof &&
+                ident != Id::offsetof)
+            {
+                // Find out about these errors when not gagged
+                taa->getImpl();
+            }
+        }
+
         Type *t1 = e1->type;
-        e = e1->type->dotExp(sc, e1, ident);
+        unsigned errors = global.startGagging();
+        e = t1->dotExp(sc, e1, ident);
         if (global.endGagging(errors))  // if failed to find the property
         {
             e1->type = t1;              // kludge to restore type
@@ -8716,6 +8748,8 @@ Expression *CastExp::semantic(Scope *sc)
         }
         else
             to = to->semantic(loc, sc);
+        if (to == Type::terror)
+            return new ErrorExp();
 
         if (!to->equals(e1->type))
         {
@@ -8952,7 +8986,9 @@ Expression *SliceExp::syntaxCopy()
     if (this->upr)
         upr = this->upr->syntaxCopy();
 
-    return new SliceExp(loc, e1->syntaxCopy(), lwr, upr);
+    SliceExp *se = new SliceExp(loc, e1->syntaxCopy(), lwr, upr);
+    se->lengthVar = this->lengthVar;    // bug7871
+    return se;
 }
 
 Expression *SliceExp::semantic(Scope *sc)
@@ -9297,7 +9333,9 @@ ArrayExp::ArrayExp(Loc loc, Expression *e1, Expressions *args)
 
 Expression *ArrayExp::syntaxCopy()
 {
-    return new ArrayExp(loc, e1->syntaxCopy(), arraySyntaxCopy(arguments));
+    ArrayExp *ae = new ArrayExp(loc, e1->syntaxCopy(), arraySyntaxCopy(arguments));
+    ae->lengthVar = this->lengthVar;    // bug7871
+    return ae;
 }
 
 Expression *ArrayExp::semantic(Scope *sc)
@@ -9462,6 +9500,13 @@ IndexExp::IndexExp(Loc loc, Expression *e1, Expression *e2)
     //printf("IndexExp::IndexExp('%s')\n", toChars());
     lengthVar = NULL;
     modifiable = 0;     // assume it is an rvalue
+}
+
+Expression *IndexExp::syntaxCopy()
+{
+    IndexExp *ie = new IndexExp(loc, e1->syntaxCopy(), e2->syntaxCopy());
+    ie->lengthVar = this->lengthVar;    // bug7871
+    return ie;
 }
 
 Expression *IndexExp::semantic(Scope *sc)
@@ -10365,8 +10410,16 @@ Ltupleassign:
     }
     else
 #endif
+    // If it is a array, get the element type. Note that it may be
+    // multi-dimensional.
+    Type *telem = t1;
+    while (telem->ty == Tarray)
+        telem = telem->nextOf();
+
+    // Check for block assignment. If it is of type void[], void[][], etc,
+    // '= null' is the only allowable block assignment (Bug 7493)
     if (e1->op == TOKslice &&
-        t1->nextOf() &&
+        t1->nextOf() && (telem->ty != Tvoid || e2->op == TOKnull) &&
         e2->implicitConvTo(t1->nextOf())
        )
     {   // memset

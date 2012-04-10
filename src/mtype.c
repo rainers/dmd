@@ -1298,8 +1298,11 @@ Type *Type::aliasthisOf()
                         // of errors which occured.
                         if (spec && global.errors != olderrs)
                             spec->errors = global.errors - olderrs;
+                        tf = (TypeFunction *)fd->type;
                     }
-                    t = ((TypeFunction *)fd->type)->next;
+                    t = tf->next;
+                    if (tf->isWild())
+                        t = t->substWildTo(mod == 0 ? MODmutable : mod);
                 }
             }
             return t;
@@ -7688,7 +7691,15 @@ Expression *TypeStruct::dotExp(Scope *sc, Expression *e, Identifier *ident)
 L1:
     if (!s)
     {
-        return noMember(sc, e, ident);
+        if (sym->scope)                 // it's a fwd ref, maybe we can resolve it
+        {
+            sym->semantic(NULL);
+            s = sym->search(e->loc, ident, 0);
+            if (!s)
+                return noMember(sc, e, ident);
+        }
+        else
+            return noMember(sc, e, ident);
     }
     if (!s->isFuncDeclaration())        // because of overloading
         s->checkDeprecated(e->loc, sc);

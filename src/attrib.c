@@ -49,7 +49,7 @@ Dsymbols *AttribDeclaration::include(Scope *sc, ScopeDsymbol *sd)
 
 int AttribDeclaration::apply(Dsymbol_apply_ft_t fp, void *param)
 {
-    Dsymbols *d = include(NULL, NULL);
+    Dsymbols *d = include(scope, NULL);
 
     if (d)
     {
@@ -443,6 +443,7 @@ void StorageClassDeclaration::setScope(Scope *sc)
         if (stc & (STCsafe | STCtrusted | STCsystem))
             scstc &= ~(STCsafe | STCtrusted | STCsystem);
         scstc |= stc;
+        //printf("scstc = x%llx\n", scstc);
 
         setScopeNewSc(sc, scstc, sc->linkage, sc->protection, sc->explicitProtection, sc->structalign);
     }
@@ -1398,6 +1399,9 @@ void StaticIfDeclaration::importAll(Scope *sc)
 void StaticIfDeclaration::setScope(Scope *sc)
 {
     // do not evaluate condition before semantic pass
+
+    // But do set the scope, in case we need it for forward referencing
+    Dsymbol::setScope(sc);
 }
 
 void StaticIfDeclaration::semantic(Scope *sc)
@@ -1428,6 +1432,8 @@ const char *StaticIfDeclaration::kind()
 
 
 /***************************** CompileDeclaration *****************************/
+
+// These are mixin declarations, like mixin("int x");
 
 CompileDeclaration::CompileDeclaration(Loc loc, Expression *exp)
     : AttribDeclaration(NULL)
@@ -1502,3 +1508,10 @@ void CompileDeclaration::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
     buf->writestring(");");
     buf->writenl();
 }
+
+const char *CompileDeclaration::kind()
+{
+    return "mixin";
+}
+
+
