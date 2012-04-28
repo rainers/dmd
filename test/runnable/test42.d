@@ -4878,6 +4878,41 @@ void test7742()
 }
 
 /***************************************************/
+// 7807
+
+interface Interface7807
+{
+    Interface7807 getNext();
+    const(Interface7807) getNext() const;
+}
+
+class Implementation7807 : Interface7807
+{
+    Implementation7807 getNext()
+    {
+        return this;
+    }
+
+    const(Implementation7807) getNext() const
+    {
+        return null;
+    }
+}
+
+void test7807()
+{
+    auto mc = new Implementation7807();
+    assert(mc.getNext() is mc);
+    Interface7807 mi = mc;
+    assert(mi.getNext() is mi);
+
+    auto cc = new const(Implementation7807)();
+    assert(cc.getNext() is null);
+    const(Interface7807) ci = cc;
+    assert(ci.getNext() is null);
+}
+
+/***************************************************/
 // 7815
 
 enum Closure {
@@ -4907,6 +4942,69 @@ alias Expression!("+", BasicMatrix) Foo7815;
 struct Test244 {
     static immutable c = Test244();
     static if( true ){}
+}
+
+/***************************************************/
+
+int noswap245(ubyte *data)
+{
+    return
+	(data[0]<<  0) |
+	(data[1]<<  8) |
+	(data[2]<< 16) |
+	(data[3]<< 24);
+}
+
+int bswap245(ubyte *data)
+{
+    return
+	(data[0]<< 24) |
+	(data[1]<< 16) |
+	(data[2]<< 8 ) |
+	(data[3]<< 0 );
+}
+
+void test245()
+{
+    int x1 = 0x01234567;
+    x1 = noswap245(cast(ubyte *)&x1);
+    assert(x1 == 0x01234567);
+    x1 = bswap245(cast(ubyte *)&x1);
+    assert(x1 == 0x67452301);
+}
+
+/***************************************************/
+
+mixin template mix7974()
+{
+    uint _x;
+}
+
+struct Foo7974
+{
+    immutable Foo7974 fa = Foo7974(0);
+
+    this(uint x)
+    {
+        _x = x;
+    }
+
+    mixin mix7974!();
+}
+
+/***************************************************/
+// 4155
+
+
+float getnanf() { return float.nan; }
+double getnand() { return double.nan; }
+real getnanr() { return real.nan; }
+
+void test4155()
+{
+    assert(getnanf() != 0);
+    assert(getnand() != 0);
+    assert(getnanr() != 0);
 }
 
 /***************************************************/
@@ -5162,6 +5260,9 @@ int main()
     test4820_2();
     test243();
     test7742();
+    test245();
+    test7807();
+    test4155();
 
     writefln("Success");
     return 0;

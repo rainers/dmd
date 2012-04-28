@@ -135,7 +135,6 @@ void util_set32(void);
 void util_set64(void);
 int ispow2(targ_ullong);
 
-#if TX86
 #if __GNUC__
 #define util_malloc(n,size) mem_malloc((n)*(size))
 #define util_calloc(n,size) mem_calloc((n)*(size))
@@ -156,7 +155,6 @@ void *parc_calloc(size_t len);
 void *parc_realloc(void *oldp,size_t len);
 char *parc_strdup(const char *s);
 void parc_free(void *p);
-#endif
 #endif
 
 void swap(int *,int *);
@@ -393,7 +391,7 @@ void obj_ehsections();
 void obj_moduleinfo(Symbol *scc);
 int  obj_comdat(Symbol *);
 int  obj_comdatsize(Symbol *, targ_size_t symsize);
-void obj_setcodeseg(int seg,targ_size_t offset);
+void obj_setcodeseg(int seg);
 int  obj_codeseg(char *name,int suffix);
 seg_data *obj_tlsseg();
 seg_data *obj_tlsseg_bss();
@@ -402,6 +400,7 @@ void obj_browse(char *, unsigned);
 void objend(void);
 void obj_export(Symbol *s, unsigned argsize);
 void objpubdef(int seg, Symbol *s, targ_size_t offset);
+void objpubdefsize(int seg, Symbol *s, targ_size_t offset, targ_size_t symsize);
 #if ELFOBJ
 void objpubdefsize(int seg, Symbol *s, targ_size_t offset, targ_size_t symsize);
 #elif MACHOBJ
@@ -425,6 +424,9 @@ void reftocodseg(int seg, targ_size_t offset, targ_size_t val);
 int reftoident(int seg, targ_size_t offset, Symbol *s, targ_size_t val, int flags);
 void obj_far16thunk(Symbol *s);
 void obj_fltused();
+int elf_data_cdata(char *p, int len, int *pseg);
+int elf_data_cdata(char *p, int len);
+
 
 // objrecor.c
 void objfile_open(const char *);
