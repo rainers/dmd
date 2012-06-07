@@ -744,7 +744,7 @@ void ClassDeclaration::toObjFile(int multiobj)
         for (cd = this->baseClass; cd; cd = cd->baseClass)
         {
             for (size_t k = 0; k < cd->vtblInterfaces->dim; k++)
-            {   BaseClass *bs = cd->(*vtblInterfaces)[k];
+            {   BaseClass *bs = (*cd->vtblInterfaces)[k];
 
                 if (b->base == bs->base)
                 {
@@ -910,7 +910,7 @@ unsigned ClassDeclaration::baseVtblOffset(BaseClass *bc)
         {
             //printf("\tbase class %s\n", cd->toChars());
             for (size_t k = 0; k < cd->vtblInterfaces->dim; k++)
-            {   BaseClass *bs = cd->(*vtblInterfaces)[k];
+            {   BaseClass *bs = (*cd->vtblInterfaces)[k];
 
                 if (bc == bs)
                 {   //printf("\tcsymoffset = x%x\n", csymoffset);
@@ -1320,8 +1320,14 @@ void VarDeclaration::toObjFile(int multiobj)
         else
             s->Sseg = DATA;
 #endif
+        if (!sz && type->toBasetype()->ty != Tsarray)
+            assert(0); // this shouldn't be possible
+
+#if OMFOBJ
         if (sz)
-        {   outdata(s);
+#endif
+        {
+            outdata(s);
             if (isExport())
                 obj_export(s,0);
         }

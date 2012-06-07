@@ -680,19 +680,19 @@ void TypeInfoStructDeclaration::toDt(dt_t **pdt)
 
     if (global.params.is64bit)
     {
-        TypeTuple *tup = tc->toArgTypes();
-        assert(tup->arguments->dim <= 2);
-        for (size_t i = 0; i < 2; i++)
+        Type *t = sd->arg1type;
+        for (int i = 0; i < 2; i++)
         {
-            if (i < tup->arguments->dim)
+            // m_argi
+            if (t)
             {
-                Type *targ = (*tup->arguments)[i]->type;
-                targ = targ->merge();
-                targ->getTypeInfo(NULL);
-                dtxoff(pdt, targ->vtinfo->toSymbol(), 0, TYnptr);       // m_argi
+                t->getTypeInfo(NULL);
+                dtxoff(pdt, t->vtinfo->toSymbol(), 0, TYnptr);
             }
             else
-                dtsize_t(pdt, 0);                    // m_argi
+                dtsize_t(pdt, 0);
+
+            t = sd->arg2type;
         }
     }
 

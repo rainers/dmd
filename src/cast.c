@@ -1,5 +1,5 @@
 
-// Copyright (c) 1999-2011 by Digital Mars
+// Copyright (c) 1999-2012 by Digital Mars
 // All Rights Reserved
 // written by Walter Bright
 // http://www.digitalmars.com
@@ -9,6 +9,7 @@
 
 #include <stdio.h>
 #include <assert.h>
+#include <string.h>                     // mem{set|cpy}()
 
 #include "rmem.h"
 
@@ -138,7 +139,12 @@ Expression *ErrorExp::implicitCastTo(Scope *sc, Type *t)
 Expression *FuncExp::implicitCastTo(Scope *sc, Type *t)
 {
     //printf("FuncExp::implicitCastTo type = %p %s, t = %s\n", type, type ? type->toChars() : NULL, t->toChars());
-    return inferType(t);
+    if ((t->ty == Tpointer && t->nextOf()->ty == Tfunction) ||
+        t->ty == Tdelegate)
+    {
+        return inferType(t);
+    }
+    return Expression::implicitCastTo(sc, t);
 }
 
 /*******************************************
@@ -546,18 +552,40 @@ MATCH ArrayLiteralExp::implicitConvTo(Type *t)
                 result = MATCHnomatch;
         }
 
+        Type *telement = tb->nextOf();
         for (size_t i = 0; i < elements->dim; i++)
         {   Expression *e = (*elements)[i];
-            MATCH m = (MATCH)e->implicitConvTo(tb->nextOf());
-            if (m < result)
-                result = m;                     // remember worst match
             if (result == MATCHnomatch)
                 break;                          // no need to check for worse
+            MATCH m = (MATCH)e->implicitConvTo(telement);
+            if (m < result)
+                result = m;                     // remember worst match
         }
 
         if (!result)
             result = type->implicitConvTo(t);
 
+        return result;
+    }
+    else if (tb->ty == Tvector &&
+        (typeb->ty == Tarray || typeb->ty == Tsarray))
+    {
+        // Convert array literal to vector type
+        TypeVector *tv = (TypeVector *)tb;
+        TypeSArray *tbase = (TypeSArray *)tv->basetype;
+        assert(tbase->ty == Tsarray);
+        if (elements->dim != tbase->dim->toInteger())
+            return MATCHnomatch;
+
+        Type *telement = tv->elementType();
+        for (size_t i = 0; i < elements->dim; i++)
+        {   Expression *e = (*elements)[i];
+            MATCH m = (MATCH)e->implicitConvTo(telement);
+            if (m < result)
+                result = m;                     // remember worst match
+            if (result == MATCHnomatch)
+                break;                          // no need to check for worse
+        }
         return result;
     }
     else
@@ -900,6 +928,9 @@ Expression *Expression::castTo(Scope *sc, Type *t)
             }
             else if (tb->ty == Tvector && typeb->ty != Tvector)
             {
+                //printf("test1 e = %s, e->type = %s, tb = %s\n", e->toChars(), e->type->toChars(), tb->toChars());
+                TypeVector *tv = (TypeVector *)tb;
+                e = new CastExp(loc, e, tv->elementType());
                 e = new VectorExp(loc, e, tb);
                 e = e->semantic(sc);
                 return e;
@@ -1362,6 +1393,28 @@ Expression *ArrayLiteralExp::castTo(Scope *sc, Type *t)
             e->type = tp;
         }
     }
+    else if (tb->ty == Tvector &&
+        (typeb->ty == Tarray || typeb->ty == Tsarray))
+    {
+        // Convert array literal to vector type
+        TypeVector *tv = (TypeVector *)tb;
+        TypeSArray *tbase = (TypeSArray *)tv->basetype;
+        assert(tbase->ty == Tsarray);
+        if (elements->dim != tbase->dim->toInteger())
+            goto L1;
+
+        e = (ArrayLiteralExp *)copy();
+        e->elements = (Expressions *)elements->copy();
+        Type *telement = tv->elementType();
+        for (size_t i = 0; i < elements->dim; i++)
+        {   Expression *ex = (*elements)[i];
+            ex = ex->castTo(sc, telement);
+            (*e->elements)[i] = ex;
+        }
+        Expression *ev = new VectorExp(loc, e, tb);
+        ev = ev->semantic(sc);
+        return ev;
+    }
 L1:
     return e->Expression::castTo(sc, t);
 }
@@ -1700,14 +1753,12 @@ Expression *FuncExp::inferType(Type *to, int flag, TemplateParameters *tparams)
             to->ty == Tdelegate)
         {
             Type *typen = type->nextOf();
-            assert(typen->deco);
-            //if (typen->covariant(to->nextOf()) == 1)
+            if (typen->deco)
             {
                 FuncExp *fe = (FuncExp *)copy();
                 fe->tok = TOKdelegate;
                 fe->type = (new TypeDelegate(typen))->merge();
                 e = fe;
-                //e = fe->Expression::implicitCastTo(sc, to);
             }
         }
         else

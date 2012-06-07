@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <string.h>                     // mem{cpy|set}()
 
 #include "root.h"
 #include "rmem.h"
@@ -174,6 +175,12 @@ ClassDeclaration::ClassDeclaration(Loc loc, Identifier *id, BaseClasses *basecla
             {   if (Type::typeinfowild)
                     Type::typeinfowild->error("%s", msg);
                 Type::typeinfowild = this;
+            }
+
+            if (id == Id::TypeInfo_Vector)
+            {   if (Type::typeinfovector)
+                    Type::typeinfovector->error("%s", msg);
+                Type::typeinfovector = this;
             }
 #endif
         }
@@ -1051,6 +1058,8 @@ FuncDeclaration *ClassDeclaration::findFunc(Identifier *ident, TypeFunction *tf)
             {   //printf("fd->parent->isClassDeclaration() = %p\n", fd->parent->isClassDeclaration());
                 if (!fdmatch)
                     goto Lfd;
+                if (fd == fdmatch)
+                    goto Lfdmatch;
 
                 {
                 // Function type matcing: exact > covariant

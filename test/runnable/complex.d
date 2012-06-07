@@ -277,6 +277,37 @@ void test7581()
 
 /***************************************/
 
+float f() { return 1.0f; }
+ifloat i() { return 1.0fi; }
+
+void test7594()
+{
+    assert(f() + i() == 1.0f + 1.0fi);
+}
+
+/***************************************/
+
+cdouble conv(cfloat a)
+{
+    return a;
+}
+
+void test7593()
+{
+    assert(conv(1.0f+1.0fi) == 1.0+1.0i);
+}
+
+/***************************************/
+
+cfloat get() { return cfloat.nan; }
+
+void test7591()
+{
+    assert(!(get() == 0));
+}
+
+/***************************************/
+
 int main(char[][] args)
 {
 
@@ -295,6 +326,9 @@ int main(char[][] args)
     test13();
     test14();
     test7581();
+    test7594();
+    test7593();
+    test7591();
 
     printf("Success!\n");
     return 0;

@@ -12,6 +12,7 @@
 
 #include <stdio.h>
 #include <assert.h>
+#include <string.h>                     // strlen(),memcpy()
 
 #include "rmem.h"
 #include "lexer.h"
@@ -454,7 +455,10 @@ Dsymbols *Parser::parseDeclDefs(int once)
                     ((tk = peek(tk)), 1) &&
                     skipAttributes(tk, &tk) &&
                     (tk->value == TOKlparen ||
-                     tk->value == TOKlcurly)
+                     tk->value == TOKlcurly ||
+                     tk->value == TOKin ||
+                     tk->value == TOKout ||
+                     tk->value == TOKbody)
                    )
                 {
                     a = parseDeclarations(storageClass, comment);
@@ -2857,7 +2861,10 @@ Dsymbols *Parser::parseDeclarations(StorageClass storage_class, unsigned char *c
         ((tk = peek(tk)), 1) &&
         skipAttributes(tk, &tk) &&
         (tk->value == TOKlparen ||
-         tk->value == TOKlcurly)
+         tk->value == TOKlcurly ||
+         tk->value == TOKin ||
+         tk->value == TOKout ||
+         tk->value == TOKbody)
        )
     {
         ts = NULL;
@@ -4239,7 +4246,7 @@ Statement *Parser::parseStatement(int flags)
                 Loc loc = this->loc;
 
                 nextToken();
-                if (token.value == TOKlcurly)
+                if (token.value == TOKlcurly || token.value != TOKlparen)
                 {
                     t = NULL;
                     id = NULL;

@@ -468,8 +468,10 @@ void Module::genobjfile(int multiobj)
                 sp->Stype = type_fake(TYint);
                 sp->Stype->Tcount++;
                 sp->Sclass = SCfastpar;
-                size_t num;
-                sp->Spreg = getintegerparamsreglist(TYjfunc, &num)[0];
+
+                FuncParamRegs fpr(TYjfunc);
+                fpr.alloc(sp->Stype, sp->Stype->Tty, &sp->Spreg, &sp->Spreg2);
+
                 sp->Sflags &= ~SFLspill;
                 sp->Sfl = FLpara;       // FLauto?
                 cstate.CSpsymtab = &ma->Sfunc->Flocsym;
@@ -590,7 +592,15 @@ void FuncDeclaration::toObjFile(int multiobj)
          * so we know things like where its local symbols are stored.
          */
         FuncDeclaration *fdp = toAliasFunc()->toParent2()->isFuncDeclaration();
-        if (fdp && fdp->semanticRun == PASSsemantic3done &&
+        // Bug 8016 - only include the function if it is a template instance
+        Dsymbol * owner = NULL;
+        if (fdp)
+        {   owner =  fdp->toParent();
+            while (owner && !owner->isTemplateInstance())
+                owner = owner->toParent();
+        }
+
+        if (owner && fdp && fdp->semanticRun == PASSsemantic3done &&
             !fdp->isUnitTestDeclaration())
         {
             /* Can't do unittest's out of order, they are order dependent in that their
@@ -799,37 +809,14 @@ void FuncDeclaration::toObjFile(int multiobj)
     // Determine register assignments
     if (pi)
     {
-        size_t numintegerregs = 0, numfloatregs = 0;
-        const unsigned char* argregs = getintegerparamsreglist(tyf, &numintegerregs);
-        const unsigned char* floatregs = getfloatparamsreglist(tyf, &numfloatregs);
-
-        // Order of assignment of pointer or integer parameters
-        int r = 0;
-        int xmmcnt = 0;
+        FuncParamRegs fpr(tyf);
 
         for (size_t i = 0; i < pi; i++)
         {   Symbol *sp = params[i];
-            tym_t ty = tybasic(sp->Stype->Tty);
-            // BUG: doesn't work for structs
-            if (r < numintegerregs)
+            if (fpr.alloc(sp->Stype, sp->Stype->Tty, &sp->Spreg, &sp->Spreg2))
             {
-                if ((I64 || (i == 0 && (tyf == TYjfunc || tyf == TYmfunc))) && type_jparam(sp->Stype))
-                {
-                    sp->Sclass = SCfastpar;
-                    sp->Spreg = argregs[r];
-                    sp->Sfl = FLauto;
-                    ++r;
-                }
-            }
-            if (xmmcnt < numfloatregs)
-            {
-                if (tyxmmreg(ty))
-                {
-                    sp->Sclass = SCfastpar;
-                    sp->Spreg = floatregs[xmmcnt];
-                    sp->Sfl = FLauto;
-                    ++xmmcnt;
-                }
+                sp->Sclass = SCfastpar;
+                sp->Sfl = FLauto;
             }
         }
     }

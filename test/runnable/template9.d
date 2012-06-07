@@ -189,6 +189,47 @@ void test9()
 }
 
 /**********************************/
+// 1780
+
+template Tuple1780(Ts ...) { alias Ts Tuple1780; }
+
+template Decode1780( T )                            { alias Tuple1780!() Types; }
+template Decode1780( T : TT!(Us), alias TT, Us... ) { alias Us Types; }
+
+void test1780()
+{
+    struct S1780(T1, T2) {}
+
+    // should extract tuple (bool,short) but matches the first specialisation
+    alias Decode1780!( S1780!(bool,short) ).Types SQ1780;  // --> SQ2 is empty tuple!
+    static assert(is(SQ1780 == Tuple1780!(bool, short)));
+}
+
+/**********************************/
+// 3608
+
+template foo3608(T, U){}
+
+template BaseTemplate3608(alias TTT : U!V, alias U, V...)
+{
+    alias U BaseTemplate3608;
+}
+template TemplateParams3608(alias T : U!V, alias U, V...)
+{
+    alias V TemplateParams3608;
+}
+
+template TyueTuple3608(T...) { alias T TyueTuple3608; }
+
+void test3608()
+{
+    alias foo3608!(int, long) Foo3608;
+
+    static assert(__traits(isSame, BaseTemplate3608!Foo3608, foo3608));
+    static assert(is(TemplateParams3608!Foo3608 == TyueTuple3608!(int, long)));
+}
+
+/**********************************/
 // 5015
 
 import breaker;
@@ -311,6 +352,12 @@ void test2579()
 }
 
 /**********************************/
+// 4953
+
+void bug4953(T = void)(short x) {}
+static assert(is(typeof(bug4953(3))));
+
+/**********************************/
 // 5886 & 5393
 
 struct K5886 {
@@ -354,6 +401,31 @@ void test5393()
 
     auto b = new B;
     b.foobar();
+}
+
+/**********************************/
+// 5896
+
+struct X5896
+{
+                 T opCast(T)(){ return 1; }
+           const T opCast(T)(){ return 2; }
+       immutable T opCast(T)(){ return 3; }
+          shared T opCast(T)(){ return 4; }
+    const shared T opCast(T)(){ return 5; }
+}
+void test5896()
+{
+    auto xm =              X5896  ();
+    auto xc =        const(X5896) ();
+    auto xi =    immutable(X5896) ();
+    auto xs =       shared(X5896) ();
+    auto xcs= const(shared(X5896))();
+    assert(cast(int)xm == 1);
+    assert(cast(int)xc == 2);
+    assert(cast(int)xi == 3);
+    assert(cast(int)xs == 4);
+    assert(cast(int)xcs== 5);
 }
 
 /**********************************/
@@ -632,6 +704,20 @@ void test6780()
 
     bar6780 = 10;
     assert(g6780 == 10);
+}
+
+/**********************************/
+// 6891
+
+struct S6891(int N, T)
+{
+    void f(U)(S6891!(N, U) u) { }
+}
+
+void test6891()
+{
+    alias S6891!(1, void) A;
+    A().f(A());
 }
 
 /**********************************/
@@ -1198,6 +1284,117 @@ void test7933()
 }
 
 /**********************************/
+// 8094
+
+struct Tuple8094(T...) {}
+
+template getParameters8094(T, alias P)
+{
+    static if (is(T t == P!U, U...))
+        alias U getParameters8094;
+    else
+        static assert(false);
+}
+
+void test8094()
+{
+    alias getParameters8094!(Tuple8094!(int, string), Tuple8094) args;
+}
+
+/**********************************/
+
+struct Tuple12(T...)
+{
+    void foo(alias P)()
+    {
+        alias Tuple12 X;
+        static if (is(typeof(this) t == X!U, U...))
+            alias U getParameters;
+        else
+            static assert(false);
+    }
+}
+
+void test12()
+{
+    Tuple12!(int, string) t;
+    t.foo!Tuple12();
+}
+
+/**********************************/
+// 8125
+
+void foo8125(){}
+
+struct X8125(alias a) {}
+
+template Y8125a(T : A!f, alias A, alias f) {}  //OK
+template Y8125b(T : A!foo8125, alias A) {}     //NG
+
+void test8125()
+{
+    alias Y8125a!(X8125!foo8125) y1;
+    alias Y8125b!(X8125!foo8125) y2;
+}
+
+/**********************************/
+
+struct A13() {}
+struct B13(TT...) {}
+struct C13(T1) {}
+struct D13(T1, TT...) {}
+struct E13(T1, T2) {}
+struct F13(T1, T2, TT...) {}
+
+template Test13(alias X)
+{
+    static if (is(X x : P!U, alias P, U...))
+        enum Test13 = true;
+    else
+        enum Test13 = false;
+}
+
+void test13()
+{
+    static assert(Test13!( A13!() ));
+    static assert(Test13!( B13!(int) ));
+    static assert(Test13!( B13!(int, double) ));
+    static assert(Test13!( B13!(int, double, string) ));
+    static assert(Test13!( C13!(int) ));
+    static assert(Test13!( D13!(int) ));
+    static assert(Test13!( D13!(int, double) ));
+    static assert(Test13!( D13!(int, double, string) ));
+    static assert(Test13!( E13!(int, double) ));
+    static assert(Test13!( F13!(int, double) ));
+    static assert(Test13!( F13!(int, double, string) ));
+    static assert(Test13!( F13!(int, double, string, bool) ));
+}
+
+/**********************************/
+
+struct A14(T, U, int n = 1)
+{
+}
+
+template Test14(alias X)
+{
+    static if (is(X x : P!U, alias P, U...))
+        alias U Test14;
+    else
+        static assert(0);
+}
+
+void test14()
+{
+    alias A14!(int, double) Type;
+    alias Test14!Type Params;
+    static assert(Params.length == 3);
+    static assert(is(Params[0] == int));
+    static assert(is(Params[1] == double));
+    static assert(   Params[2] == 1);
+}
+
+/**********************************/
 
 int main()
 {
@@ -1210,12 +1407,15 @@ int main()
     test7();
     test8();
     test9();
+    test1780();
+    test3608();
     test6404();
     test2246();
     bug4984();
     test2579();
     test5886();
     test5393();
+    test5896();
     test6825();
     test6789();
     test2778();
@@ -1226,6 +1426,7 @@ int main()
     test6208c();
     test6738();
     test6780();
+    test6891();
     test6994();
     test3467();
     test4413();
@@ -1246,6 +1447,11 @@ int main()
     test7769();
     test7873();
     test7933();
+    test8094();
+    test12();
+    test8125();
+    test13();
+    test14();
 
     printf("Success\n");
     return 0;

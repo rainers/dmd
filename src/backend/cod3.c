@@ -292,6 +292,28 @@ int cod3_EA(code *c)
 }
 
 /********************************
+ * setup ALLREGS and BYTEREGS
+ * called by: codgen
+ */
+
+void cod3_initregs()
+{
+    // should probably be !TARGET_WINDOS insetad of a long list of some targets
+#if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
+    if (I64)
+    {
+        ALLREGS = mAX|mBX|mCX|mDX|mSI|mDI| mR8|mR9|mR10|mR11|mR12|mR13|mR14|mR15;
+        BYTEREGS = ALLREGS;
+    }
+    else
+    {
+        ALLREGS = ALLREGS_INIT;
+        BYTEREGS = BYTEREGS_INIT;
+    }
+#endif
+}
+
+/********************************
  * set initial global variable values
  */
 
@@ -383,6 +405,21 @@ void cod3_align()
     nbytes = -Coffset & 3;
     cod3_align_bytes(nbytes);
 #endif
+}
+
+code* cod3_stackadj(code* c, int nbytes)
+{
+    unsigned grex = I64 ? REX_W << 16 : 0;
+    unsigned rm;
+    if (nbytes > 0)
+        rm = modregrm(3,5,SP); // SUB ESP,nbytes
+    else
+    {
+        nbytes = -nbytes;
+        rm = modregrm(3,0,SP); // ADD ESP,nbytes
+    }
+    c = genc2(c, 0x81, grex | rm, nbytes);
+    return c;
 }
 
 /*****************************
@@ -706,17 +743,12 @@ void outblkexitcode(block *bl, code*& c, int& anyspill, const char* sflsave, sym
                         {   int npush = (numbitsset(retregs) + 1) * REGSIZE;
                             if (npush & (STACKALIGN - 1))
                             {   nalign = STACKALIGN - (npush & (STACKALIGN - 1));
-                                cs = genc2(cs,0x81,modregrm(3,5,SP),nalign); // SUB ESP,nalign
-                                if (I64)
-                                    code_orrex(cs, REX_W);
+                                cs = cod3_stackadj(cs, nalign);
                             }
                         }
                         cs = genc(cs,0xE8,0,0,0,FLblock,(targ_size_t)list_block(bf->Bsucc));
                         if (nalign)
-                        {   cs = genc2(cs,0x81,modregrm(3,0,SP),nalign); // ADD ESP,nalign
-                            if (I64)
-                                code_orrex(cs, REX_W);
-                        }
+                            cs = cod3_stackadj(cs, -nalign);
                         c = cat3(c,cs,cr);
                     }
                 }
@@ -769,17 +801,12 @@ void outblkexitcode(block *bl, code*& c, int& anyspill, const char* sflsave, sym
                 int nalign = 0;
                 if (STACKALIGN == 16)
                 {   nalign = STACKALIGN - REGSIZE;
-                    c = genc2(c,0x81,modregrm(3,5,SP),nalign); // SUB ESP,nalign
-                    if (I64)
-                        code_orrex(c, REX_W);
+                    c = cod3_stackadj(c, nalign);
                 }
                 // CALL bl->Bsucc
                 c = genc(c,0xE8,0,0,0,FLblock,(targ_size_t)list_block(bl->Bsucc));
                 if (nalign)
-                {   c = genc2(c,0x81,modregrm(3,0,SP),nalign); // ADD ESP,nalign
-                    if (I64)
-                        code_orrex(c, REX_W);
-                }
+                    c = cod3_stackadj(c, -nalign);
                 // JMP list_next(bl->Bsucc)
                 nextb = list_block(list_next(bl->Bsucc));
                 goto L2;
@@ -910,18 +937,13 @@ void outblkexitcode(block *bl, code*& c, int& anyspill, const char* sflsave, sym
                         {   int npush = (numbitsset(retregs) + 1) * REGSIZE;
                             if (npush & (STACKALIGN - 1))
                             {   nalign = STACKALIGN - (npush & (STACKALIGN - 1));
-                                cs = genc2(cs,0x81,modregrm(3,5,SP),nalign); // SUB ESP,nalign
-                                if (I64)
-                                    code_orrex(cs, REX_W);
+                                cs = cod3_stackadj(cs, nalign);
                             }
                         }
                         // CALL bf->Bsucc
                         cs = genc(cs,0xE8,0,0,0,FLblock,(targ_size_t)list_block(bf->Bsucc));
                         if (nalign)
-                        {   cs = genc2(cs,0x81,modregrm(3,0,SP),nalign); // ADD ESP,nalign
-                            if (I64)
-                                code_orrex(cs, REX_W);
-                        }
+                            cs = cod3_stackadj(cs, -nalign);
                         bl->Bcode = c = cat3(c,cs,cr);
                     }
                 }
@@ -1765,9 +1787,18 @@ bool cse_simple(code *c, elem *e)
     return false;
 }
 
-code* gen_loadcse(unsigned reg, targ_uns i)
+code* gen_testcse(code *c, unsigned sz, targ_uns i)
 {
-    code* c = getregs(mask[reg]);
+    bool byte = sz == 1;
+    c = genc(c,0x81 ^ byte,modregrm(2,7,BPRM),
+                FLcs,i, FLconst,(targ_uns) 0);
+    if ((I64 || I32) && sz == 2)
+        c->Iflags |= CFopsize;
+    return c;
+}
+
+code* gen_loadcse(code *c, unsigned reg, targ_uns i)
+{
     unsigned op = 0x8B;
     if (reg == ES)
     {
@@ -2436,13 +2467,9 @@ Lagain:
      */
 
     if (tym == TYifunc)
-        Poff = 26;
-    else if (I64)
-        Poff = 16;
-    else if (I32)
-        Poff = farfunc ? 12 : 8;
+        Poff = 26; // how is this number derived?
     else
-        Poff = farfunc ? 6 : 4;
+        Poff = (farfunc ? 3 : 2) * REGSIZE;
 
     Aoff = 0;
 #if NTEXCEPTIONS == 2
@@ -2532,7 +2559,7 @@ Lagain:
         while (*++p);
         c = genregs(c,0x8B,BP,SP);                              // MOV BP,SP
         if (localsize)
-            c = genc2(c,0x81,modregrm(3,5,SP),localsize);       // SUB SP,localsize
+            c = cod3_stackadj(c, localsize);
         tyf |= mTYloadds;
         hasframe = 1;
         goto Lcont;
@@ -2723,7 +2750,7 @@ Lagain:
                      *      SUB     ESP, xlocalsize % 0x1000
                      */
                     c = movregconst(c, reg, xlocalsize / 0x1000, FALSE);
-                    code *csub = genc2(NULL,0x81,modregrm(3,5,SP),0x1000);
+                    code *csub = cod3_stackadj(NULL, 0x1000);
                     if (I64)
                         code_orrex(csub, REX_W);
                     code_orflag(csub, CFtarg2);
@@ -2737,9 +2764,7 @@ Lagain:
                         genc2(csub,JNE,0,(targ_uns)-12);
                     }
                     regimmed_set(reg,0);             // reg is now 0
-                    genc2(csub,0x81,modregrm(3,5,SP),xlocalsize & 0xFFF);
-                    if (I64)
-                        code_orrex(csub, REX_W);
+                    cod3_stackadj(csub, xlocalsize & 0xFFF);
                     c = cat(c,csub);
                     useregs(mask[reg]);
                 }
@@ -2762,11 +2787,7 @@ Lagain:
                     pushalloc = 1;
                 }
                 else
-                {   // SUB SP,xlocalsize
-                    c = genc2(c,0x81,modregrm(3,5,SP),xlocalsize);
-                    if (I64)
-                        code_orrex(c, REX_W);
-                }
+                    c = cod3_stackadj(c, xlocalsize);
             }
 
             if (usedalloca)
@@ -2798,11 +2819,7 @@ Lagain:
             pushalloc = 1;
         }
         else
-        {   // SUB ESP,xlocalsize
-            c = genc2(c,0x81,modregrm(3,5,SP),xlocalsize);
-            if (I64)
-                code_orrex(c, REX_W);
-        }
+            c = cod3_stackadj(c, xlocalsize);
         BPoff += REGSIZE;
     }
     else
@@ -2822,14 +2839,22 @@ Lagain:
         )
        )
     {
+        unsigned spalign = 0;
+#if 1
+        int sz = Poff + (needframe ? 0 : -REGSIZE) + localsize;
+        if (STACKALIGN == 16 && (sz & (STACKALIGN - 1)))
+            spalign = STACKALIGN - (sz & (STACKALIGN - 1));
+#else
         if (STACKALIGN == 16 && npush)
+            spalign = npush * REGSIZE;
+#endif
+
+        if (spalign)
         {   /* This could be avoided by moving the function call to after the
              * registers are saved. But I don't remember why the call is here
              * and not there.
              */
-            c = genc2(c,0x81,modregrm(3,5,SP),npush * REGSIZE); // SUB ESP,npush * REGSIZE
-            if (I64)
-                code_orrex(c, REX_W);
+            c = cod3_stackadj(c, spalign);
         }
 
         symbol *s = rtlsym[farfunc ? RTLSYM_TRACE_PRO_F : RTLSYM_TRACE_PRO_N];
@@ -2841,6 +2866,7 @@ Lagain:
          * makes disassembling the code annoying.
          */
 #if ELFOBJ || MACHOBJ
+        // Generate length prefixed name that is recognized by profiler
         size_t len = strlen(funcsym_p->Sident);
         char *buffer = (char *)malloc(len + 4);
         assert(buffer);
@@ -2865,12 +2891,8 @@ Lagain:
         assert(len < sizeof(name));
         genasm(c,name,len);                             // append func name
 #endif
-        if (STACKALIGN == 16 && npush)
-        {
-            c = genc2(c,0x81,modregrm(3,0,SP),npush * REGSIZE); // ADD ESP,npush * REGSIZE
-            if (I64)
-                code_orrex(c, REX_W);
-        }
+        if (spalign)
+            c = cod3_stackadj(c, -spalign);
         useregs((ALLREGS | mBP | mES) & ~s->Sregsaved);
     }
 
@@ -2932,12 +2954,164 @@ Lcont:
         c = cat(c,nteh_setsp(0x89));            // MOV __context[EBP].esp,ESP
 #endif
 
-    // Load register parameters off of the stack. Do not use
-    // assignaddr(), as it will replace the stack reference with
-    // the register!
+#ifdef DEBUG
     for (si = 0; si < globsym.top; si++)
     {   symbol *s = globsym.tab[si];
-        code *c2;
+        if (debugr && s->Sclass == SCfastpar)
+        {
+            printf("symbol '%s' is fastpar in register [%s,%s]\n", s->Sident,
+                regm_str(mask[s->Spreg]),
+                (s->Spreg2 == NOREG ? "NOREG" : regm_str(mask[s->Spreg2])));
+            if (s->Sfl == FLreg)
+                printf("\tassigned to register %s\n", regm_str(mask[s->Sreglsw]));
+        }
+    }
+#endif
+
+    /* Copy SCfastpar (parameters passed in registers) that were not assigned registers
+     * into their stack locations.
+     */
+    for (si = 0; si < globsym.top; si++)
+    {   symbol *s = globsym.tab[si];
+        unsigned sz = type_size(s->Stype);
+
+        if (s->Sclass == SCfastpar && s->Sfl != FLreg)
+        {   // Argument is passed in a register
+
+            type *t = s->Stype;
+            if (tybasic(t->Tty) == TYstruct)
+            {   type *targ1 = t->Ttag->Sstruct->Sarg1type;
+                if (targ1)
+                    t = targ1;
+            }
+
+            if (s->Sflags & SFLdead ||
+                (!anyiasm && !(s->Sflags & SFLread) && s->Sflags & SFLunambig &&
+#if MARS
+                 // This variable has been reference by a nested function
+                 !(s->Stype->Tty & mTYvolatile) &&
+#endif
+                 (config.flags4 & CFG4optimized || !config.fulltypes)))
+            {
+                // Ignore it, as it is never referenced
+                ;
+            }
+            else
+            {
+                targ_size_t offset = Aoff + BPoff + s->Soffset;
+                if (!hasframe)
+                    offset += EBPtoESP;
+
+                unsigned preg = s->Spreg;
+                for (int i = 0; i < 2; ++i)     // twice, once for each possible parameter register
+                {
+                    int op = 0x89;                  // MOV x[EBP],preg
+                    if (XMM0 <= preg && preg <= XMM15)
+                        op = xmmstore(t->Tty);
+                    if (hasframe)
+                    {
+                        if (!(pushalloc && preg == pushallocreg))
+                        {
+                            // MOV x[EBP],preg
+                            code *c2 = genc1(CNIL,op,
+                                modregxrm(2,preg,BPRM),FLconst, offset);
+                            if (XMM0 <= preg && preg <= XMM15)
+                            {
+                            }
+                            else
+                            {
+//printf("%s Aoff = %d, BPoff = %d, Soffset = %d, sz = %d\n", s->Sident, (int)Aoff, (int)BPoff, (int)s->Soffset, (int)sz);
+//                          if (offset & 2)
+//                              c2->Iflags |= CFopsize;
+                                if (I64 && sz == 8)
+                                    code_orrex(c2, REX_W);
+                            }
+                            c = cat(c, c2);
+                        }
+                    }
+                    else
+                    {
+                        if (!(pushalloc && preg == pushallocreg))
+                        {
+                            // MOV offset[ESP],preg
+                            // BUG: byte size?
+                            code *c2 = genc1(CNIL,op,
+                                (modregrm(0,4,SP) << 8) |
+                                modregxrm(2,preg,4),FLconst,offset);
+                            if (preg >= XMM0 && preg <= XMM15)
+                            {
+                            }
+                            else
+                            {
+                                if (I64 && sz == 8)
+                                    c2->Irex |= REX_W;
+//                          if (offset & 2)
+//                              c2->Iflags |= CFopsize;
+                            }
+                            c = cat(c,c2);
+                        }
+                    }
+                    preg = s->Spreg2;
+                    if (preg == NOREG)
+                        break;
+                    offset += REGSIZE;
+                }
+            }
+        }
+    }
+
+    /* Copy SCfastpar (parameters passed in registers) that were assigned registers
+     * into their assigned registers.
+     * Note that we have a big problem if Pa is passed in R1 and assigned to R2,
+     * and Pb is passed in R2 but assigned to R1. Detect it and assert.
+     */
+    regm_t assignregs = 0;
+    for (si = 0; si < globsym.top; si++)
+    {   symbol *s = globsym.tab[si];
+        unsigned sz = type_size(s->Stype);
+
+        if (s->Sclass == SCfastpar)
+            namedargs |= s->Spregm();
+
+        if (s->Sclass == SCfastpar && s->Sfl == FLreg)
+        {   // Argument is passed in a register
+            unsigned preg = s->Spreg;
+            assert(s->Spreg2 == NOREG); // currently register pairs are never assigned to
+                                        // parameters passed in a pair
+
+            type *t = s->Stype;
+            if (tybasic(t->Tty) == TYstruct)
+            {   type *targ1 = t->Ttag->Sstruct->Sarg1type;
+                if (targ1)
+                    t = targ1;
+            }
+
+            assert(!(mask[preg] & assignregs));         // not already stepped on
+            assignregs |= mask[s->Sreglsw];
+
+            // MOV reg,preg
+            if (mask[preg] & XMMREGS)
+            {
+                unsigned op = xmmload(t->Tty);      // MOVSS/D xreg,preg
+                unsigned xreg = s->Sreglsw - XMM0;
+                c = gen2(c,op,modregxrmx(3,xreg,preg - XMM0));
+            }
+            else
+            {
+                c = genmovreg(c,s->Sreglsw,preg);
+                if (I64 && sz == 8)
+                    code_orrex(c, REX_W);
+            }
+        }
+    }
+
+    /* For parameters that were passed on the stack, but are enregistered,
+     * initialize the registers with the parameter stack values.
+     * Do not use assignaddr(), as it will replace the stack reference with
+     * the register.
+     */
+    for (si = 0; si < globsym.top; si++)
+    {   symbol *s = globsym.tab[si];
         unsigned sz = type_size(s->Stype);
 
         if ((s->Sclass == SCregpar || s->Sclass == SCparameter) &&
@@ -2995,92 +3169,6 @@ Lcont:
                     c2 = cat(c2,c3);
                 }
                 c = cat(c,c2);
-            }
-        }
-        else if (s->Sclass == SCfastpar)
-        {   // Argument is passed in a register
-            unsigned preg = s->Spreg;
-
-            namedargs |= mask[preg];
-
-            if (s->Sfl == FLreg)
-            {   // MOV reg,preg
-                if (mask[preg] & XMMREGS)
-                {
-                    unsigned op = xmmload(s->Stype->Tty);      // MOVSS/D xreg,preg
-                    unsigned xreg = s->Sreglsw - XMM0;
-                    c = gen2(c,op,modregxrmx(3,xreg,preg - XMM0));
-                }
-                else
-                {
-                    c = genmovreg(c,s->Sreglsw,preg);
-                    if (I64 && sz == 8)
-                        code_orrex(c, REX_W);
-                }
-            }
-            else if (s->Sflags & SFLdead ||
-                (!anyiasm && !(s->Sflags & SFLread) && s->Sflags & SFLunambig &&
-#if MARS
-                 // This variable has been reference by a nested function
-                 !(s->Stype->Tty & mTYvolatile) &&
-#endif
-                 (config.flags4 & CFG4optimized || !config.fulltypes)))
-            {
-                // Ignore it, as it is never referenced
-                ;
-            }
-            else
-            {
-                targ_size_t offset = Aoff + BPoff + s->Soffset;
-                int op = 0x89;                  // MOV x[EBP],preg
-                if (preg >= XMM0 && preg <= XMM15)
-                {
-                    op = xmmstore(s->Stype->Tty);
-                }
-                if (hasframe)
-                {
-                    if (!(pushalloc && preg == pushallocreg))
-                    {
-                        // MOV x[EBP],preg
-                        c2 = genc1(CNIL,op,
-                            modregxrm(2,preg,BPRM),FLconst, offset);
-                        if (preg >= XMM0 && preg <= XMM15)
-                        {
-                        }
-                        else
-                        {
-//printf("%s Aoff = %d, BPoff = %d, Soffset = %d, sz = %d\n", s->Sident, (int)Aoff, (int)BPoff, (int)s->Soffset, (int)sz);
-//                          if (offset & 2)
-//                              c2->Iflags |= CFopsize;
-                            if (I64 && sz == 8)
-                                code_orrex(c2, REX_W);
-                        }
-                        c = cat(c, c2);
-                    }
-                }
-                else
-                {
-                    offset += EBPtoESP;
-                    if (!(pushalloc && preg == pushallocreg))
-                    {
-                        // MOV offset[ESP],preg
-                        // BUG: byte size?
-                        c2 = genc1(CNIL,op,
-                            (modregrm(0,4,SP) << 8) |
-                            modregxrm(2,preg,4),FLconst,offset);
-                        if (preg >= XMM0 && preg <= XMM15)
-                        {
-                        }
-                        else
-                        {
-                            if (I64 && sz == 8)
-                                c2->Irex |= REX_W;
-//                          if (offset & 2)
-//                              c2->Iflags |= CFopsize;
-                        }
-                        c = cat(c,c2);
-                    }
-                }
             }
         }
     }
@@ -3413,11 +3501,7 @@ void epilog(block *b)
             c = gen1(c,0x58 + regx);                    // POP regx
         }
         else if (xlocalsize)
-        {
-            c = genc2(c,0x81,modregrm(3,0,SP),xlocalsize);      // ADD SP,xlocalsize
-            if (I64)
-                code_orrex(c, REX_W);
-        }
+            c = cod3_stackadj(c, -xlocalsize);
     }
     if (b->BC == BCret || b->BC == BCretexp)
     {
@@ -4940,6 +5024,26 @@ STATIC void pinholeopt_unittest()
     }
 }
 #endif
+
+void simplify_code(code* c)
+{
+    unsigned reg;
+    if (config.flags4 & CFG4optimized &&
+        (c->Iop == 0x81 || c->Iop == 0x80) &&
+        c->IFL2 == FLconst &&
+        reghasvalue((c->Iop == 0x80) ? BYTEREGS : ALLREGS,I64 ? c->IEV2.Vsize_t : c->IEV2.Vlong,&reg) &&
+        !(c->Iflags & CFopsize && I16)
+       )
+    {
+        // See if we can replace immediate instruction with register instruction
+        static unsigned char regop[8] =
+                { 0x00,0x08,0x10,0x18,0x20,0x28,0x30,0x38 };
+
+        //printf("replacing 0x%02x, val = x%lx\n",c->Iop,c->IEV2.Vlong);
+        c->Iop = regop[(c->Irm & modregrm(0,7,0)) >> 3] | (c->Iop & 1);
+        code_newreg(c, reg);
+    }
+}
 
 /**************************
  * Compute jump addresses for FLcode.

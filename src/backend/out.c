@@ -30,6 +30,7 @@
 #include        "parser.h"
 #include        "cpp.h"
 #include        "el.h"
+#include        "code.h"
 #endif
 
 static char __file__[] = __FILE__;      /* for tassert.h                */
@@ -37,12 +38,11 @@ static char __file__[] = __FILE__;      /* for tassert.h                */
 
 static  int addrparam;  /* see if any parameters get their address taken */
 
+#if SCPP
+
 /**********************************
  * We put out an external definition.
  */
-
-#if SCPP
-
 void out_extdef(symbol *s)
 {
     pstate.STflags |= PFLextdef;
@@ -54,27 +54,17 @@ void out_extdef(symbol *s)
         synerr(EM_data_in_pch,prettyident(s));          // data or code in precompiled header
 }
 
-#endif
-
-#if TX86
-#if SCPP
 /********************************
  * Put out code segment name record.
  */
-
 void outcsegname(char *csegname)
 {
     obj_codeseg(csegname,0);
 }
-#endif
-#endif
 
 /***********************************
  * Output function thunk.
  */
-
-#if SCPP
-
 void outthunk(symbol *sthunk,symbol *sfunc,unsigned p,tym_t thisty,
         targ_size_t d,int i,targ_size_t d2)
 {
@@ -90,8 +80,6 @@ void outthunk(symbol *sthunk,symbol *sfunc,unsigned p,tym_t thisty,
  * Input:
  *      s               symbol to be initialized
  */
-
-#if TX86
 
 void outdata(symbol *s)
 {
@@ -523,7 +511,6 @@ void outcommon(symbol *s,targ_size_t n)
             cv_outsym(s);
     }
 }
-#endif // TX86
 
 /******************************
  * Walk expression tree, converting it from a PARSER tree to
@@ -779,9 +766,7 @@ void out_regcand(symtab_t *psymtab)
         //assert(sytab[s->Sclass] & SCSS);      // only stack variables
         s->Ssymnum = si;                        // Ssymnum trashed by cpp_inlineexpand
         if (!(s->ty() & mTYvolatile) &&
-#if TX86
             !(ifunc && (s->Sclass == SCparameter || s->Sclass == SCregpar)) &&
-#endif
             s->Sclass != SCstatic)
             s->Sflags |= (GTregcand | SFLunambig);      // assume register candidate
         else
@@ -934,7 +919,7 @@ STATIC void writefunc2(symbol *sfunc)
 #if VBTABLES
             n2_genvbtbl(stag,scvtbl,1);
 #endif
-#if TX86 && OMFOBJ
+#if OMFOBJ
             if (config.fulltypes == CV4)
                 cv4_struct(stag,2);
 #endif
@@ -1028,6 +1013,11 @@ STATIC void writefunc2(symbol *sfunc)
 
     // TX86 computes parameter offsets in stackoffsets()
     //printf("globsym.top = %d\n", globsym.top);
+
+#if SCPP
+    FuncParamRegs fpr(tyf);
+#endif
+
     for (si = 0; si < globsym.top; si++)
     {   symbol *s = globsym.tab[si];
 
@@ -1040,38 +1030,33 @@ STATIC void writefunc2(symbol *sfunc)
         s->Sflags &= ~(SFLunambig | GTregcand);
         switch (s->Sclass)
         {
+            case SCtmp:
+                s->Sfl = FLtmp;
+                goto L3;
+            case SCbprel:
+                s->Sfl = FLbprel;
+                goto L3;
+            case SCauto:
+            case SCregister:
+                s->Sfl = FLauto;
+                goto L3;
 #if SCPP
             case SCfastpar:
-            Lfp:
-                s->Spreg = (tyf == TYmfunc) ? CX : AX;
-            case SCauto:
-            case SCregister:
-                s->Sfl = FLauto;
-                goto L3;
-            case SCtmp:
-                s->Sfl = FLtmp;
-                goto L3;
-            case SCbprel:
-                s->Sfl = FLbprel;
-                goto L3;
             case SCregpar:
             case SCparameter:
-                if (tyf == TYjfunc && si == 0 &&
-                    type_jparam(s->Stype))
-                {   s->Sclass = SCfastpar;      // put last parameter into register
-                    goto Lfp;
+                if (si == 0 && fpr.alloc(s->Stype, s->Stype->Tty, &s->Spreg, &s->Spreg2))
+                {
+                    assert(s->Spreg == ((tyf == TYmfunc) ? CX : AX));
+                    assert(s->Spreg2 == NOREG);
+                    assert(si == 0);
+                    s->Sclass = SCfastpar;
+                    s->Sfl = FLauto;
+                    goto L3;
                 }
+                assert(s->Sclass != SCfastpar);
 #else
             case SCfastpar:
-            case SCauto:
-            case SCregister:
                 s->Sfl = FLauto;
-                goto L3;
-            case SCtmp:
-                s->Sfl = FLtmp;
-                goto L3;
-            case SCbprel:
-                s->Sfl = FLbprel;
                 goto L3;
             case SCregpar:
             case SCparameter:
@@ -1197,7 +1182,6 @@ STATIC void writefunc2(symbol *sfunc)
     assert(funcsym_p == sfunc);
     if (eecontext.EEcompile != 1)
     {
-#if TX86
         if (symbol_iscomdat(sfunc))
         {
 #if OMFOBJ
@@ -1221,7 +1205,6 @@ STATIC void writefunc2(symbol *sfunc)
 #endif
 #if OMFOBJ
         sfunc->Sseg = cseg;             // current code seg
-#endif
 #endif
         sfunc->Soffset = Coffset;       // offset of start of function
         searchfixlist(sfunc);           // backpatch any refs to this function
@@ -1380,11 +1363,7 @@ Ldone:
     globsym.top = 0;
 
     //dbg_printf("done with writefunc()\n");
-#if TX86
     util_free(dfo);
-#else
-    MEM_PARF_FREE(dfo);
-#endif
     dfo = NULL;
 }
 

@@ -84,6 +84,8 @@ enum PURE;
 #define STCdisable      0x2000000000LL  // for functions that are not callable
 #define STCresult       0x4000000000LL  // for result variables passed to out contracts
 #define STCnodefaultctor 0x8000000000LL  // must be set inside constructor
+#define STCtemp         0x10000000000LL  // temporary variable introduced by inlining
+                                         // and used only in backend process, so it's rvalue
 
 struct Match
 {
@@ -130,6 +132,8 @@ struct Declaration : Dsymbol
     const char *kind();
     unsigned size(Loc loc);
     void checkModify(Loc loc, Scope *sc, Type *t);
+
+    Dsymbol *search(Loc loc, Identifier *ident, int flags);
 
     void emitComment(Scope *sc);
     void toJsonBuffer(OutBuffer *buf);
@@ -554,6 +558,7 @@ struct FuncDeclaration : Declaration
     Identifier *outId;                  // identifier for out statement
     VarDeclaration *vresult;            // variable corresponding to outId
     LabelDsymbol *returnLabel;          // where the return goes
+    Scope *scout;                       // out contract scope for vresult->semantic
 
     DsymbolTable *localsymtab;          // used to prevent symbols in different
                                         // scopes from having the same name
@@ -675,6 +680,7 @@ struct FuncDeclaration : Declaration
     void checkNestedReference(Scope *sc, Loc loc);
     int needsClosure();
     int hasNestedFrameRefs();
+    void buildResultVar();
     Statement *mergeFrequire(Statement *);
     Statement *mergeFensure(Statement *);
     Parameters *getParameters(int *pvarargs);

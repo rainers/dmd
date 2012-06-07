@@ -122,6 +122,18 @@ void Declaration::checkModify(Loc loc, Scope *sc, Type *t)
 }
 #endif
 
+Dsymbol *Declaration::search(Loc loc, Identifier *ident, int flags)
+{
+    Dsymbol *s = Dsymbol::search(loc, ident, flags);
+    if (!s && type)
+    {
+        s = type->toDsymbol(NULL);
+        if (s)
+            s = s->search(loc, ident, flags);
+    }
+    return s;
+}
+
 
 /********************************* TupleDeclaration ****************************/
 
@@ -497,18 +509,6 @@ void AliasDeclaration::semantic(Scope *sc)
     else if (t)
     {
         type = t->semantic(loc, sc);
-
-        /* If type is class or struct, convert to symbol.
-         * See bugzilla 6475.
-         */
-        s = type->toDsymbol(sc);
-        if (s
-#if DMDV2
-            && ((s->getType() && type->equals(s->getType())) || s->isEnumMember())
-#endif
-            )
-            goto L2;
-
         //printf("\talias resolved to type %s\n", type->toChars());
     }
     if (overnext)
@@ -541,6 +541,17 @@ void AliasDeclaration::semantic(Scope *sc)
                     ScopeDsymbol::multiplyDefined(0, f, overnext);
                 overnext = NULL;
                 s = fa;
+                s->parent = sc->parent;
+            }
+        }
+        OverloadSet *o = s->toAlias()->isOverloadSet();
+        if (o)
+        {
+            if (overnext)
+            {
+                o->push(overnext);
+                overnext = NULL;
+                s = o;
                 s->parent = sc->parent;
             }
         }
@@ -606,7 +617,9 @@ const char *AliasDeclaration::kind()
 
 Type *AliasDeclaration::getType()
 {
-    return type;
+    if (type)
+        return type;
+    return toAlias()->getType();
 }
 
 Dsymbol *AliasDeclaration::toAlias()
@@ -619,7 +632,9 @@ Dsymbol *AliasDeclaration::toAlias()
         aliassym = new AliasDeclaration(loc, ident, Type::terror);
         type = Type::terror;
     }
-    else if (!aliassym && scope)
+    else if (aliassym || type->deco)
+        ;   // semantic is already done.
+    else if (scope)
         semantic(scope);
     Dsymbol *s = aliassym ? aliassym->toAlias() : this;
     return s;
@@ -1373,11 +1388,17 @@ Lnomatch:
                                         e->op = TOKblit;
                                     }
                                     e->type = t;
-                                    (*pinit) = new CommaExp(loc, e, (*pinit));
 
-                                    /* Replace __ctmp being constructed with e1
+                                    /* Replace __ctmp being constructed with e1.
+                                     * We need to copy constructor call expression,
+                                     * because it may be used in other place.
                                      */
-                                    dve->e1 = e1;
+                                    DotVarExp *dvx = (DotVarExp *)dve->copy();
+                                    dvx->e1 = e1;
+                                    CallExp *cx = (CallExp *)ce->copy();
+                                    cx->e1 = dvx;
+
+                                    (*pinit) = new CommaExp(loc, e, cx);
                                     (*pinit) = (*pinit)->semantic(sc);
                                     goto Ldtor;
                                 }
@@ -1791,28 +1812,8 @@ void VarDeclaration::checkNestedReference(Scope *sc, Loc loc)
         // The current function
         FuncDeclaration *fdthis = sc->parent->isFuncDeclaration();
 
-        if (fdv && fdthis && fdv != fdthis && fdthis->ident != Id::ensure)
+        if (fdv && fdthis && fdv != fdthis)
         {
-            /* __ensure is always called directly,
-             * so it never becomes closure.
-             */
-
-            //printf("\tfdv = %s\n", fdv->toChars());
-            //printf("\tfdthis = %s\n", fdthis->toChars());
-
-            if (loc.filename)
-                fdthis->getLevel(loc, sc, fdv);
-
-            // Function literals from fdthis to fdv must be delegates
-            for (Dsymbol *s = fdthis; s && s != fdv; s = s->toParent2())
-            {
-                // function literal has reference to enclosing scope is delegate
-                if (FuncLiteralDeclaration *fld = s->isFuncLiteralDeclaration())
-                {
-                    fld->tok = TOKdelegate;
-                }
-            }
-
             // Add fdthis to nestedrefs[] if not already there
             for (size_t i = 0; 1; i++)
             {
@@ -1825,23 +1826,46 @@ void VarDeclaration::checkNestedReference(Scope *sc, Loc loc)
                     break;
             }
 
-            // Add this to fdv->closureVars[] if not already there
-            for (size_t i = 0; 1; i++)
+            if (fdthis->ident != Id::ensure)
             {
-                if (i == fdv->closureVars.dim)
-                {
-                    fdv->closureVars.push(this);
-                    break;
-                }
-                if (fdv->closureVars[i] == this)
-                    break;
-            }
+                /* __ensure is always called directly,
+                 * so it never becomes closure.
+                 */
 
-            //printf("fdthis is %s\n", fdthis->toChars());
-            //printf("var %s in function %s is nested ref\n", toChars(), fdv->toChars());
-            // __dollar creates problems because it isn't a real variable Bugzilla 3326
-            if (ident == Id::dollar)
-                ::error(loc, "cannnot use $ inside a function literal");
+                //printf("\tfdv = %s\n", fdv->toChars());
+                //printf("\tfdthis = %s\n", fdthis->toChars());
+
+                if (loc.filename)
+                    fdthis->getLevel(loc, sc, fdv);
+
+                // Function literals from fdthis to fdv must be delegates
+                for (Dsymbol *s = fdthis; s && s != fdv; s = s->toParent2())
+                {
+                    // function literal has reference to enclosing scope is delegate
+                    if (FuncLiteralDeclaration *fld = s->isFuncLiteralDeclaration())
+                    {
+                        fld->tok = TOKdelegate;
+                    }
+                }
+
+                // Add this to fdv->closureVars[] if not already there
+                for (size_t i = 0; 1; i++)
+                {
+                    if (i == fdv->closureVars.dim)
+                    {
+                        fdv->closureVars.push(this);
+                        break;
+                    }
+                    if (fdv->closureVars[i] == this)
+                        break;
+                }
+
+                //printf("fdthis is %s\n", fdthis->toChars());
+                //printf("var %s in function %s is nested ref\n", toChars(), fdv->toChars());
+                // __dollar creates problems because it isn't a real variable Bugzilla 3326
+                if (ident == Id::dollar)
+                    ::error(loc, "cannnot use $ inside a function literal");
+            }
         }
     }
 }
@@ -2305,7 +2329,7 @@ TypeInfoAssociativeArrayDeclaration::TypeInfoAssociativeArrayDeclaration(Type *t
 TypeInfoVectorDeclaration::TypeInfoVectorDeclaration(Type *tinfo)
     : TypeInfoDeclaration(tinfo, 0)
 {
-    if (!Type::typeinfoarray)
+    if (!Type::typeinfovector)
     {
         ObjectNotFound(Id::TypeInfo_Vector);
     }

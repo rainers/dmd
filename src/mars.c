@@ -14,6 +14,7 @@
 #include <ctype.h>
 #include <assert.h>
 #include <limits.h>
+#include <string.h>
 
 #if linux || __APPLE__ || __FreeBSD__ || __OpenBSD__ || __sun&&__SVR4
 #include <errno.h>
@@ -191,7 +192,7 @@ void errorSupplemental(Loc loc, const char *format, ...)
     va_end( ap );
 }
 
-void verror(Loc loc, const char *format, va_list ap)
+void verror(Loc loc, const char *format, va_list ap, const char *p1, const char *p2)
 {
     if (!global.gag)
     {
@@ -202,6 +203,10 @@ void verror(Loc loc, const char *format, va_list ap)
         mem.free(p);
 
         fprintf(stdmsg, "Error: ");
+        if (p1)
+            fprintf(stdmsg, "%s ", p1);
+        if (p2)
+            fprintf(stdmsg, "%s ", p2);
 #if _MSC_VER
         // MS doesn't recognize %zu format
         OutBuffer tmp;
@@ -212,6 +217,8 @@ void verror(Loc loc, const char *format, va_list ap)
 #endif
         fprintf(stdmsg, "\n");
         fflush(stdmsg);
+        if (global.errors >= 20)        // moderate blizzard of cascading messages
+            fatal();
 //halt();
     }
     else
@@ -1314,24 +1321,13 @@ int tryMain(int argc, char *argv[])
     if (global.errors)
         fatal();
 
-    if (global.params.moduleDeps != NULL)
-    {
-        assert(global.params.moduleDepsFile != NULL);
-
-        File deps(global.params.moduleDepsFile);
-        OutBuffer* ob = global.params.moduleDeps;
-        deps.setbuffer((void*)ob->data, ob->offset);
-        deps.writev();
-    }
-
-
-    // Scan for functions to inline
     if (global.params.useInline)
     {
         /* The problem with useArrayBounds and useAssert is that the
          * module being linked to may not have generated them, so if
          * we inline functions from those modules, the symbols for them will
          * not be found at link time.
+         * We must do this BEFORE generating the .deps file!
          */
         if (!global.params.useArrayBounds && !global.params.useAssert)
         {
@@ -1347,7 +1343,21 @@ int tryMain(int argc, char *argv[])
             if (global.errors)
                 fatal();
         }
+    }
 
+    if (global.params.moduleDeps != NULL)
+    {
+        assert(global.params.moduleDepsFile != NULL);
+
+        File deps(global.params.moduleDepsFile);
+        OutBuffer* ob = global.params.moduleDeps;
+        deps.setbuffer((void*)ob->data, ob->offset);
+        deps.writev();
+    }
+
+    // Scan for functions to inline
+    if (global.params.useInline)
+    {
         for (size_t i = 0; i < modules.dim; i++)
         {
             m = modules[i];

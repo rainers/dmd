@@ -496,7 +496,7 @@ struct code
       #define IEVllong2   IEV2.Vllong
     void print();               // pretty-printer
 
-    code() { Irex = 0; Isib = 0; }      // constructor
+    code() { next = NULL; Iflags = 0; Iop = 0; Iea = 0; IFL1 = 0; IFL2 = 0; }      // constructor
 
     void orReg(unsigned reg)
     {   if (reg & 8)
@@ -694,7 +694,8 @@ code *getregs (regm_t r );
 code *getregs_imm (regm_t r );
 code *cse_flush(int);
 bool cse_simple(code *c, elem *e);
-code* gen_loadcse(unsigned reg, targ_uns i);
+code* gen_testcse(code *c, unsigned sz, targ_uns i);
+code* gen_loadcse(code *c, unsigned reg, targ_uns i);
 void cssave (elem *e , regm_t regm , unsigned opsflag );
 bool evalinregister (elem *e );
 regm_t getscratch();
@@ -729,8 +730,6 @@ code *fixresult (elem *e , regm_t retregs , regm_t *pretregs );
 code *callclib (elem *e , unsigned clib , regm_t *pretregs , regm_t keepmask );
 cd_t cdfunc;
 cd_t cdstrthis;
-const unsigned char* getintegerparamsreglist(tym_t tyf, size_t* num);
-const unsigned char* getfloatparamsreglist(tym_t tyf, size_t* num);
 code *params(elem *, unsigned);
 code *offsetinreg (elem *e , regm_t *pretregs );
 code *loaddata (elem *e , regm_t *pretregs );
@@ -783,11 +782,13 @@ extern int BPoff;
 
 int cod3_EA(code *c);
 regm_t cod3_useBP();
+void cod3_initregs();
 void cod3_setdefault();
 void cod3_set32 (void );
 void cod3_set64 (void );
 void cod3_align_bytes (size_t nbytes);
 void cod3_align (void );
+code* cod3_stackadj(code* c, int nbytes);
 regm_t regmask(tym_t tym, tym_t tyf);
 void cgreg_dst_regs(unsigned *dst_integer_reg, unsigned *dst_float_reg);
 void cgreg_set_priorities(tym_t ty, char **pseq, char **pseqmsw);
@@ -823,6 +824,7 @@ void assignaddr (block *bl );
 void assignaddrc (code *c );
 targ_size_t cod3_bpoffset(symbol *s);
 void pinholeopt (code *c , block *bn );
+void simplify_code(code *c);
 void jmpaddr (code *c );
 int code_match(code *c1,code *c2);
 unsigned calcblksize (code *c);
@@ -1056,6 +1058,37 @@ extern seg_data **SegData;
 #define Doffset SegData[DATA]->SDoffset
 #define CDoffset SegData[CDATA]->SDoffset
 #define Coffset SegData[cseg]->SDoffset
+
+/**************************************************/
+
+/* Allocate registers to function parameters
+ */
+
+struct FuncParamRegs
+{
+    FuncParamRegs(tym_t tyf);
+
+    int alloc(type *t, tym_t ty, unsigned char *reg1, unsigned char *reg2);
+
+  private:
+    tym_t tyf;                  // type of function
+    int i;                      // ith parameter
+    int regcnt;                 // how many general purpose registers are allocated
+    int xmmcnt;                 // how many fp registers are allocated
+    size_t numintegerregs;      // number of gp registers that can be allocated
+    size_t numfloatregs;        // number of fp registers that can be allocated
+    const unsigned char* argregs;       // map to gp register
+    const unsigned char* floatregs;     // map to fp register
+};
+
+extern "C++" { extern const unsigned mask[32]; }
+
+inline regm_t Symbol::Spregm()
+{
+    /*assert(Sclass == SCfastpar);*/
+    return mask[Spreg] | (Spreg2 == NOREG ? 0 : mask[Spreg2]);
+}
+
 
 #if __cplusplus && TX86
 }

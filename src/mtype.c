@@ -1659,7 +1659,7 @@ Type *Type::merge()
         else
         {
             sv->ptrvalue = this;
-            deco = sv->lstring.string;
+            deco = (char *)sv->toDchars();
             //printf("new value, deco = '%s' %p\n", t->deco, t->deco);
         }
     }
@@ -3261,7 +3261,7 @@ MATCH TypeBasic::implicitConvTo(Type *to)
         return MATCHnomatch;
 
     TypeBasic *tob;
-    if (to->ty == Tvector)
+    if (to->ty == Tvector && to->deco)
     {
         TypeVector *tv = (TypeVector *)to;
         tob = tv->elementType();
@@ -5320,18 +5320,13 @@ void TypeFunction::toCBufferWithAttributes(OutBuffer *buf, Identifier *ident, Hd
     inuse--;
 }
 
-void TypeFunction::toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod)
+// kind is inserted before the argument list and will usually be "function" or "delegate".
+void functionToCBuffer2(TypeFunction *t, OutBuffer *buf, HdrGenState *hgs, int mod, const char *kind)
 {
-    //printf("TypeFunction::toCBuffer2() this = %p, ref = %d\n", this, isref);
-    if (inuse)
-    {   inuse = 2;              // flag error to caller
-        return;
-    }
-    inuse++;
     if (hgs->ddoc != 1)
     {
         const char *p = NULL;
-        switch (linkage)
+        switch (t->linkage)
         {
             case LINKd:         p = NULL;       break;
             case LINKc:         p = "C";        break;
@@ -5348,14 +5343,27 @@ void TypeFunction::toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod)
             buf->writestring(") ");
         }
     }
-    if (next)
+    if (t->next)
     {
-        next->toCBuffer2(buf, hgs, 0);
+        t->next->toCBuffer2(buf, hgs, 0);
         buf->writeByte(' ');
     }
-    buf->writestring("function");
-    Parameter::argsToCBuffer(buf, hgs, parameters, varargs);
-    attributesToCBuffer(buf, mod);
+    buf->writestring(kind);
+    Parameter::argsToCBuffer(buf, hgs, t->parameters, t->varargs);
+    t->attributesToCBuffer(buf, mod);
+}
+
+void TypeFunction::toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod)
+{
+    //printf("TypeFunction::toCBuffer2() this = %p, ref = %d\n", this, isref);
+    if (inuse)
+    {   inuse = 2;              // flag error to caller
+        return;
+    }
+    inuse++;
+
+    functionToCBuffer2(this, buf, hgs, mod, "function");
+
     inuse--;
 }
 
@@ -6180,12 +6188,8 @@ void TypeDelegate::toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod)
     {   toCBuffer3(buf, hgs, mod);
         return;
     }
-    TypeFunction *tf = (TypeFunction *)next;
 
-    tf->next->toCBuffer2(buf, hgs, 0);
-    buf->writestring(" delegate");
-    Parameter::argsToCBuffer(buf, hgs, tf->parameters, tf->varargs);
-    tf->attributesToCBuffer(buf, mod);
+    functionToCBuffer2((TypeFunction *)next, buf, hgs, mod, "delegate");
 }
 
 Expression *TypeDelegate::defaultInit(Loc loc)
@@ -6218,6 +6222,15 @@ Expression *TypeDelegate::dotExp(Scope *sc, Expression *e, Identifier *ident)
     }
     else if (ident == Id::funcptr)
     {
+        if (!e->isLvalue())
+        {
+            Identifier *idtmp = Lexer::uniqueId("__dgtmp");
+            VarDeclaration *tmp = new VarDeclaration(e->loc, this, idtmp, new ExpInitializer(0, e));
+            tmp->storage_class |= STCctfe;
+            e = new DeclarationExp(e->loc, tmp);
+            e = new CommaExp(e->loc, e, new VarExp(e->loc, tmp));
+            e = e->semantic(sc);
+        }
         e = e->addressOf(sc);
         e->type = tvoidptr;
         e = new AddExp(e->loc, e, new IntegerExp(PTRSIZE));
@@ -9022,32 +9035,9 @@ char *Parameter::argsTypesToChars(Parameters *args, int varargs)
 {
     OutBuffer *buf = new OutBuffer();
 
-#if 1
     HdrGenState hgs;
     argsToCBuffer(buf, &hgs, args, varargs);
-#else
-    buf->writeByte('(');
-    if (args)
-    {   OutBuffer argbuf;
-        HdrGenState hgs;
 
-        for (size_t i = 0; i < args->dim; i++)
-        {   if (i)
-                buf->writeByte(',');
-            Parameter *arg = (*args)[i];
-            argbuf.reset();
-            arg->type->toCBuffer2(&argbuf, &hgs, 0);
-            buf->write(&argbuf);
-        }
-        if (varargs)
-        {
-            if (i && varargs == 1)
-                buf->writeByte(',');
-            buf->writestring("...");
-        }
-    }
-    buf->writeByte(')');
-#endif
     return buf->toChars();
 }
 

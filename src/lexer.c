@@ -1,6 +1,6 @@
 
 // Compiler implementation of the D programming language
-// Copyright (c) 1999-2011 by Digital Mars
+// Copyright (c) 1999-2012 by Digital Mars
 // All Rights Reserved
 // written by Walter Bright
 // http://www.digitalmars.com
@@ -173,9 +173,6 @@ const char *Token::toChars()
 #endif
 
         case TOKstring:
-#if CSTRINGS
-            p = string;
-#else
         {   OutBuffer buf;
 
             buf.writeByte('"');
@@ -210,7 +207,6 @@ const char *Token::toChars()
             buf.writeByte(0);
             p = (char *)buf.extractData();
         }
-#endif
             break;
 
         case TOKidentifier:
@@ -307,7 +303,7 @@ void Lexer::error(const char *format, ...)
 {
     va_list ap;
     va_start(ap, format);
-    verror(tokenLoc(), format, ap);
+    ::verror(tokenLoc(), format, ap);
     va_end(ap);
 }
 
@@ -315,32 +311,8 @@ void Lexer::error(Loc loc, const char *format, ...)
 {
     va_list ap;
     va_start(ap, format);
-    verror(loc, format, ap);
+    ::verror(loc, format, ap);
     va_end(ap);
-}
-
-void Lexer::verror(Loc loc, const char *format, va_list ap)
-{
-    if (mod && !global.gag)
-    {
-        char *p = loc.toChars();
-        if (*p)
-            fprintf(stdmsg, "%s: ", p);
-        mem.free(p);
-
-        vfprintf(stdmsg, format, ap);
-
-        fprintf(stdmsg, "\n");
-        fflush(stdmsg);
-
-        if (global.errors >= 20)        // moderate blizzard of cascading messages
-            fatal();
-    }
-    else
-    {
-        global.gaggedErrors++;
-    }
-    global.errors++;
 }
 
 TOK Lexer::nextToken()
@@ -526,30 +498,6 @@ void Lexer::scan(Token *t)
                 t->value = number(t);
                 return;
 
-#if CSTRINGS
-            case '\'':
-                t->value = charConstant(t, 0);
-                return;
-
-            case '"':
-                t->value = stringConstant(t,0);
-                return;
-
-            case 'l':
-            case 'L':
-                if (p[1] == '\'')
-                {
-                    p++;
-                    t->value = charConstant(t, 1);
-                    return;
-                }
-                else if (p[1] == '"')
-                {
-                    p++;
-                    t->value = stringConstant(t, 1);
-                    return;
-                }
-#else
             case '\'':
                 t->value = charConstant(t,0);
                 return;
@@ -629,12 +577,9 @@ void Lexer::scan(Token *t)
             }
 #endif
 
-            case 'l':
-            case 'L':
-#endif
             case 'a':   case 'b':   case 'c':   case 'd':   case 'e':
             case 'f':   case 'g':   case 'h':   case 'i':   case 'j':
-            case 'k':               case 'm':   case 'n':   case 'o':
+            case 'k':   case 'l':   case 'm':   case 'n':   case 'o':
 #if DMDV2
             case 'p':   /*case 'q': case 'r':*/ case 's':   case 't':
 #else
@@ -644,7 +589,7 @@ void Lexer::scan(Token *t)
             case 'z':
             case 'A':   case 'B':   case 'C':   case 'D':   case 'E':
             case 'F':   case 'G':   case 'H':   case 'I':   case 'J':
-            case 'K':               case 'M':   case 'N':   case 'O':
+            case 'K':   case 'L':   case 'M':   case 'N':   case 'O':
             case 'P':   case 'Q':   case 'R':   case 'S':   case 'T':
             case 'U':   case 'V':   case 'W':   case 'X':   case 'Y':
             case 'Z':
@@ -671,7 +616,7 @@ void Lexer::scan(Token *t)
                 StringValue *sv = stringtable.update((char *)t->ptr, p - t->ptr);
                 Identifier *id = (Identifier *) sv->ptrvalue;
                 if (!id)
-                {   id = new Identifier(sv->lstring.string,TOKidentifier);
+                {   id = new Identifier(sv->toDchars(),TOKidentifier);
                     sv->ptrvalue = id;
                 }
                 t->ident = id;
@@ -1933,45 +1878,6 @@ void Lexer::stringPostfix(Token *t)
     }
 }
 
-/***************************************
- * Read \u or \U unicode sequence
- * Input:
- *      u       'u' or 'U'
- */
-
-#if 0
-unsigned Lexer::wchar(unsigned u)
-{
-    unsigned value;
-    unsigned n;
-    unsigned char c;
-    unsigned nchars;
-
-    nchars = (u == 'U') ? 8 : 4;
-    value = 0;
-    for (n = 0; 1; n++)
-    {
-        ++p;
-        if (n == nchars)
-            break;
-        c = *p;
-        if (!ishex(c))
-        {   error("\\%c sequence must be followed by %d hex characters", u, nchars);
-            break;
-        }
-        if (isdigit(c))
-            c -= '0';
-        else if (islower(c))
-            c -= 'a' - 10;
-        else
-            c -= 'A' - 10;
-        value <<= 4;
-        value |= c;
-    }
-    return value;
-}
-#endif
-
 /**************************************
  * Read in a number.
  * If it's an integer, store it in tok.TKutok.Vlong.
@@ -2024,11 +1930,6 @@ TOK Lexer::number(Token *t)
                 flags = (FLAGS) (flags & ~FLAGS_decimal);
                 switch (c)
                 {
-#if ZEROH
-                    case 'H':                   // 0h
-                    case 'h':
-                        goto hexh;
-#endif
                     case 'X':
                     case 'x':
                         state = STATE_hex0;
@@ -2041,11 +1942,6 @@ TOK Lexer::number(Token *t)
                     case 'f':
                     case 'F':
                         goto real;
-#if ZEROH
-                    case 'E':
-                    case 'e':
-                        goto case_hex;
-#endif
                     case 'B':
                     case 'b':
                         state = STATE_binary0;
@@ -2056,14 +1952,6 @@ TOK Lexer::number(Token *t)
                         state = STATE_octal;
                         break;
 
-#if ZEROH
-                    case '8': case '9': case 'A':
-                    case 'C': case 'D': case 'F':
-                    case 'a': case 'c': case 'd': case 'f':
-                    case_hex:
-                        state = STATE_hexh;
-                        break;
-#endif
                     case '_':
                         state = STATE_octal;
                         p++;
@@ -2082,12 +1970,6 @@ TOK Lexer::number(Token *t)
             case STATE_decimal:         // reading decimal number
                 if (!isdigit(c))
                 {
-#if ZEROH
-                    if (ishex(c)
-                        || c == 'H' || c == 'h'
-                       )
-                        goto hexh;
-#endif
                     if (c == '_')               // ignore embedded _
                     {   p++;
                         continue;
@@ -2132,41 +2014,10 @@ TOK Lexer::number(Token *t)
                 state = STATE_hex;
                 break;
 
-#if ZEROH
-            hexh:
-                state = STATE_hexh;
-            case STATE_hexh:            // parse numbers like 0FFh
-                if (!ishex(c))
-                {
-                    if (c == 'H' || c == 'h')
-                    {
-                        p++;
-                        base = 16;
-                        goto done;
-                    }
-                    else
-                    {
-                        // Check for something like 1E3 or 0E24
-                        if (memchr((char *)stringbuffer.data, 'E', stringbuffer.offset) ||
-                            memchr((char *)stringbuffer.data, 'e', stringbuffer.offset))
-                            goto real;
-                        error("Hex digit expected, not '%c'", c);
-                        goto done;
-                    }
-                }
-                break;
-#endif
-
             case STATE_octal:           // reading octal number
             case STATE_octale:          // reading octal number with non-octal digits
                 if (!isoctal(c))
                 {
-#if ZEROH
-                    if (ishex(c)
-                        || c == 'H' || c == 'h'
-                       )
-                        goto hexh;
-#endif
                     if (c == '_')               // ignore embedded _
                     {   p++;
                         continue;
@@ -2188,12 +2039,6 @@ TOK Lexer::number(Token *t)
             case STATE_binary:          // reading binary number
                 if (c != '0' && c != '1')
                 {
-#if ZEROH
-                    if (ishex(c)
-                        || c == 'H' || c == 'h'
-                       )
-                        goto hexh;
-#endif
                     if (c == '_')               // ignore embedded _
                     {   p++;
                         continue;
@@ -2631,8 +2476,9 @@ void Lexer::poundLine()
                 {
                     p += 8;
                     filespec = mem.strdup(loc.filename ? loc.filename : mod->ident->toChars());
+                    continue;
                 }
-                continue;
+                goto Lerr;
 
             case '"':
                 if (filespec)
@@ -2915,7 +2761,7 @@ Identifier *Lexer::idPool(const char *s)
     Identifier *id = (Identifier *) sv->ptrvalue;
     if (!id)
     {
-        id = new Identifier(sv->lstring.string, TOKidentifier);
+        id = new Identifier(sv->toDchars(), TOKidentifier);
         sv->ptrvalue = id;
     }
     return id;
@@ -3106,7 +2952,7 @@ void Lexer::initKeywords()
         const char *s = keywords[u].name;
         enum TOK v = keywords[u].value;
         StringValue *sv = stringtable.insert(s, strlen(s));
-        sv->ptrvalue = (void *) new Identifier(sv->lstring.string,v);
+        sv->ptrvalue = (void *) new Identifier(sv->toDchars(),v);
 
         //printf("tochars[%d] = '%s'\n",v, s);
         Token::tochars[v] = s;

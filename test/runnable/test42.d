@@ -5008,6 +5008,112 @@ void test4155()
 }
 
 /***************************************************/
+// 7911
+
+struct Klass7911
+{
+    double value;
+
+    //static const Klass zero; // Does not trigger bug!
+    static const Klass7911 zero = {0}; // Bug trigger #1
+
+    static if (true) // Bug trigger #2
+        static if (true)
+            Klass7911 foo() { return Klass7911(); }
+}
+
+void test7911()
+{
+    auto a = Klass7911().foo();
+}
+
+/***************************************************/
+// 8069
+
+interface I8069
+{
+    void f();
+}
+struct A8069
+{
+    final class B8069 : I8069
+    {
+        A8069 a;
+        void f() {}
+    }
+}
+
+/***************************************************/
+// 8095
+
+void bug8095(int p0, int *p1, int z, int edx, int *p4, int p5)
+{
+    int x = z / 3;
+    if (z) {
+        int c = p5 + *p1 + p0; // *p1 segfaults -- it does *z !!
+        if ( z / 5 )
+            c = 1;
+        *p4 = c;
+        x = c;
+    }
+    void never_used() {
+        ++x;
+        int * unused = p1; // kills p4 somehow
+    }
+}
+
+void test8095() {
+    int x, y;
+    bug8095(0, &x, 1, 0, &y, 0);
+}
+
+/***************************************************/
+// 8091
+
+int solve1(int n) {
+    int a;
+    return ((a = n ? (n>=1u) : 1) != 0) ? a : 0;
+//    return ((a = !n ? 1 : (n>=1u)) != 0) ? a : 0;
+}
+
+int solve2(int n) {
+    int a;
+//    return ((a = n ? (n>=1u) : 1) != 0) ? a : 0;
+    return ((a = !n ? 1 : (n>=1u)) != 0) ? a : 0;
+}
+
+void test8091() {
+    assert(solve1(1) ==  1);
+    assert(solve2(1) ==  1);
+}
+
+/***************************************************/
+
+struct IPoint {
+    int x, y;
+}
+
+void bug6189_2(uint half, IPoint pos, float[4] *pts, uint unused) {
+    pos.y += half;
+    float xo = pos.x;
+    float yo = pos.y;
+
+    (*pts)[0] = xo;
+    (*pts)[1] = yo;
+    (*pts)[2] = xo;
+}
+
+void test6189_2()
+{
+    auto pos = IPoint(2, 2);
+    float[4] pts;
+    pts[0] = pts[1] = pts[2] = pts[3] = 0;
+    bug6189_2(0, pos, &pts, 0);
+
+    assert(pts[0] == 2);
+}
+
+/***************************************************/
 
 int main()
 {
@@ -5263,6 +5369,10 @@ int main()
     test245();
     test7807();
     test4155();
+    test7911();
+    test8095();
+    test8091();
+    test6189_2();
 
     writefln("Success");
     return 0;
