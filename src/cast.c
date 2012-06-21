@@ -37,9 +37,10 @@ Expression *Expression::implicitCastTo(Scope *sc, Type *t)
 
     MATCH match = implicitConvTo(t);
     if (match)
-    {   TY tyfrom = type->toBasetype()->ty;
-        TY tyto = t->toBasetype()->ty;
+    {
 #if DMDV1
+        TY tyfrom = type->toBasetype()->ty;
+        TY tyto = t->toBasetype()->ty;
         if (global.params.warnings &&
             Type::impcnvWarn[tyfrom][tyto] &&
             op != TOKint64)
@@ -593,12 +594,12 @@ MATCH ArrayLiteralExp::implicitConvTo(Type *t)
 }
 
 MATCH AssocArrayLiteralExp::implicitConvTo(Type *t)
-{   MATCH result = MATCHexact;
-
+{
     Type *typeb = type->toBasetype();
     Type *tb = t->toBasetype();
     if (tb->ty == Taarray && typeb->ty == Taarray)
     {
+        MATCH result = MATCHexact;
         for (size_t i = 0; i < keys->dim; i++)
         {   Expression *e = (*keys)[i];
             MATCH m = (MATCH)e->implicitConvTo(((TypeAArray *)tb)->index);
@@ -1682,7 +1683,7 @@ Expression *FuncExp::inferType(Type *to, int flag, TemplateParameters *tparams)
     {
         if (to->ty == Tdelegate ||
             to->ty == Tpointer && to->nextOf()->ty == Tfunction)
-        {   treq = to;
+        {   fd->treq = to;
         }
         return this;
     }
@@ -1708,6 +1709,8 @@ Expression *FuncExp::inferType(Type *to, int flag, TemplateParameters *tparams)
         {
             TypeFunction *tfv = (TypeFunction *)t;
             TypeFunction *tfl = (TypeFunction *)fd->type;
+            //printf("\ttfv = %s\n", tfv->toChars());
+            //printf("\ttfl = %s\n", tfl->toChars());
             size_t dim = Parameter::dim(tfl->parameters);
 
             if (Parameter::dim(tfv->parameters) == dim &&
@@ -1733,6 +1736,13 @@ Expression *FuncExp::inferType(Type *to, int flag, TemplateParameters *tparams)
                         }
                     }
                 }
+
+                // Set target of return type inference
+                assert(td->onemember);
+                FuncLiteralDeclaration *fld = td->onemember->isFuncLiteralDeclaration();
+                assert(fld);
+                if (!fld->type->nextOf() && tfv->next)
+                    fld->treq = tfv;
 
                 TemplateInstance *ti = new TemplateInstance(loc, td, tiargs);
                 e = (new ScopeExp(loc, ti))->semantic(td->scope);

@@ -51,6 +51,7 @@
 # defaulttarget - debug dmd
 # release       - release dmd (with clean)
 # trace         - release dmd with tracing options enabled
+# dmdtest       - compiler unit tests
 # clean         - delete all generated files except target binary
 # install       - copy build targets to install directory
 # install-clean - delete all files in the install directory
@@ -133,7 +134,7 @@ CFLAGS=-I$(INCLUDE) $(OPT) $(CFLAGS) $(DEBUG) -cpp
 # Compile flags for modules with backend/toolkit dependencies
 MFLAGS=-I$C;$(TK) $(OPT) -DMARS -cpp $(DEBUG) -e -wx
 # Compile flags for compiler unit tests
-TFLAGS=-I$(STLPORT);$(CPPUNIT)\include $(CFLAGS) $(TFLAGS) -Aa -Ab -Ae -Ar
+TFLAGS=-I$(STLPORT);$(CPPUNIT)\include;$(INCLUDE) $(TFLAGS) -DDISABLE_MAIN=1 -cpp -Aa -Ab -Ae -Ar
 # Recursive make
 DMDMAKE=$(MAKE) -fwin32.mak C=$C TK=$(TK) ROOT=$(ROOT)
 
@@ -143,7 +144,7 @@ DMDMAKE=$(MAKE) -fwin32.mak C=$C TK=$(TK) ROOT=$(ROOT)
 OBJ1= mars.obj enum.obj struct.obj dsymbol.obj import.obj id.obj \
 	staticassert.obj identifier.obj mtype.obj expression.obj \
 	optimize.obj template.obj lexer.obj declaration.obj cast.obj \
-	init.obj func.obj utf.obj unialpha.obj parse.obj statement.obj \
+	init.obj func.obj utf.obj parse.obj statement.obj \
 	constfold.obj version.obj inifile.obj typinf.obj \
 	module.obj scope.obj dump.obj cond.obj inline.obj opover.obj \
 	entity.obj class.obj mangle.obj attrib.obj impcnvtab.obj \
@@ -184,7 +185,7 @@ SRCS= mars.c enum.c struct.c dsymbol.c import.c idgen.c impcnvgen.c utf.h \
 	constfold.c version.h version.c inifile.c iasm.c staticassert.c \
 	module.c scope.c dump.c init.h init.c attrib.h attrib.c opover.c \
 	eh.c toctype.c class.c mangle.c tocsym.c func.c inline.c \
-	access.c complex_t.h unialpha.c irstate.h irstate.c glue.c msc.c \
+	access.c complex_t.h irstate.h irstate.c glue.c msc.c \
 	ph.c tk.c s2ir.c todt.c e2ir.c util.c toobj.c cppmangle.c \
 	identifier.h parse.h scope.h enum.h import.h intrange.h \
 	typinf.c tocvdebug.c toelfdebug.c mars.h module.h mtype.h dsymbol.h \
@@ -243,6 +244,9 @@ CH= $C\cc.h $C\global.h $C\oper.h $C\code.h $C\type.h $C\dt.h $C\cgcv.h \
 # Makefiles
 MAKEFILES=win32.mak posix.mak
 
+# Unit tests
+TESTS=UTFTest.exe # LexerTest.exe
+
 ############################## Release Targets ###############################
 
 defaulttarget: debdmd
@@ -267,22 +271,22 @@ $(TARGETEXE): $(OBJS) win32.mak
 	$(CC) -o$(TARGETEXE) $(OBJS) -cpp -mn -Ar $(LFLAGS)
 
 ################################ Unit Tests ##################################
-# TODO: Work in progress!
 
 cppunit: $(CPPUNIT)\lib\cppunit.lib
 
 $(CPPUNIT)\lib\cppunit.lib:
 	cd $(CPPUNIT)\src\cppunit
 	$(MAKE) CC=$(CC) LIB=$(LIB) "TFLAGS=$(TFLAGS)" "BFLAGS=$(BFLAGS)"
+	cd ..\..\..
 
-#TESTS=dchar_test.exe
+dmdtest: cppunit $(TESTS)
 
-#dmdtest: $(TESTS)
+UTFTest.exe: test\UTFTest.cpp utf.obj
+	$(CC) -o $@ $(TFLAGS) test\UTFTest.cpp utf.obj $(CPPUNIT)\lib\cppunit.lib
 
-#DCHARDEP=root\test\dchar_test.cpp dchar.obj
-
-#dchar_test.exe: $(DCHAROBJS)
-#	$(CC) -o $@ $(TFLAGS) $(DCHARDEP) $(CPPUNIT)\lib\cppunit.lib
+# TODO: Work in progress!
+#LexerTest.exe: test\LexerTest.cpp $(OBJS)
+#	$(CC) -o $@ $(TFLAGS) test\LexerTest.cpp $(OBJS) $(CPPUNIT)\lib\cppunit.lib
 
 ############################ Maintenance Targets #############################
 

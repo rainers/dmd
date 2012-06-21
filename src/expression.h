@@ -166,6 +166,11 @@ struct Expression : Object
     // Same as WANTvalue, but also expand variables as far as possible
     #define WANTexpand  8
 
+    // Entry point for CTFE.
+    // A compile-time result is required. Give an error if not possible
+    Expression *ctfeInterpret();
+
+    // Implementation of CTFE for this expression
     virtual Expression *interpret(InterState *istate, CtfeGoal goal = ctfeNeedRvalue);
 
     virtual int isConst();
@@ -376,7 +381,6 @@ struct StringExp : Expression
     StringExp(Loc loc, void *s, size_t len, unsigned char postfix);
     //Expression *syntaxCopy();
     int equals(Object *o);
-    char *toChars();
     Expression *semantic(Scope *sc);
     Expression *interpret(InterState *istate, CtfeGoal goal = ctfeNeedRvalue);
     size_t length();
@@ -659,7 +663,6 @@ struct FuncExp : Expression
     FuncLiteralDeclaration *fd;
     TemplateDeclaration *td;
     enum TOK tok;
-    Type *treq;
 
     FuncExp(Loc loc, FuncLiteralDeclaration *fd, TemplateDeclaration *td = NULL);
     Expression *syntaxCopy();
@@ -797,6 +800,7 @@ struct BinExp : Expression
         Expression *(*fp)(Loc, TOK, Type *, Expression *, Expression *));
     Expression *interpretAssignCommon(InterState *istate, CtfeGoal goal,
         Expression *(*fp)(Type *, Expression *, Expression *), int post = 0);
+    Expression *interpretFourPointerRelation(InterState *istate, CtfeGoal goal);
     Expression *arrayOp(Scope *sc);
 
     Expression *doInline(InlineDoState *ids);

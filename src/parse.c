@@ -1371,7 +1371,8 @@ Parameters *Parser::parseParameters(int *pvarargs, TemplateParameters **tpl)
                 default:
                 Ldefault:
                 {   stc = storageClass & (STCin | STCout | STCref | STClazy);
-                    if (stc & (stc - 1))        // if stc is not a power of 2
+                    if (stc & (stc - 1) &&        // if stc is not a power of 2
+                        !(stc == (STCin | STCref)))
                         error("incompatible parameter storage classes");
                     if ((storageClass & (STCconst | STCout)) == (STCconst | STCout))
                         error("out cannot be const");
@@ -3351,7 +3352,15 @@ Initializer *Parser::parseInitializer()
                         if (comma == 1)
                             error("comma expected separating array initializers, not %s", token.toChars());
                         value = parseInitializer();
-                        ia->addInit(NULL, value);
+                        if (token.value == TOKcolon)
+                        {
+                            nextToken();
+                            e = value->toExpression();
+                            value = parseInitializer();
+                        }
+                        else
+                            e = NULL;
+                        ia->addInit(e, value);
                         comma = 1;
                         continue;
 

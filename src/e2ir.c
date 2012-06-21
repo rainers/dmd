@@ -636,7 +636,7 @@ Lagain:
                 case 2:      r = RTLSYM_MEMSET16;   break;
                 case 4:      r = RTLSYM_MEMSET32;   break;
                 case 8:      r = RTLSYM_MEMSET64;   break;
-                case 16:     r = RTLSYM_MEMSET128;  break;
+                case 16:     r = I64 ? RTLSYM_MEMSET128ii : RTLSYM_MEMSET128; break;
                 default:     r = RTLSYM_MEMSETN;    break;
             }
 
@@ -1139,8 +1139,9 @@ elem *FuncExp::toElem(IRState *irs)
     Symbol *s;
 
     //printf("FuncExp::toElem() %s\n", toChars());
-    if (fd->tok == TOKreserved && type->ty == Tpointer && fd->vthis)
-    {   fd->tok = TOKfunction;
+    if (fd->tok == TOKreserved && type->ty == Tpointer)
+    {   // change to non-nested
+        fd->tok = TOKfunction;
         fd->vthis = NULL;
     }
     s = fd->toSymbol();

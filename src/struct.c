@@ -108,7 +108,7 @@ void AggregateDeclaration::semantic3(Scope *sc)
             Dsymbol *s = ti->toAlias();
             Expression *e = new DsymbolExp(0, s, 0);
             e = e->semantic(ti->tempdecl->scope);
-            e = e->optimize(WANTvalue | WANTinterpret);
+            e = e->ctfeInterpret();
             getRTInfo = e;
         }
     }
@@ -131,6 +131,8 @@ void AggregateDeclaration::inlineScan()
 unsigned AggregateDeclaration::size(Loc loc)
 {
     //printf("AggregateDeclaration::size() %s, scope = %p\n", toChars(), scope);
+    if (loc.linnum == 0)
+        loc = this->loc;
     if (!members)
         error(loc, "unknown size");
     if (sizeok != SIZEOKdone && scope)

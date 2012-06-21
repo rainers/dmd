@@ -1094,6 +1094,43 @@ void test7580()
 }
 
 /**********************************/
+// 7585
+
+extern(C) alias void function() Callback;
+
+template W7585a(alias dg)
+{
+    //pragma(msg, typeof(dg));
+    extern(C) void W7585a() { dg(); }
+}
+
+void test7585()
+{
+    static void f7585a(){}
+    Callback cb1 = &W7585a!(f7585a);      // OK
+    static assert(!__traits(compiles,
+    {
+        void f7585b(){}
+        Callback cb2 = &W7585a!(f7585b);  // NG
+    }));
+
+    Callback cb3 = &W7585a!((){});              // NG -> OK
+    Callback cb4 = &W7585a!(function(){});      // OK
+    static assert(!__traits(compiles,
+    {
+        Callback cb5 = &W7585a!(delegate(){});  // NG
+    }));
+
+    static int global;  // global data
+    Callback cb6 = &W7585a!((){return global;});    // NG -> OK
+    static assert(!__traits(compiles,
+    {
+        int n;
+        Callback cb7 = &W7585a!((){return n;});     // NG
+    }));
+}
+
+/**********************************/
 // 7643
 
 template T7643(A...){ alias A T7643; }
@@ -1395,6 +1432,40 @@ void test14()
 }
 
 /**********************************/
+// 8129
+
+class X8129 {}
+class A8129 {}
+class B8129 : A8129 {}
+
+int foo8129(T : A8129)(X8129 x) { return 1; }
+int foo8129(T : A8129)(X8129 x, void function (T) block) { return 2; }
+
+int bar8129(T, R)(R range, T value) { return 1; }
+
+int baz8129(T, R)(R range, T value) { return 1; }
+int baz8129(T, R)(R range, Undefined value) { return 2; }
+
+void test8129()
+{
+    auto x = new X8129;
+    assert(x.foo8129!B8129()      == 1);
+    assert(x.foo8129!B8129((a){}) == 2);
+    assert(foo8129!B8129(x)        == 1);
+    assert(foo8129!B8129(x, (a){}) == 2);
+    assert(foo8129!B8129(x)              == 1);
+    assert(foo8129!B8129(x, (B8129 b){}) == 2);
+
+    ubyte[] buffer = [0, 1, 2];
+    assert(bar8129!ushort(buffer, 915) == 1);
+
+    // While deduction, parameter type 'Undefined' shows semantic error.
+    static assert(!__traits(compiles, {
+        baz8129!ushort(buffer, 915);
+    }));
+}
+
+/**********************************/
 
 int main()
 {
@@ -1439,6 +1510,7 @@ int main()
     test7416();
     test7563();
     test7580();
+    test7585();
     test7671();
     test7672();
     test7684();
@@ -1452,6 +1524,7 @@ int main()
     test8125();
     test13();
     test14();
+    test8129();
 
     printf("Success\n");
     return 0;

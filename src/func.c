@@ -505,9 +505,6 @@ void FuncDeclaration::semantic(Scope *sc)
                         break;
 
                     else if (!this->parent->isClassDeclaration() // if both are mixins then error
-#if !BREAKABI
-                        && !isDtorDeclaration()
-#endif
 #if DMDV2
                         && !isPostBlitDeclaration()
 #endif
@@ -970,7 +967,6 @@ void FuncDeclaration::semantic3(Scope *sc)
 
             if (f->linkage == LINKd)
             {   // Declare _arguments[]
-#if BREAKABI
                 v_arguments = new VarDeclaration(0, Type::typeinfotypelist->type, Id::_arguments_typeinfo, NULL);
                 v_arguments->storage_class = STCparameter;
                 v_arguments->semantic(sc2);
@@ -983,14 +979,6 @@ void FuncDeclaration::semantic3(Scope *sc)
                 _arguments->semantic(sc2);
                 sc2->insert(_arguments);
                 _arguments->parent = this;
-#else
-                t = Type::typeinfo->type->arrayOf();
-                v_arguments = new VarDeclaration(0, t, Id::_arguments, NULL);
-                v_arguments->storage_class = STCparameter | STCin;
-                v_arguments->semantic(sc2);
-                sc2->insert(v_arguments);
-                v_arguments->parent = this;
-#endif
             }
             if (f->linkage == LINKd || (f->parameters && Parameter::dim(f->parameters)))
             {   // Declare _argptr
@@ -1329,15 +1317,7 @@ void FuncDeclaration::semantic3(Scope *sc)
 
                 int offend = blockexit & BEfallthru;
 #endif
-                if (type->nextOf()->ty == Tvoid)
-                {
-                    if (offend && isMain())
-                    {   // Add a return 0; statement
-                        Statement *s = new ReturnStatement(0, new IntegerExp(0));
-                        fbody = new CompoundStatement(0, fbody, s);
-                    }
-                }
-                else
+                if (type->nextOf()->ty != Tvoid)
                 {
                     if (offend)
                     {   Expression *e;
@@ -1562,6 +1542,11 @@ void FuncDeclaration::semantic3(Scope *sc)
                     ReturnStatement *s = new ReturnStatement(0, e);
                     a->push(s);
                 }
+            }
+            if (isMain() && type->nextOf()->ty == Tvoid)
+            {   // Add a return 0; statement
+                Statement *s = new ReturnStatement(0, new IntegerExp(0));
+                a->push(s);
             }
 
             fbody = new CompoundStatement(0, a);
@@ -2684,14 +2669,25 @@ int FuncDeclaration::getLevel(Loc loc, Scope *sc, FuncDeclaration *fd)
         //printf("\ts = %s, '%s'\n", s->kind(), s->toChars());
         FuncDeclaration *thisfd = s->isFuncDeclaration();
         if (thisfd)
-        {   if (!thisfd->isNested() && !thisfd->vthis)
+        {   if (!thisfd->isNested() && !thisfd->vthis && !sc->intypeof)
                 goto Lerr;
         }
         else
         {
             AggregateDeclaration *thiscd = s->isAggregateDeclaration();
             if (thiscd)
-            {   if (!thiscd->isNested())
+            {
+                /* AggregateDeclaration::isNested returns true only when
+                 * it has a hidden pointer.
+                 * But, calling the function belongs unrelated lexical scope
+                 * is still allowed inside typeof.
+                 *
+                 * struct Map(alias fun) {
+                 *   typeof({ return fun(); }) RetType;
+                 *   // No member function makes Map struct 'not nested'.
+                 * }
+                 */
+                if (!thiscd->isNested() && !sc->intypeof)
                     goto Lerr;
             }
             else
@@ -2968,6 +2964,7 @@ int FuncDeclaration::isNested()
     FuncDeclaration *f = toAliasFunc();
     //printf("\ttoParent2() = '%s'\n", f->toParent2()->toChars());
     return ((f->storage_class & STCstatic) == 0) &&
+           (f->linkage == LINKd) &&
            (f->toParent2()->isFuncDeclaration() != NULL);
 }
 
@@ -3266,6 +3263,7 @@ FuncLiteralDeclaration::FuncLiteralDeclaration(Loc loc, Loc endloc, Type *type,
     this->ident = Lexer::uniqueId(id);
     this->tok = tok;
     this->fes = fes;
+    this->treq = NULL;
     //printf("FuncLiteralDeclaration() id = '%s', type = '%s'\n", this->ident->toChars(), type->toChars());
 }
 
@@ -3279,6 +3277,7 @@ Dsymbol *FuncLiteralDeclaration::syntaxCopy(Dsymbol *s)
     else
     {   f = new FuncLiteralDeclaration(loc, endloc, type->syntaxCopy(), tok, fes);
         f->ident = ident;               // keep old identifier
+        f->treq = treq;                 // don't need to copy
     }
     FuncDeclaration::syntaxCopy(f);
     return f;
@@ -3591,14 +3590,8 @@ char *DtorDeclaration::toChars()
 
 int DtorDeclaration::isVirtual()
 {
-    /* This should be FALSE so that dtor's don't get put into the vtbl[],
-     * but doing so will require recompiling everything.
-     */
-#if BREAKABI
+    // FALSE so that dtor's don't get put into the vtbl[]
     return FALSE;
-#else
-    return FuncDeclaration::isVirtual();
-#endif
 }
 
 void DtorDeclaration::toCBuffer(OutBuffer *buf, HdrGenState *hgs)

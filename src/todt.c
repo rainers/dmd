@@ -793,6 +793,11 @@ dt_t **VarExp::toDt(dt_t **pdt)
 dt_t **FuncExp::toDt(dt_t **pdt)
 {
     //printf("FuncExp::toDt() %d\n", op);
+    if (fd->tok == TOKreserved && type->ty == Tpointer)
+    {   // change to non-nested
+        fd->tok = TOKfunction;
+        fd->vthis = NULL;
+    }
     Symbol *s = fd->toSymbol();
     if (fd->isNested())
     {   error("non-constant nested delegate literal expression %s", toChars());

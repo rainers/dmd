@@ -1175,10 +1175,10 @@ void Lexer::scan(Token *t)
             case '#':
             {
                 p++;
-                Token *n = peek(t);
-                if (n->value == TOKidentifier && n->ident == Id::line)
+                Token n;
+                scan(&n);
+                if (n.value == TOKidentifier && n.ident == Id::line)
                 {
-                    nextToken();
                     poundLine();
                     continue;
                 }
@@ -1904,14 +1904,12 @@ TOK Lexer::number(Token *t)
     };
     enum FLAGS flags = FLAGS_decimal;
 
-    int base;
     unsigned c;
     unsigned char *start;
     TOK result;
 
     //printf("Lexer::number()\n");
     state = STATE_initial;
-    base = 0;
     stringbuffer.reset();
     start = p;
     while (1)
@@ -1938,6 +1936,10 @@ TOK Lexer::number(Token *t)
                     case '.':
                         if (p[1] == '.')        // .. is a separate token
                             goto done;
+#if DMDV2
+                        if (isalpha(p[1]) || p[1] == '_')
+                            goto done;
+#endif
                     case 'i':
                     case 'f':
                     case 'F':
@@ -2079,7 +2081,7 @@ done:
         // Convert string to integer
 #if __DMC__
         errno = 0;
-        n = strtoull((char *)stringbuffer.data,NULL,base);
+        n = strtoull((char *)stringbuffer.data,NULL,0);
         if (errno == ERANGE)
             error("integer overflow");
 #else
@@ -2365,7 +2367,8 @@ done:
 #else
             {   // Only interested in errno return
                 double d = strtof((char *)stringbuffer.data, NULL);
-                // Assign to f to keep gcc warnings at bay
+                // Assign to d to keep gcc warnings at bay,
+                // but then CppCheck complains that d is never used.
             }
 #endif
             result = TOKfloat32v;
@@ -2383,6 +2386,7 @@ done:
             {   // Only interested in errno return
                 double d = strtod((char *)stringbuffer.data, NULL);
                 // Assign to d to keep gcc warnings at bay
+                // but then CppCheck complains that d is never used.
             }
 #endif
             result = TOKfloat64v;

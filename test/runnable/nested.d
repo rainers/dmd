@@ -1580,6 +1580,72 @@ void test7199()
 }
 
 /*******************************************/
+// 8188
+
+
+mixin template Print8188(b...)
+{
+    int doprint()
+    {
+        return b[0] * b[1];
+    }
+}
+
+class A8188
+{
+    int x, y;
+    mixin Print8188!(x, y);
+}
+
+void test8188()
+{
+    auto a = new A8188;
+    a.x = 2;
+    a.y = 5;
+    assert(a.doprint() == 10);
+}
+
+/*******************************************/
+// 5082
+
+struct S5082 { float x; }
+
+struct Map5082a(alias fun)
+{
+    typeof({ return fun(int.init); }()) cache;
+}
+
+struct Map5082b(alias fun)
+{
+    typeof({ return fun(int.init); }()) cache;
+
+    S5082 front(int i) { return fun(i); }
+}
+
+void test5082()
+{
+    auto temp = S5082(1);
+    auto func = (int v){ return temp; };
+    auto map1 = Map5082a!func();
+    auto map2 = Map5082b!func();
+    assert(map2.front(1) == temp);
+}
+
+
+/*******************************************/
+// 8194
+
+void test8194()
+{
+    int foo;
+    static void bar()
+    {
+        typeof(foo) baz;
+        static assert(is(typeof(baz) == int));
+    }
+}
+
+/*******************************************/
 
 int main()
 {
@@ -1642,6 +1708,10 @@ int main()
     test7428();
     test4841();
     test7199();
+    test8188();
+
+    test5082();
+    test8194();
 
     printf("Success\n");
     return 0;

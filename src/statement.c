@@ -28,6 +28,7 @@
 #include "parse.h"
 #include "template.h"
 #include "attrib.h"
+#include "import.h"
 
 extern int os_critsecsize32();
 extern int os_critsecsize64();
@@ -400,7 +401,7 @@ Statements *CompileStatement::flatten(Scope *sc)
     //printf("CompileStatement::flatten() %s\n", exp->toChars());
     exp = exp->semantic(sc);
     exp = resolveProperties(sc, exp);
-    exp = exp->optimize(WANTvalue | WANTinterpret);
+    exp = exp->ctfeInterpret();
     if (exp->op == TOKerror)
         return NULL;
     StringExp *se = exp->toString();
@@ -2889,8 +2890,8 @@ Statement *PragmaStatement::semantic(Scope *sc)
                 Expression *e = (*args)[i];
 
                 e = e->semantic(sc);
-                if (e->op != TOKerror)
-                    e = e->optimize(WANTvalue | WANTinterpret);
+                if (e->op != TOKerror && e->op != TOKtype)
+                    e = e->ctfeInterpret();
                 if (e->op == TOKerror)
                 {   errorSupplemental(loc, "while evaluating pragma(msg, %s)", (*args)[i]->toChars());
                     goto Lerror;
@@ -2920,7 +2921,7 @@ Statement *PragmaStatement::semantic(Scope *sc)
             Expression *e = (*args)[0];
 
             e = e->semantic(sc);
-            e = e->optimize(WANTvalue | WANTinterpret);
+            e = e->ctfeInterpret();
             (*args)[0] = e;
             StringExp *se = e->toString();
             if (!se)
@@ -2945,7 +2946,7 @@ Statement *PragmaStatement::semantic(Scope *sc)
         {
             Expression *e = (*args)[0];
             e = e->semantic(sc);
-            e = e->optimize(WANTvalue | WANTinterpret);
+            e = e->ctfeInterpret();
             (*args)[0] = e;
             Dsymbol *sa = getDsymbol(e);
             if (!sa || !sa->isFuncDeclaration())
@@ -3292,7 +3293,7 @@ Statement *CaseStatement::semantic(Scope *sc)
             }
         }
         else
-            exp = exp->optimize(WANTvalue | WANTinterpret);
+            exp = exp->ctfeInterpret();
 
         if (exp->op != TOKstring && exp->op != TOKint64 && exp->op != TOKerror)
         {
@@ -3397,12 +3398,11 @@ Statement *CaseRangeStatement::semantic(Scope *sc)
 
     first = first->semantic(sc);
     first = first->implicitCastTo(sc, sw->condition->type);
-    first = first->optimize(WANTvalue | WANTinterpret);
-
+    first = first->ctfeInterpret();
 
     last = last->semantic(sc);
     last = last->implicitCastTo(sc, sw->condition->type);
-    last = last->optimize(WANTvalue | WANTinterpret);
+    last = last->ctfeInterpret();
 
     if (first->op == TOKerror || last->op == TOKerror)
         return statement ? statement->semantic(sc) : NULL;
@@ -3696,8 +3696,11 @@ Statement *ReturnStatement::semantic(Scope *sc)
     {
         fd->hasReturnExp |= 1;
 
+        FuncLiteralDeclaration *fld = fd->isFuncLiteralDeclaration();
         if (tret)
             exp = exp->inferType(tbret);
+        else if (fld && fld->treq && fld->treq->nextOf())
+            exp = exp->inferType(fld->treq->nextOf());
         exp = exp->semantic(sc);
         exp = resolveProperties(sc, exp);
         if (!((TypeFunction *)fd->type)->isref)
@@ -4234,9 +4237,16 @@ Statement *SynchronizedStatement::semantic(Scope *sc)
         {   /* Cast the interface to an object, as the object has the monitor,
              * not the interface.
              */
-            Type *t = new TypeIdentifier(0, Id::Object);
+            if (!ClassDeclaration::object)
+            {
+                error("missing or corrupt object.d");
+                fatal();
+            }
 
-            t = t->semantic(0, sc);
+            Type *t = ClassDeclaration::object->type;
+            t = t->semantic(0, sc)->toBasetype();
+            assert(t->ty == Tclass);
+
             exp = new CastExp(loc, exp, t);
             exp = exp->semantic(sc);
         }
@@ -5234,9 +5244,29 @@ Statement *ImportStatement::syntaxCopy()
 Statement *ImportStatement::semantic(Scope *sc)
 {
     for (size_t i = 0; i < imports->dim; i++)
-    {   Dsymbol *s = (*imports)[i];
+    {   Import *s = (*imports)[i]->isImport();
+
+        for (size_t i = 0; i < s->names.dim; i++)
+        {
+            Identifier *name = s->names[i];
+            Identifier *alias = s->aliases[i];
+
+            if (!alias)
+                alias = name;
+
+            TypeIdentifier *tname = new TypeIdentifier(s->loc, name);
+            AliasDeclaration *ad = new AliasDeclaration(s->loc, alias, tname);
+
+            s->aliasdecls.push(ad);
+        }
+
         s->semantic(sc);
         sc->insert(s);
+
+        for (size_t i = 0; i < s->aliasdecls.dim; i++)
+        {
+            sc->insert(s->aliasdecls[i]);
+        }
     }
     return this;
 }

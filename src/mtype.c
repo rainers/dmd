@@ -1331,7 +1331,7 @@ Type *Type::aliasthisOf()
                     if (spec && global.errors != olderrs)
                         spec->errors = global.errors - olderrs;
                 }
-                if (!global.errors)
+                if (!fd->errors)
                 {
                     Type *t = fd->type->nextOf();
                     t = t->substWildTo(mod == 0 ? MODmutable : mod);
@@ -2103,10 +2103,9 @@ Expression *Type::noMember(Scope *sc, Expression *e, Identifier *ident)
             StringExp *se = new StringExp(e->loc, ident->toChars());
             Objects *tiargs = new Objects();
             tiargs->push(se);
-            e = new DotTemplateInstanceExp(e->loc, e, Id::opDispatch, tiargs);
-            ((DotTemplateInstanceExp *)e)->ti->tempdecl = td;
-            e = e->semantic(sc);
-            return e;
+            DotTemplateInstanceExp *dti = new DotTemplateInstanceExp(e->loc, e, Id::opDispatch, tiargs);
+            dti->ti->tempdecl = td;
+            return dti->semantic(sc, 1);
         }
 
         /* See if we should forward to the alias this.
@@ -2116,8 +2115,8 @@ Expression *Type::noMember(Scope *sc, Expression *e, Identifier *ident)
              *  e.aliasthis.ident
              */
             e = resolveAliasThis(sc, e);
-            e = new DotIdExp(e->loc, e, ident);
-            return e->semantic(sc);
+            DotIdExp *die = new DotIdExp(e->loc, e, ident);
+            return die->semantic(sc, 1);
         }
     }
 
@@ -3706,7 +3705,7 @@ void TypeSArray::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol
             sc = sc->push(sym);
 
             dim = dim->semantic(sc);
-            dim = dim->optimize(WANTvalue | WANTinterpret);
+            dim = dim->ctfeInterpret();
             uinteger_t d = dim->toUInteger();
 
             sc = sc->pop();
@@ -3768,7 +3767,7 @@ Type *TypeSArray::semantic(Loc loc, Scope *sc)
     {   TupleDeclaration *sd = s->isTupleDeclaration();
 
         dim = semanticLength(sc, sd, dim);
-        dim = dim->optimize(WANTvalue | WANTinterpret);
+        dim = dim->ctfeInterpret();
         uinteger_t d = dim->toUInteger();
 
         if (d >= sd->objects->dim)
@@ -3807,7 +3806,7 @@ Type *TypeSArray::semantic(Loc loc, Scope *sc)
              */
             return this;
         }
-        dim = dim->optimize(WANTvalue | WANTinterpret);
+        dim = dim->ctfeInterpret();
         dinteger_t d1 = dim->toInteger();
         dim = dim->implicitCastTo(sc, tsize_t);
         dim = dim->optimize(WANTvalue);
@@ -4708,6 +4707,15 @@ MATCH TypeAArray::constConv(Type *to)
     return Type::constConv(to);
 }
 
+Type *TypeAArray::reliesOnTident(TemplateParameters *tparams)
+{
+    Type *t = TypeNext::reliesOnTident(tparams);
+    if (!t)
+        t = index->reliesOnTident(tparams);
+    return t;
+}
+
+
 /***************************** TypePointer *****************************/
 
 TypePointer::TypePointer(Type *t)
@@ -5544,24 +5552,12 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
                 e = resolveProperties(argsc, e);
                 if (e->op == TOKfunction)               // see Bugzilla 4820
                 {   FuncExp *fe = (FuncExp *)e;
-                    if (fe->fd)
-                    {   if (fe->fd->tok == TOKreserved)
-                        {
-                            if (fe->type->ty == Tpointer)
-                            {
-                                fe->fd->vthis = NULL;
-                                fe->fd->tok = TOKfunction;
-                            }
-                            else
-                                fe->fd->tok = TOKdelegate;
-                        }
-                        // Replace function literal with a function symbol,
-                        // since default arg expression must be copied when used
-                        // and copying the literal itself is wrong.
-                        e = new VarExp(e->loc, fe->fd, 0);
-                        e = new AddrExp(e->loc, e);
-                        e = e->semantic(argsc);
-                    }
+                    // Replace function literal with a function symbol,
+                    // since default arg expression must be copied when used
+                    // and copying the literal itself is wrong.
+                    e = new VarExp(e->loc, fe->fd, 0);
+                    e = new AddrExp(e->loc, e);
+                    e = e->semantic(argsc);
                 }
                 e = e->implicitCastTo(argsc, fparam->type);
                 fparam->defaultArg = e;
@@ -5572,8 +5568,13 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
              */
             if (t->ty == Ttuple)
             {
+                /* TypeFunction::parameter also is used as the storage of
+                 * Parameter objects for FuncDeclaration. So we should copy
+                 * the elements of TypeTuple::arguments to avoid unintended
+                 * sharing of Parameter object among other functions.
+                 */
                 TypeTuple *tt = (TypeTuple *)t;
-                if (fparam->storageClass && tt->arguments && tt->arguments->dim)
+                if (tt->arguments && tt->arguments->dim)
                 {
                     /* Propagate additional storage class from tuple parameters to their
                      * element-parameters.
@@ -6812,6 +6813,33 @@ Dsymbol *TypeInstance::toDsymbol(Scope *sc)
         resolve(loc, sc, &e, &t, &s);
 
     return s;
+}
+
+Type *TypeInstance::reliesOnTident(TemplateParameters *tparams)
+{
+    if (tparams)
+    {
+        for (size_t i = 0; i < tparams->dim; i++)
+        {
+            TemplateParameter *tp = (*tparams)[i];
+            if (tempinst->name == tp->ident)
+                return this;
+        }
+        if (!tempinst->tiargs)
+            return NULL;
+        for (size_t i = 0; i < tempinst->tiargs->dim; i++)
+        {
+            Type *t = isType((*tempinst->tiargs)[i]);
+            t = t ? t->reliesOnTident(tparams) : NULL;
+            if (t)
+                return t;
+        }
+        return NULL;
+    }
+    else
+    {
+        return Type::reliesOnTident(tparams);
+    }
 }
 
 
@@ -8844,11 +8872,11 @@ Type *TypeSlice::semantic(Loc loc, Scope *sc)
     TypeTuple *tt = (TypeTuple *)tbn;
 
     lwr = semanticLength(sc, tbn, lwr);
-    lwr = lwr->optimize(WANTvalue | WANTinterpret);
+    lwr = lwr->ctfeInterpret();
     uinteger_t i1 = lwr->toUInteger();
 
     upr = semanticLength(sc, tbn, upr);
-    upr = upr->optimize(WANTvalue | WANTinterpret);
+    upr = upr->ctfeInterpret();
     uinteger_t i2 = upr->toUInteger();
 
     if (!(i1 <= i2 && i2 <= tt->arguments->dim))
@@ -8888,11 +8916,11 @@ void TypeSlice::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol 
             sc = sc->push(sym);
 
             lwr = lwr->semantic(sc);
-            lwr = lwr->optimize(WANTvalue | WANTinterpret);
+            lwr = lwr->ctfeInterpret();
             uinteger_t i1 = lwr->toUInteger();
 
             upr = upr->semantic(sc);
-            upr = upr->optimize(WANTvalue | WANTinterpret);
+            upr = upr->ctfeInterpret();
             uinteger_t i2 = upr->toUInteger();
 
             sc = sc->pop();

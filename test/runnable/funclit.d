@@ -565,6 +565,78 @@ void test8005()
 }
 
 /***************************************************/
+// test8198
+
+void test8198()
+{
+    T delegate(T) zero(T)(T delegate(T) f)
+    {
+        return x => x;
+    }
+
+    T delegate(T) delegate(T delegate(T)) succ(T)(T delegate(T) delegate(T delegate(T)) n)
+    {
+        return f => x => f(n(f)(x));
+    }
+
+    auto n = &zero!uint;
+    foreach (i; 0..10)
+    {
+        assert(n(x => x + 1)(0) == i);
+        n = succ(n);
+    }
+}
+
+/***************************************************/
+// 8226
+
+immutable f8226 = (int x) => x * 2;
+
+void test8226()
+{
+    assert(f8226(10) == 20);
+}
+
+/***************************************************/
+// 8241
+
+auto exec8241a(alias a = function(x) => x, T...)(T as)
+{
+    return a(as);
+}
+
+auto exec8241b(alias a = (x) => x, T...)(T as)
+{
+    return a(as);
+}
+
+void test8241()
+{
+    exec8241a(2);
+    exec8241b(2);
+}
+
+/***************************************************/
+// 8242
+
+template exec8242(alias a, T...)
+{
+    auto func8242(T as)
+    {
+        return a(as);
+    }
+}
+
+mixin exec8242!(x => x, int);
+mixin exec8242!((string x) => x, string);
+
+void test8242()
+{
+    func8242(1);
+    func8242("");
+}
+
+/***************************************************/
 
 int main()
 {
@@ -597,6 +669,10 @@ int main()
     test7761();
     test7941();
     test8005();
+    test8198();
+    test8226();
+    test8241();
+    test8242();
 
     printf("Success\n");
     return 0;
