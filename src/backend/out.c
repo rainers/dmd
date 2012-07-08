@@ -86,7 +86,6 @@ void outdata(symbol *s)
 #if HTOD
     return;
 #endif
-    dt_t *dtstart,*dt;
     targ_size_t datasize,a;
     int seg;
     targ_size_t offset;
@@ -103,7 +102,7 @@ void outdata(symbol *s)
     // Data segment variables are always live on exit from a function
     s->Sflags |= SFLlivexit;
 
-    dtstart = s->Sdt;
+    dt_t *dtstart = s->Sdt;
     s->Sdt = NULL;                      // it will be free'd
 #if OMFOBJ
     int tls = 0;
@@ -119,7 +118,7 @@ void outdata(symbol *s)
     ty = s->ty();
     if (ty & mTYexport && config.wflags & WFexpdef && s->Sclass != SCstatic)
         obj_export(s,0);        // export data definition
-    for (dt = dtstart; dt; dt = dt->DTnext)
+    for (dt_t *dt = dtstart; dt; dt = dt->DTnext)
     {
         //printf("dt = %p, dt = %d\n",dt,dt->dt);
         switch (dt->dt)
@@ -204,16 +203,14 @@ void outdata(symbol *s)
                             break;
                         }
                         default:
-#if OMFOBJ
                             s->Sseg = UDATA;
-#endif
                             elf_data_start(s,datasize,UDATA);
                             obj_lidata(s->Sseg,s->Soffset,datasize);
                             s->Sfl = FLudata;           // uninitialized data
                             break;
                     }
+                    assert(s->Sseg && s->Sseg != UNKNOWN);
 #if ELFOBJ || MACHOBJ
-                    assert(s->Sseg != UNKNOWN);
                     if (s->Sclass == SCglobal || s->Sclass == SCstatic) // if a pubdef to be done
 #endif
 #if OMFOBJ
@@ -245,7 +242,9 @@ void outdata(symbol *s)
                     ;
 #endif
                 else if (sb->Sdt)               // if initializer for symbol
+{ if (!s->Sseg) s->Sseg = DATA;
                     outdata(sb);                // write out data for symbol
+}
             }
             case DT_coff:
                 datasize += size(dt->Dty);
@@ -321,9 +320,10 @@ void outdata(symbol *s)
         }
         case mTYnear:
         case 0:
-#if OMFOBJ
-            s->Sseg = DATA;
-#endif
+            if (
+                s->Sseg == 0 ||
+                s->Sseg == UNKNOWN)
+                s->Sseg = DATA;
             seg = elf_data_start(s,datasize,DATA);
             s->Sfl = FLdata;            // initialized data
             break;
@@ -357,7 +357,7 @@ void outdata(symbol *s)
 
     offset = s->Soffset;
 
-    for (dt = dtstart; dt; dt = dt->DTnext)
+    for (dt_t *dt = dtstart; dt; dt = dt->DTnext)
     {
         switch (dt->dt)
         {   case DT_abytes:
@@ -510,6 +510,27 @@ void outcommon(symbol *s,targ_size_t n)
         if (config.fulltypes)
             cv_outsym(s);
     }
+}
+
+/*************************************
+ * Mark a symbol as going into a read-only segment.
+ */
+
+void out_readonly(symbol *s)
+{
+    // The default is DATA
+#if ELFOBJ
+    s->Sseg = CDATA;
+#endif
+#if MACHOBJ
+    /* Because of PIC and CDATA being in the _TEXT segment;
+     * cannot have pointers in CDATA.
+     * Should check s->Sdt and make it CDATA if it has no pointers.
+     */
+#endif
+#if OMFOBJ
+    // Haven't really worked out where immutable read-only data can go.
+#endif
 }
 
 /******************************

@@ -2067,6 +2067,15 @@ Lreturn:
     return e;
 }
 
+/************************************
+ * Return alignment to use for this type.
+ */
+
+structalign_t Type::alignment()
+{
+    return STRUCTALIGN_DEFAULT;
+}
+
 /***************************************
  * Figures out what to do with an undefined member reference
  * for classes and structs.
@@ -2133,11 +2142,6 @@ Expression *Type::noMember(Scope *sc, Expression *e, Identifier *ident)
     }
 
     return Type::dotExp(sc, e, ident);
-}
-
-unsigned Type::memalign(unsigned salign)
-{
-    return salign;
 }
 
 void Type::error(Loc loc, const char *format, ...)
@@ -3946,15 +3950,15 @@ Expression *TypeSArray::dotExp(Scope *sc, Expression *e, Identifier *ident)
     return e;
 }
 
+structalign_t TypeSArray::alignment()
+{
+    return next->alignment();
+}
+
 int TypeSArray::isString()
 {
     TY nty = next->toBasetype()->ty;
     return nty == Tchar || nty == Twchar || nty == Tdchar;
-}
-
-unsigned TypeSArray::memalign(unsigned salign)
-{
-    return next->memalign(salign);
 }
 
 MATCH TypeSArray::constConv(Type *to)
@@ -7454,6 +7458,20 @@ Expression *TypeTypedef::dotExp(Scope *sc, Expression *e, Identifier *ident)
     return sym->basetype->dotExp(sc, e, ident);
 }
 
+structalign_t TypeTypedef::alignment()
+{
+    if (sym->inuse)
+    {
+        sym->error("circular definition");
+        sym->basetype = Type::terror;
+        return STRUCTALIGN_DEFAULT;
+    }
+    sym->inuse = 1;
+    structalign_t a = sym->basetype->alignment();
+    sym->inuse = 0;
+    return a;
+}
+
 Expression *TypeTypedef::getProperty(Loc loc, Identifier *ident)
 {
 #if LOGDOTEXP
@@ -7687,13 +7705,9 @@ d_uns64 TypeStruct::size(Loc loc)
 }
 
 unsigned TypeStruct::alignsize()
-{   unsigned sz;
-
+{
     sym->size(0);               // give error for forward references
-    sz = sym->alignsize;
-    if (sz > sym->structalign)
-        sz = sym->structalign;
-    return sz;
+    return sym->alignsize;
 }
 
 Dsymbol *TypeStruct::toDsymbol(Scope *sc)
@@ -7945,10 +7959,11 @@ L1:
     return de->semantic(sc);
 }
 
-unsigned TypeStruct::memalign(unsigned salign)
+structalign_t TypeStruct::alignment()
 {
-    sym->size(0);               // give error for forward references
-    return sym->structalign;
+    if (sym->alignment == 0)
+        sym->size(0);
+    return sym->alignment;
 }
 
 Expression *TypeStruct::defaultInit(Loc loc)

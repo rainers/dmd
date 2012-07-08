@@ -836,6 +836,14 @@ void VarDeclaration::semantic(Scope *sc)
     this->parent = sc->parent;
     //printf("this = %p, parent = %p, '%s'\n", this, parent, parent->toChars());
     protection = sc->protection;
+
+    /* If scope's alignment is the default, use the type's alignment,
+     * otherwise the scope overrrides.
+     */
+    alignment = sc->structalign;
+    if (alignment == STRUCTALIGN_DEFAULT)
+        alignment = type->alignment();          // use type's alignment
+
     //printf("sc->stc = %x\n", sc->stc);
     //printf("storage_class = x%x\n", storage_class);
 
@@ -1102,7 +1110,6 @@ Lnomatch:
 #endif
             {
                 storage_class |= STCfield;
-                alignment = sc->structalign;
 #if DMDV2
                 if (tb->ty == Tstruct && ((TypeStruct *)tb)->sym->noDefaultCtor ||
                     tb->ty == Tclass  && ((TypeClass  *)tb)->sym->noDefaultCtor)
@@ -1722,9 +1729,8 @@ void VarDeclaration::setFieldOffset(AggregateDeclaration *ad, unsigned *poffset,
 
     unsigned memsize      = t->size(loc);            // size of member
     unsigned memalignsize = t->alignsize();          // size of member for alignment purposes
-    unsigned memalign     = t->memalign(alignment);  // alignment boundaries
 
-    offset = AggregateDeclaration::placeField(poffset, memsize, memalignsize, memalign,
+    offset = AggregateDeclaration::placeField(poffset, memsize, memalignsize, alignment,
                 &ad->structsize, &ad->alignsize, isunion);
 
     //printf("\t%s: alignsize = %d\n", toChars(), alignsize);

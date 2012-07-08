@@ -1532,12 +1532,7 @@ elem *StringExp::toElem(IRState *irs)
         si = symbol_generate(SCstatic,type_fake(TYdarray));
         si->Sdt = dt;
         si->Sfl = FLdata;
-#if ELFOBJ // Burton
-        si->Sseg = CDATA;
-#endif
-#if MACHOBJ
-        si->Sseg = DATA;
-#endif
+        out_readonly(si);
         outdata(si);
 
         st->m = irs->m;
@@ -1560,10 +1555,7 @@ elem *StringExp::toElem(IRState *irs)
         Symbol *si = symbol_generate(SCstatic, t);
         si->Sdt = dt;
         si->Sfl = FLdata;
-
-#if ELFOBJ || MACHOBJ // Burton
-        si->Sseg = CDATA;
-#endif
+        out_readonly(si);
         outdata(si);
 
         e = el_var(si);
@@ -1633,7 +1625,7 @@ elem *NewExp::toElem(IRState *irs)
                 s->Sstruct = struct_calloc();
                 s->Sstruct->Sflags |= 0;
                 s->Sstruct->Salignsize = tclass->sym->alignsize;
-                s->Sstruct->Sstructalign = tclass->sym->structalign;
+//                s->Sstruct->Sstructalign = tclass->sym->structalign;
                 s->Sstruct->Sstructsize = tclass->sym->structsize;
 
                 ::type *tc = type_alloc(TYstruct);
@@ -2058,12 +2050,7 @@ elem *AssertExp::toElem(IRState *irs)
                 assertexp_sfilename = symbol_generate(SCstatic,type_fake(TYdarray));
                 assertexp_sfilename->Sdt = dt;
                 assertexp_sfilename->Sfl = FLdata;
-#if ELFOBJ
-                assertexp_sfilename->Sseg = CDATA;
-#endif
-#if MACHOBJ
-                assertexp_sfilename->Sseg = DATA;
-#endif
+                out_readonly(assertexp_sfilename);
                 outdata(assertexp_sfilename);
 
                 assertexp_mn = m;
@@ -5043,16 +5030,17 @@ elem *StructLiteralExp::toElem(IRState *irs)
         e = el_combine(e, fillHole(stmp, &offset, sd->structsize, sd->structsize));
     }
 
-    if (elements || sd->isnested)
+    if (elements || sd->isNested())
     {
-        size_t dim = sd->fields.dim;
+        size_t dim = elements ? elements->dim : 0;
+        if (sd->isNested() && dim == sd->fields.dim - 1)
+            dim = sd->fields.dim;
+        assert(dim <= sd->fields.dim);
         for (size_t i = 0; i < dim; i++)
-        {   Expression *el;
-            if (!sd->isnested || i < dim - 1)
-            {   el = elements ? (*elements)[i] : NULL;
-                if (!el)
-                    continue;
-            }
+        {
+            Expression *el = (elements && i < elements->dim) ? (*elements)[i] : NULL;
+            if (!el && !(sd->isNested() && i == dim - 1))
+                continue;
 
             Dsymbol *s = sd->fields[i];
             VarDeclaration *v = s->isVarDeclaration();

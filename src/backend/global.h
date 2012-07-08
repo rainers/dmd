@@ -59,9 +59,6 @@ CEXTERN char *finname,*foutname,*foutdir;
 
 CEXTERN char OPTIMIZER,PARSER;
 CEXTERN symtab_t globsym;
-#if AUTONEST
-CEXTERN int pushcount;
-#endif
 
 CEXTERN Config config;                  // precompiled part of configuration
 CEXTERN Configv configv;                // non-ph part of configuration
@@ -374,7 +371,7 @@ void obj_import(elem *e);
 void objlinnum(Srcpos srcpos, targ_size_t offset);
 void obj_dosseg(void);
 void obj_startaddress(Symbol *);
-void obj_includelib(const char *);
+bool obj_includelib(const char *);
 void obj_exestr(const char *p);
 void obj_user(const char *p);
 void obj_compiler();
@@ -444,6 +441,7 @@ void outcsegname(char *csegname);
 void outthunk(Symbol *sthunk, Symbol *sfunc, unsigned p, tym_t thisty, targ_size_t d, int i, targ_size_t d2);
 void outdata(Symbol *s);
 void outcommon(Symbol *s, targ_size_t n);
+void out_readonly(Symbol *s);
 void out_regcand(symtab_t *);
 void writefunc(Symbol *sfunc);
 void alignOffset(int seg,targ_size_t datasize);

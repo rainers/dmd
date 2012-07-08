@@ -613,8 +613,7 @@ void ClassDeclaration::semantic(Scope *sc)
     }
     sc->protection = PROTpublic;
     sc->explicitProtection = 0;
-    sc->structalign = 8;
-    structalign = sc->structalign;
+    sc->structalign = STRUCTALIGN_DEFAULT;
     if (baseClass)
     {   sc->offset = baseClass->structsize;
         alignsize = baseClass->alignsize;
@@ -681,7 +680,7 @@ void ClassDeclaration::semantic(Scope *sc)
         fields.setDim(0);
         structsize = 0;
         alignsize = 0;
-        structalign = 0;
+//        structalign = 0;
 
         sc = sc->pop();
 
@@ -756,7 +755,7 @@ void ClassDeclaration::semantic(Scope *sc)
         BaseClass *b = (*vtblInterfaces)[i];
         unsigned thissize = PTRSIZE;
 
-        alignmember(structalign, thissize, &sc->offset);
+        alignmember(STRUCTALIGN_DEFAULT, thissize, &sc->offset);
         assert(b->offset == 0);
         b->offset = sc->offset;
 
@@ -1407,10 +1406,10 @@ void InterfaceDeclaration::semantic(Scope *sc)
         sc->linkage = LINKwindows;
     else if (isCPPinterface())
         sc->linkage = LINKcpp;
-    sc->structalign = 8;
+    sc->structalign = STRUCTALIGN_DEFAULT;
     sc->protection = PROTpublic;
     sc->explicitProtection = 0;
-    structalign = sc->structalign;
+//    structalign = sc->structalign;
     sc->offset = PTRSIZE * 2;
     structsize = sc->offset;
     inuse++;
