@@ -1131,6 +1131,15 @@ bool obj_includelib(const char *name)
     return true;
 }
 
+/**********************************
+ * Do we allow zero sized objects?
+ */
+
+bool obj_allowZeroSize()
+{
+    return false;
+}
+
 /**************************
  * Embed string in executable.
  */
@@ -2773,7 +2782,7 @@ STATIC void obj_modend()
     else
     {   static const char modend[] = {0};
 
-        objrecord(MODEND,modend,sizeof(modend));
+        objrecord(obj.mmodend,modend,sizeof(modend));
     }
 }
 

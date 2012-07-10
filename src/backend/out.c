@@ -336,16 +336,16 @@ void outdata(symbol *s)
         s->Sseg = seg;
     else
         seg = s->Sseg;
-    if (s->Sclass == SCglobal || s->Sclass == SCstatic)
-    {
-        objpubdefsize(s->Sseg,s,s->Soffset,datasize); // do the definition
-    }
 #endif
 #if OMFOBJ
     s->Sseg = seg;
-    if (s->Sclass == SCglobal)          /* if a pubdef to be done       */
-        objpubdef(seg,s,s->Soffset);    /* do the definition            */
 #endif
+    if (s->Sclass == SCglobal
+#if ELFOBJ || MACHOBJ
+        || s->Sclass == SCstatic
+#endif
+        )
+        objpubdefsize(seg,s,s->Soffset,datasize);    /* do the definition            */
     assert(s->Sseg != UNKNOWN);
     if (config.fulltypes &&
         !(s->Sclass == SCstatic && funcsym_p)) // not local static
@@ -940,7 +940,7 @@ STATIC void writefunc2(symbol *sfunc)
 #if VBTABLES
             n2_genvbtbl(stag,scvtbl,1);
 #endif
-#if OMFOBJ
+#if SYMDEB_CODEVIEW
             if (config.fulltypes == CV4)
                 cv4_struct(stag,2);
 #endif
@@ -1458,6 +1458,7 @@ symbol *out_readonly_sym(tym_t ty, void *p, int len)
 
     alignOffset(DATA, sz);
     s = symboldata(Doffset,ty | mTYconst);
+    s->Sseg = DATA;
     obj_write_bytes(SegData[DATA], len, p);
     //printf("s->Sseg = %d:x%x\n", s->Sseg, s->Soffset);
 #endif
