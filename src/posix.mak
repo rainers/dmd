@@ -68,7 +68,7 @@ CFLAGS = $(GFLAGS) -I$(ROOT) -DMARS=1 -DTARGET_$(TARGET)=1
 MFLAGS = $(GFLAGS) -I$C -I$(TK) -I$(ROOT) -DMARS=1 -DTARGET_$(TARGET)=1
 
 CH= $C/cc.h $C/global.h $C/oper.h $C/code.h $C/type.h \
-	$C/dt.h $C/cgcv.h $C/el.h $C/iasm.h
+	$C/dt.h $C/cgcv.h $C/el.h $C/iasm.h $C/obj.h
 
 DMD_OBJS = \
 	access.o array.o attrib.o bcomplex.o blockopt.o \
@@ -77,7 +77,7 @@ DMD_OBJS = \
 	constfold.o irstate.o cond.o debug.o \
 	declaration.o dsymbol.o dt.o dump.o e2ir.o ee.o eh.o el.o \
 	dwarf.o enum.o evalu8.o expression.o func.o gdag.o gflow.o \
-	glocal.o gloop.o glue.o gnuc.o go.o gother.o html.o iasm.o id.o \
+	glocal.o gloop.o glue.o gnuc.o go.o gother.o iasm.o id.o \
 	identifier.o impcnvtab.o import.o inifile.o init.o inline.o \
 	lexer.o link.o mangle.o mars.o rmem.o module.o msc.o mtype.o \
 	nteh.o cppmangle.o opover.o optimize.o os.o out.o outbuf.o \
@@ -117,14 +117,14 @@ SRC = win32.mak posix.mak \
 	scanmscoff.c \
 	$C/cdef.h $C/cc.h $C/oper.h $C/ty.h $C/optabgen.c \
 	$C/global.h $C/code.h $C/type.h $C/dt.h $C/cgcv.h \
-	$C/el.h $C/iasm.h $C/rtlsym.h $C/html.h \
+	$C/el.h $C/iasm.h $C/rtlsym.h \
 	$C/bcomplex.c $C/blockopt.c $C/cg.c $C/cg87.c $C/cgxmm.c \
 	$C/cgcod.c $C/cgcs.c $C/cgcv.c $C/cgelem.c $C/cgen.c $C/cgobj.c \
 	$C/cgreg.c $C/var.c $C/strtold.c \
 	$C/cgsched.c $C/cod1.c $C/cod2.c $C/cod3.c $C/cod4.c $C/cod5.c \
 	$C/code.c $C/symbol.c $C/debug.c $C/dt.c $C/ee.c $C/el.c \
 	$C/evalu8.c $C/go.c $C/gflow.c $C/gdag.c \
-	$C/gother.c $C/glocal.c $C/gloop.c $C/html.c $C/newman.c \
+	$C/gother.c $C/glocal.c $C/gloop.c $C/newman.c \
 	$C/nteh.c $C/os.c $C/out.c $C/outbuf.c $C/ptrntab.c $C/rtlsym.c \
 	$C/type.c $C/melf.h $C/mach.h $C/mscoff.h $C/bcomplex.h \
 	$C/cdeflnx.h $C/outbuf.h $C/token.h $C/tassert.h \
@@ -132,7 +132,7 @@ SRC = win32.mak posix.mak \
 	$C/dwarf.c $C/dwarf.h $C/aa.h $C/aa.c $C/tinfo.h $C/ti_achar.c \
 	$C/ti_pvoid.c \
 	$C/machobj.c $C/mscoffobj.c \
-	$C/xmm.h \
+	$C/xmm.h $C/obj.h \
 	$(TK)/filespec.h $(TK)/mem.h $(TK)/list.h $(TK)/vec.h \
 	$(TK)/filespec.c $(TK)/mem.c $(TK)/vec.c $(TK)/list.c \
 	$(ROOT)/root.h $(ROOT)/root.c $(ROOT)/array.c \
@@ -388,9 +388,6 @@ gother.o: $C/gother.c
 hdrgen.o: hdrgen.c
 	$(CC) -c $(CFLAGS) $<
 
-html.o: $C/html.c $(CH) $C/html.h
-	$(CC) -c $(MFLAGS) -I$(ROOT) $<
-
 iasm.o: iasm.c $(CH) $C/iasm.h
 	$(CC) -c $(MFLAGS) -I$(ROOT) -fexceptions $<
 
@@ -460,7 +457,7 @@ mars.o: mars.c
 rmem.o: $(ROOT)/rmem.c
 	$(CC) -c $(GFLAGS) -I$(ROOT) $<
 
-module.o: module.c $C/html.h
+module.o: module.c
 	$(CC) -c $(CFLAGS) -I$C $<
 
 mscoffobj.o: $C/mscoffobj.c $C/mscoff.h

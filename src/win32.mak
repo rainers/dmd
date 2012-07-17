@@ -159,7 +159,7 @@ OBJ1= mars.obj enum.obj struct.obj dsymbol.obj import.obj id.obj \
 # D back end
 OBJ8= go.obj gdag.obj gother.obj gflow.obj gloop.obj var.obj el.obj \
 	newman.obj glocal.obj os.obj nteh.obj evalu8.obj cgcs.obj \
-	rtlsym.obj html.obj cgelem.obj cgen.obj cgreg.obj out.obj \
+	rtlsym.obj cgelem.obj cgen.obj cgreg.obj out.obj \
 	blockopt.obj cgobj.obj cg.obj cgcv.obj type.obj dt.obj \
 	debug.obj code.obj cg87.obj cgxmm.obj cgsched.obj ee.obj csymbol.obj \
 	cgcod.obj cod1.obj cod2.obj cod3.obj cod4.obj cod5.obj outbuf.obj \
@@ -199,14 +199,14 @@ SRCS= mars.c enum.c struct.c dsymbol.c import.c idgen.c impcnvgen.c utf.h \
 # D back end
 BACKSRC= $C\cdef.h $C\cc.h $C\oper.h $C\ty.h $C\optabgen.c \
 	$C\global.h $C\code.h $C\type.h $C\dt.h $C\cgcv.h \
-	$C\el.h $C\iasm.h $C\rtlsym.h $C\html.h \
+	$C\el.h $C\iasm.h $C\rtlsym.h \
 	$C\bcomplex.c $C\blockopt.c $C\cg.c $C\cg87.c $C\cgxmm.c \
 	$C\cgcod.c $C\cgcs.c $C\cgcv.c $C\cgelem.c $C\cgen.c $C\cgobj.c \
 	$C\cgreg.c $C\var.c \
 	$C\cgsched.c $C\cod1.c $C\cod2.c $C\cod3.c $C\cod4.c $C\cod5.c \
 	$C\code.c $C\symbol.c $C\debug.c $C\dt.c $C\ee.c $C\el.c \
 	$C\evalu8.c $C\go.c $C\gflow.c $C\gdag.c \
-	$C\gother.c $C\glocal.c $C\gloop.c $C\html.c $C\newman.c \
+	$C\gother.c $C\glocal.c $C\gloop.c $C\newman.c \
 	$C\nteh.c $C\os.c $C\out.c $C\outbuf.c $C\ptrntab.c $C\rtlsym.c \
 	$C\type.c $C\melf.h $C\mach.h $C\mscoff.h $C\bcomplex.h \
 	$C\cdeflnx.h $C\outbuf.h $C\token.h $C\tassert.h \
@@ -214,7 +214,7 @@ BACKSRC= $C\cdef.h $C\cc.h $C\oper.h $C\ty.h $C\optabgen.c \
 	$C\dwarf.c $C\dwarf.h $C\cppman.c $C\machobj.c \
 	$C\strtold.c $C\aa.h $C\aa.c $C\tinfo.h $C\ti_achar.c \
 	$C\md5.h $C\md5.c $C\ti_pvoid.c $C\xmm.h \
-	$C\mscoffobj.c \
+	$C\mscoffobj.c $C\obj.h \
 	$C\backend.txt
 
 # Toolkit
@@ -240,7 +240,7 @@ ROOTSRC= $(ROOT)\root.h $(ROOT)\root.c $(ROOT)\array.c \
 #TOTALH=total.sym # Use with pre-compiled headers
 TOTALH=id.h
 CH= $C\cc.h $C\global.h $C\oper.h $C\code.h $C\type.h $C\dt.h $C\cgcv.h \
-	$C\el.h $C\iasm.h
+	$C\el.h $C\iasm.h $C\obj.h
 
 # Makefiles
 MAKEFILES=win32.mak posix.mak
@@ -482,9 +482,6 @@ gloop.obj : $C\gloop.c
 glue.obj : $(CH) $(TOTALH) $C\rtlsym.h mars.h module.h glue.c
 	$(CC) -c $(MFLAGS) -I$(ROOT) glue
 
-html.obj : $(CH) $(TOTALH) $C\html.h $C\html.c
-	$(CC) -c -I$(ROOT) $(MFLAGS) $C\html
-
 imphint.obj : imphint.c
 	$(CC) -c $(CFLAGS) $*
 
@@ -494,14 +491,14 @@ mars.obj : $(TOTALH) module.h mars.h mars.c
 md5.obj : $C\md5.h $C\md5.c
 	$(CC) -c $(MFLAGS) $C\md5
 
-module.obj : $(TOTALH) $C\html.h module.c
+module.obj : $(TOTALH) module.c
 	$(CC) -c $(CFLAGS) -I$C $(PREC) module.c
 
 msc.obj : $(CH) mars.h msc.c
 	$(CC) -c $(MFLAGS) -I$(ROOT) msc
 
 mscoffobj.obj : $C\mscoff.h $C\mscoffobj.c
-	$(CC) -c $(MFLAGS) $C\mscoffobj
+	$(CC) -c $(MFLAGS) -I.;$(ROOT) $C\mscoffobj
 
 newman.obj : $(CH) $C\newman.c
 	$(CC) -c $(MFLAGS) $C\newman
