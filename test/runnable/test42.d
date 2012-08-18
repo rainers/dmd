@@ -5028,6 +5028,14 @@ void test7911()
 }
 
 /***************************************************/
+// 8429
+
+static if(true)
+    version = Foo8429;
+static if(true)
+    version(Foo8429) {}
+
+/***************************************************/
 // 8069
 
 interface I8069
@@ -5175,6 +5183,58 @@ void test246()
         void method() {}
     }
     auto val = Struct();
+}
+
+/***************************************************/
+
+double sqrt8454(double d) { return d/2; }
+void foo8454(cdouble m) {}
+void test8454() {
+    foo8454(0 - sqrt8454(1.0) * 1i);
+}
+
+/***************************************************/
+// 8423
+
+struct S8423
+{
+    int opCmp(S8423 rhs)
+    {
+        return 1;
+    }
+}
+
+void enforce8423(bool value, string a, string b)
+{
+    if (!value) assert(false);
+}
+
+void test8423()
+{
+    auto a = S8423();
+    auto b = S8423();
+    enforce8423(a > b, null, null);
+}
+
+/***************************************************/
+class Foo8496
+{
+public:
+    void foo(uint value)
+    {
+        ubyte size = value < (0x7fU << 0 ) ? 1 :
+                     value < (0x7fU << 14) ? 2 :
+                                             3;
+        import std.stdio;
+        writeln(size);
+	assert(size == 2);
+    }
+}
+
+void test8496()
+{
+    Foo8496 f = new Foo8496();
+    f.foo(1000000);
 }
 
 /***************************************************/
@@ -5439,6 +5499,9 @@ int main()
     test6189_2();
     test8199();
     test246();
+    test8454();
+    test8423();
+    test8496();
 
     writefln("Success");
     return 0;

@@ -222,10 +222,10 @@ void obj_start(char *srcfile)
     slist_reset();
     clearStringTab();
 
-#if TARGET_WINDOWS
+#if TARGET_WINDOS
     // Produce Ms COFF files for 64 bit code, OMF for 32 bit code
-    objmod = I64 ? MsCoffObj::init(&objbuf, srcfile, NULL)
-                 :       Obj::init(&objbuf, srcfile, NULL);
+    objmod = global.params.is64bit == 1 ? MsCoffObj::init(&objbuf, srcfile, NULL)
+                                        :       Obj::init(&objbuf, srcfile, NULL);
 #else
     objmod = Obj::init(&objbuf, srcfile, NULL);
 #endif
@@ -643,8 +643,16 @@ void FuncDeclaration::toObjFile(int multiobj)
         else if (strcmp(s->Sident, "main") == 0 && linkage == LINKc)
         {
 #if TARGET_WINDOS
-            objmod->external_def("__acrtused_con");        // bring in C startup code
-            objmod->includelib("snn.lib");          // bring in C runtime library
+            if (I64)
+            {
+                objmod->includelib("LIBCMT");
+                objmod->includelib("OLDNAMES");
+            }
+            else
+            {
+                objmod->external_def("__acrtused_con");        // bring in C startup code
+                objmod->includelib("snn.lib");          // bring in C runtime library
+            }
 #endif
             s->Sclass = SCglobal;
         }

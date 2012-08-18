@@ -556,6 +556,7 @@ int Obj::data_readonly(char *p, int len)
 
 Obj *Obj::init(Outbuffer *objbuf, const char *filename, const char *csegname)
 {
+        //printf("Obj::init()\n");
         Obj *mobj = new Obj();
 
         memset(&obj,0,sizeof(obj));
@@ -640,17 +641,19 @@ Obj *Obj::init(Outbuffer *objbuf, const char *filename, const char *csegname)
             seg_count = DEBTYP;
         }
 
-        Obj::theadr(filename);
+        mobj->theadr(filename);
         obj.modname = filename;
         if (!csegname || !*csegname)            // if no code seg name supplied
             obj.csegname = objmodtoseg(obj.modname);    // generate one
         else
             obj.csegname = mem_strdup(csegname);        // our own copy
         objheader(obj.csegname);
-        Obj::segment_group(0,0,0,0);             // obj seg and grp info
+        mobj->segment_group(0,0,0,0);             // obj seg and grp info
         ledata_new(cseg,0);             // so ledata is never NULL
         if (config.fulltypes)           // if full typing information
+        {   objmod = mobj;
             cv_init();                  // initialize debug output code
+        }
 
         return mobj;
 }
@@ -1031,7 +1034,7 @@ STATIC void linnum_term()
         if (filename != lastfilename)
         {
             if (filename)
-                Obj::theadr(filename);
+                objmod->theadr(filename);
             lastfilename = filename;
         }
 #endif
@@ -1053,7 +1056,7 @@ STATIC void linnum_term()
                     offset = *(unsigned long *)&ln->data[u];
                 else
                     offset = *(unsigned short *)&ln->data[u];
-                Obj::linnum(srcpos,offset);
+                objmod->linnum(srcpos,offset);
                 u += intsize;
             }
             linnum_flush();
@@ -1204,7 +1207,7 @@ STATIC void obj_defaultlib()
 
     if (!(config.flags2 & CFG2nodeflib))
     {
-        Obj::includelib(configv.deflibname ? configv.deflibname : library);
+        objmod->includelib(configv.deflibname ? configv.deflibname : library);
     }
 }
 
@@ -1643,6 +1646,11 @@ void Obj::staticctor(Symbol *s,int dtor,int seg)
     }
 }
 
+void Obj::staticdtor(Symbol *s)
+{
+    assert(0);
+}
+
 //#else
 
 /***************************************
@@ -1755,6 +1763,11 @@ void Obj::ehtables(Symbol *sfunc,targ_size_t size,Symbol *ehsym)
     offset += Obj::reftoident(obj.fisegi,offset,ehsym,0,0);   // pointer to data
     Obj::bytes(obj.fisegi,offset,intsize,&size);          // size of function
     SegData[obj.fisegi]->SDoffset = offset + intsize;
+}
+
+void Obj::ehsections()
+{
+    assert(0);
 }
 
 /***************************************
@@ -2360,7 +2373,7 @@ int Obj::data_start(Symbol *sdata, targ_size_t datasize, int seg)
     if (sdata->Salignment > 0)
     {   if (SegData[seg]->SDalignment < sdata->Salignment)
             SegData[seg]->SDalignment = sdata->Salignment;
-        alignbytes = (offset + sdata->Salignment - 1) & ~(sdata->Salignment - 1);
+        alignbytes = ((offset + sdata->Salignment - 1) & ~(sdata->Salignment - 1)) - offset;
     }
     else
         alignbytes = align(datasize, offset) - offset;
@@ -2406,6 +2419,7 @@ void Obj::pubdef(int seg,Symbol *s,targ_size_t offset)
     char *p;
     unsigned ti;
 
+    assert(offset < 100000000);
     int idx = SegData[seg]->segidx;
     if (obj.pubdatai + 1 + (IDMAX + IDOHD) + 4 + 2 > sizeof(obj.pubdata) ||
         idx != getindex(obj.pubdata + 1))
@@ -2529,6 +2543,11 @@ static unsigned storelength(unsigned long length,unsigned i)
             i += 2;
     }
     return i + 1;               // index past where we stuffed length
+}
+
+int Obj::common_block(Symbol *s,targ_size_t size,targ_size_t count)
+{
+    return common_block(s, 0, size, count);
 }
 
 int Obj::common_block(Symbol *s,int flag,targ_size_t size,targ_size_t count)
@@ -2688,7 +2707,7 @@ STATIC void obj_modend()
                 {
                  Ladd:
                     s->Sclass = SCextern;
-                    external = Obj::external(s);
+                    external = objmod->external(s);
                     outextdata();
                 }
                 break;

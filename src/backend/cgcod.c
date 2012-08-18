@@ -1,5 +1,5 @@
 // Copyright (C) 1985-1998 by Symantec
-// Copyright (C) 2000-2009 by Digital Mars
+// Copyright (C) 2000-2012 by Digital Mars
 // All Rights Reserved
 // http://www.digitalmars.com
 // Written by Walter Bright
@@ -57,6 +57,10 @@ int Aalign;                     // alignment for Aoffset
 REGSAVE regsave;
 
 CGstate cgstate;                // state of code generator
+
+regm_t BYTEREGS = BYTEREGS_INIT;
+regm_t ALLREGS = ALLREGS_INIT;
+
 
 /************************************
  * # of bytes that SP is beyond BP.
@@ -250,8 +254,8 @@ tryagain:
         allregs |= cod3_useBP();                // see if we can use EBP
 
         // If pic code, but EBX was never needed
-        if (!(allregs & mBX) && !gotref)
-        {   allregs |= mBX;                     // EBX can now be used
+        if (!(allregs & mask[PICREG]) && !gotref)
+        {   allregs |= mask[PICREG];            // EBX can now be used
             cgreg_assign(retsym);
             pass = PASSreg;
         }
@@ -280,7 +284,7 @@ tryagain:
         cstop--;
 
     if (configv.addlinenumbers)
-        Obj::linnum(funcsym_p->Sfunc->Fstartline,Coffset);
+        objmod->linnum(funcsym_p->Sfunc->Fstartline,Coffset);
 
     // Otherwise, jmp's to startblock will execute the prolog again
     assert(!startblock->Bpred);
@@ -452,7 +456,7 @@ tryagain:
 #endif
     {   assert(!(config.flags & CFGromable));
         //printf("framehandleroffset = x%x, coffset = x%x\n",framehandleroffset,coffset);
-        Obj::reftocodeseg(cseg,framehandleroffset,coffset);
+        objmod->reftocodeseg(cseg,framehandleroffset,coffset);
     }
 #endif
 
@@ -493,7 +497,7 @@ tryagain:
            start of the last instruction
          */
         /* Instead, try offset to cleanup code  */
-        Obj::linnum(funcsym_p->Sfunc->Fendline,funcoffset + retoffset);
+        objmod->linnum(funcsym_p->Sfunc->Fendline,funcoffset + retoffset);
 
 #if MARS
     if (usednteh & NTEH_try)
@@ -813,7 +817,7 @@ Lagain:
     if (usednteh & NTEHjmonitor)
     {   Symbol *sthis;
 
-        for (si = 0; 1; si++)
+        for (SYMIDX si = 0; 1; si++)
         {   assert(si < globsym.top);
             sthis = globsym.tab[si];
             if (strcmp(sthis->Sident,"this") == 0)
@@ -1597,7 +1601,9 @@ code *allocreg(regm_t *pretregs,unsigned *preg,tym_t tym
 #ifdef DEBUG
 #define allocreg(a,b,c) allocreg((a),(b),(c),__LINE__,__FILE__)
 #endif
-{       regm_t r;
+{
+#if TX86
+        regm_t r;
         regm_t retregs;
         unsigned reg;
         unsigned msreg,lsreg;
@@ -1762,6 +1768,9 @@ L3:
         last2retregs = lastretregs;
         lastretregs = retregs;
         return getregs(retregs);
+#else
+#warning cpu specific code
+#endif
 }
 
 /*************************
@@ -1808,7 +1817,7 @@ STATIC code * cse_save(regm_t ms)
     regcon.cse.mops &= ~ms;
 
     /* Skip CSEs that are already saved */
-    for (regm = 1; regm <= mES; regm <<= 1)
+    for (regm = 1; regm < mask[NUMREGS]; regm <<= 1)
     {
         if (regm & ms)
         {   elem *e;
@@ -2225,7 +2234,7 @@ if (regcon.cse.mval & 1) elem_print(regcon.cse.value[i]);
         assert(I16);
         if (((csemask | emask) & DOUBLEREGS_16) == DOUBLEREGS_16)
         {
-            for (reg = AX; reg != -1; reg = dblreg[reg])
+            for (reg = 0; reg != -1; reg = dblreg[reg])
             {   assert((int) reg >= 0 && reg <= 7);
                 if (mask[reg] & csemask)
                     c = cat(c,loadcse(e,reg,mask[reg]));
@@ -2499,7 +2508,7 @@ code *scodelem(elem *e,regm_t *pretregs,regm_t keepmsk,bool constflag)
   oldregcon = regcon.cse.mval;
   oldregimmed = regcon.immed.mval;
   oldmfuncreg = mfuncreg;       /* remember old one                     */
-  mfuncreg = (mBP | mES | ALLREGS) & ~regcon.mvar;
+  mfuncreg = (XMMREGS | mBP | mES | ALLREGS) & ~regcon.mvar;
   stackpushsave = stackpush;
   calledafuncsave = calledafunc;
   calledafunc = 0;

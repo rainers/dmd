@@ -6358,7 +6358,7 @@ Expression *CompileExp::semantic(Scope *sc)
         return e1;
     if (!e1->type->isString())
     {
-        error("argument to mixin must be a string type, not %s\n", e1->type->toChars());
+        error("argument to mixin must be a string type, not %s", e1->type->toChars());
         return new ErrorExp();
     }
     e1 = e1->ctfeInterpret();
@@ -6960,33 +6960,42 @@ Expression *DotVarExp::semantic(Scope *sc)
             exps->reserve(tup->objects->dim);
             for (size_t i = 0; i < tup->objects->dim; i++)
             {   Object *o = (*tup->objects)[i];
-                if (o->dyncast() != DYNCAST_EXPRESSION)
+                Expression *e;
+                if (o->dyncast() == DYNCAST_EXPRESSION)
+                {
+                    e = (Expression *)o;
+                    if (e->op == TOKdsymbol)
+                    {
+                        Dsymbol *s = ((DsymbolExp *)e)->s;
+                        if (i == 0 && sc->func && tup->objects->dim > 1 &&
+                            e1->hasSideEffect())
+                        {
+                            Identifier *id = Lexer::uniqueId("__tup");
+                            ExpInitializer *ei = new ExpInitializer(e1->loc, e1);
+                            VarDeclaration *v = new VarDeclaration(e1->loc, NULL, id, ei);
+                            v->storage_class |= STCctfe | STCref | STCforeach;
+
+                            ev = new VarExp(e->loc, v);
+                            e = new CommaExp(e1->loc, new DeclarationExp(e1->loc, v), ev);
+                            e = new DotVarExp(loc, e, s->isDeclaration());
+                        }
+                        else
+                            e = new DotVarExp(loc, ev, s->isDeclaration());
+                    }
+                }
+                else if (o->dyncast() == DYNCAST_DSYMBOL)
+                {
+                    e = new DsymbolExp(loc, (Dsymbol *)o);
+                }
+                else if (o->dyncast() == DYNCAST_TYPE)
+                {
+                    e = new TypeExp(loc, (Type *)o);
+                }
+                else
                 {
                     error("%s is not an expression", o->toChars());
                     goto Lerr;
                 }
-
-                Expression *e = (Expression *)o;
-                if (e->op != TOKdsymbol)
-                {   error("%s is not a member", e->toChars());
-                    goto Lerr;
-                }
-
-                Dsymbol *s = ((DsymbolExp *)e)->s;
-                if (i == 0 && sc->func && tup->objects->dim > 1 &&
-                    e1->hasSideEffect())
-                {
-                    Identifier *id = Lexer::uniqueId("__tup");
-                    ExpInitializer *ei = new ExpInitializer(e1->loc, e1);
-                    VarDeclaration *v = new VarDeclaration(e1->loc, NULL, id, ei);
-                    v->storage_class |= STCctfe | STCref | STCforeach;
-
-                    ev = new VarExp(e->loc, v);
-                    e = new CommaExp(e1->loc, new DeclarationExp(e1->loc, v), ev);
-                    e = new DotVarExp(loc, e, s->isDeclaration());
-                }
-                else
-                    e = new DotVarExp(loc, ev, s->isDeclaration());
                 exps->push(e);
             }
             Expression *e = new TupleExp(loc, exps);
@@ -7463,11 +7472,14 @@ Expression *CallExp::resolveUFCS(Scope *sc)
     if (e->op == TOKerror || !e->type)
         return NULL;
 
-    if (e->op == TOKtype || e->op == TOKimport)
+    if (e->op == TOKtype || e->op == TOKimport || e->op == TOKdotexp)
         return NULL;
 
-    //printf("resolveUCSS %s, e->op = %s\n", toChars(), Token::toChars(e->op));
+    e = resolveProperties(sc, e);
+
     Type *t = e->type->toBasetype();
+    //printf("resolveUCSS %s, e = %s, %s, %s\n",
+    //    toChars(), Token::toChars(e->op), t->toChars(), e->toChars());
     if (t->ty == Taarray)
     {
         if (tiargs)
@@ -11492,6 +11504,7 @@ Expression *PowExp::semantic(Scope *sc)
         }
 
         static int importMathChecked = 0;
+        static bool importMath = false;
         if (!importMathChecked)
         {
             importMathChecked = 1;
@@ -11501,12 +11514,23 @@ Expression *PowExp::semantic(Scope *sc)
                 if (mi->ident == Id::math &&
                     mi->parent->ident == Id::std &&
                     !mi->parent->parent)
+                {
+                    importMath = true;
                     goto L1;
+                }
             }
             error("must import std.math to use ^^ operator");
             return new ErrorExp();
 
          L1: ;
+        }
+        else
+        {
+            if (!importMath)
+            {
+                error("must import std.math to use ^^ operator");
+                return new ErrorExp();
+            }
         }
 
         e = new IdentifierExp(loc, Id::empty);

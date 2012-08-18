@@ -45,9 +45,6 @@
 
 static Outbuffer *fobjbuf;
 
-regm_t BYTEREGS = BYTEREGS_INIT;
-regm_t ALLREGS = ALLREGS_INIT;
-
 static char __file__[] = __FILE__;      // for tassert.h
 #include        "tassert.h"
 
@@ -2019,7 +2016,7 @@ int Obj::data_start(Symbol *sdata, targ_size_t datasize, int seg)
     if (sdata->Salignment > 0)
     {   if (SegData[seg]->SDalignment < sdata->Salignment)
             SegData[seg]->SDalignment = sdata->Salignment;
-        alignbytes = (offset + sdata->Salignment - 1) & ~(sdata->Salignment - 1);
+        alignbytes = ((offset + sdata->Salignment - 1) & ~(sdata->Salignment - 1)) - offset;
     }
     else
         alignbytes = align(datasize, offset) - offset;
@@ -2151,7 +2148,7 @@ void Obj::pubdefsize(int seg, Symbol *s, targ_size_t offset, targ_size_t symsize
  *      NOTE: Numbers will not be linear.
  */
 
-int Obj::external(const char *name)
+int Obj::external_def(const char *name)
 {
     //dbg_printf("Obj::external_def('%s')\n",name);
     assert(name);
@@ -2160,10 +2157,6 @@ int Obj::external(const char *name)
     return symidx;
 }
 
-int Obj::external_def(const char *name)
-{
-    return Obj::external(name);
-}
 
 /*******************************
  * Output an external for existing symbol.
@@ -3002,68 +2995,14 @@ void Obj::moduleinfo(Symbol *scc)
         SegData[seg]->SDoffset += Obj::reftoident(seg, SegData[seg]->SDoffset, scc, 0, CFoffset64 | CFoff);
     }
 
-    /* Constructor that links the ModuleReference to the head of
-     * the list pointed to by _Dmoduleref
-     */
     {
-        /*      ret
-         * codeOffset:
-         *      pushad
-         *      mov     EAX,&ModuleReference
-         *      mov     ECX,_DmoduleRef
-         *      mov     EDX,[ECX]
-         *      mov     [EAX],EDX
-         *      mov     [ECX],EAX
-         *      popad
-         *      ret
-         */
-
         const int seg = CODE;
         Outbuffer *buf = SegData[seg]->SDbuf;
         SegData[seg]->SDoffset = buf->size();
         codeOffset = SegData[seg]->SDoffset;
 
-        if (I64 && config.flags3 & CFG3pic)
-        {   // LEA RAX,ModuleReference[RIP]
-            buf->writeByte(REX | REX_W);
-            buf->writeByte(0x8D);
-            buf->writeByte(modregrm(0,AX,5));
-            buf->write32(refOffset);
-            ElfObj::addrel(seg, codeOffset + 3, R_X86_64_PC32, STI_DATA, -4);
+        cod3_buildmodulector(buf, codeOffset, refOffset);
 
-            // MOV RCX,_DmoduleRef@GOTPCREL[RIP]
-            buf->writeByte(REX | REX_W);
-            buf->writeByte(0x8B);
-            buf->writeByte(modregrm(0,CX,5));
-            buf->write32(0);
-            ElfObj::addrel(seg, codeOffset + 10, R_X86_64_GOTPCREL, Obj::external("_Dmodule_ref"), -4);
-        }
-        else
-        {
-            const int reltype = I64 ? R_X86_64_32 : RI_TYPE_SYM32;
-
-            /* movl ModuleReference*, %eax */
-            buf->writeByte(0xB8);
-            buf->write32(refOffset);
-            ElfObj::addrel(seg, codeOffset + 1, reltype, STI_DATA, 0);
-
-            /* movl _Dmodule_ref, %ecx */
-            buf->writeByte(0xB9);
-            buf->write32(0);
-            ElfObj::addrel(seg, codeOffset + 6, reltype, Obj::external("_Dmodule_ref"), 0);
-        }
-
-        if (I64)
-            buf->writeByte(REX | REX_W);
-        buf->writeByte(0x8B); buf->writeByte(0x11); /* movl (%ecx), %edx */
-        if (I64)
-            buf->writeByte(REX | REX_W);
-        buf->writeByte(0x89); buf->writeByte(0x10); /* movl %edx, (%eax) */
-        if (I64)
-            buf->writeByte(REX | REX_W);
-        buf->writeByte(0x89); buf->writeByte(0x01); /* movl %eax, (%ecx) */
-
-        buf->writeByte(0xC3); /* ret */
         SegData[seg]->SDoffset = buf->size();
     }
 

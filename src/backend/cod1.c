@@ -776,7 +776,7 @@ code *getlvalue(code *pcs,elem *e,regm_t keepmsk)
   {     s = e->EV.sp.Vsym;
         fl = s->Sfl;
         if (tyfloating(s->ty()))
-            Obj::fltused();
+            objmod->fltused();
   }
   else
         fl = FLoper;
@@ -788,7 +788,7 @@ code *getlvalue(code *pcs,elem *e,regm_t keepmsk)
   tym_t ty = e->Ety;
   unsigned sz = tysize(ty);
   if (tyfloating(ty))
-        Obj::fltused();
+        objmod->fltused();
   if (I64 && (sz == 8 || sz == 16))
         pcs->Irex |= REX_W;
   if (!I16 && sz == SHORTSIZE)
@@ -2248,13 +2248,15 @@ code *callclib(elem *e,unsigned clib,regm_t *pretregs,regm_t keepmask)
             c = cod3_stackadj(c, -nalign);
         calledafunc = 1;
 
+#if SCPP & TX86
         if (I16 &&                                   // bug in Optlink for weak references
             config.flags3 & CFG3wkfloat &&
             (info[clib].flags & (INFfloat | INFwkdone)) == INFfloat)
         {   info[clib].flags |= INFwkdone;
             makeitextern(rtlsym[RTLSYM_INTONLY]);
-            Obj::wkext(s,rtlsym[RTLSYM_INTONLY]);
+            objmod->wkext(s,rtlsym[RTLSYM_INTONLY]);
         }
+#endif
     }
     if (I16)
         stackpush -= info[clib].pop;
@@ -2315,6 +2317,16 @@ FuncParamRegs::FuncParamRegs(tym_t tyf)
         else
             numintegerregs = 0;
         numfloatregs = 0;
+    }
+    else if (I64 && config.exe == EX_WIN64)
+    {
+        static const unsigned char reglist[] = { CX,DX,R8,R9 };
+        argregs = reglist;
+        numintegerregs = sizeof(reglist) / sizeof(reglist[0]);
+
+        static const unsigned char freglist[] = { XMM0, XMM1, XMM2, XMM3 };
+        floatregs = freglist;
+        numfloatregs = sizeof(freglist) / sizeof(freglist[0]);
     }
     else if (I64)
     {
@@ -2401,6 +2413,7 @@ int FuncParamRegs::alloc(type *t, tym_t ty, reg_t *preg1, reg_t *preg2)
     }
 
     if (I64 &&
+        config.exe != EX_WIN64 &&
         tybasic(ty) == TYcdouble &&
         numfloatregs - xmmcnt >= 2)
     {
@@ -2420,6 +2433,8 @@ int FuncParamRegs::alloc(type *t, tym_t ty, reg_t *preg1, reg_t *preg2)
             {
                 *preg = argregs[regcnt];
                 ++regcnt;
+                if (config.exe == EX_WIN64)
+                    ++xmmcnt;
                 goto Lnext;
             }
         }
@@ -2428,6 +2443,8 @@ int FuncParamRegs::alloc(type *t, tym_t ty, reg_t *preg1, reg_t *preg2)
             if (tyxmmreg(ty))
             {
                 *preg = floatregs[xmmcnt];
+                if (config.exe == EX_WIN64)
+                    ++regcnt;
                 ++xmmcnt;
                 goto Lnext;
             }
@@ -2501,7 +2518,11 @@ code *cdfunc(elem *e,regm_t *pretregs)
     {
         elem *ep = parameters[i].e;
         if (fpr.alloc(ep->ET, ep->Ety, &parameters[i].reg, &parameters[i].reg2))
+        {
+            if (config.exe == EX_WIN64)
+                numpara += REGSIZE;             // allocate stack space for it anyway
             continue;   // goes in register, not stack
+        }
 
         // Parameter i goes on the stack
         parameters[i].reg = NOREG;
@@ -2692,12 +2713,20 @@ code *cdfunc(elem *e,regm_t *pretregs)
         }
     }
 
+    if (np && config.exe == EX_WIN64)
+    {   // Allocate stack space for them anyway
+        unsigned sz = np * REGSIZE;
+        c = cod3_stackadj(c, sz);
+        c = genadjesp(c, sz);
+        stackpush += sz;
+    }
+
     // Restore any register parameters we saved
     c = cat4(c, getregs(saved), crest, NULL);
     keepmsk |= saved;
 
     // Variadic functions store the number of XMM registers used in AL
-    if (I64 && e->Eflags & EFLAGS_variadic)
+    if (I64 && config.exe != EX_WIN64 && e->Eflags & EFLAGS_variadic)
     {   code *c1 = getregs(mAX);
         c1 = movregconst(c1,AX,xmmcnt,1);
         c = cat(c, c1);
@@ -3088,7 +3117,7 @@ code *params(elem *e,unsigned stackalign)
 
   tym = tybasic(e->Ety);
   if (tyfloating(tym))
-        Obj::fltused();
+        objmod->fltused();
 
   int grex = I64 ? REX_W << 16 : 0;
 
@@ -3731,7 +3760,7 @@ code *loaddata(elem *e,regm_t *pretregs)
   if (tym == TYstruct)
         return cdrelconst(e,pretregs);
   if (tyfloating(tym))
-  {     Obj::fltused();
+  {     objmod->fltused();
         if (config.inline8087)
         {   if (*pretregs & mST0)
                 return load87(e,0,pretregs,NULL,-1);

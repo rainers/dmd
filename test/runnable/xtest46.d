@@ -830,6 +830,7 @@ void test44()
 }
 
 /***************************************************/
+// 2006
 
 void test2006()
 {
@@ -839,6 +840,15 @@ void test2006()
     assert(aas.length == 1);
     aas = aas ~ cast (string []) [];
     assert(aas.length == 2);
+}
+
+/***************************************************/
+// 8442
+
+void test8442()
+{
+    enum int[] fooEnum = [];
+    immutable fooImmutable = fooEnum;
 }
 
 /***************************************************/
@@ -5280,17 +5290,32 @@ struct DT160
 
 void foo160(DT160 dateTime)
 {
-        printf("test7 year %d, day %d\n", dateTime._date._year, dateTime._date._day);
-	assert(dateTime._date._year == 1999);
-	assert(dateTime._date._day == 6);
+    printf("test7 year %d, day %d\n", dateTime._date._year, dateTime._date._day);
+    assert(dateTime._date._year == 1999);
+    assert(dateTime._date._day == 6);
 }
 
-void test160() {
-        auto dateTime = DT160(1999, 7, 6, 12, 30, 33);
-        printf("test5 year %d, day %d\n", dateTime._date._year, dateTime._date._day);
-	assert(dateTime._date._year == 1999);
-	assert(dateTime._date._day == 6);
-        foo160(DT160(1999, 7, 6, 12, 30, 33));
+void test160()
+{
+    auto dateTime = DT160(1999, 7, 6, 12, 30, 33);
+    printf("test5 year %d, day %d\n", dateTime._date._year, dateTime._date._day);
+    assert(dateTime._date._year == 1999);
+    assert(dateTime._date._day == 6);
+    foo160(DT160(1999, 7, 6, 12, 30, 33));
+}
+
+/***************************************************/
+// 8437
+
+class Cgi8437
+{
+    struct PostParserState {
+        UploadedFile piece;
+    }
+
+    static struct UploadedFile {
+        string contentFilename;
+    }
 }
 
 /***************************************************/
@@ -5386,6 +5411,7 @@ int main()
     test84();
     test85();
     test2006();
+    test8442();
     test86();
     test87();
     test5554();

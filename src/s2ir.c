@@ -64,7 +64,8 @@ StructDeclaration *needsPostblit(Type *t);
 #if SEH
 void setScopeIndex(Blockx *blx, block *b, int scope_index)
 {
-    block_appendexp(b, nteh_setScopeTableIndex(blx, scope_index));
+    if (!global.params.is64bit)
+        block_appendexp(b, nteh_setScopeTableIndex(blx, scope_index));
 }
 #else
 #define setScopeIndex(blx, b, scope_index) ;
@@ -1476,7 +1477,8 @@ void TryCatchStatement::toIR(IRState *irs)
     Blockx *blx = irs->blx;
 
 #if SEH
-    nteh_declarvars(blx);
+    if (!global.params.is64bit)
+        nteh_declarvars(blx);
 #endif
 
     IRState mystate(irs, this);
@@ -1554,7 +1556,8 @@ void TryFinallyStatement::toIR(IRState *irs)
     Blockx *blx = irs->blx;
 
 #if SEH
-    nteh_declarvars(blx);
+    if (!global.params.is64bit)
+        nteh_declarvars(blx);
 #endif
 
     block *tryblock = block_goto(blx, BCgoto, NULL);
@@ -1668,6 +1671,7 @@ void AsmStatement::toIR(IRState *irs)
                 break;
         }
 
+#if TX86
         // Repeat for second operand
         switch (c->IFL2)
         {
@@ -1691,6 +1695,7 @@ void AsmStatement::toIR(IRState *irs)
                     s->Sflags |= SFLlivexit;
                 break;
         }
+#endif
         //c->print();
     }
 

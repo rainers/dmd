@@ -69,9 +69,6 @@ const SInt32 MacOSX_10_6 = 0x1060;
 
 static Outbuffer *fobjbuf;
 
-regm_t BYTEREGS = BYTEREGS_INIT;
-regm_t ALLREGS = ALLREGS_INIT;
-
 static char __file__[] = __FILE__;      // for tassert.h
 #include        "tassert.h"
 
@@ -2079,7 +2076,7 @@ int Obj::data_start(Symbol *sdata, targ_size_t datasize, int seg)
     if (sdata->Salignment > 0)
     {   if (SegData[seg]->SDalignment < sdata->Salignment)
             SegData[seg]->SDalignment = sdata->Salignment;
-        alignbytes = (offset + sdata->Salignment - 1) & ~(sdata->Salignment - 1);
+        alignbytes = ((offset + sdata->Salignment - 1) & ~(sdata->Salignment - 1)) - offset;
     }
     else
         alignbytes = align(datasize, offset) - offset;
@@ -2185,7 +2182,7 @@ void Obj::pubdef(int seg, Symbol *s, targ_size_t offset)
  *      NOTE: Numbers will not be linear.
  */
 
-int Obj::external(const char *name)
+int Obj::external_def(const char *name)
 {
     //printf("Obj::external_def('%s')\n",name);
     assert(name);
@@ -2194,10 +2191,6 @@ int Obj::external(const char *name)
     return 0;
 }
 
-int Obj::external_def(const char *name)
-{
-    return Obj::external(name);
-}
 
 /*******************************
  * Output an external for existing symbol.
