@@ -2,7 +2,11 @@
 
 #include <time.h>
 
+#ifdef _MSC_VER
+#pragma pack(push,1)
+#else
 #pragma ZTC align 1
+#endif
 
 /***********************************************/
 
@@ -251,4 +255,8 @@ union auxent
 
 /***********************************************/
 
+#ifdef _MSC_VER
+#pragma pack(pop)
+#else
 #pragma ZTC align
+#endif
