@@ -75,6 +75,8 @@ void outthunk(symbol *sthunk,symbol *sfunc,unsigned p,tym_t thisty,
 
 #endif
 
+int Obj_noscan_seg();
+
 /***************************
  * Write out statically allocated data.
  * Input:
@@ -142,7 +144,7 @@ void outdata(symbol *s)
                 else
 #endif
                 {
-                    dt->DTabytes += objmod->data_readonly(dt->DTpbytes,dt->DTnbytes,&dt->DTseg);
+                    dt->DTabytes += objmod->data_readonly(dt->DTpbytes,dt->DTnbytes,&dt->DTseg); // += ??? data_readonly returns offset
                 }
                 break;
             }
@@ -309,13 +311,16 @@ void outdata(symbol *s)
         }
         case mTYnear:
         case 0:
+        {
+            int segdef = ((s->Stype->Tflags & TFhasPointers) ? DATA : Obj_noscan_seg());
             if (
                 s->Sseg == 0 ||
                 s->Sseg == UNKNOWN)
-                s->Sseg = DATA;
-            seg = objmod->data_start(s,datasize,DATA);
+                s->Sseg = segdef;
+            seg = objmod->data_start(s,datasize,segdef);
             s->Sfl = FLdata;            // initialized data
             break;
+        }
         default:
             assert(0);
       }

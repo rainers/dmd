@@ -250,6 +250,8 @@ type *type_alloc(tym_t ty)
         t = (type *) mem_fmalloc(sizeof(type));
     tzero.Tty = ty;
     *t = tzero;
+    if (tymptr(ty) || tyref(ty))
+        t->Tflags |= TFhasPointers;
 #if SRCPOS_4TYPES
     if (PARSER && config.fulltypes)
         t->Tsrcpos = getlinnum();

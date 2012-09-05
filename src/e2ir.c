@@ -1631,6 +1631,8 @@ elem *NewExp::toElem(IRState *irs)
                 ::type *tc = type_alloc(TYstruct);
                 tc->Ttag = (Classsym *)s;                // structure tag name
                 tc->Tcount++;
+                if(tclass->hasPointers())
+                    tc->Tflags |= TFhasPointers;
                 s->Stype = tc;
 
                 Symbol *stmp = symbol_genauto(tc);

@@ -123,6 +123,8 @@ type *TypeDArray::toCtype()
         t = type_alloc(TYstruct);
         t->Ttag = (Classsym *)s;                // structure tag name
         t->Tcount++;
+        if(hasPointers())
+            t->Tflags |= TFhasPointers;
         s->Stype = t;
     }
     else
@@ -177,6 +179,8 @@ type *TypeAArray::toCtype()
         t = type_alloc(TYstruct);
         t->Ttag = (Classsym *)s;                // structure tag name
         t->Tcount++;
+        if(hasPointers())
+            t->Tflags |= TFhasPointers;
         s->Stype = t;
     }
     else
@@ -299,6 +303,8 @@ type *TypeDelegate::toCtype()
         t = type_alloc(TYstruct);
         t->Ttag = (Classsym *)s;                // structure tag name
         t->Tcount++;
+        if(hasPointers())
+            t->Tflags |= TFhasPointers;
         s->Stype = t;
     }
     else
@@ -325,6 +331,8 @@ type *TypeStruct::toCtype()
 
     //printf("TypeStruct::toCtype() '%s'\n", sym->toChars());
     type *t = type_alloc(TYstruct);
+    if(sym->members && hasPointers()) // do not try on incomplete declaration
+        t->Tflags |= TFhasPointers;
     Type *tm = mutableOf();
     if (tm->ctype)
     {
@@ -414,6 +422,8 @@ type *TypeEnum::toCtype()
         t = type_alloc(TYenum);
         t->Ttag = (Classsym *)s;            // enum tag name
         t->Tcount++;
+        if(hasPointers())
+            t->Tflags |= TFhasPointers;
         t->Tnext = tm->ctype->Tnext;
         t->Tnext->Tcount++;
         // Add modifiers
@@ -452,6 +462,8 @@ type *TypeEnum::toCtype()
         t = type_alloc(TYenum);
         t->Ttag = (Classsym *)s;            // enum tag name
         t->Tcount++;
+        if(hasPointers())
+            t->Tflags |= TFhasPointers;
         t->Tnext = sym->memtype->toCtype();
         t->Tnext->Tcount++;
         s->Stype = t;
@@ -508,6 +520,8 @@ type *TypeClass::toCtype()
     t = type_alloc(TYstruct);
     t->Ttag = (Classsym *)s;            // structure tag name
     t->Tcount++;
+    if(hasPointers())
+        t->Tflags |= TFhasPointers;
     s->Stype = t;
     slist_add(s);
 

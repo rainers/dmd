@@ -292,6 +292,7 @@ struct Objstate
 
 #if MARS
     int fmsegi;                 // SegData[] of FM segment
+    int rosegi;                 // SegData[] of readonly segment
 #endif
 
     int tlssegi;                // SegData[] of tls segment
@@ -522,6 +523,46 @@ seg_data *getsegment()
     return pseg;
 }
 
+int Obj_noscan_seg()
+{
+    //return DATA;
+#define DATACLASS       6                       // data class lname index
+
+    if (obj.rosegi == 0)
+    {
+        static char lnames[] =
+        {   "\03ROB\02RO\03ROE"
+        };
+
+        // Put out LNAMES record
+        objrecord(LNAMES,lnames,sizeof(lnames) - 1);
+
+        int dsegattr = I32
+            ? SEG_ATTR(SEG_ALIGN4,SEG_C_PUBLIC,0,USE32)
+            : SEG_ATTR(SEG_ALIGN2,SEG_C_PUBLIC,0,USE16);
+
+        // Put out beginning segment
+        objsegdef(dsegattr,0,obj.lnameidx,DATACLASS);
+        obj.lnameidx++;
+        obj.segidx++;
+
+        // Put out segment definition record
+        obj.rosegi = obj_newfarseg(0,DATACLASS);
+        objsegdef(dsegattr,0,obj.lnameidx,DATACLASS);
+        SegData[obj.rosegi]->attr = dsegattr;
+        assert(SegData[obj.rosegi]->segidx == obj.segidx);
+
+        // Put out ending segment
+        objsegdef(dsegattr,0,obj.lnameidx + 1,DATACLASS);
+
+        obj.lnameidx += 2;              // for next time
+        obj.segidx += 2;
+
+//        dbg_printf("RO seg is %d\n", obj.rosegi);
+    }
+
+    return obj.rosegi;
+}
 
 /**************************
  * Ouput read only data for data.
@@ -533,10 +574,18 @@ seg_data *getsegment()
 
 int Obj::data_readonly(char *p, int len, int *pseg)
 {
+#if 1
+    // only called for string data
+    int seg = Obj_noscan_seg();
+    targ_size_t oldoff = SegData[seg]->SDoffset;
+    write_bytes(SegData[seg], len, p);
+    *pseg = seg;
+#else
     targ_size_t oldoff = Doffset;
     Obj::bytes(DATA,Doffset,len,p);
     Doffset += len;
     *pseg = DATA;
+#endif
     return oldoff;
 }
 

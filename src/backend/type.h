@@ -103,6 +103,7 @@ typedef struct TYPETEMP
 #define TFstatic        0x40    // TYarray: static dimension
 #define TFvla           0x80    // TYarray: variable length array
 #define TFemptyexc      0x100   // tyfunc(): empty exception specification
+#define TFhasPointers   0x1000  // has pointers (so it needs to be scanned)
 
 // C
 #define TFgenerated     4       // if we generated the prototype ourselves
