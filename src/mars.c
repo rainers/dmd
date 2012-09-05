@@ -404,6 +404,7 @@ int tryMain(int argc, char *argv[])
     int argcstart = argc;
     int setdebuglib = 0;
     char noboundscheck = 0;
+        int setdefaultlib = 0;
     const char *inifilename = NULL;
 
 #ifdef DEBUG
@@ -695,6 +696,8 @@ int tryMain(int argc, char *argv[])
                 global.params.quiet = 1;
             else if (strcmp(p + 1, "release") == 0)
                 global.params.release = 1;
+            else if (strcmp(p + 1, "betterC") == 0)
+                global.params.betterC = 1;
 #if DMDV2
             else if (strcmp(p + 1, "noboundscheck") == 0)
                 noboundscheck = 1;
@@ -786,6 +789,7 @@ int tryMain(int argc, char *argv[])
             }
             else if (memcmp(p + 1, "defaultlib=", 11) == 0)
             {
+                setdefaultlib = 1;
                 global.params.defaultlibname = p + 1 + 11;
             }
             else if (memcmp(p + 1, "debuglib=", 9) == 0)
@@ -978,6 +982,11 @@ int tryMain(int argc, char *argv[])
         VersionCondition::addPredefinedGlobalIdent("D_SIMD");
 #if TARGET_WINDOS
         VersionCondition::addPredefinedGlobalIdent("Win64");
+        if (!setdefaultlib)
+        {   global.params.defaultlibname = "phobos64";
+            if (!setdebuglib)
+                global.params.debuglibname = global.params.defaultlibname;
+        }
 #endif
     }
     else
@@ -1001,6 +1010,10 @@ int tryMain(int argc, char *argv[])
 #if DMDV2
     if (global.params.useUnitTests)
         VersionCondition::addPredefinedGlobalIdent("unittest");
+    if (global.params.useAssert)
+        VersionCondition::addPredefinedGlobalIdent("assert");
+    if (noboundscheck)
+        VersionCondition::addPredefinedGlobalIdent("D_NoBoundsChecks");
 #endif
 
     // Initialization

@@ -446,11 +446,11 @@ void Module::genobjfile(int multiobj)
         toModuleArray();
     }
 
-#if 1
-    // Always generate module info, because of templates and -cov
-    if (1 || needModuleInfo())
+    /* Always generate module info, because of templates and -cov.
+     * But module info needs the runtime library, so disable it for betterC.
+     */
+    if (!global.params.betterC /*|| needModuleInfo()*/)
         genmoduleinfo();
-#endif
 
     // If module assert
     for (int i = 0; i < 3; i++)
@@ -478,7 +478,7 @@ void Module::genobjfile(int multiobj)
                 Symbol *sp = symbol_calloc("linnum");
                 sp->Stype = type_fake(TYint);
                 sp->Stype->Tcount++;
-                sp->Sclass = SCfastpar;
+                sp->Sclass = (config.exe == EX_WIN64) ? SCshadowreg : SCfastpar;
 
                 FuncParamRegs fpr(TYjfunc);
                 fpr.alloc(sp->Stype, sp->Stype->Tty, &sp->Spreg, &sp->Spreg2);
@@ -635,6 +635,7 @@ void FuncDeclaration::toObjFile(int multiobj)
             objmod->ehsections();   // initialize exception handling sections
 #endif
 #if TARGET_WINDOS
+            if (!I64)
             objmod->external_def("__acrtused_con");
 #endif
             objmod->includelib(libname);
@@ -834,7 +835,7 @@ void FuncDeclaration::toObjFile(int multiobj)
         {   Symbol *sp = params[i];
             if (fpr.alloc(sp->Stype, sp->Stype->Tty, &sp->Spreg, &sp->Spreg2))
             {
-                sp->Sclass = SCfastpar;
+                sp->Sclass = (config.exe == EX_WIN64) ? SCshadowreg : SCfastpar;
                 sp->Sfl = FLauto;
             }
         }

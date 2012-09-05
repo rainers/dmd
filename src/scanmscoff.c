@@ -68,8 +68,12 @@ void scanMSCoffObjModule(void* pctx, void (*pAddSymbol)(void* pctx, char* name, 
             break;
 
         default:
-            error(loc, "MS-Coff object module %s has magic = %x, should be %x",
-                    module_name, header->f_magic, IMAGE_FILE_MACHINE_AMD64);
+            if (buf[0] == 0x80)
+                error(loc, "Object module %s is 32 bit OMF, but it should be 64 bit MS-Coff",
+                        module_name);
+            else
+                error(loc, "MS-Coff object module %s has magic = %x, should be %x",
+                        module_name, header->f_magic, IMAGE_FILE_MACHINE_AMD64);
             return;
     }
 
@@ -86,12 +90,12 @@ void scanMSCoffObjModule(void* pctx, void (*pAddSymbol)(void* pctx, char* name, 
         goto Lcorrupt;
     }
     unsigned long string_len = *(unsigned long *)(buf + off);
-    off += 4;
-    char *string_table = (char *)(buf + off);
+    char *string_table = (char *)(buf + off + 4);
     if (off + string_len > buflen)
     {   reason = __LINE__;
         goto Lcorrupt;
     }
+    string_len -= 4;
 
     for (long i = 0; i < header->f_nsyms; i++)
     {   struct syment *n;
@@ -127,6 +131,8 @@ void scanMSCoffObjModule(void* pctx, void (*pAddSymbol)(void* pctx, char* name, 
         {   case IMAGE_SYM_DEBUG:
                 continue;
             case IMAGE_SYM_ABSOLUTE:
+                if (strcmp(p, "@comp.id") == 0)
+                    continue;
                 break;
             case IMAGE_SYM_UNDEFINED:
                 // A non-zero value indicates a common block
@@ -142,15 +148,15 @@ void scanMSCoffObjModule(void* pctx, void (*pAddSymbol)(void* pctx, char* name, 
             case IMAGE_SYM_CLASS_EXTERNAL:
                 break;
             case IMAGE_SYM_CLASS_STATIC:
-                if (n->n_value == 0)            // if its a section name
+                if (n->n_value == 0)            // if it's a section name
                     continue;
-                break;
-            case IMAGE_SYM_CLASS_FUNCTION:
                 continue;
+            case IMAGE_SYM_CLASS_FUNCTION:
             case IMAGE_SYM_CLASS_FILE:
+            case IMAGE_SYM_CLASS_LABEL:
                 continue;
             default:
-                break;
+                continue;
         }
         (*pAddSymbol)(pctx, p, 1);
     }

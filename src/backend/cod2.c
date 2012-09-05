@@ -4023,6 +4023,21 @@ code *getoffset(elem *e,unsigned reg)
         }
         break;
     }
+#elif TARGET_WINDOS
+        if (I64)
+        {
+            assert(reg != STACK);
+            cs.IEVsym2 = e->EV.sp.Vsym;
+            cs.IEVoffset2 = e->EV.sp.Voffset;
+            cs.Iop = 0xB8 + (reg & 7);      // MOV Ereg,offset s
+            if (reg & 8)
+                cs.Irex |= REX_B;
+            cs.Iflags = CFoff;              // want offset only
+            cs.IFL2 = fl;
+            c = gen(NULL,&cs);
+            break;
+        }
+        goto L4;
 #else
         goto L4;
 #endif
@@ -4232,6 +4247,7 @@ code *cdabs( elem *e, regm_t *pretregs)
   tym_t tyml;
   code *c,*c1,*cg;
 
+  //printf("cdabs(e = %p, *pretregs = %s)\n", e, regm_str(*pretregs));
   if (*pretregs == 0)
         return codelem(e->E1,pretregs,FALSE);
   tyml = tybasic(e->E1->Ety);

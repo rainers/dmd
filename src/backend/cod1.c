@@ -1264,13 +1264,18 @@ code *getlvalue(code *pcs,elem *e,regm_t keepmsk)
     case FLreg:
         goto L2;
     case FLpara:
+        if (s->Sclass == SCshadowreg)
+            goto Lauto;
+    Lpara:
         refparam = TRUE;
         pcs->Irm = modregrm(2,0,BPRM);
         goto L2;
 
     case FLauto:
         if (s->Sclass == SCfastpar)
-        {   regm_t pregm = s->Spregm();
+        {
+    Lauto:
+            regm_t pregm = s->Spregm();
             /* See if the parameter is still hanging about in a register,
              * and so can we load from that register instead.
              */
@@ -1298,6 +1303,8 @@ code *getlvalue(code *pcs,elem *e,regm_t keepmsk)
                     regcon.params &= ~pregm;
             }
         }
+        if (s->Sclass == SCshadowreg)
+            goto Lpara;
     case FLtmp:
     case FLbprel:
         reflocal = TRUE;
@@ -1325,8 +1332,21 @@ code *getlvalue(code *pcs,elem *e,regm_t keepmsk)
                 pcs->Iflags = CFgs;
             }
             break;
-#else
-            pcs->Iflags |= CFfs;                // add FS: override
+#elif TARGET_WINDOS
+            if (I64)
+            {   // GS:[88]
+                pcs->Irm = modregrm(0, 0, 4);
+                pcs->Isib = modregrm(0, 4, 5);  // don't use [RIP] addressing
+                pcs->IFL1 = FLconst;
+                pcs->IEV1.Vuns = 88;
+                pcs->Iflags = CFgs;
+                pcs->Irex |= REX_W;
+                break;
+            }
+            else
+            {
+                pcs->Iflags |= CFfs;    // add FS: override
+            }
 #endif
         }
 #if TARGET_SEGMENTED
@@ -2403,7 +2423,8 @@ int FuncParamRegs::alloc(type *t, tym_t ty, reg_t *preg1, reg_t *preg2)
 
     if (I64 &&
         (tybasic(ty) == TYcent || tybasic(ty) == TYucent) &&
-        numintegerregs - regcnt >= 2)
+        numintegerregs - regcnt >= 2 &&
+        config.exe != EX_WIN64)
     {
         // Allocate to register pair
         *preg1 = argregs[regcnt];
@@ -2517,6 +2538,17 @@ code *cdfunc(elem *e,regm_t *pretregs)
     for (int i = np; --i >= 0;)
     {
         elem *ep = parameters[i].e;
+        unsigned psize = paramsize(ep, stackalign);
+        if (config.exe == EX_WIN64)
+        {
+            //printf("[%d] size = %u, numpara = %d ep = %p ", i, psize, numpara, ep); WRTYxx(ep->Ety); printf("\n");
+#ifdef DEBUG
+            if (psize > REGSIZE) elem_print(e);
+#endif
+            assert(psize <= REGSIZE);
+            psize = REGSIZE;
+        }
+        //printf("[%d] size = %u, numpara = %d ", i, psize, numpara); WRTYxx(ep->Ety); printf("\n");
         if (fpr.alloc(ep->ET, ep->Ety, &parameters[i].reg, &parameters[i].reg2))
         {
             if (config.exe == EX_WIN64)
@@ -2532,10 +2564,18 @@ code *cdfunc(elem *e,regm_t *pretregs)
         {   unsigned newnumpara = (numpara + (alignsize - 1)) & ~(alignsize - 1);
             parameters[i].numalign = newnumpara - numpara;
             numpara = newnumpara;
+            assert(config.exe != EX_WIN64);
         }
-        numpara += paramsize(ep,stackalign);
+        numpara += psize;
     }
 
+    if (config.exe == EX_WIN64)
+    {
+        if (numpara < 4 * REGSIZE)
+            numpara = 4 * REGSIZE;
+    }
+
+    //printf("numpara = %d, stackpush = %d\n", numpara, stackpush);
     assert((numpara & (REGSIZE - 1)) == 0);
     assert((stackpush & (REGSIZE - 1)) == 0);
 
@@ -2555,6 +2595,12 @@ code *cdfunc(elem *e,regm_t *pretregs)
         stackpush += numalign;
         stackpushsave += numalign;
     }
+    assert(stackpush == stackpushsave);
+    if (config.exe == EX_WIN64)
+    {
+        //printf("np = %d, numpara = %d, stackpush = %d\n", np, numpara, stackpush);
+        assert(numpara == ((np < 4) ? 4 * REGSIZE : np * REGSIZE));
+    }
 
     int regsaved[XMM7 + 1];
     memset(regsaved, -1, sizeof(regsaved));
@@ -2569,6 +2615,7 @@ code *cdfunc(elem *e,regm_t *pretregs)
     {
         elem *ep = parameters[i].e;
         int preg = parameters[i].reg;
+        //printf("parameter[%d] = %d, np = %d\n", i, preg, np);
         if (preg == NOREG)
         {
             /* Push parameter on stack, but keep track of registers used
@@ -2713,12 +2760,36 @@ code *cdfunc(elem *e,regm_t *pretregs)
         }
     }
 
-    if (np && config.exe == EX_WIN64)
-    {   // Allocate stack space for them anyway
-        unsigned sz = np * REGSIZE;
-        c = cod3_stackadj(c, sz);
-        c = genadjesp(c, sz);
-        stackpush += sz;
+    if (config.exe == EX_WIN64)
+    {   // Allocate stack space for four entries anyway
+        // http://msdn.microsoft.com/en-US/library/ew5tede7(v=vs.80)
+        {   unsigned sz = 4 * REGSIZE;
+            c = cod3_stackadj(c, sz);
+            c = genadjesp(c, sz);
+            stackpush += sz;
+        }
+
+        /* Variadic functions store XMM parameters into their corresponding GP registers
+         */
+        for (int i = 0; i < np; i++)
+        {
+            int preg = parameters[i].reg;
+            regm_t retregs = mask[preg];
+            if (retregs & XMMREGS)
+            {   int reg;
+
+                switch (preg)
+                {   case XMM0: reg = CX; break;
+                    case XMM1: reg = DX; break;
+                    case XMM2: reg = R8; break;
+                    case XMM3: reg = R9; break;
+                    default:   assert(0);
+                }
+                code *c1 = getregs(mask[reg]);
+                c1 = gen2(c1,STOD,(REX_W << 16) | modregxrmx(3,preg-XMM0,reg)); // MOVD reg,preg
+                c = cat(c,c1);
+            }
+        }
     }
 
     // Restore any register parameters we saved
@@ -2735,8 +2806,10 @@ code *cdfunc(elem *e,regm_t *pretregs)
 
     cgstate.stackclean--;
 
+#ifdef DEBUG
     if (numpara != stackpush - stackpushsave)
         printf("numpara = %d, stackpush = %d, stackpushsave = %d\n", numpara, stackpush, stackpushsave);
+#endif
     assert(numpara == stackpush - stackpushsave);
 
     return cat(c,funccall(e,numpara,numalign,pretregs,keepmsk));
@@ -3998,7 +4071,8 @@ code *loaddata(elem *e,regm_t *pretregs)
   else
   {
     // See if we can use register that parameter was passed in
-    if (regcon.params && e->EV.sp.Vsym->Sclass == SCfastpar &&
+    if (regcon.params &&
+        (e->EV.sp.Vsym->Sclass == SCfastpar || e->EV.sp.Vsym->Sclass == SCshadowreg) &&
         regcon.params & mask[e->EV.sp.Vsym->Spreg] &&
         !(e->Eoper == OPvar && e->EV.sp.Voffset > 0) && // Must be at the base of that variable
         sz <= REGSIZE)                  // make sure no 'paint' to a larger size happened

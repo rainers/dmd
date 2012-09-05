@@ -119,7 +119,7 @@ void outdata(symbol *s)
         objmod->export_symbol(s,0);        // export data definition
     for (dt_t *dt = dtstart; dt; dt = dt->DTnext)
     {
-        //printf("dt = %p, dt = %d\n",dt,dt->dt);
+        //printf("\tdt = %p, dt = %d\n",dt,dt->dt);
         switch (dt->dt)
         {   case DT_abytes:
             {   // Put out the data for the string, and
@@ -302,7 +302,8 @@ void outdata(symbol *s)
             break;
 #endif
         case mTYthread:
-        {   seg_data *pseg = objmod->tlsseg();
+        {
+            seg_data *pseg = objmod->tlsseg();
             s->Sseg = pseg->SDseg;
             objmod->data_start(s, datasize, s->Sseg);
             seg = pseg->SDseg;
@@ -337,6 +338,9 @@ void outdata(symbol *s)
     if (s->Sclass == SCglobal
 #if ELFOBJ || MACHOBJ
         || s->Sclass == SCstatic
+#endif
+#if OMFOBJ
+        || (s->Sclass == SCstatic && I64)
 #endif
         )
         objmod->pubdefsize(seg,s,s->Soffset,datasize);    /* do the definition            */
@@ -1075,6 +1079,7 @@ STATIC void writefunc2(symbol *sfunc)
                 goto L3;
             case SCregpar:
             case SCparameter:
+            case SCshadowreg:
 #endif
                 s->Sfl = FLpara;
                 if (tyf == TYifunc)

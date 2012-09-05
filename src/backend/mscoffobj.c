@@ -579,7 +579,19 @@ void build_syment_table()
 
         union auxent aux;
         memset(&aux, 0, sizeof(aux));
-        aux.x_section.length = psechdr->s_size;
+
+        // s_size is not set yet
+        //aux.x_section.length = psechdr->s_size;
+        if (pseg->SDbuf && pseg->SDbuf->size())
+            aux.x_section.length = pseg->SDbuf->size();
+        else
+            aux.x_section.length = pseg->SDoffset;
+
+        if (pseg->SDrel)
+            aux.x_section.NumberOfRelocations = pseg->SDrel->size() / sizeof(struct Relocation);
+
+        if (psechdr->s_flags & IMAGE_SCN_LNK_COMDAT)
+            aux.x_section.Selection = IMAGE_COMDAT_SELECT_ANY;
 
         syment_buf->write(&aux, sizeof(aux));
         //printf("%d %d %d %d %d %d\n", sizeof(aux.x_fd), sizeof(aux.x_bf), sizeof(aux.x_ef),
@@ -602,9 +614,10 @@ void build_syment_table()
         const char *name = s->Sident;
         size_t len = strlen(name);
         if (len > 8)
-        {   // Use /nnnn form
+        {   // Use offset into string table
             IDXSTR idx = MsCoffObj::addstr(string_table, name);
-            sprintf(sym.n_name, "/%d", idx);
+            sym.n_zeroes = 0;
+            sym.n_offset = idx;
         }
         else
         {   memcpy(sym.n_name, name, len);
@@ -624,7 +637,17 @@ void build_syment_table()
                 break;
         }
         sym.n_type = tyfunc(s->Stype->Tty) ? 0x20 : 0;
-        sym.n_sclass = IMAGE_SYM_CLASS_EXTERNAL;
+        switch (s->Sclass)
+        {
+            case SCstatic:
+            case SClocstat:
+                sym.n_sclass = IMAGE_SYM_CLASS_STATIC;
+                break;
+
+            default:
+                sym.n_sclass = IMAGE_SYM_CLASS_EXTERNAL;
+                break;
+        }
         sym.n_numaux = 0;
 
         syment_buf->write(&sym, sizeof(sym));
@@ -721,6 +744,8 @@ void MsCoffObj::term()
             psechdr->s_size = pseg->SDbuf->size();
             foffset += psechdr->s_size;
         }
+        else
+            psechdr->s_size = pseg->SDoffset;
     }
 
     // Compute file offsets of the relocation data
@@ -789,16 +814,16 @@ void MsCoffObj::term()
 
                 symbol *s = r->targsym;
                 const char *rs = r->rtype == RELaddr ? "addr" : "rel";
-                printf("%d:x%04lx : tseg %d tsym %s REL%s\n", seg, r->offset, r->targseg, s ? s->Sident : "0", rs);
+                //printf("%d:x%04lx : tseg %d tsym %s REL%s\n", seg, r->offset, r->targseg, s ? s->Sident : "0", rs);
                 if (s)
                 {
                     //printf("Relocation\n");
                     //symbol_print(s);
-                    if (pseg->isCode())
+                    if (1 || pseg->isCode())
                     {
                         if (I64)
                         {
-printf("test1\n");
+//printf("test1\n");
 #if 1
                             rel.r_type = (r->rtype == RELrel)
                                     ? IMAGE_REL_AMD64_REL32
@@ -1232,10 +1257,20 @@ void MsCoffObj::ehtables(Symbol *sfunc,targ_size_t size,Symbol *ehsym)
      */
 
     int align = I64 ? IMAGE_SCN_ALIGN_8BYTES : IMAGE_SCN_ALIGN_4BYTES;  // align to NPTRSIZE
-    // The size is sizeof(struct FuncTable) in deh2.d
-    int seg = MsCoffObj::getsegment("._deh_eh", IMAGE_SCN_CNT_INITIALIZED_DATA |
-                                          align |
-                                          IMAGE_SCN_MEM_READ);
+
+    MsCoffObj::getsegment("._deh_bg", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                      align |
+                                      IMAGE_SCN_MEM_READ);
+
+   // The size is sizeof(struct FuncTable) in deh2.d
+    int seg =
+    MsCoffObj::getsegment("._deh_eh", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                      align |
+                                      IMAGE_SCN_MEM_READ);
+
+    MsCoffObj::getsegment("._deh_en", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                      align |
+                                      IMAGE_SCN_MEM_READ);
 
     Outbuffer *buf = SegData[seg]->SDbuf;
     if (I64)
@@ -1252,46 +1287,76 @@ void MsCoffObj::ehtables(Symbol *sfunc,targ_size_t size,Symbol *ehsym)
 
 /*********************************************
  * Put out symbols that define the beginning/end of the .deh_eh section.
- * This gets called if this is the module with "main()" in it.
+ * This gets called if this is the module with "extern (D) main()" in it.
  */
 
 void MsCoffObj::ehsections()
 {
     //printf("MsCoffObj::ehsections()\n");
-#if 0
-    /* Determine Mac OSX version, and put out the sections slightly differently for each.
-     * This is needed because the linker on OSX 10.5 behaves differently than
-     * the linker on 10.6.
-     * See Bugzilla 3502 for more information.
-     */
-    static SInt32 MacVersion;
-    if (!MacVersion)
-        Gestalt(gestaltSystemVersion, &MacVersion);
+    int align = I64 ? IMAGE_SCN_ALIGN_8BYTES : IMAGE_SCN_ALIGN_4BYTES;
 
-    /* Exception handling sections
-     */
-    // 12 is size of struct FuncTable in D runtime
-    MsCoffObj::getsegment("__deh_beg", "__DATA", 2, S_COALESCED, 12);
-    int seg = MsCoffObj::getsegment("__deh_eh", "__DATA", 2, S_REGULAR);
-    Outbuffer *buf = SegData[seg]->SDbuf;
-    buf->writezeros(12);                // 12 is size of struct FuncTable in D runtime,
-                                        // this entry gets skipped over by __eh_finddata()
+    int segdeh_bg =
+    MsCoffObj::getsegment("._deh_bg", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                      align |
+                                      IMAGE_SCN_MEM_READ);
 
-    MsCoffObj::getsegment("__deh_end", "__DATA", 2, S_COALESCED, 4);
+   // The size is sizeof(struct FuncTable) in deh2.d
+    MsCoffObj::getsegment("._deh_eh", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                      align |
+                                      IMAGE_SCN_MEM_READ);
 
-    /* Thread local storage sections
+    int segdeh_en =
+    MsCoffObj::getsegment("._deh_en", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                      align |
+                                      IMAGE_SCN_MEM_READ);
+
+    /* Create symbol _eh_beg that sits just before the .minfodt segment
      */
-    MsCoffObj::getsegment("__tls_beg", "__DATA", 2, S_COALESCED, 4);
-    MsCoffObj::getsegment("__tls_data", "__DATA", 2, S_REGULAR, 4);
-    MsCoffObj::getsegment("__tlscoal_nt", "__DATA", 4, S_COALESCED, 4);
-    MsCoffObj::getsegment("__tls_end", "__DATA", 2, S_COALESCED, 4);
+    symbol *eh_beg = symbol_name("_deh_beg", SCstatic, tspvoid);
+    eh_beg->Sseg = segdeh_bg;
+    eh_beg->Soffset = 0;
+    symbuf->write(&eh_beg, sizeof(eh_beg));
+    Obj::bytes(segdeh_bg, 0, I64 ? 8 * 3 : 4 * 3, NULL);
+
+    /* Create symbol _eh_end that sits just after the ._deh_eh segment
+     */
+    symbol *eh_end = symbol_name("_deh_end", SCstatic, tspvoid);
+    eh_end->Sseg = segdeh_en;
+    eh_end->Soffset = 0;
+    symbuf->write(&eh_end, sizeof(eh_end));
+    Obj::bytes(segdeh_en, 0, I64 ? 8 : 4, NULL);
+
+    /*************************************************************************/
 
     /* Module info sections
      */
-    MsCoffObj::getsegment("__minfo_beg", "__DATA", 2, S_COALESCED, 4);
-    MsCoffObj::getsegment("__minfodata", "__DATA", 2, S_REGULAR, 4);
-    MsCoffObj::getsegment("__minfo_end", "__DATA", 2, S_COALESCED, 4);
-#endif
+    int segbg =
+    MsCoffObj::getsegment(".minfobg", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                      align |
+                                      IMAGE_SCN_MEM_READ);
+    MsCoffObj::getsegment(".minfodt", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                      align |
+                                      IMAGE_SCN_MEM_READ);
+    int segen =
+    MsCoffObj::getsegment(".minfoen", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                      align |
+                                      IMAGE_SCN_MEM_READ);
+
+    /* Create symbol _minfo_beg that sits just before the .minfodt segment
+     */
+    symbol *minfo_beg = symbol_name("_minfo_beg", SCstatic, tspvoid);
+    minfo_beg->Sseg = segbg;
+    minfo_beg->Soffset = 0;
+    symbuf->write(&minfo_beg, sizeof(minfo_beg));
+    Obj::bytes(segbg, 0, I64 ? 8 : 4, NULL);
+
+    /* Create symbol _minfo_end that sits just after the .minfodt segment
+     */
+    symbol *minfo_end = symbol_name("_minfo_end", SCstatic, tspvoid);
+    minfo_end->Sseg = segen;
+    minfo_end->Soffset = 0;
+    symbuf->write(&minfo_end, sizeof(minfo_end));
+    Obj::bytes(segen, 0, I64 ? 8 : 4, NULL);
 }
 
 /*********************************
@@ -1314,7 +1379,7 @@ int MsCoffObj::comdat(Symbol *s)
 
     //printf("MsCoffObj::comdat(Symbol* %s)\n",s->Sident);
     //symbol_print(s);
-    symbol_debug(s);
+    //symbol_debug(s);
 
     if (tyfunc(s->ty()))
     {
@@ -1376,7 +1441,7 @@ segidx_t MsCoffObj::getsegment(const char *sectname, unsigned long flags)
         if (!(flags & IMAGE_SCN_LNK_COMDAT) &&
             strncmp(ScnhdrTab[pseg->SDshtidx].s_name, sectname, 8) == 0)
         {
-            printf("\t%s\n", seg);
+            printf("\t%s\n", sectname);
             return seg;         // return existing segment
         }
     }
@@ -1384,6 +1449,7 @@ segidx_t MsCoffObj::getsegment(const char *sectname, unsigned long flags)
     segidx_t seg = getsegment2(addScnhdr(sectname, flags));
 
     //printf("\tseg_count = %d\n", seg_count);
+    printf("\tseg = %d, %d, %s\n", seg, SegData[seg]->SDshtidx, ScnhdrTab[SegData[seg]->SDshtidx].s_name);
     return seg;
 }
 
@@ -1489,7 +1555,7 @@ int MsCoffObj::codeseg(char *name,int suffix)
 
 seg_data *MsCoffObj::tlsseg()
 {
-    //printf("MsCoffObj::tlsseg(\n");
+    //printf("MsCoffObj::tlsseg\n");
 
     if (seg_tlsseg == UNKNOWN)
     {
@@ -1601,19 +1667,22 @@ char *obj_mangle2(Symbol *s,char *dest)
         case mTYman_cpp:
         case mTYman_d:
         case mTYman_sys:
+        case mTYman_c:
         case 0:
             if (len >= DEST_LEN)
                 dest = (char *)mem_malloc(len + 1);
             memcpy(dest,name,len+1);// copy in name and trailing 0
             break;
 
+#if 0
         case mTYman_c:
+            // Prepend _ to identifier
             if (len >= DEST_LEN - 1)
                 dest = (char *)mem_malloc(1 + len + 1);
             dest[0] = '_';
             memcpy(dest + 1,name,len+1);// copy in name and trailing 0
             break;
-
+#endif
 
         default:
 #ifdef DEBUG
@@ -1653,7 +1722,7 @@ segidx_t MsCoffObj::data_start(Symbol *sdata, targ_size_t datasize, segidx_t seg
 {
     targ_size_t alignbytes;
 
-    //printf("MsCoffObj::data_start(%s,size %d,seg %d)\n",sdata->Sident,datasize,seg);
+    printf("MsCoffObj::data_start(%s,size %d,seg %d)\n",sdata->Sident,datasize,seg);
     //symbol_print(sdata);
 
     assert(sdata->Sseg);
@@ -1756,6 +1825,11 @@ void MsCoffObj::pubdef(segidx_t seg, Symbol *s, targ_size_t offset)
     s->Sxtrnnum = 1;
 }
 
+void MsCoffObj::pubdefsize(int seg, Symbol *s, targ_size_t offset, targ_size_t symsize)
+{
+    pubdef(seg, s, offset);
+}
+
 /*******************************
  * Output an external symbol for name.
  * Input:
@@ -1770,8 +1844,8 @@ int MsCoffObj::external_def(const char *name)
 {
     //printf("MsCoffObj::external_def('%s')\n",name);
     assert(name);
-    assert(extdef == 0);
-    extdef = MsCoffObj::addstr(string_table, name);
+    symbol *s = symbol_name(name, SCextern, tspvoid);
+    symbuf->write(&s, sizeof(s));
     return 0;
 }
 
@@ -2108,7 +2182,7 @@ int MsCoffObj::reftoident(segidx_t seg, targ_size_t offset, Symbol *s, targ_size
         s->Sident,seg,(unsigned long long)offset,(unsigned long long)val,flags);
     printf("retsize = %d\n", retsize);
     //dbg_printf("Sseg = %d, Sxtrnnum = %d\n",s->Sseg,s->Sxtrnnum);
-    symbol_print(s);
+    //symbol_print(s);
 #endif
     assert(seg > 0);
     if (s->Sclass != SClocstat && !s->Sxtrnnum)
@@ -2223,7 +2297,7 @@ int MsCoffObj::reftoident(segidx_t seg, targ_size_t offset, Symbol *s, targ_size
         Outbuffer *buf = SegData[seg]->SDbuf;
         int save = buf->size();
         buf->setsize(offset);
-        //printf("offset = x%llx, val = x%llx\n", offset, val);
+        printf("offset = x%llx, val = x%llx\n", offset, val);
         if (retsize == 8)
             buf->write64(val);
         else
@@ -2268,18 +2342,28 @@ long elf_align(targ_size_t size, long foffset)
 
 /***************************************
  * Stuff pointer to ModuleInfo in its own segment.
+ * Input:
+ *      scc     symbol for ModuleInfo
  */
 
 #if MARS
 
 void MsCoffObj::moduleinfo(Symbol *scc)
 {
-    int align = I64 ? IMAGE_SCN_ALIGN_16BYTES : IMAGE_SCN_ALIGN_4BYTES;
+    int align = I64 ? IMAGE_SCN_ALIGN_8BYTES : IMAGE_SCN_ALIGN_4BYTES;
 
-    int seg = MsCoffObj::getsegment(".minfodt", IMAGE_SCN_CNT_INITIALIZED_DATA |
-                                             align |
-                                             IMAGE_SCN_MEM_READ |
-                                             IMAGE_SCN_MEM_WRITE);
+    /* Module info sections
+     */
+    MsCoffObj::getsegment(".minfobg", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                      align |
+                                      IMAGE_SCN_MEM_READ);
+    int seg =
+    MsCoffObj::getsegment(".minfodt", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                      align |
+                                      IMAGE_SCN_MEM_READ);
+    MsCoffObj::getsegment(".minfoen", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                      align |
+                                      IMAGE_SCN_MEM_READ);
     //printf("MsCoffObj::moduleinfo(%s) seg = %d:x%x\n", scc->Sident, seg, Offset(seg));
 
     int flags = CFoff;

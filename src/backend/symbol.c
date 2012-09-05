@@ -287,10 +287,11 @@ symbol * symbol_generate(int sclass,type *t)
 {   char name[10];
     static int tmpnum;
 
+    //printf("symbol_generate(_TMP%d)\n", tmpnum);
     sprintf(name,"_TMP%d",tmpnum++);
 #ifdef DEBUG
     symbol *s = symbol_name(name,sclass,t);
-    //symbol_print(s);
+    symbol_print(s);
     return s;
 #else
     return symbol_name(name,sclass,t);
@@ -933,6 +934,7 @@ void symbol_free(symbol *s)
                 case SCparameter:
                 case SCregpar:
                 case SCfastpar:
+                case SCshadowreg:
                 case SCregister:
                 case SCtmp:
                 case SCauto:
