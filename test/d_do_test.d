@@ -137,7 +137,7 @@ void gatherTestParameters(ref TestArgs testArgs, string input_dir, string input_
     {
         testArgs.requiredArgs ~= " ";
     }
-    testArgs.requiredArgs ~= "-unittest ";
+    //testArgs.requiredArgs ~= "-unittest ";
     
     if (! findTestParameter(file, "PERMUTE_ARGS", testArgs.permuteArgs))
     {

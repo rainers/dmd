@@ -289,10 +289,10 @@ struct Objstate
 #endif
 
     int fisegi;                 // SegData[] index of FI segment
+    int noscansegi;             // SegData[] of NOSCAN segment
 
 #if MARS
     int fmsegi;                 // SegData[] of FM segment
-    int rosegi;                 // SegData[] of readonly segment
 #endif
 
     int tlssegi;                // SegData[] of tls segment
@@ -528,17 +528,17 @@ int Obj_noscan_seg()
     //return DATA;
 #define DATACLASS       6                       // data class lname index
 
-    if (obj.rosegi == 0)
+    if (obj.noscansegi == 0)
     {
         static char lnames[] =
-        {   "\03ROB\02RO\03ROE"
+        {   "\07NOSCANB\06NOSCAN\07NOSCANE"
         };
 
         // Put out LNAMES record
         objrecord(LNAMES,lnames,sizeof(lnames) - 1);
 
         int dsegattr = I32
-            ? SEG_ATTR(SEG_ALIGN4,SEG_C_PUBLIC,0,USE32)
+            ? SEG_ATTR(SEG_ALIGN16,SEG_C_PUBLIC,0,USE32)
             : SEG_ATTR(SEG_ALIGN2,SEG_C_PUBLIC,0,USE16);
 
         // Put out beginning segment
@@ -547,10 +547,10 @@ int Obj_noscan_seg()
         obj.segidx++;
 
         // Put out segment definition record
-        obj.rosegi = obj_newfarseg(0,DATACLASS);
+        obj.noscansegi = obj_newfarseg(0,DATACLASS);
         objsegdef(dsegattr,0,obj.lnameidx,DATACLASS);
-        SegData[obj.rosegi]->attr = dsegattr;
-        assert(SegData[obj.rosegi]->segidx == obj.segidx);
+        SegData[obj.noscansegi]->attr = dsegattr;
+        assert(SegData[obj.noscansegi]->segidx == obj.segidx);
 
         // Put out ending segment
         objsegdef(dsegattr,0,obj.lnameidx + 1,DATACLASS);
@@ -558,10 +558,10 @@ int Obj_noscan_seg()
         obj.lnameidx += 2;              // for next time
         obj.segidx += 2;
 
-//        dbg_printf("RO seg is %d\n", obj.rosegi);
+//        dbg_printf("NOSCAN seg is %d\n", obj.noscansegi);
     }
 
-    return obj.rosegi;
+    return obj.noscansegi;
 }
 
 /**************************
@@ -1379,11 +1379,26 @@ STATIC void objheader(char *csegname)
 {
   char *nam;
   static char lnames[] =
-        "\0\06DGROUP\05_TEXT\04CODE\05_DATA\04DATA\05CONST\04_BSS\03BSS\
-\07$$TYPES\06DEBTYP\011$$SYMBOLS\06DEBSYM";
+        "\0\06DGROUP\05_TEXT\04CODE\05_DATA\04DATA\05CONST\04_BSS\03BSS"
+        "\06DDATAB\06DDATAE"
+        "\07$$TYPES\06DEBTYP\011$$SYMBOLS\06DEBSYM";
 
-#define DATACLASS       6                       // data class lname index
+#define DGROUP          2
+#define CODESEG         3                       // _TEXT segment lname index
+#define CODECLASS       4                       // CODE class lname index
+#define DATASEG         5                       // _DATA segment lname index
+#define DATACLASS       6                       // DATA class lname index
+#define CONSTSEG        7                       // CONST segment lname index
+#define CONSTCLASS      7                       // CONST class lname index
+#define BSSSEG          8                       // _BSS segment lname index
 #define BSSCLASS        9                       // BSS class lname index
+#define DATABSEG       10                       // DDATAB segment lname index
+#define DATAESEG       11                       // DDATAE segment lname index
+#define HDR_LNAMES     11                       // number of lnames without debug names
+#define DEBTYPSEG      (HDR_LNAMES+1)
+#define DEBTYPCLASS    (HDR_LNAMES+2)
+#define DEBSYMSEG      (HDR_LNAMES+3)
+#define DEBSYMCLASS    (HDR_LNAMES+4)
 
   // Include debug segment names if inserting type information
   int lnamesize = config.fulltypes ? sizeof(lnames) - 1 : sizeof(lnames) - 1 - 32;
@@ -1521,7 +1536,7 @@ STATIC void objsegdef(int attr,targ_size_t size,int segnamidx,int classnamidx)
             // 2 is execute/read
             // 3 is read/write
             // 4 is use32
-            sd[reclen] = (classnamidx == 4) ? (4+2) : (4+3);
+            sd[reclen] = (classnamidx == CODECLASS) ? (4+2) : (4+3);
             reclen++;
         }
     }
@@ -1564,23 +1579,22 @@ void Obj::segment_group(targ_size_t codesize,targ_size_t datasize,
     // For FLAT model, it's just GROUP FLAT
     static const char grpdef[] = {2,0xFF,2,0xFF,3,0xFF,4};
 
-    objsegdef(obj.csegattr,codesize,3,4);       // seg _TEXT, class CODE
+    objsegdef(obj.csegattr,codesize,CODESEG,CODECLASS); // seg _TEXT, class CODE
 
 #if MARS
     dsegattr = SEG_ATTR(SEG_ALIGN16,SEG_C_PUBLIC,0,USE32);
-    objsegdef(dsegattr,datasize,5,DATACLASS);   // [DATA]  seg _DATA, class DATA
-    objsegdef(dsegattr,cdatasize,7,7);          // [CDATA] seg CONST, class CONST
-    objsegdef(dsegattr,udatasize,8,9);          // [UDATA] seg _BSS,  class BSS
 #else
     dsegattr = I32
           ? SEG_ATTR(SEG_ALIGN4,SEG_C_PUBLIC,0,USE32)
           : SEG_ATTR(SEG_ALIGN2,SEG_C_PUBLIC,0,USE16);
-    objsegdef(dsegattr,datasize,5,DATACLASS);   // seg _DATA, class DATA
-    objsegdef(dsegattr,cdatasize,7,7);          // seg CONST, class CONST
-    objsegdef(dsegattr,udatasize,8,9);          // seg _BSS, class BSS
 #endif
+//    objsegdef(dsegattr,0,DATABSEG,DATACLASS);    // [DATA]  seg DDATAB, class DATA
+    objsegdef(dsegattr,datasize,DATASEG,DATACLASS);     // [DATA]  seg DDATA, class DATA
+//    objsegdef(dsegattr,0,DATAESEG,DATACLASS);    // [DATA]  seg DDATAE, class DATA
+    objsegdef(dsegattr,cdatasize,CONSTSEG,CONSTCLASS);  // [CDATA] seg CONST, class CONST
+    objsegdef(dsegattr,udatasize,BSSSEG,BSSCLASS);      // [UDATA] seg _BSS,  class BSS
 
-    obj.lnameidx = 10;                          // next lname index
+    obj.lnameidx = HDR_LNAMES + 1;              // next lname index
     obj.segidx = 5;                             // next segment index
 
     if (config.fulltypes)
@@ -1598,13 +1612,14 @@ void Obj::segment_group(targ_size_t codesize,targ_size_t datasize,
             dsymattr |= USE32;
             assert(!(config.flags & CFGeasyomf));
         }
-        objsegdef(dsymattr,SegData[DEBSYM]->SDoffset,0x0C,0x0D);
-        objsegdef(dsymattr,SegData[DEBTYP]->SDoffset,0x0A,0x0B);
+        objsegdef(dsymattr,SegData[DEBSYM]->SDoffset,DEBSYMSEG,DEBSYMCLASS);
+        objsegdef(dsymattr,SegData[DEBTYP]->SDoffset,DEBTYPSEG,DEBTYPCLASS);
         obj.lnameidx += 4;                      // next lname index
         obj.segidx += 2;                        // next segment index
     }
 
     objrecord(GRPDEF,grpdef,(config.exe & EX_flat) ? 1 : sizeof(grpdef));
+
 #if 0
     // Define fixup threads, we don't use them
     {   static const char thread[] = { 0,3,1,2,2,1,3,4,0x40,1,0x45,1 };
@@ -2011,14 +2026,14 @@ int Obj::codeseg(char *name,int suffix)
         strcat(lnames + 1,"_TEXT");
     objrecord(LNAMES,lnames,lnamesize + 1);
 
-    cseg = obj_newfarseg(0,4);
+    cseg = obj_newfarseg(0,CODECLASS);
     SegData[cseg]->attr = obj.csegattr;
     SegData[cseg]->segidx = obj.segidx;
     assert(cseg > 0);
     obj.segidx++;
     Coffset = 0;
 
-    objsegdef(obj.csegattr,0,obj.lnameidx++,4);
+    objsegdef(obj.csegattr,0,obj.lnameidx++,CODECLASS);
 
     return cseg;
 }
@@ -3647,13 +3662,13 @@ void Obj::far16thunk(Symbol *s)
         // Put out LNAMES record
         objrecord(LNAMES,lname,sizeof(lname) - 1);
 
-        obj.code16segi = obj_newfarseg(0,4);
+        obj.code16segi = obj_newfarseg(0,CODECLASS);
         obj.CODE16offset = 0;
 
         // class CODE
         unsigned attr = SEG_ATTR(SEG_ALIGN2,SEG_C_PUBLIC,0,USE16);
         SegData[obj.code16segi]->attr = attr;
-        objsegdef(attr,0,obj.lnameidx++,4);
+        objsegdef(attr,0,obj.lnameidx++,CODECLASS);
         obj.segidx++;
     }
 

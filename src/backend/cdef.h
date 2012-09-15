@@ -571,10 +571,17 @@ typedef targ_uns        targ_size_t;    /* size_t for the target machine */
 #endif
 
 /* Segments     */
+#if 1 //ndef OMFOBJ
 #define CODE    1       /* code segment                 */
 #define DATA    2       /* initialized data             */
 #define CDATA   3       /* constant data                */
 #define UDATA   4       /* uninitialized data           */
+#else
+#define CODE    1       /* code segment                 */
+#define DATA    3       /* initialized data             */
+#define CDATA   5       /* constant data                */
+#define UDATA   6       /* uninitialized data           */
+#endif
 #define UNKNOWN 0x7FFF  // unknown segment
 #define DGROUPIDX 1     /* group index of DGROUP        */
 
