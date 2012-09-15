@@ -2653,6 +2653,19 @@ CEXTERN elem * elstruct(elem *e)
         case 8:  if (intsize == 2)
                      goto Ldefault;
                  tym = TYllong;  goto L1;
+
+        case 3:  tym = TYlong;  goto L2;
+        case 5:
+        case 6:
+        case 7:  tym = TYllong;
+        L2:
+            if (config.exe == EX_WIN64)
+            {
+                 goto L1;
+            }
+            tym = ~0;
+            goto Ldefault;
+
         case 16:
             if (config.fpxmmregs && e->Eoper == OPstreq)
             {
@@ -2685,8 +2698,8 @@ CEXTERN elem * elstruct(elem *e)
             {   // This needs to match what TypeFunction::retStyle() does
                 if (config.exe == EX_WIN64)
                 {
-                    if (e->ET->Ttag->Sstruct->Sflags & STRnotpod)
-                        goto Ldefault;
+                    //if (e->ET->Ttag->Sstruct->Sflags & STRnotpod)
+                        //goto Ldefault;
                 }
                 // If a struct is a wrapper for another type, prefer that other type
                 else if (targ1 && !targ2)

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="Windows-1252"?>
 <VisualStudioProject
 	ProjectType="Visual C++"
-	Version="9,00"
+	Version="9.00"
 	Name="dmd_msc"
 	ProjectGUID="{BAE0389D-7D3F-4D5E-AE0E-C871776E8432}"
 	RootNamespace="dmd"
@@ -1739,7 +1739,7 @@
 						<Tool
 							Name="VCCustomBuildTool"
 							Description="Building and running $(IntDir)\$(InputName).exe"
-							CommandLine="cl /TP /Itk /Iroot /Ivcbuild /I. /FIwarnings.h /Fo&quot;$(IntDir)\$(InputName).obj&quot; /Fe&quot;$(IntDir)\$(InputName).exe&quot; &quot;$(InputPath)&quot;&#x0D;&#x0A;if errorlevel 1 goto VCReportError&#x0D;&#x0A;&quot;$(IntDir)\$(InputName).exe&quot;&#x0D;&#x0A;"
+							CommandLine="cl /TP /Itk /Iroot /Ivcbuild /I. /FIwarnings.h /Fo&quot;$(IntDir)\$(InputName).obj&quot; /Fe&quot;$(IntDir)\$(InputName).exe&quot; &quot;$(InputPath)&quot;&#x0D;&#x0A;if errorlevel 1 goto VCReportError&#x0D;&#x0A;&quot;$(IntDir)\$(InputName).exe&quot;"
 							AdditionalDependencies="cc.h;oper.h"
 							Outputs="optab.c;debtab.c;cdxxx.c;elxxx.c;tytab.c;fltables.c"
 						/>

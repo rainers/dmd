@@ -17,7 +17,7 @@
 #include        <stdlib.h>
 #include        <time.h>
 
-#if __sun&&__SVR4 || _MSC_VER
+#if __sun || _MSC_VER
 #include        <alloca.h>
 #endif
 
@@ -1458,7 +1458,7 @@ unsigned findreg(regm_t regm
         i++;
     }
 #ifdef DEBUG
-  printf("findreg(x%x, line=%d, file='%s')\n",regmsave,line,file);
+  printf("findreg(x%x, line=%d, file='%s', function = '%s')\n",regmsave,line,file,funcsym_p->Sident);
   fflush(stdout);
 #endif
 //*(char*)0=0;
@@ -1999,6 +1999,9 @@ bool evalinregister(elem *e)
 {       regm_t emask;
         unsigned i;
         unsigned sz;
+
+        if (config.exe == EX_WIN64 && e->Eoper == OPrelconst)
+            return TRUE;
 
         if (e->Ecount == 0)             /* elem is not a CSE, therefore */
                                         /* we don't need to evaluate it */

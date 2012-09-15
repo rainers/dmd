@@ -10,7 +10,7 @@
 #include <time.h>
 #include <assert.h>
 
-#if __sun&&__SVR4
+#if __sun
 #include <alloca.h>
 #endif
 
@@ -224,6 +224,7 @@ void obj_start(char *srcfile)
 
 #if TARGET_WINDOS
     // Produce Ms COFF files for 64 bit code, OMF for 32 bit code
+    assert(objbuf.size() == 0);
     objmod = global.params.is64bit == 1 ? MsCoffObj::init(&objbuf, srcfile, NULL)
                                         :       Obj::init(&objbuf, srcfile, NULL);
 #else
@@ -484,7 +485,7 @@ void Module::genobjfile(int multiobj)
                 fpr.alloc(sp->Stype, sp->Stype->Tty, &sp->Spreg, &sp->Spreg2);
 
                 sp->Sflags &= ~SFLspill;
-                sp->Sfl = FLpara;       // FLauto?
+                sp->Sfl = (sp->Sclass == SCshadowreg) ? FLpara : FLauto;
                 cstate.CSpsymtab = &ma->Sfunc->Flocsym;
                 symbol_add(sp);
 
@@ -836,7 +837,7 @@ void FuncDeclaration::toObjFile(int multiobj)
             if (fpr.alloc(sp->Stype, sp->Stype->Tty, &sp->Spreg, &sp->Spreg2))
             {
                 sp->Sclass = (config.exe == EX_WIN64) ? SCshadowreg : SCfastpar;
-                sp->Sfl = FLauto;
+                sp->Sfl = (sp->Sclass == SCshadowreg) ? FLpara : FLauto;
             }
         }
     }

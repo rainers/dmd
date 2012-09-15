@@ -13,7 +13,7 @@
 #include <time.h>
 #include <assert.h>
 
-#if __sun&&__SVR4
+#if __sun
 #include <alloca.h>
 #endif
 
@@ -73,6 +73,11 @@ type *TypeSArray::toCParamtype()
     // arrays are passed as pointers
     return next->pointerTo()->toCtype();
 #endif
+}
+
+type *TypeVector::toCtype()
+{
+    return Type::toCtype();
 }
 
 type *TypeSArray::toCtype()

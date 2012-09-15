@@ -17,7 +17,7 @@
 #include        <stdlib.h>
 #include        <time.h>
 
-#if __sun&&__SVR4 || _MSC_VER
+#if __sun || _MSC_VER
 #include        <alloca.h>
 #endif
 
@@ -872,7 +872,7 @@ code *getlvalue(code *pcs,elem *e,regm_t keepmsk)
 #endif
              ) ||
              (e12->Eoper == OPconst && !I16 && !e1->Ecount && (!I64 || el_signx32(e12)))) &&
-            !(I64 && config.flags3 & CFG3pic) &&
+            !(I64 && (config.flags3 & CFG3pic || config.exe == EX_WIN64)) &&
             e1->Ecount == e1->Ecomsub &&
 #if TARGET_SEGMENTED
             (!e1->Ecount || (~keepmsk & ALLREGS & mMSW) || (e1ty != TYfptr && e1ty != TYhptr)) &&
@@ -2808,7 +2808,11 @@ code *cdfunc(elem *e,regm_t *pretregs)
 
 #ifdef DEBUG
     if (numpara != stackpush - stackpushsave)
+    {
+        printf("function %s\n", funcsym_p->Sident);
         printf("numpara = %d, stackpush = %d, stackpushsave = %d\n", numpara, stackpush, stackpushsave);
+        elem_print(e);
+    }
 #endif
     assert(numpara == stackpush - stackpushsave);
 
@@ -2889,8 +2893,11 @@ STATIC code * funccall(elem *e,unsigned numpara,unsigned numalign,regm_t *pretre
 #if 1
             s = rtlsym[RTLSYM_ALLOCA];
             makeitextern(s);
-            c1 = cat(c1,getregs(mCX));
-            c1 = genc(c1,0x8D,modregrm(2,CX,BPRM),FLallocatmp,0,0,0);  // LEA CX,&localsize[BP]
+            int areg = CX;
+            if (config.exe == EX_WIN64)
+                areg = DX;
+            c1 = cat(c1,getregs(mask[areg]));
+            c1 = genc(c1,0x8D,modregrm(2,areg,BPRM),FLallocatmp,0,0,0);  // LEA areg,&localsize[BP]
             if (I64)
                 code_orrex(c1, REX_W);
             usedalloca = 2;             // new way
@@ -3068,8 +3075,8 @@ STATIC code * funccall(elem *e,unsigned numpara,unsigned numalign,regm_t *pretre
     retregs = regmask(e->Ety, tym1);
 
     // If stack needs cleanup
-    if (OTbinary(e->Eoper) &&
-        !typfunc(tym1) &&
+    if ((OTbinary(e->Eoper) || config.exe == EX_WIN64) &&
+        (!typfunc(tym1) || config.exe == EX_WIN64) &&
       !(s && s->Sflags & SFLexit))
     {
         if (tym1 == TYhfunc)

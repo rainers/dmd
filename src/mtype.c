@@ -12,7 +12,7 @@
 #define __C99FEATURES__ 1       // Needed on Solaris for NaN and more
 #define __USE_ISOC99 1          // so signbit() gets defined
 
-#if (defined (__SVR4) && defined (__sun))
+#if defined (__sun)
 #include <alloca.h>
 #endif
 
@@ -40,6 +40,7 @@
 #include "scope.h"
 #include "init.h"
 #include "expression.h"
+#include "statement.h"
 #include "attrib.h"
 #include "declaration.h"
 #include "template.h"
@@ -7075,11 +7076,15 @@ Dsymbol *TypeReturn::toDsymbol(Scope *sc)
 Type *TypeReturn::semantic(Loc loc, Scope *sc)
 {
     Type *t;
-    if (!sc->func)
+    FuncDeclaration *func = sc->func;
+    if (!func)
     {   error(loc, "typeof(return) must be inside function");
         goto Lerr;
     }
-    t = sc->func->type->nextOf();
+    if (func->fes)
+        func = func->fes->func;
+
+    t = func->type->nextOf();
     if (!t)
     {
         error(loc, "cannot use typeof(return) inside function %s with inferred return type", sc->func->toChars());

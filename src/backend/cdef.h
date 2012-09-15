@@ -28,7 +28,7 @@
         __APPLE__       Mac OSX
         __FreeBSD__     FreeBSD
         __OpenBSD__     OpenBSD
-        __sun&&__SVR4   Solaris, OpenSolaris (yes, both macros are necessary)
+        __sun           Solaris, OpenSolaris, SunOS, OpenIndiana, etc
         __OS2__         IBM OS/2
         DOS386          32 bit DOS extended executable
         DOS16RM         Rational Systems 286 DOS extender
@@ -133,7 +133,7 @@ One and only one of these macros must be set by the makefile:
  * -------------
  * There are two main issues: hosting the compiler on Solaris,
  * and generating (targetting) Solaris executables.
- * The "__sun", "__SVR4" and "__GNUC__" macros control hosting issues
+ * The "__sun" and "__GNUC__" macros control hosting issues
  * for operating system and compiler dependencies, respectively.
  * To target Solaris executables, use ELFOBJ for things specific to the
  * ELF object file format, and TARGET_SOLARIS for things specific to
@@ -267,7 +267,7 @@ typedef long double longdouble;
 
 // Precompiled header variations
 #define MEMORYHX        (_WINDLL && _WIN32)     // HX and SYM files are cached in memory
-#define MMFIO           (_WIN32 || linux || __APPLE__ || __FreeBSD__ || __OpenBSD__ || __sun&&__SVR4)  // if memory mapped files
+#define MMFIO           (_WIN32 || linux || __APPLE__ || __FreeBSD__ || __OpenBSD__ || __sun)  // if memory mapped files
 #define LINEARALLOC     _WIN32  // if we can reserve address ranges
 
 // H_STYLE takes on one of these precompiled header methods
@@ -497,7 +497,7 @@ typedef unsigned        targ_uns;
 #define REGMASK         0xFFFF
 
 // targ_llong is also used to store host pointers, so it should have at least their size
-#if TARGET_LINUX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS || TARGET_OSX || _WIN64
+#if TARGET_LINUX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS || TARGET_OSX || MARS
 typedef targ_llong      targ_ptrdiff_t; /* ptrdiff_t for target machine  */
 typedef targ_ullong     targ_size_t;    /* size_t for the target machine */
 #else

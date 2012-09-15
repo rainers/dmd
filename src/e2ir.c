@@ -47,6 +47,7 @@ static char __file__[] = __FILE__;      /* for tassert.h                */
 typedef ArrayBase<elem> Elems;
 
 elem *addressElem(elem *e, Type *t, bool alwaysCopy = false);
+elem *eval_Darray(IRState *irs, Expression *e, bool alwaysCopy = false);
 elem *array_toPtr(Type *t, elem *e);
 elem *appendDtors(IRState *irs, elem *er, size_t starti, size_t endi);
 
@@ -126,6 +127,7 @@ elem *callfunc(Loc loc,
         ty = fd->toSymbol()->Stype->Tty;
     reverse = tyrevfunc(ty);
     ep = NULL;
+    op = (ec->Eoper == OPvar) ? intrinsic_op(ec->EV.sp.Vsym->Sident) : -1;
     if (arguments)
     {
         // j=1 if _arguments[] is first argument
@@ -151,7 +153,7 @@ elem *callfunc(Loc loc,
                     goto L1;
                 }
             }
-            if (config.exe == EX_WIN64 && arg->type->size(arg->loc) > REGSIZE)
+            if (config.exe == EX_WIN64 && arg->type->size(arg->loc) > REGSIZE && op == -1)
             {   /* Copy to a temporary, and make the argument a pointer
                  * to that temporary.
                  */
@@ -218,6 +220,8 @@ elem *callfunc(Loc loc,
 
     if (fd && fd->isMember2())
     {
+        assert(op == -1);       // members should not be intrinsics
+
         AggregateDeclaration *ad = fd->isThis();
         if (ad)
         {
@@ -273,7 +277,7 @@ if (I32) assert(tysize[TYnptr] == 4);
     tyret = tret->totym();
 
     // Look for intrinsic functions
-    if (ec->Eoper == OPvar && (op = intrinsic_op(ec->EV.sp.Vsym->Sident)) != -1)
+    if (ec->Eoper == OPvar && op != -1)
     {
         el_free(ec);
         if (OTbinary(op))
@@ -527,18 +531,6 @@ elem *array_toDarray(Type *t, elem *e)
     return el_combine(ef, e);
 }
 
-/*****************************************
- * Evaluate elem and convert to dynamic array.
- */
-
-elem *eval_Darray(IRState *irs, Expression *e)
-{
-    elem *ex;
-
-    ex = e->toElem(irs);
-    return array_toDarray(e->type, ex);
-}
-
 /************************************
  */
 
@@ -699,6 +691,11 @@ Lagain:
     {
         r = RTLSYM_MEMSET8;
         edim = el_bin(OPmul, TYsize_t, edim, el_long(TYsize_t, sz));
+    }
+
+    if (config.exe == EX_WIN64 && sz > REGSIZE)
+    {
+        evalue = addressElem(evalue, tb);
     }
 
     if (tybasic(evalue->Ety) == TYstruct || tybasic(evalue->Ety) == TYarray)
@@ -2040,8 +2037,7 @@ elem *AssertExp::toElem(IRState *irs)
          * to a #line directive.
          */
         if (loc.filename && (msg || strcmp(loc.filename, mname) != 0))
-        {   elem *efilename;
-
+        {
             /* Cache values.
              */
             //static Symbol *assertexp_sfilename = NULL;
@@ -2069,10 +2065,11 @@ elem *AssertExp::toElem(IRState *irs)
                 assertexp_name = id;
             }
 
-            efilename = el_var(assertexp_sfilename);
+            elem *efilename = (config.exe == EX_WIN64) ? el_ptr(assertexp_sfilename)
+                                                       : el_var(assertexp_sfilename);
 
             if (msg)
-            {   elem *emsg = msg->toElem(irs);
+            {   elem *emsg = eval_Darray(irs, msg, false);
                 ea = el_var(rtlsym[ud ? RTLSYM_DUNITTEST_MSG : RTLSYM_DASSERT_MSG]);
                 ea = el_bin(OPcall, TYvoid, ea, el_params(el_long(TYint, loc.linnum), efilename, emsg, NULL));
             }
@@ -2163,6 +2160,21 @@ elem *MinExp::toElem(IRState *irs)
 {
     elem *e = toElemBin(irs,OPmin);
     return e;
+}
+
+/*****************************************
+ * Evaluate elem and convert to dynamic array suitable for a function argument.
+ */
+
+elem *eval_Darray(IRState *irs, Expression *e, bool alwaysCopy)
+{
+    elem *ex = e->toElem(irs);
+    ex = array_toDarray(e->type, ex);
+    if (config.exe == EX_WIN64)
+    {
+        ex = addressElem(ex, Type::tvoid->arrayOf(), alwaysCopy);
+    }
+    return ex;
 }
 
 /***************************************
@@ -2338,16 +2350,12 @@ elem *CmpExp::toElem(IRState *irs)
              (t1->ty == Tarray || t1->ty == Tsarray) &&
              (t2->ty == Tarray || t2->ty == Tsarray))
     {
-        elem *ea1;
-        elem *ea2;
         elem *ep;
         Type *telement = t1->nextOf()->toBasetype();
         int rtlfunc;
 
-        ea1 = e1->toElem(irs);
-        ea1 = array_toDarray(t1, ea1);
-        ea2 = e2->toElem(irs);
-        ea2 = array_toDarray(t2, ea2);
+        elem *ea1 = eval_Darray(irs, e1);
+        elem *ea2 = eval_Darray(irs, e2);
 
 #if DMDV2
         ep = el_params(telement->arrayOf()->getInternalTypeInfo(NULL)->toElem(irs),
@@ -2422,10 +2430,8 @@ elem *EqualExp::toElem(IRState *irs)
     {
         Type *telement = t1->nextOf()->toBasetype();
 
-        elem *ea1 = e1->toElem(irs);
-        ea1 = array_toDarray(t1, ea1);
-        elem *ea2 = e2->toElem(irs);
-        ea2 = array_toDarray(t2, ea2);
+        elem *ea1 = eval_Darray(irs, e1);
+        elem *ea2 = eval_Darray(irs, e2);
 
 #if DMDV2
         elem *ep = el_params(telement->arrayOf()->getInternalTypeInfo(NULL)->toElem(irs),
@@ -2837,6 +2843,11 @@ elem *AssignExp::toElem(IRState *irs)
                 // Generate:
                 //      _d_arraycopy(eto, efrom, esize)
 
+                if (config.exe == EX_WIN64)
+                {
+                    eto   = addressElem(eto,   Type::tvoid->arrayOf());
+                    efrom = addressElem(efrom, Type::tvoid->arrayOf());
+                }
                 ep = el_params(eto, efrom, esize, NULL);
                 e = el_bin(OPcall, type->totym(), el_var(rtlsym[RTLSYM_ARRAYCOPY]), ep);
             }
@@ -2858,6 +2869,7 @@ elem *AssignExp::toElem(IRState *irs)
         VarExp *ve = (VarExp *)e1;
         Declaration *s = ve->var;
         if (s->storage_class & (STCout | STCref))
+//        if (ISREF(s, NULL))
         {
 #if 0
             Expression *ae = e2->addressOf(NULL);
@@ -3033,7 +3045,9 @@ elem *CatAssignExp::toElem(IRState *irs)
             tb1n->equals(tb2->nextOf()->toBasetype()))
         {   // Append array
             e1 = el_una(OPaddr, TYnptr, e1);
-            if (tybasic(e2->Ety) == TYstruct || tybasic(e2->Ety) == TYarray)
+            if (config.exe == EX_WIN64)
+                e2 = addressElem(e2, tb2);
+            else if (tybasic(e2->Ety) == TYstruct || tybasic(e2->Ety) == TYarray)
             {
                 e2 = el_una(OPstrpar, TYstruct, e2);
                 e2->ET = e2->E1->ET;
@@ -4928,8 +4942,14 @@ elem *AssocArrayLiteralExp::toElem(IRState *irs)
         symbol *svalues = NULL;
         elem *evalues = ExpressionsToStaticArray(irs, loc, values, &svalues);
 
-        elem *e = el_params(el_pair(TYdarray, el_long(TYsize_t, dim), el_ptr(svalues)),
-                            el_pair(TYdarray, el_long(TYsize_t, dim), el_ptr(skeys  )),
+        elem *ev = el_pair(TYdarray, el_long(TYsize_t, dim), el_ptr(svalues));
+        elem *ek = el_pair(TYdarray, el_long(TYsize_t, dim), el_ptr(skeys  ));
+        if (config.exe == EX_WIN64)
+        {
+            ev = addressElem(ev, Type::tvoid->arrayOf());
+            ek = addressElem(ek, Type::tvoid->arrayOf());
+        }
+        elem *e = el_params(ev, ek,
                             ta->getTypeInfo(NULL)->toElem(irs),
                             NULL);
 
