@@ -313,7 +313,11 @@ void outdata(symbol *s)
         case mTYnear:
         case 0:
         {
-            int segdef = ((s->Stype->Tflags & TFhasPointers) ? DATA : Obj_noscan_seg());
+            int segdef = DATA;
+#if 0 && OMFOBJ
+            if(!(s->Stype->Tflags & TFhasPointers))
+                segdef = Obj_noscan_seg();
+#endif
             if (
                 s->Sseg == 0 ||
                 s->Sseg == UNKNOWN)

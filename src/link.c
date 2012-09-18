@@ -186,14 +186,22 @@ int runLINK()
         if (vcinstalldir)
         {   cmdbuf.writestring(" \"/LIBPATH:");
             cmdbuf.writestring(vcinstalldir);
-            cmdbuf.writestring("lib\\amd64\"");
+            cmdbuf.writestring("\\lib\\amd64\"");
         }
 
         const char *windowssdkdir = getenv("WindowsSdkDir");
         if (windowssdkdir)
         {   cmdbuf.writestring(" \"/LIBPATH:");
             cmdbuf.writestring(windowssdkdir);
-            cmdbuf.writestring("lib\\x64\"");
+            cmdbuf.writestring("\\lib\\x64\"");
+        }
+
+        // copy LIB64 environment variable to LIB
+        if(const char* p = getenv("LIB64"))
+        {
+            char* q = (char *) alloca(strlen(p) + 5);
+            strcat(strcpy(q, "LIB="), p);
+            putenv(q);
         }
 
         char *p = cmdbuf.toChars();
@@ -212,14 +220,14 @@ int runLINK()
                 sprintf(p, "@%s", lnkfilename->toChars());
         }
 
-        char *linkcmd = getenv("LINKCMD");
+        char *linkcmd = getenv("LINKCMD64");
         if (!linkcmd)
         {
             if (vcinstalldir)
             {
                 OutBuffer linkcmdbuf;
                 linkcmdbuf.writestring(vcinstalldir);
-                linkcmdbuf.writestring("bin\\amd64\\link");
+                linkcmdbuf.writestring("\\bin\\amd64\\link");
                 linkcmd = linkcmdbuf.toChars();
                 linkcmdbuf.extractData();
             }
@@ -627,7 +635,7 @@ int executecmd(char *cmd, char *args, int useenv)
         fflush(stdout);
     }
 
-    if ((len = strlen(args)) > 255)
+    if (!global.params.is64bit && (len = strlen(args)) > 255)
     {   char *q;
         static char envname[] = "@_CMDLINE";
 
