@@ -132,11 +132,7 @@ void gatherTestParameters(ref TestArgs testArgs, string input_dir, string input_
 {
     string file = cast(string)std.file.read(input_file);
 
-    if (findTestParameter(file, "REQUIRED_ARGS", testArgs.requiredArgs) &&
-        testArgs.requiredArgs.length > 0)
-    {
-        testArgs.requiredArgs ~= " ";
-    }
+    findTestParameter(file, "REQUIRED_ARGS", testArgs.requiredArgs);
     //testArgs.requiredArgs ~= "-unittest ";
     
     if (! findTestParameter(file, "PERMUTE_ARGS", testArgs.permuteArgs))
@@ -246,16 +242,22 @@ version(Windows)
     }
 }
 
+void removeIfExists(in char[] filename)
+{
+    if (std.file.exists(filename))
+        std.file.remove(filename);
+}
+
 string execute(ref File f, string command, bool expectpass)
 {
     auto filename = genTempFilename();
-    scope(exit) if (std.file.exists(filename)) std.file.remove(filename);
+    scope(exit) removeIfExists(filename);
 
     f.writeln(command);
     auto rc = system(command ~ " > " ~ filename ~ " 2>&1");
 
     string output = readText(filename);
-    f.rawWrite(output);
+    f.write(output);
 
     if (WIFSIGNALED(rc))
     {
@@ -319,7 +321,7 @@ int main(string[] args)
     writef(" ... %-30s %s%s(%s)",
             input_file,
             testArgs.requiredArgs,
-            (testArgs.requiredArgs ? " " : ""),
+            (!testArgs.requiredArgs.empty ? " " : ""),
             testArgs.permuteArgs);
 
     if (testArgs.disabled)
@@ -327,8 +329,7 @@ int main(string[] args)
     else
         write("\n");
 
-    if (std.file.exists(output_file))
-        std.file.remove(output_file);
+    removeIfExists(output_file);
 
     auto f = File(output_file, "a");
 
@@ -428,11 +429,8 @@ int main(string[] args)
             f.close();
 
             writeln("Test failed.  The logged output:");
-            if (std.file.exists(output_file))
-            {
-                writeln(cast(string)std.file.read(output_file));
-                std.file.remove(output_file);
-            }
+            writeln(cast(string)std.file.read(output_file));
+            std.file.remove(output_file);
             return 1;
         }
     }

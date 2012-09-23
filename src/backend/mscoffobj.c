@@ -98,6 +98,8 @@ static int jumpTableSeg;                // segment index for __jump_table
 static Outbuffer *indirectsymbuf2;      // indirect symbol table of Symbol*'s
 static int pointersSeg;                 // segment index for __pointers
 
+static int floatused;
+
 /* If an MsCoffObj::external_def() happens, set this to the string index,
  * to be added last to the symbol table.
  * Obviously, there can be only one.
@@ -365,6 +367,8 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
     cseg = CODE;
     fobjbuf = objbuf;
     assert(objbuf->size() == 0);
+
+    floatused = 0;
 
     seg_tlsseg = UNKNOWN;
     seg_tlsseg_bss = UNKNOWN;
@@ -644,6 +648,7 @@ void build_syment_table()
             case SCstatic:
             case SClocstat:
                 sym.n_sclass = IMAGE_SYM_CLASS_STATIC;
+                sym.n_value = s->Soffset;
                 break;
 
             default:
@@ -1262,7 +1267,7 @@ void MsCoffObj::funcptr(Symbol *s)
 
 void MsCoffObj::ehtables(Symbol *sfunc,targ_size_t size,Symbol *ehsym)
 {
-    //dbg_printf("MsCoffObj::ehtables(%s) \n",sfunc->Sident);
+    //printf("MsCoffObj::ehtables(func = %s, handler table = %s) \n",sfunc->Sident, ehsym->Sident);
 
     /* BUG: this should go into a COMDAT if sfunc is in a COMDAT
      * otherwise the duplicates aren't removed.
@@ -2339,6 +2344,14 @@ void MsCoffObj::far16thunk(Symbol *s)
 void MsCoffObj::fltused()
 {
     //dbg_printf("MsCoffObj::fltused()\n");
+    /* Otherwise, we'll get the dreaded
+     *    "runtime error R6002 - floating point support not loaded"
+     */
+    if (!floatused)
+    {
+        external_def("_fltused");
+        floatused = 1;
+    }
 }
 
 
