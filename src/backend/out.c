@@ -75,7 +75,6 @@ void outthunk(symbol *sthunk,symbol *sfunc,unsigned p,tym_t thisty,
 
 #endif
 
-int Obj_noscan_seg();
 
 /***************************
  * Write out statically allocated data.
@@ -313,16 +312,11 @@ void outdata(symbol *s)
         case mTYnear:
         case 0:
         {
-            int segdef = DATA;
-#if 0 && OMFOBJ
-            if(!(s->Stype->Tflags & TFhasPointers))
-                segdef = Obj_noscan_seg();
-#endif
             if (
                 s->Sseg == 0 ||
                 s->Sseg == UNKNOWN)
-                s->Sseg = segdef;
-            seg = objmod->data_start(s,datasize,segdef);
+                s->Sseg = DATA;
+            seg = objmod->data_start(s,datasize,DATA);
             s->Sfl = FLdata;            // initialized data
             break;
         }

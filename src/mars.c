@@ -1377,6 +1377,28 @@ int tryMain(int argc, char *argv[])
         }
     }
 
+#if 0
+    if (global.params.obj)
+    {
+        // move template instances in modules that are not compiled into the first module
+        for (size_t i = modules.dim; i < Module::amodules.dim; i++)
+        {
+            Module* m = Module::amodules[i];
+            for (size_t j = 0; j < m->members->dim; j++)
+            {
+                Dsymbol *s = (*m->members)[j];
+                if(s->isTemplateInstance())
+                {
+                    s->semantic2(NULL);
+                    s->semantic3(NULL);
+                    modules[0]->members->push(s);
+                    s->addMember(NULL, modules[0], 1);
+                }
+            }
+        }
+    }
+#endif
+
     // Do not attempt to generate output files if errors or warnings occurred
     if (global.errors || global.warnings)
         fatal();

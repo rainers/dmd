@@ -448,6 +448,8 @@ void TemplateDeclaration::semantic(Scope *sc)
             Type::associativearray = this;
         else if (ident == Id::RTInfo)
             Type::rtinfo = this;
+        else if (ident == Id::RDInfo)
+            Type::rdinfo = this;
     }
 
     if (sc->func)

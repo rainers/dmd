@@ -128,8 +128,6 @@ type *TypeDArray::toCtype()
         t = type_alloc(TYstruct);
         t->Ttag = (Classsym *)s;                // structure tag name
         t->Tcount++;
-        if(hasPointers())
-            t->Tflags |= TFhasPointers;
         s->Stype = t;
     }
     else
@@ -141,7 +139,10 @@ type *TypeDArray::toCtype()
         }
         else
             t = type_fake(TYdarray);
+
     }
+    if(hasPointers())
+        t->Tflags |= TFhasPointers;
     t->Tcount++;
     ctype = t;
     return t;

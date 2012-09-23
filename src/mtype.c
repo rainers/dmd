@@ -116,6 +116,7 @@ ClassDeclaration *Type::typeinfowild;
 
 TemplateDeclaration *Type::associativearray;
 TemplateDeclaration *Type::rtinfo;
+TemplateDeclaration *Type::rdinfo;
 
 Type *Type::tvoidptr;
 Type *Type::tstring;

@@ -67,6 +67,7 @@ Msgtable msgtable[] =
     { "Exception" },
     { "AssociativeArray" },
     { "RTInfo" },
+    { "RDInfo" },
     { "Throwable" },
     { "Error" },
     { "withSym", "__withSym" },

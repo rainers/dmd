@@ -280,6 +280,7 @@ struct VarDeclaration : Declaration
                                 // if the destructor should be run. Used to prevent
                                 // dtor calls on postblitted vars
     Expression *edtor;          // if !=NULL, does the destruction of the variable
+    TemplateInstance *rdinfo;   // the runtime data info for static variables
 #endif
 
     VarDeclaration(Loc loc, Type *t, Identifier *id, Initializer *init);
@@ -287,6 +288,7 @@ struct VarDeclaration : Declaration
     void semantic(Scope *sc);
     void setFieldOffset(AggregateDeclaration *ad, unsigned *poffset, bool isunion);
     void semantic2(Scope *sc);
+    void semantic3(Scope *sc);
     const char *kind();
     void toCBuffer(OutBuffer *buf, HdrGenState *hgs);
     Type *htype;

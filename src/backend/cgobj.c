@@ -289,7 +289,8 @@ struct Objstate
 #endif
 
     int fisegi;                 // SegData[] index of FI segment
-    int noscansegi;             // SegData[] of NOSCAN segment
+    int hpsegi;                 // SegData[] of "has pointer" segment
+    int tlshpsegi;              // SegData[] of "TLS has pointer" segment
 
 #if MARS
     int fmsegi;                 // SegData[] of FM segment
@@ -523,22 +524,28 @@ seg_data *getsegment()
     return pseg;
 }
 
-int Obj_noscan_seg()
+int Obj::hpseg(bool tls)
 {
     //return DATA;
 #define DATACLASS       6                       // data class lname index
-
-    if (obj.noscansegi == 0)
+    int& segi = tls ? obj.tlshpsegi : obj.hpsegi;
+    if (segi == 0)
     {
+        static char tls_lnames[] =
+        {   "\06HPTLSB\05HPTLS\06HPTLSE"
+        };
         static char lnames[] =
-        {   "\07NOSCANB\06NOSCAN\07NOSCANE"
+        {   "\03HPB\02HP\03HPE"
         };
 
         // Put out LNAMES record
-        objrecord(LNAMES,lnames,sizeof(lnames) - 1);
+        if(tls)
+            objrecord(LNAMES,tls_lnames,sizeof(tls_lnames) - 1);
+        else
+            objrecord(LNAMES,lnames,sizeof(lnames) - 1);
 
         int dsegattr = I32
-            ? SEG_ATTR(SEG_ALIGN16,SEG_C_PUBLIC,0,USE32)
+            ? SEG_ATTR(SEG_ALIGN4,SEG_C_PUBLIC,0,USE32)
             : SEG_ATTR(SEG_ALIGN2,SEG_C_PUBLIC,0,USE16);
 
         // Put out beginning segment
@@ -547,10 +554,10 @@ int Obj_noscan_seg()
         obj.segidx++;
 
         // Put out segment definition record
-        obj.noscansegi = obj_newfarseg(0,DATACLASS);
+        segi = obj_newfarseg(0,DATACLASS);
         objsegdef(dsegattr,0,obj.lnameidx,DATACLASS);
-        SegData[obj.noscansegi]->attr = dsegattr;
-        assert(SegData[obj.noscansegi]->segidx == obj.segidx);
+        SegData[segi]->attr = dsegattr;
+        assert(SegData[segi]->segidx == obj.segidx);
 
         // Put out ending segment
         objsegdef(dsegattr,0,obj.lnameidx + 1,DATACLASS);
@@ -561,7 +568,22 @@ int Obj_noscan_seg()
 //        dbg_printf("NOSCAN seg is %d\n", obj.noscansegi);
     }
 
-    return obj.noscansegi;
+    return segi;
+}
+
+int Obj::write_pointerInfo(Symbol *s, Symbol *ti)
+{
+    // output address,TypeInfo pair to new segment
+    int seg = hpseg(s->Sfl == FLtlsdata);
+    targ_size_t offset = Offset(seg);
+
+    int flags = CFoff;
+    if (I64)
+        flags |= CFoffset64;
+    offset += objmod->reftoident(seg, offset, s, 0, flags);
+    offset += objmod->reftoident(seg, offset, ti, 0, flags);
+    Offset(seg) = offset;
+    return 1;
 }
 
 /**************************
@@ -574,18 +596,10 @@ int Obj_noscan_seg()
 
 int Obj::data_readonly(char *p, int len, int *pseg)
 {
-#if 1
-    // only called for string data
-    int seg = Obj_noscan_seg();
-    targ_size_t oldoff = SegData[seg]->SDoffset;
-    write_bytes(SegData[seg], len, p);
-    *pseg = seg;
-#else
     targ_size_t oldoff = Doffset;
     Obj::bytes(DATA,Doffset,len,p);
     Doffset += len;
     *pseg = DATA;
-#endif
     return oldoff;
 }
 

@@ -751,6 +751,7 @@ VarDeclaration::VarDeclaration(Loc loc, Type *type, Identifier *id, Initializer 
 #if DMDV2
     rundtor = NULL;
     edtor = NULL;
+    rdinfo = NULL;
 #endif
 }
 
@@ -1712,6 +1713,24 @@ void VarDeclaration::semantic2(Scope *sc)
     sem = Semantic2Done;
 }
 
+void VarDeclaration::semantic3(Scope *sc)
+{
+    Declaration::semantic3(sc);
+    if (isDataseg() && !(storage_class & STCextern))
+    {
+        if(!rdinfo && Type::rdinfo && ident != Id::RTInfo && ident != Id::RDInfo)
+        {   // Evaluate: RDInfo!type
+            Objects *tiargs = new Objects();
+            tiargs->push(this);
+            TemplateInstance *ti = new TemplateInstance(loc, Type::rdinfo, tiargs);
+            ti->semantic(sc);
+            ti->semantic2(sc);
+            ti->semantic3(sc);
+            rdinfo = ti;
+        }
+    }
+}
+
 void VarDeclaration::setFieldOffset(AggregateDeclaration *ad, unsigned *poffset, bool isunion)
 {
     //printf("VarDeclaration::setFieldOffset(ad = %s) %s\n", ad->toChars(), toChars());
@@ -2071,7 +2090,7 @@ int VarDeclaration::isCTFE()
 int VarDeclaration::hasPointers()
 {
     //printf("VarDeclaration::hasPointers() %s, ty = %d\n", toChars(), type->ty);
-    return (!isDataseg() && type->hasPointers());
+    return (/*!isDataseg() &&*/ type->hasPointers());
 }
 
 /******************************************

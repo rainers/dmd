@@ -96,7 +96,7 @@ void AggregateDeclaration::semantic3(Scope *sc)
         }
         sc->pop();
 
-        if (!getRTInfo)
+        if (!getRTInfo && Type::rtinfo)
         {   // Evaluate: gcinfo!type
             Objects *tiargs = new Objects();
             tiargs->push(type);

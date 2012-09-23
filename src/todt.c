@@ -744,7 +744,7 @@ dt_t **SymOffExp::toDt(dt_t **pdt)
     assert(var);
     if (!(var->isDataseg() || var->isCodeseg()) ||
         var->needThis() ||
-        var->isThreadlocal())
+        (var->isThreadlocal() && !type->isintegral())) // if cast to integer, assume programmer is aware that it is an TLS offset
     {
 #if 0
         printf("SymOffExp::toDt()\n");

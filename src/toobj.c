@@ -1269,7 +1269,19 @@ void VarDeclaration::toObjFile(int multiobj)
         {
             outdata(s);
             if (isExport())
-            objmod->export_symbol(s,0);
+                objmod->export_symbol(s,0);
+            
+#if 0
+            if(rdinfo)
+                rdinfo->toObjFile(multiobj);
+#else
+            if(hasPointers())
+            {
+                if(!type->vtinfo)
+                    type->getTypeInfo(NULL); // ensure typeinfo generated
+                objmod->write_pointerInfo(s,type->vtinfo->toSymbol());
+            }
+#endif
         }
     }
 }

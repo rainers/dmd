@@ -205,6 +205,7 @@ struct Type : Object
 
     static TemplateDeclaration *associativearray;
     static TemplateDeclaration *rtinfo;
+    static TemplateDeclaration *rdinfo;
 
     static Type *basic[TMAX];
     static unsigned char mangleChar[TMAX];
