@@ -184,6 +184,8 @@ struct MsCoffObj : Obj
     VIRTUAL void func_start(Symbol *sfunc);
     VIRTUAL void func_term(Symbol *sfunc);
 
+    VIRTUAL int write_pointerInfo(Symbol *s, Symbol *ti) { return 0; }
+
     static int getsegment(const char *sectname, unsigned long flags);
     static int getsegment2(unsigned shtidx);
     static unsigned addScnhdr(const char *scnhdr_name, unsigned long flags);

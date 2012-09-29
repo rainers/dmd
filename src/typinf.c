@@ -154,7 +154,13 @@ Expression *Type::getTypeInfo(Scope *sc)
         if (!t->builtinTypeInfo())
         {   // Generate COMDAT
             if (sc)                     // if in semantic() pass
-            {   // Find module that will go all the way to an object file
+            {   
+                // ensure RTInfo is generated (do we need to care for correct scope?)
+                if(Dsymbol* s = t->toDsymbol(sc))
+                    if(AggregateDeclaration* ad = s->isAggregateDeclaration())
+                        ad->semantic3(sc); // run semantic2 aswell?
+
+                // Find module that will go all the way to an object file
                 Module *m = sc->module->importedFrom;
                 m->members->push(t->vtinfo);
             }
