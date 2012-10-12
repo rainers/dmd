@@ -194,7 +194,10 @@ void outdata(symbol *s)
                             objmod->lidata(pseg->SDseg, pseg->SDoffset, datasize);
 #endif
 #if OMFOBJ
-                            pseg->SDoffset += datasize;
+                            if (config.exe == EX_WIN64)
+                                objmod->lidata(pseg->SDseg, pseg->SDoffset, datasize);
+                            else
+                                pseg->SDoffset += datasize;
 #endif
                             s->Sfl = FLtlsdata;
                             break;
@@ -487,22 +490,26 @@ void outcommon(symbol *s,targ_size_t n)
             objmod->common_block(s, 0, n, 1);
 #endif
 #if OMFOBJ
-#if TARGET_SEGMENTED
-            s->Sxtrnnum = objmod->common_block(s,(s->ty() & mTYfar) == 0,n,1);
-#else
-            s->Sxtrnnum = objmod->common_block(s,true,n,1);
-#endif
-            s->Sseg = UNKNOWN;
-#if TARGET_SEGMENTED
-            if (s->ty() & mTYfar)
-                s->Sfl = FLfardata;
+            if (I64)
+                objmod->common_block(s, 0, n, 1);
             else
-#endif
+            {
+#if TARGET_SEGMENTED
+                s->Sxtrnnum = objmod->common_block(s,(s->ty() & mTYfar) == 0,n,1);
+                if (s->ty() & mTYfar)
+                    s->Sfl = FLfardata;
+                else
+                    s->Sfl = FLextern;
+#else
+                s->Sxtrnnum = objmod->common_block(s,true,n,1);
                 s->Sfl = FLextern;
-            pstate.STflags |= PFLcomdef;
-#if SCPP
-            ph_comdef(s);               // notify PH that a COMDEF went out
 #endif
+                s->Sseg = UNKNOWN;
+                pstate.STflags |= PFLcomdef;
+#if SCPP
+                ph_comdef(s);               // notify PH that a COMDEF went out
+#endif
+            }
 #endif
         }
         if (config.fulltypes)
@@ -1454,6 +1461,10 @@ symbol *out_readonly_sym(tym_t ty, void *p, int len)
     alignOffset(DATA, sz);
     s = symboldata(Doffset,ty | mTYconst);
     s->Sseg = DATA;
+#if TARGET_WINDOS
+    if (I64)
+        objmod->pubdef(s->Sseg, s, s->Soffset);
+#endif
     objmod->write_bytes(SegData[DATA], len, p);
     //printf("s->Sseg = %d:x%x\n", s->Sseg, s->Soffset);
 #endif

@@ -257,7 +257,8 @@ Expression *resolveProperties(Scope *sc, Expression *e)
         goto return_expr;
     }
 
-    if (e->type)
+    if (e->type &&
+        e->op != TOKtype)       // function type is not a property
     {
         Type *t = e->type->toBasetype();
 
@@ -1120,7 +1121,10 @@ Type *functionParameters(Loc loc, Scope *sc, TypeFunction *tf,
             }
             else if (p->storageClass & STCout)
             {
-                arg = arg->modifiableLvalue(sc, arg);
+                Type *t = arg->type;
+                if (!t->isMutable() || !t->isAssignable(1))  // check blit assignable
+                    arg->error("cannot modify struct %s with immutable members", arg->toChars());
+                arg = arg->toLvalue(sc, arg);
             }
             else if (p->storageClass & STClazy)
             {   // Convert lazy argument to a delegate
@@ -1467,6 +1471,17 @@ void Expression::warning(const char *format, ...)
     }
 }
 
+void Expression::deprecation(const char *format, ...)
+{
+    if (type != Type::terror)
+    {
+        va_list ap;
+        va_start(ap, format);
+        ::vdeprecation(loc, format, ap);
+        va_end( ap );
+    }
+}
+
 int Expression::rvalue()
 {
     if (type && type->toBasetype()->ty == Tvoid)
@@ -1578,7 +1593,7 @@ Expression *Expression::modifiableLvalue(Scope *sc, Expression *e)
 
     // See if this expression is a modifiable lvalue (i.e. not const)
 #if DMDV2
-    if (type && (!type->isMutable() || !type->isAssignable()))
+    if (type && !type->isMutable())
     {   error("%s is not mutable", e->toChars());
         return new ErrorExp();
     }
@@ -1716,7 +1731,9 @@ void Expression::checkPurity(Scope *sc, VarDeclaration *v, Expression *ethis)
         !(sc->flags & SCOPEdebug) && // allow violations inside debug conditionals
         v->ident != Id::ctfe &&      // magic variable never violates pure and safe
         !v->isImmutable() &&         // always safe and pure to access immutables...
-        !(v->isConst() && v->isDataseg() && !v->type->hasPointers()) && // const global value types are immutable
+        !(v->isConst() && !v->isRef() && (v->isDataseg() || v->isParameter()) &&
+          v->type->implicitConvTo(v->type->invariantOf())) &&
+            // or const global/parameter values which have no mutable indirections
         !(v->storage_class & STCmanifest) // ...or manifest constants
        )
     {
@@ -1794,6 +1811,56 @@ void Expression::checkSafety(Scope *sc, FuncDeclaration *f)
 }
 #endif
 
+void Expression::checkModifiable(Scope *sc)
+{
+    assert(type);
+
+    /* We should call checkCtorInit() first, because this rejects
+       the modifying parameter and result inside contract.
+     */
+    if (!checkCtorInit(sc))
+    {
+        if (type->isMutable())
+        {
+            if (!type->isAssignable())
+            {
+                error("cannot modify struct %s %s with immutable members", toChars(), type->toChars());
+            }
+        }
+        else
+        {
+            Declaration *var = NULL;
+            if (op == TOKvar)
+                var = ((VarExp *)this)->var;
+            else if (op == TOKdotvar)
+                var = ((DotVarExp *)this)->var;
+            if (var && var->storage_class & STCctorinit)
+            {
+                const char *p = var->isStatic() ? "static " : "";
+                error("can only initialize %sconst member %s inside %sconstructor",
+                    p, var->toChars(), p);
+            }
+            else
+            {
+                const char *p =
+                    type->isImmutable() ? "immutable" :
+                    type->isConst() ? "const" :
+                    type->isWild() ? "wild" : NULL;
+                assert(p);
+                error("cannot modify %s expression %s", p, toChars());
+            }
+        }
+    }
+}
+
+/***************************************
+ * Return !=0 if expression is a part of initializing.
+ */
+
+int Expression::checkCtorInit(Scope *sc)
+{
+    return FALSE;
+}
 
 /*****************************
  * Check that expression can be tested for true or false.
@@ -2225,7 +2292,7 @@ void IntegerExp::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 
             case Tuns32:
             L3:
-                buf->printf("%du", (unsigned)v);
+                buf->printf("%uu", (unsigned)v);
                 break;
 
             case Tint64:
@@ -3184,6 +3251,13 @@ int ThisExp::isLvalue()
 Expression *ThisExp::toLvalue(Scope *sc, Expression *e)
 {
     return this;
+}
+
+Expression *ThisExp::modifiableLvalue(Scope *sc, Expression *e)
+{
+    if (type->toBasetype()->ty == Tclass)
+        error("Cannot modify '%s'", toChars());
+    return Expression::modifiableLvalue(sc, e);
 }
 
 /******************************** SuperExp **************************/
@@ -5019,6 +5093,11 @@ void VarExp::checkEscapeRef()
     }
 }
 
+int VarExp::checkCtorInit(Scope *sc)
+{
+    return var->checkModify(loc, sc, type);
+}
+
 
 int VarExp::isLvalue()
 {
@@ -5052,15 +5131,15 @@ Expression *VarExp::modifiableLvalue(Scope *sc, Expression *e)
 
 #if (BUG6652 == 1)
     VarDeclaration *v = var->isVarDeclaration();
-    if (v && (v->storage_class & STCbug6652) && global.params.warnings)
-        warning("Variable modified in foreach body requires ref storage class");
+    if (v && (v->storage_class & STCbug6652))
+        warning("variable modified in foreach body requires ref storage class");
 #elif (BUG6652 == 2)
     VarDeclaration *v = var->isVarDeclaration();
-    if (v && (v->storage_class & STCbug6652) && !global.params.useDeprecated)
-        error("Variable modified in foreach body requires ref storage class");
+    if (v && (v->storage_class & STCbug6652))
+        deprecation("variable modified in foreach body requires ref storage class");
 #endif
 
-    var->checkModify(loc, sc, type);
+    checkModifiable(sc);
 
     // See if this expression is a modifiable lvalue (i.e. not const)
     return toLvalue(sc, e);
@@ -5459,7 +5538,7 @@ Expression *DeclarationExp::semantic(Scope *sc)
                         (s2 = scx->scopesym->symtab->lookup(s->ident)) != NULL &&
                         s != s2)
                     {
-                        error("shadowing declaration %s is deprecated", s->toPrettyChars());
+                        deprecation("shadowing declaration %s is deprecated", s->toPrettyChars());
                         return new ErrorExp();
                     }
                 }
@@ -5743,8 +5822,7 @@ Expression *IsExp::semantic(Scope *sc)
                 break;
 
             case TOKinvariant:
-                if (!global.params.useDeprecated)
-                    error("use of 'invariant' rather than 'immutable' is deprecated");
+                deprecation("use of 'invariant' rather than 'immutable' is deprecated");
             case TOKimmutable:
                 if (!targ->isImmutable())
                     goto Lno;
@@ -6662,8 +6740,7 @@ Expression *DotIdExp::semantic(Scope *sc, int flag)
     }
     else
     {
-        if (e1->op != TOKtype)
-            e1 = resolveProperties(sc, e1);
+        e1 = resolveProperties(sc, e1);
         eleft = NULL;
         eright = e1;
     }
@@ -7072,6 +7149,14 @@ Lerr:
     return new ErrorExp();
 }
 
+int DotVarExp::checkCtorInit(Scope *sc)
+{
+    if (e1->op == TOKthis)
+        return modifyFieldVar(loc, sc, var->isVarDeclaration(), e1);
+    else
+        return e1->checkCtorInit(sc);
+}
+
 
 int DotVarExp::isLvalue()
 {
@@ -7089,7 +7174,7 @@ Expression *DotVarExp::toLvalue(Scope *sc, Expression *e)
  * Mark variable v as modified if it is inside a constructor that var
  * is a field in.
  */
-void modifyFieldVar(Loc loc, Scope *sc, VarDeclaration *var, Expression *e1)
+int modifyFieldVar(Loc loc, Scope *sc, VarDeclaration *var, Expression *e1)
 {
     //printf("modifyFieldVar(var = %s)\n", var->toChars());
     Dsymbol *s = sc->func;
@@ -7107,6 +7192,7 @@ void modifyFieldVar(Loc loc, Scope *sc, VarDeclaration *var, Expression *e1)
         {
             var->ctorinit = 1;
             //printf("setting ctorinit\n");
+            return TRUE;
         }
         else
         {
@@ -7114,15 +7200,10 @@ void modifyFieldVar(Loc loc, Scope *sc, VarDeclaration *var, Expression *e1)
             {   s = s->toParent2();
                 continue;
             }
-            else if (var->storage_class & STCctorinit)
-            {
-                const char *p = var->isStatic() ? "static " : "";
-                error(loc, "can only initialize %sconst member %s inside %sconstructor",
-                    p, var->toChars(), p);
-            }
         }
         break;
     }
+    return FALSE;
 }
 
 Expression *DotVarExp::modifiableLvalue(Scope *sc, Expression *e)
@@ -7133,28 +7214,7 @@ Expression *DotVarExp::modifiableLvalue(Scope *sc, Expression *e)
     printf("var->type = %s\n", var->type->toChars());
 #endif
 
-    Type *t1 = e1->type->toBasetype();
-
-    if (!t1->isMutable() ||
-        (t1->ty == Tpointer && !t1->nextOf()->isMutable()) ||
-        !var->type->isMutable() ||
-        !var->type->isAssignable() ||
-        var->storage_class & STCmanifest
-       )
-    {
-        if (var->isCtorinit())
-        {   // It's only modifiable if inside the right constructor
-            modifyFieldVar(loc, sc, var->isVarDeclaration(), e1);
-        }
-        else
-        {
-            error("cannot modify const/immutable/inout expression %s", toChars());
-        }
-    }
-    else if (var->storage_class & STCnodefaultctor)
-    {
-        modifyFieldVar(loc, sc, var->isVarDeclaration(), e1);
-    }
+    checkModifiable(sc);
     return this;
 }
 
@@ -7828,7 +7888,7 @@ Lagain:
             ad = ((TypeStruct *)t1)->sym;
 #if DMDV2
             // First look for constructor
-            if (ad->ctor && arguments && arguments->dim)
+            if (e1->op == TOKtype && ad->ctor && (ad->noDefaultCtor || arguments && arguments->dim))
             {
                 // Create variable that will get constructed
                 Identifier *idtmp = Lexer::uniqueId("__ctmp");
@@ -8229,13 +8289,21 @@ Lagain:
                     tierror->error("errors instantiating template");    // give better error message
                 return new ErrorExp();
             }
-            if (f->needThis() && hasThis(sc))
+            if (f->needThis())
             {
-                // Supply an implicit 'this', as in
-                //        this.ident
+                if (hasThis(sc))
+                {
+                    // Supply an implicit 'this', as in
+                    //        this.ident
 
-                e1 = new DotTemplateExp(loc, (new ThisExp(loc))->semantic(sc), te->td);
-                goto Lagain;
+                    e1 = new DotTemplateExp(loc, (new ThisExp(loc))->semantic(sc), te->td);
+                    goto Lagain;
+                }
+                else if (!sc->intypeof && !sc->getStructClassScope())
+                {
+                    error("need 'this' for %s type %s", f->toChars(), f->type->toChars());
+                    return new ErrorExp();
+                }
             }
 
             e1 = new VarExp(loc, f);
@@ -8299,23 +8367,31 @@ Lagain:
         assert(f);
 
         if (ve->hasOverloads)
-            f = f->overloadResolve(loc, NULL, arguments);
+            f = f->overloadResolve(loc, NULL, arguments, 2);
+
+        if (f->needThis())
+        {
+            if (hasThis(sc))
+            {
+                // Supply an implicit 'this', as in
+                //    this.ident
+
+                e1 = new DotVarExp(loc, (new ThisExp(loc))->semantic(sc), ve->var);
+                goto Lagain;
+            }
+            else if (!sc->intypeof && !sc->getStructClassScope())
+            {
+                error("need 'this' for %s type %s", f->toChars(), f->type->toChars());
+                return new ErrorExp();
+            }
+        }
+
         checkDeprecated(sc, f);
 #if DMDV2
         checkPurity(sc, f);
         checkSafety(sc, f);
 #endif
         f->checkNestedReference(sc, loc);
-
-        if (f->needThis() && hasThis(sc))
-        {
-            // Supply an implicit 'this', as in
-            //    this.ident
-
-            e1 = new DotVarExp(loc, new ThisExp(loc), f);
-            goto Lagain;
-        }
-
         accessCheck(loc, sc, NULL, f);
 
         ethis = NULL;
@@ -8619,8 +8695,7 @@ Expression *PtrExp::semantic(Scope *sc)
 
             case Tsarray:
             case Tarray:
-                if (!global.params.useDeprecated)
-                    error("using * on an array is deprecated; use *(%s).ptr instead", e1->toChars());
+                deprecation("using * on an array is deprecated; use *(%s).ptr instead", e1->toChars());
                 type = ((TypeArray *)tb)->next;
                 e1 = e1->castTo(sc, type->pointerTo());
                 break;
@@ -8636,16 +8711,24 @@ Expression *PtrExp::semantic(Scope *sc)
     return this;
 }
 
+void PtrExp::checkEscapeRef()
+{
+    e1->checkEscape();
+}
+
+int PtrExp::checkCtorInit(Scope *sc)
+{
+    if (e1->op == TOKsymoff)
+    {   SymOffExp *se = (SymOffExp *)e1;
+        return se->var->checkModify(loc, sc, type);
+    }
+    return FALSE;
+}
+
 
 int PtrExp::isLvalue()
 {
     return 1;
-}
-
-
-void PtrExp::checkEscapeRef()
-{
-    e1->checkEscape();
 }
 
 Expression *PtrExp::toLvalue(Scope *sc, Expression *e)
@@ -8665,13 +8748,8 @@ Expression *PtrExp::modifiableLvalue(Scope *sc, Expression *e)
 {
     //printf("PtrExp::modifiableLvalue() %s, type %s\n", toChars(), type->toChars());
 
-    if (e1->op == TOKsymoff)
-    {   SymOffExp *se = (SymOffExp *)e1;
-        se->var->checkModify(loc, sc, type);
-        //return toLvalue(sc, e);
-    }
-
-    return Expression::modifiableLvalue(sc, e);
+    checkModifiable(sc);
+    return toLvalue(sc, e);
 }
 #endif
 
@@ -8910,9 +8988,7 @@ Expression *DeleteExp::semantic(Scope *sc)
         IndexExp *ae = (IndexExp *)(e1);
         Type *tb1 = ae->e1->type->toBasetype();
         if (tb1->ty == Taarray)
-        {   if (!global.params.useDeprecated)
-                error("delete aa[key] deprecated, use aa.remove(key)");
-        }
+            deprecation("delete aa[key] deprecated, use aa.remove(key)");
     }
 
     return this;
@@ -9052,11 +9128,8 @@ Expression *CastExp::semantic(Scope *sc)
             return new VectorExp(loc, e1, to);
         }
 
-        if (tob->isintegral() && t1b->ty == Tarray &&
-            !global.params.useDeprecated)
-        {
-            error("casting %s to %s is deprecated", e1->type->toChars(), to->toChars());
-        }
+        if (tob->isintegral() && t1b->ty == Tarray)
+            deprecation("casting %s to %s is deprecated", e1->type->toChars(), to->toChars());
     }
     else if (!to)
     {   error("cannot cast tuple");
@@ -9435,6 +9508,17 @@ void SliceExp::checkEscapeRef()
     e1->checkEscapeRef();
 }
 
+int SliceExp::checkCtorInit(Scope *sc)
+{
+    if (e1->type->ty == Tsarray ||
+        (e1->op == TOKindex && e1->type->ty != Tarray) ||
+        e1->op == TOKslice)
+    {
+        return e1->checkCtorInit(sc);
+    }
+    return FALSE;
+}
+
 
 int SliceExp::isLvalue()
 {
@@ -9705,6 +9789,11 @@ void CommaExp::checkEscapeRef()
     e2->checkEscapeRef();
 }
 
+int CommaExp::checkCtorInit(Scope *sc)
+{
+    return e2->checkCtorInit(sc);
+}
+
 
 int CommaExp::isLvalue()
 {
@@ -9897,6 +9986,17 @@ Lerr:
     return new ErrorExp();
 }
 
+int IndexExp::checkCtorInit(Scope *sc)
+{
+    if (e1->type->ty == Tsarray ||
+        (e1->op == TOKindex && e1->type->ty != Tarray) ||
+        e1->op == TOKslice)
+    {
+        return e1->checkCtorInit(sc);
+    }
+    return FALSE;
+}
+
 
 int IndexExp::isLvalue()
 {
@@ -9915,10 +10015,6 @@ Expression *IndexExp::modifiableLvalue(Scope *sc, Expression *e)
 {
     //printf("IndexExp::modifiableLvalue(%s)\n", toChars());
     modifiable = 1;
-    if (e1->op == TOKstring)
-        error("string literals are immutable");
-    if (type && (!type->isMutable() || !type->isAssignable()))
-        error("%s isn't mutable", e->toChars());
     Type *t1 = e1->type->toBasetype();
     if (t1->ty == Taarray)
     {   TypeAArray *taa = (TypeAArray *)t1;
@@ -9926,6 +10022,10 @@ Expression *IndexExp::modifiableLvalue(Scope *sc, Expression *e)
         if (t2b->ty == Tarray && t2b->nextOf()->isMutable())
             error("associative arrays can only be assigned values with immutable keys, not %s", e2->type->toChars());
         e1 = e1->modifiableLvalue(sc, e1);
+    }
+    else
+    {
+        checkModifiable(sc);
     }
     return toLvalue(sc, e);
 }
@@ -10145,24 +10245,6 @@ Expression *AssignExp::semantic(Scope *sc)
                 e = e->semantic(sc);
                 return e;
             }
-#if 0 // Turned off to allow rewriting (a[i]=value) to (a.opIndex(i)=value)
-            else
-            {
-                // Rewrite (a[i] = value) to (a.opIndex(i, value))
-                if (search_function(ad, id))
-                {   Expression *e = new DotIdExp(loc, ae->e1, id);
-
-                    if (1 || !global.params.useDeprecated)
-                    {   error("operator [] assignment overload with opIndex(i, value) illegal, use opIndexAssign(value, i)");
-                        return new ErrorExp();
-                    }
-
-                    e = new CallExp(loc, e, (*ae->arguments)[0], e2);
-                    e = e->semantic(sc);
-                    return e;
-                }
-            }
-#endif
         }
 
         // No opIndexAssign found yet, but there might be an alias this to try.
@@ -10518,8 +10600,15 @@ Ltupleassign:
                 e = ae->op_overload(sc);
                 e2 = new CommaExp(loc, new CommaExp(loc, de, e), ve);
                 e2 = e2->semantic(sc);
+
+                e1 = e1->optimize(WANTvalue);
+                e1 = e1->modifiableLvalue(sc, e1);
+                e2 = e2->implicitCastTo(sc, e1->type);
+                type = e1->type;
+                assert(type);
+                e = this;
             }
-            else if (e)
+            if (e)
                 return e;
         }
         else if (op == TOKconstruct && !refinit)
@@ -10628,7 +10717,7 @@ Ltupleassign:
     else if (e1->op == TOKslice)
     {
         Type *tn = e1->type->nextOf();
-        if (op == TOKassign && tn && (!tn->isMutable() || !tn->isAssignable()))
+        if (op == TOKassign && !tn->isMutable() && !e1->checkCtorInit(sc))
         {   error("slice %s is not mutable", e1->toChars());
             return new ErrorExp();
         }
@@ -10703,6 +10792,8 @@ Ltupleassign:
     {
         e2 = e2->implicitCastTo(sc, e1->type);
     }
+    if (e2->op == TOKerror)
+        return new ErrorExp();
 
     /* Look for array operations
      */
@@ -12395,6 +12486,11 @@ Expression *CondExp::semantic(Scope *sc)
     printf("e2 : %s\n", e2->type->toChars());
 #endif
     return this;
+}
+
+int CondExp::checkCtorInit(Scope *sc)
+{
+    return e1->checkCtorInit(sc) && e2->checkCtorInit(sc);
 }
 
 

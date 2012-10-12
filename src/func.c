@@ -353,8 +353,8 @@ void FuncDeclaration::semantic(Scope *sc)
 #endif
             isDtorDeclaration() ||
             isInvariantDeclaration() ||
-            isUnitTestDeclaration() || isNewDeclaration() || isDelete())
-            error("constructors, destructors, postblits, invariants, unittests, new and delete functions are not allowed in interface %s", id->toChars());
+            isNewDeclaration() || isDelete())
+            error("constructors, destructors, postblits, invariants, new and delete functions are not allowed in interface %s", id->toChars());
         if (fbody && isVirtual())
             error("function body is not abstract in interface %s", id->toChars());
     }
@@ -481,7 +481,7 @@ void FuncDeclaration::semantic(Scope *sc)
                 doesoverride = TRUE;
 #if DMDV2
                 if (!isOverride())
-                    warning(loc, "overrides base class function %s, but is not marked with 'override'", fdv->toPrettyChars());
+                    ::deprecation(loc, "overriding base class function without using override attribute is deprecated (%s overrides %s)", toPrettyChars(), fdv->toPrettyChars());
 #endif
 
                 FuncDeclaration *fdc = ((Dsymbol *)cd->vtbl.data[vi])->isFuncDeclaration();
@@ -712,32 +712,6 @@ void FuncDeclaration::semantic(Scope *sc)
         }
     }
 
-    if (ident == Id::assign && (sd || cd))
-    {   // Disallow identity assignment operator.
-
-        // opAssign(...)
-        if (nparams == 0)
-        {   if (f->varargs == 1)
-                goto Lassignerr;
-        }
-        else
-        {
-            Parameter *arg0 = Parameter::getNth(f->parameters, 0);
-            Type *t0 = arg0->type->toBasetype();
-            Type *tb = sd ? sd->type : cd->type;
-            if (arg0->type->implicitConvTo(tb) ||
-                (sd && t0->ty == Tpointer && t0->nextOf()->implicitConvTo(tb))
-               )
-            {
-                if (nparams == 1)
-                    goto Lassignerr;
-                Parameter *arg1 = Parameter::getNth(f->parameters, 1);
-                if (arg1->defaultArg)
-                    goto Lassignerr;
-            }
-        }
-    }
-
     if (isVirtual() && semanticRun != PASSsemanticdone)
     {
         /* Rewrite contracts as nested functions, then call them.
@@ -803,14 +777,6 @@ Ldone:
     scope = new Scope(*sc);
     scope->setNoFree();
     return;
-
-Lassignerr:
-    if (sd)
-    {
-        sd->hasIdentityAssign = 1;      // don't need to generate it
-        goto Ldone;
-    }
-    error("identity assignment operator overload is illegal");
 }
 
 void FuncDeclaration::semantic2(Scope *sc)
@@ -1236,6 +1202,19 @@ void FuncDeclaration::semantic3(Scope *sc)
 
             if (isCtorDeclaration() && ad)
             {
+#if DMDV2
+                // Check for errors related to 'nothrow'.
+                int nothrowErrors = global.errors;
+                int blockexit = fbody->blockExit(f->isnothrow);
+                if (f->isnothrow && (global.errors != nothrowErrors) )
+                    error("'%s' is nothrow yet may throw", toChars());
+                if (flags & FUNCFLAGnothrowInprocess)
+                {
+                    flags &= ~FUNCFLAGnothrowInprocess;
+                    if (!(blockexit & BEthrow))
+                        f->isnothrow = TRUE;
+                }
+#endif
                 //printf("callSuper = x%x\n", sc2->callSuper);
 
                 ClassDeclaration *cd = ad->isClassDeclaration();
@@ -1300,7 +1279,7 @@ void FuncDeclaration::semantic3(Scope *sc)
 #if DMDV2
                 // Check for errors related to 'nothrow'.
                 int nothrowErrors = global.errors;
-                int blockexit = fbody ? fbody->blockExit(f->isnothrow) : BEfallthru;
+                int blockexit = fbody->blockExit(f->isnothrow);
                 if (f->isnothrow && (global.errors != nothrowErrors) )
                     error("'%s' is nothrow yet may throw", toChars());
                 if (flags & FUNCFLAGnothrowInprocess)
@@ -1444,6 +1423,7 @@ void FuncDeclaration::semantic3(Scope *sc)
                 {   // Initialize _argptr to point past non-variadic arg
                     VarDeclaration *p;
                     unsigned offset = 0;
+                    Expression *e;
 
                     Expression *e1 = new VarExp(0, argptr);
                     // Find the last non-ref parameter
@@ -1469,15 +1449,32 @@ void FuncDeclaration::semantic3(Scope *sc)
                     }
                     else
                         p = v_arguments;            // last parameter is _arguments[]
+                    if (global.params.is64bit && global.params.isWindows)
+                    {   offset += PTRSIZE;
                     if (p->storage_class & STClazy)
+                        {
+                            /* Necessary to offset the extra level of indirection the Win64
+                             * ABI demands
+                             */
+                            e = new SymOffExp(0,p,0);
+                            e->type = Type::tvoidptr;
+                            e = new AddrExp(0, e);
+                            e->type = Type::tvoidptr;
+                            e = new AddExp(0, e, new IntegerExp(offset));
+                            e->type = Type::tvoidptr;
+                            goto L1;
+                        }
+                    }
+                    else if (p->storage_class & STClazy)
                         // If the last parameter is lazy, it's the size of a delegate
                         offset += PTRSIZE * 2;
                     else
                         offset += p->type->size();
                     offset = (offset + PTRSIZE - 1) & ~(PTRSIZE - 1);  // assume stack aligns on pointer size
-                    Expression *e = new SymOffExp(0, p, offset);
+                    e = new SymOffExp(0, p, offset);
                     e->type = Type::tvoidptr;
                     //e = e->semantic(sc);
+                L1:
                     e = new AssignExp(0, e1, e);
                     e->type = t;
                     a->push(new ExpStatement(0, e));
@@ -2285,6 +2282,8 @@ FuncDeclaration *FuncDeclaration::overloadExactMatch(Type *t)
 
 /********************************************
  * Decide which function matches the arguments best.
+ *      flags           1: do not issue error message on no match, just return NULL
+ *                      2: do not issue error on ambiguous matches and need explicit this
  */
 
 struct Param2
@@ -2419,17 +2418,14 @@ if (arguments)
         OutBuffer buf;
 
         buf.writeByte('(');
-        if (arguments)
+        if (arguments && arguments->dim)
         {
             HdrGenState hgs;
-
             argExpTypesToCBuffer(&buf, arguments, &hgs);
-            buf.writeByte(')');
-            if (ethis)
-                ethis->type->modToBuffer(&buf);
         }
-        else
-            buf.writeByte(')');
+        buf.writeByte(')');
+        if (ethis)
+            ethis->type->modToBuffer(&buf);
 
         if (m.last == MATCHnomatch)
         {
@@ -2450,14 +2446,16 @@ if (arguments)
         }
         else
         {
+            if ((flags & 2) && m.lastf->needThis() && !ethis)
+                return m.lastf;
 #if 1
             TypeFunction *t1 = (TypeFunction *)m.lastf->type;
             TypeFunction *t2 = (TypeFunction *)m.nextf->type;
 
-            error(loc, "called with argument types:\n\t(%s)\nmatches both:\n\t%s%s\nand:\n\t%s%s",
+            error(loc, "called with argument types:\n\t(%s)\nmatches both:\n\t%s(%d): %s%s\nand:\n\t%s(%d): %s%s",
                     buf.toChars(),
-                    m.lastf->toPrettyChars(), Parameter::argsTypesToChars(t1->parameters, t1->varargs),
-                    m.nextf->toPrettyChars(), Parameter::argsTypesToChars(t2->parameters, t2->varargs));
+                    m.lastf->loc.filename, m.lastf->loc.linnum, m.lastf->toPrettyChars(), Parameter::argsTypesToChars(t1->parameters, t1->varargs),
+                    m.nextf->loc.filename, m.nextf->loc.linnum, m.nextf->toPrettyChars(), Parameter::argsTypesToChars(t2->parameters, t2->varargs));
 #else
             error(loc, "overloads %s and %s both match argument list for %s",
                     m.lastf->type->toChars(),
@@ -2630,14 +2628,14 @@ AggregateDeclaration *FuncDeclaration::isMember2()
 //printf("\ts = '%s', parent = '%s', kind = %s\n", s->toChars(), s->parent->toChars(), s->parent->kind());
         ad = s->isMember();
         if (ad)
-{
+        {
             break;
-}
+        }
         if (!s->parent ||
             (!s->parent->isTemplateInstance()))
-{
+        {
             break;
-}
+        }
     }
     //printf("-FuncDeclaration::isMember2() %p\n", ad);
     return ad;

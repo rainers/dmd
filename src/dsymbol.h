@@ -122,15 +122,19 @@ struct Dsymbol : Object
     Loc loc;                    // where defined
     Scope *scope;               // !=NULL means context to use for semantic()
     bool errors;                // this symbol failed to pass semantic()
+    char *depmsg;               // customized deprecation message
 
     Dsymbol();
     Dsymbol(Identifier *);
     char *toChars();
+    Loc& getLoc();
     char *locToChars();
     int equals(Object *o);
     int isAnonymous();
     void error(Loc loc, const char *format, ...);
     void error(const char *format, ...);
+    void deprecation(Loc loc, const char *format, ...);
+    void deprecation(const char *format, ...);
     void checkDeprecated(Loc loc, Scope *sc);
     Module *getModule();
     Module *getAccessModule();

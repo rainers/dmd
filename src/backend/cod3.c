@@ -25,6 +25,7 @@
 #include        "tinfo.h"
 #include        "melf.h"
 #include        "outbuf.h"
+#include        "xmm.h"
 #if SCPP
 #include        "exh.h"
 #endif
@@ -40,7 +41,7 @@ extern targ_size_t retsize;
 STATIC void pinholeopt_unittest();
 STATIC void do8bit (enum FL,union evc *);
 STATIC void do16bit (enum FL,union evc *,int);
-STATIC void do32bit (enum FL,union evc *,int,targ_size_t = 0);
+STATIC void do32bit (enum FL,union evc *,int,int = 0);
 STATIC void do64bit (enum FL,union evc *,int);
 
 #if ELFOBJ || MACHOBJ
@@ -770,8 +771,12 @@ void outblkexitcode(block *bl, code*& c, int& anyspill, const char* sflsave, sym
 #endif
                 if (config.flags2 & CFG2seh)
                     c = cat(c,nteh_unwind(0,toindex));
-#if MARS && (TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS)
-                else if (toindex + 1 <= fromindex)
+#if MARS
+                else if (
+#if TARGET_WINDOS
+                         config.exe == EX_WIN64 &&
+#endif
+                         toindex + 1 <= fromindex)
                 {
                     //c = cat(c, linux_unwind(0, toindex));
                     block *bt;
@@ -2707,8 +2712,8 @@ code* prolog_frameadj(tym_t tyf, unsigned xlocalsize, bool enter, bool* pushallo
             code_orflag(csub, CFtarg2);
             gen2sib(csub, 0x85, modregrm(0,SP,4),modregrm(0,4,SP));
             if (I64)
-            {   gen2(csub, 0xFF, (REX_W << 16) | modregrmx(3,0,R11));   // DEC R11
-                genc2(csub,JNE,0,(targ_uns)-14);
+            {   gen2(csub, 0xFF, modregrmx(3,1,R11));   // DEC R11D
+                genc2(csub,JNE,0,(targ_uns)-15);
             }
             else
             {   gen1(csub, 0x48 + DX);                  // DEC EDX
@@ -2994,7 +2999,7 @@ code* prolog_loadparams(tym_t tyf, bool pushalloc, regm_t* namedargs)
 
             type *t = s->Stype;
             type *t2 = NULL;
-            if (tybasic(t->Tty) == TYstruct)
+            if (tybasic(t->Tty) == TYstruct && config.exe != EX_WIN64)
             {   type *targ1 = t->Ttag->Sstruct->Sarg1type;
                 t2 = t->Ttag->Sstruct->Sarg2type;
                 if (targ1)
@@ -3132,7 +3137,7 @@ code* prolog_loadparams(tym_t tyf, bool pushalloc, regm_t* namedargs)
 
             type *t = s->Stype;
             type *t2 = NULL;
-            if (tybasic(t->Tty) == TYstruct)
+            if (tybasic(t->Tty) == TYstruct && config.exe != EX_WIN64)
             {   type *targ1 = t->Ttag->Sstruct->Sarg1type;
                 t2 = t->Ttag->Sstruct->Sarg2type;
                 if (targ1)
@@ -3317,19 +3322,32 @@ void epilog(block *b)
      * by the prolog code. Remember to do them in the reverse
      * order they were pushed.
      */
-    reg = I64 ? R15 : DI;
-    regm = 1 << reg;
     topop = fregsaved & ~mfuncreg;
 #ifdef DEBUG
-    if (topop & ~0xFFFF)
+    if (topop & ~(XMMREGS | 0xFFFF))
         printf("fregsaved = %s, mfuncreg = %s\n",regm_str(fregsaved),regm_str(mfuncreg));
 #endif
-    assert(!(topop & ~0xFFFF));
+    assert(!(topop & ~(XMMREGS | 0xFFFF)));
+    reg = I64 ? XMM7 : DI;
+    if (!(topop & XMMREGS))
+        reg = R15;
+    regm = 1 << reg;
     while (topop)
     {   if (topop & regm)
-        {   c = gen1(c,0x58 + (reg & 7));         // POP reg
-            if (reg & 8)
-                code_orrex(c, REX_B);
+        {
+            if (reg >= XMM0)
+            {
+                // MOVUPD xmm,8[RSP]
+                c = genc1(c,LODUPD,modregxrm(2,reg-XMM0,4) + 256*modregrm(0,4,SP),FLconst,8);
+                // ADD RSP,16
+                c = cod3_stackadj(c, -16);
+            }
+            else
+            {
+                c = gen1(c,0x58 + (reg & 7));         // POP reg
+                if (reg & 8)
+                    code_orrex(c, REX_B);
+            }
             topop &= ~regm;
         }
         regm >>= 1;
@@ -3418,6 +3436,7 @@ Lret:
             c = genc2(c,0xC2,0,4);                      // RET 4
         }
         else if (!typfunc(tym) ||                       // if caller cleans the stack
+                 config.exe == EX_WIN64 ||
                  Poffset == 0)                          // or nothing pushed on the stack anyway
         {   op++;                                       // to a regular RET
             c = gen1(c,op);
@@ -3597,8 +3616,13 @@ void cod3_thunk(symbol *sthunk,symbol *sfunc,unsigned p,tym_t thisty,
         else if (thunkty == TYjfunc || (I64 && thunkty == TYnfunc))
         {                                       // ADD EAX,d
             c = CNIL;
+            int rm = AX;
+            if (config.exe == EX_WIN64)
+                rm = CX;
+            else if (I64)
+                rm = DI;
             if (d)
-                c = genc2(c,0x81,modregrm(3,reg,I64 ? DI : AX),d);
+                c = genc2(c,0x81,modregrm(3,reg,rm),d);
         }
         else
         {
@@ -3970,7 +3994,7 @@ if (0 && !(funcsym_p->Sfunc->Fflags3 & Fmember))
             case SCfastpar:
             case SCregister:
             case_auto:
-//printf("s = '%s', Soffset = x%x, Aoff = x%x, BPoff = x%x EBPtoESP = x%x\n", s->Sident, s->Soffset, Aoff, BPoff, EBPtoESP);
+//printf("s = '%s', Soffset = x%x, Aoff = x%x, BPoff = x%x EBPtoESP = x%x\n", s->Sident, (int)s->Soffset, (int)Aoff, (int)BPoff, (int)EBPtoESP);
 //              if (!(funcsym_p->Sfunc->Fflags3 & Fnested))
                     s->Soffset += Aoff + BPoff;
                 break;
@@ -4091,7 +4115,7 @@ void assignaddrc(code *c)
         {
 #if OMFOBJ
             case FLdata:
-                if (s->Sclass == SCcomdat)
+                if (I64 || s->Sclass == SCcomdat)
                 {   c->IFL1 = FLextern;
                     goto do2;
                 }
@@ -4103,7 +4127,12 @@ void assignaddrc(code *c)
                 c->IEVpointer1 += s->Soffset;
                 c->IFL1 = FLdatseg;
                 goto do2;
+
             case FLudata:
+                if (I64)
+                {   c->IFL1 = FLextern;
+                    goto do2;
+                }
 #if MARS
                 c->IEVseg1 = s->Sseg;
 #else
@@ -4953,6 +4982,8 @@ void simplify_code(code* c)
         //printf("replacing 0x%02x, val = x%lx\n",c->Iop,c->IEV2.Vlong);
         c->Iop = regop[(c->Irm & modregrm(0,7,0)) >> 3] | (c->Iop & 1);
         code_newreg(c, reg);
+        if (I64 && !(c->Iop & 1) && (reg & 4))
+            c->Irex |= REX;
     }
 }
 
@@ -5625,8 +5656,8 @@ unsigned codout(code *c)
                                         val = -8;
                                 }
 #if TARGET_OSX || TARGET_WINDOS
-                                /* Mach-O and Win64 linkage already take the 4 byte size
-                                 * into account
+                                /* Mach-O and Win64 fixups already take the 4 byte size
+                                 * into account, so bias by 4
         `                        */
                                 val += 4;
 #endif
@@ -5895,7 +5926,7 @@ STATIC void do64bit(enum FL fl,union evc *uev,int flags)
 }
 
 
-STATIC void do32bit(enum FL fl,union evc *uev,int flags, targ_size_t val)
+STATIC void do32bit(enum FL fl,union evc *uev,int flags, int val)
 { char *p;
   symbol *s;
   targ_size_t ad;
@@ -5949,7 +5980,20 @@ STATIC void do32bit(enum FL fl,union evc *uev,int flags, targ_size_t val)
 #endif
         FLUSH();
         s = uev->sp.Vsym;               /* symbol pointer               */
-        objmod->reftoident(cseg,offset,s,uev->sp.Voffset + val,flags);
+#if TARGET_WINDOS
+        if (I64 && (flags & CFpc32))
+        {
+            /* This is for those funky fixups where the location to be fixed up
+             * is a 'val' amount back from the current RIP, biased by adding 4.
+             */
+            assert(val >= -5 && val <= 0);
+            flags |= (-val & 7) << 24;          // set CFREL value
+            assert(CFREL == (7 << 24));
+            objmod->reftoident(cseg,offset,s,uev->sp.Voffset,flags);
+        }
+        else
+#endif
+            objmod->reftoident(cseg,offset,s,uev->sp.Voffset + val,flags);
         break;
 
 #if TARGET_OSX

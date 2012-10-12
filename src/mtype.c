@@ -1750,7 +1750,7 @@ int Type::isString()
  *      a = b;
  * ?
  */
-int Type::isAssignable()
+int Type::isAssignable(int blit)
 {
     return TRUE;
 }
@@ -1951,8 +1951,7 @@ Expression *Type::getProperty(Loc loc, Identifier *ident)
     }
     else if (ident == Id::typeinfo)
     {
-        if (!global.params.useDeprecated)
-            error(loc, ".typeinfo deprecated, use typeid(type)");
+        deprecation(loc, ".typeinfo deprecated, use typeid(type)");
         e = getTypeInfo(NULL);
     }
     else if (ident == Id::init)
@@ -2022,8 +2021,7 @@ Expression *Type::dotExp(Scope *sc, Expression *e, Identifier *ident)
     {
         if (ident == Id::offset)
         {
-            if (!global.params.useDeprecated)
-                error(e->loc, ".offset deprecated, use .offsetof");
+            deprecation(e->loc, ".offset deprecated, use .offsetof");
             goto Loffset;
         }
         else if (ident == Id::offsetof)
@@ -2049,8 +2047,7 @@ Expression *Type::dotExp(Scope *sc, Expression *e, Identifier *ident)
     }
     if (ident == Id::typeinfo)
     {
-        if (!global.params.useDeprecated)
-            error(e->loc, ".typeinfo deprecated, use typeid(type)");
+        deprecation(e->loc, ".typeinfo deprecated, use typeid(type)");
         e = getTypeInfo(sc);
     }
     else if (ident == Id::stringof)
@@ -5585,6 +5582,11 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
                     e = e->semantic(argsc);
                 }
                 e = e->implicitCastTo(argsc, fparam->type);
+
+                // default arg must be an lvalue
+                if (fparam->storageClass & (STCout | STCref))
+                    e = e->toLvalue(argsc, e);
+
                 fparam->defaultArg = e;
             }
 
@@ -7322,9 +7324,9 @@ int TypeEnum::isscalar()
     return sym->memtype->isscalar();
 }
 
-int TypeEnum::isAssignable()
+int TypeEnum::isAssignable(int blit)
 {
-    return sym->memtype->isAssignable();
+    return sym->memtype->isAssignable(blit);
 }
 
 int TypeEnum::checkBoolean()
@@ -7531,9 +7533,9 @@ int TypeTypedef::isscalar()
     return sym->basetype->isscalar();
 }
 
-int TypeTypedef::isAssignable()
+int TypeTypedef::isAssignable(int blit)
 {
-    return sym->basetype->isAssignable();
+    return sym->basetype->isAssignable(blit);
 }
 
 int TypeTypedef::checkBoolean()
@@ -8044,8 +8046,18 @@ int TypeStruct::needsDestruction()
     return sym->dtor != NULL;
 }
 
-int TypeStruct::isAssignable()
+int TypeStruct::isAssignable(int blit)
 {
+    if (!blit)
+    {
+        if (sym->hasIdentityAssign)
+            return TRUE;
+
+        // has non-identity opAssign
+        if (search_function(sym, Id::assign))
+            return FALSE;
+    }
+
     int assignable = TRUE;
     unsigned offset;
 
@@ -8071,7 +8083,7 @@ int TypeStruct::isAssignable()
             if (!assignable)
                 return FALSE;
         }
-        assignable = v->type->isMutable() && v->type->isAssignable();
+        assignable = v->type->isMutable() && v->type->isAssignable(blit);
         offset = v->offset;
         //printf(" -> assignable = %d\n", assignable);
     }
@@ -8391,8 +8403,7 @@ L1:
 
         if (ident == Id::typeinfo)
         {
-            if (!global.params.useDeprecated)
-                error(e->loc, ".typeinfo deprecated, use typeid(type)");
+            deprecation(e->loc, ".typeinfo deprecated, use typeid(type)");
             return getTypeInfo(sc);
         }
         if (ident == Id::outer && sym->vthis)

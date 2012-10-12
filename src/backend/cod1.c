@@ -1288,8 +1288,11 @@ code *getlvalue(code *pcs,elem *e,regm_t keepmsk)
                         reg_t preg = s->Spreg;
                         if (e->EV.sp.Voffset == REGSIZE)
                             preg = s->Spreg2;
-                        assert(preg != NOREG);
-                        if (regcon.params & mask[preg])
+                        /* preg could be NOREG if it's a variadic function and we're
+                         * in Win64 shadow regs and we're offsetting to get to the start
+                         * of the variadic args.
+                         */
+                        if (preg != NOREG && regcon.params & mask[preg])
                         {
                             pcs->Irm = modregrm(3,0,preg & 7);
                             if (preg & 8)
@@ -2029,6 +2032,10 @@ code *callclib(elem *e,unsigned clib,regm_t *pretregs,regm_t keepmask)
 
     Y(mST0,"_U64_LDBL"),                // CLIBu64_ldbl
     Y(mST0|mAX|mDX,"__LDBLULLNG"),      // CLIBld_u64
+
+
+    Y(DOUBLEREGS_32,"__DBLULLNG"),      // CLIBdblullng_win64
+    Y(DOUBLEREGS_32,"__ULLNGDBL"),      // CLIBullngdbl_win64
   };
 #endif
 
@@ -2121,6 +2128,11 @@ code *callclib(elem *e,unsigned clib,regm_t *pretregs,regm_t keepmask)
 
     {mST0,mST0,0,INF32|INF64|INFfloat,2,1},   // _U64_LDBL
     {0,mDX|mAX,0,INF32|INF64|INFfloat,1,2},   // __LDBLULLNG
+
+#if TARGET_WINDOS
+    {0,mAX,0,INFfloat,2,2},                   // __DBLULLNG   CLIBdblullng_win64
+    {0,mAX,0,INFfloat,1,1},                   // __ULLNGDBL   CLIBullngdbl_win64
+#endif
   };
 
   if (!clib_inited)                             /* if not initialized   */
@@ -2178,6 +2190,17 @@ code *callclib(elem *e,unsigned clib,regm_t *pretregs,regm_t keepmask)
 #undef Z
 
   assert(clib < CLIBMAX);
+#if TARGET_WINDOS
+  if (config.exe == EX_WIN64)
+  {
+        switch (clib)
+        {
+            case CLIBdblullng:  clib = CLIBdblullng_win64; break;
+            case CLIBullngdbl:  clib = CLIBullngdbl_win64; break;
+            case CLIBu64_ldbl:  assert(0); break;
+        }
+  }
+#endif
   symbol *s = &lib[clib];
   if (I16)
         assert(!(info[clib].flags & (INF32 | INF64)));
@@ -2381,7 +2404,7 @@ static int type_jparam2(type *t, tym_t ty)
         type_debug(t);
         targ_size_t sz = type_size(t);
         return (sz <= NPTRSIZE) &&
-               (sz == 1 || sz == 2 || sz == 4 || sz == 8);
+               (config.exe == EX_WIN64 || sz == 1 || sz == 2 || sz == 4 || sz == 8);
     }
     else if (tysize(ty) <= NPTRSIZE)
         return 1;
@@ -2401,48 +2424,65 @@ int FuncParamRegs::alloc(type *t, tym_t ty, reg_t *preg1, reg_t *preg2)
     // If struct just wraps another type
     if (tybasic(ty) == TYstruct && tybasic(t->Tty) == TYstruct)
     {
-        type *targ1 = t->Ttag->Sstruct->Sarg1type;
-        type *targ2 = t->Ttag->Sstruct->Sarg2type;
-        if (targ1)
+        if (config.exe == EX_WIN64)
         {
-            t = targ1;
-            ty = t->Tty;
-            if (targ2)
-            {
-                t2 = targ2;
-                ty2 = t2->Tty;
-            }
+            /* Structs occupy a general purpose register, regardless of the struct
+             * size or the number & types of its fields.
+             */
+            t = NULL;
+            ty = TYnptr;
         }
-        else if (I64 && !targ2)
-            return 0;
+        else
+        {
+            type *targ1 = t->Ttag->Sstruct->Sarg1type;
+            type *targ2 = t->Ttag->Sstruct->Sarg2type;
+            if (targ1)
+            {
+                t = targ1;
+                ty = t->Tty;
+                if (targ2)
+                {
+                    t2 = targ2;
+                    ty2 = t2->Tty;
+                }
+            }
+            else if (I64 && !targ2)
+                return 0;
+        }
     }
 
     reg_t *preg = preg1;
     int regcntsave = regcnt;
     int xmmcntsave = xmmcnt;
 
-    if (I64 &&
-        (tybasic(ty) == TYcent || tybasic(ty) == TYucent) &&
-        numintegerregs - regcnt >= 2 &&
-        config.exe != EX_WIN64)
+    if (config.exe == EX_WIN64)
     {
-        // Allocate to register pair
-        *preg1 = argregs[regcnt];
-        *preg2 = argregs[regcnt + 1];
-        regcnt += 2;
-        return 1;
+        if (tybasic(ty) == TYcfloat)
+        {
+            ty = TYnptr;                // treat like a struct
+        }
     }
-
-    if (I64 &&
-        config.exe != EX_WIN64 &&
-        tybasic(ty) == TYcdouble &&
-        numfloatregs - xmmcnt >= 2)
+    else if (I64)
     {
-        // Allocate to register pair
-        *preg1 = floatregs[xmmcnt];
-        *preg2 = floatregs[xmmcnt + 1];
-        xmmcnt += 2;
-        return 1;
+        if ((tybasic(ty) == TYcent || tybasic(ty) == TYucent) &&
+            numintegerregs - regcnt >= 2)
+        {
+            // Allocate to register pair
+            *preg1 = argregs[regcnt];
+            *preg2 = argregs[regcnt + 1];
+            regcnt += 2;
+            return 1;
+        }
+
+        if (tybasic(ty) == TYcdouble &&
+            numfloatregs - xmmcnt >= 2)
+        {
+            // Allocate to register pair
+            *preg1 = floatregs[xmmcnt];
+            *preg2 = floatregs[xmmcnt + 1];
+            xmmcnt += 2;
+            return 1;
+        }
     }
 
     for (int j = 0; j < 2; j++)
@@ -2750,6 +2790,9 @@ code *cdfunc(elem *e,regm_t *pretregs)
                 if (I64)
                     code_orrex(c2, REX_W);
                 c = cat3(c,c1,c2);
+            }
+            else if (ep->Eoper == OPstrpar && config.exe == EX_WIN64 && type_size(ep->ET) == 0)
+            {
             }
             else
             {
@@ -3875,7 +3918,7 @@ code *loaddata(elem *e,regm_t *pretregs)
                 ce = loadea(e,&cs,0x8B,reg,0,0,0);  /* MOV reg,data */
                 c = cat(c,ce);
                 // remove sign bit, so that -0.0 == 0.0
-                ce = gen2(CNIL,0xD1,modregrm(3,4,reg));        // SHL reg,1
+                ce = gen2(CNIL,0xD1,modregrmx(3,4,reg));        // SHL reg,1
                 code_orrex(ce, REX_W);
                 c = cat(c,ce);
             }

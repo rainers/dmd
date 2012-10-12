@@ -61,6 +61,7 @@ Dsymbol::Dsymbol(Identifier *ident)
     this->comment = NULL;
     this->scope = NULL;
     this->errors = false;
+    this->depmsg = NULL;
 }
 
 int Dsymbol::equals(Object *o)
@@ -216,10 +217,8 @@ const char *Dsymbol::toPrettyChars()
     return s;
 }
 
-char *Dsymbol::locToChars()
+Loc& Dsymbol::getLoc()
 {
-    OutBuffer buf;
-
     if (!loc.filename)  // avoid bug 5861.
     {
         Module *m = getModule();
@@ -227,7 +226,12 @@ char *Dsymbol::locToChars()
         if (m && m->srcfile)
             loc.filename = m->srcfile->toChars();
     }
-    return loc.toChars();
+    return loc;
+}
+
+char *Dsymbol::locToChars()
+{
+    return getLoc().toChars();
 }
 
 const char *Dsymbol::kind()
@@ -317,6 +321,8 @@ void Dsymbol::setScope(Scope *sc)
     if (!sc->nofree)
         sc->setNoFree();                // may need it even after semantic() finishes
     scope = sc;
+    if (sc->depmsg)
+        depmsg = sc->depmsg;
 }
 
 void Dsymbol::importAll(Scope *sc)
@@ -598,17 +604,9 @@ int Dsymbol::addMember(Scope *sc, ScopeDsymbol *sd, int memnum)
 
 void Dsymbol::error(const char *format, ...)
 {
-    //printf("Dsymbol::error()\n");
-    if (!loc.filename)  // avoid bug 5861.
-    {
-        Module *m = getModule();
-
-        if (m && m->srcfile)
-            loc.filename = m->srcfile->toChars();
-    }
     va_list ap;
     va_start(ap, format);
-    verror(loc, format, ap, kind(), toPrettyChars());
+    ::verror(getLoc(), format, ap, kind(), toPrettyChars());
     va_end(ap);
 }
 
@@ -616,7 +614,23 @@ void Dsymbol::error(Loc loc, const char *format, ...)
 {
     va_list ap;
     va_start(ap, format);
-    verror(loc, format, ap, kind(), toPrettyChars());
+    ::verror(loc, format, ap, kind(), toPrettyChars());
+    va_end(ap);
+}
+
+void Dsymbol::deprecation(Loc loc, const char *format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+    ::vdeprecation(loc, format, ap, kind(), toPrettyChars());
+    va_end(ap);
+}
+
+void Dsymbol::deprecation(const char *format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+    ::vdeprecation(getLoc(), format, ap, kind(), toPrettyChars());
     va_end(ap);
 }
 
@@ -640,7 +654,18 @@ void Dsymbol::checkDeprecated(Loc loc, Scope *sc)
                 goto L1;
         }
 
-        error(loc, "is deprecated");
+        char *message = NULL;
+        for (Dsymbol *p = this; p; p = p->parent)
+        {
+            message = p->depmsg;
+            if (message)
+                break;
+        }
+
+        if (message)
+            deprecation(loc, "is deprecated - %s", message);
+        else
+            deprecation(loc, "is deprecated");
     }
 
   L1:
@@ -1240,8 +1265,8 @@ Dsymbol *ArrayScopeSymbol::search(Loc loc, Identifier *ident, int flags)
     {   VarDeclaration **pvar;
         Expression *ce;
 
-        if (ident == Id::length && !global.params.useDeprecated)
-            error("using 'length' inside [ ] is deprecated, use '$' instead");
+        if (ident == Id::length)
+            deprecation("using 'length' inside [ ] is deprecated, use '$' instead");
 
     L1:
 

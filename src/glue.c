@@ -47,6 +47,8 @@ void slist_add(Symbol *s);
 void slist_reset();
 void clearStringTab();
 
+elem *addressElem(elem *e, Type *t, bool alwaysCopy = false);
+
 #define STATICCTOR      0
 
 typedef ArrayBase<symbol> symbols;
@@ -390,10 +392,18 @@ void Module::genobjfile(int multiobj)
         sictor = toSymbolX("__modictor", SCglobal, t, "FZv");
         cstate.CSpsymtab = &sictor->Sfunc->Flocsym;
         localgot = ictorlocalgot;
-        elem *e;
 
-        e = el_params(el_pair(TYdarray, el_long(TYsize_t, numlines), el_ptr(cov)),
-                      el_pair(TYdarray, el_long(TYsize_t, numlines), el_ptr(bcov)),
+        elem *ecov  = el_pair(TYdarray, el_long(TYsize_t, numlines), el_ptr(cov));
+        elem *ebcov = el_pair(TYdarray, el_long(TYsize_t, numlines), el_ptr(bcov));
+
+        if (config.exe == EX_WIN64)
+        {
+            ecov  = addressElem(ecov,  Type::tvoid->arrayOf(), false);
+            ebcov = addressElem(ebcov, Type::tvoid->arrayOf(), false);
+        }
+
+        elem *e = el_params(ecov,
+                      ebcov,
                       toEfilename(),
                       NULL);
         e = el_bin(OPcall, TYvoid, el_var(rtlsym[RTLSYM_DCOVER]), e);
@@ -631,13 +641,21 @@ void FuncDeclaration::toObjFile(int multiobj)
         // Pull in RTL startup code (but only once)
         if (func->isMain() && onlyOneMain(loc))
         {
-            objmod->external_def("_main");
 #if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
+            objmod->external_def("_main");
             objmod->ehsections();   // initialize exception handling sections
 #endif
 #if TARGET_WINDOS
-            if (!I64)
-            objmod->external_def("__acrtused_con");
+            if (I64)
+            {
+                objmod->external_def("main");
+                objmod->ehsections();   // initialize exception handling sections
+            }
+            else
+            {
+                objmod->external_def("_main");
+                objmod->external_def("__acrtused_con");
+            }
 #endif
             objmod->includelib(libname);
             s->Sclass = SCglobal;
@@ -661,7 +679,17 @@ void FuncDeclaration::toObjFile(int multiobj)
 #if TARGET_WINDOS
         else if (func->isWinMain() && onlyOneMain(loc))
         {
-            objmod->external_def("__acrtused");
+            if (I64)
+            {
+                objmod->includelib("uuid");
+                objmod->includelib("LIBCMT");
+                objmod->includelib("OLDNAMES");
+                objmod->ehsections();   // initialize exception handling sections
+            }
+            else
+            {
+                objmod->external_def("__acrtused");
+            }
             objmod->includelib(libname);
             s->Sclass = SCglobal;
         }
@@ -669,7 +697,17 @@ void FuncDeclaration::toObjFile(int multiobj)
         // Pull in RTL startup code
         else if (func->isDllMain() && onlyOneMain(loc))
         {
-            objmod->external_def("__acrtused_dll");
+            if (I64)
+            {
+                objmod->includelib("uuid");
+                objmod->includelib("LIBCMT");
+                objmod->includelib("OLDNAMES");
+                objmod->ehsections();   // initialize exception handling sections
+            }
+            else
+            {
+                objmod->external_def("__acrtused_dll");
+            }
             objmod->includelib(libname);
             s->Sclass = SCglobal;
         }
@@ -1108,6 +1146,9 @@ unsigned Type::totym()
 
         case Tident:
         case Ttypeof:
+#ifdef DEBUG
+            printf("ty = %d, '%s'\n", ty, toChars());
+#endif
             error(0, "forward reference of %s", toChars());
             t = TYint;
             break;
@@ -1288,7 +1329,7 @@ elem *Module::toEfilename()
         outdata(sfilename);
     }
 
-    efilename = el_var(sfilename);
+    efilename = (config.exe == EX_WIN64) ? el_ptr(sfilename) : el_var(sfilename);
     return efilename;
 }
 

@@ -183,13 +183,6 @@ Dsymbols *Parser::parseDeclDefs(int once)
                 break;
             }
 
-            case TOKstruct:
-            case TOKunion:
-            case TOKclass:
-            case TOKinterface:
-                s = parseAggregate();
-                break;
-
             case TOKimport:
                 s = parseImport(decldefs, 0);
                 break;
@@ -233,6 +226,10 @@ Dsymbols *Parser::parseDeclDefs(int once)
             case TOKtypeof:
             case TOKdot:
             case TOKvector:
+            case TOKstruct:
+            case TOKunion:
+            case TOKclass:
+            case TOKinterface:
             Ldeclaration:
                 a = parseDeclarations(STCundefined, NULL);
                 decldefs->append(a);
@@ -263,8 +260,7 @@ Dsymbols *Parser::parseDeclDefs(int once)
                 }
                 else
                 {
-                    if (!global.params.useDeprecated)
-                        error("use of 'invariant' rather than 'immutable' is deprecated");
+                    deprecation("use of 'invariant' rather than 'immutable' is deprecated");
                     stc = STCimmutable;
                     goto Lstc;
                 }
@@ -365,7 +361,6 @@ Dsymbols *Parser::parseDeclDefs(int once)
             case TOKoverride:     stc = STCoverride;     goto Lstc;
             case TOKabstract:     stc = STCabstract;     goto Lstc;
             case TOKsynchronized: stc = STCsynchronized; goto Lstc;
-            case TOKdeprecated:   stc = STCdeprecated;   goto Lstc;
 #if DMDV2
             case TOKnothrow:      stc = STCnothrow;      goto Lstc;
             case TOKpure:         stc = STCpure;         goto Lstc;
@@ -407,10 +402,15 @@ Dsymbols *Parser::parseDeclDefs(int once)
                             stc = STCwild;
                         else
                         {
-                            if (token.value == TOKinvariant && !global.params.useDeprecated)
-                                error("use of 'invariant' rather than 'immutable' is deprecated");
+                            if (token.value == TOKinvariant)
+                                deprecation("use of 'invariant' rather than 'immutable' is deprecated");
                             stc = STCimmutable;
                         }
+                        goto Lstc;
+                    case TOKdeprecated:
+                        if (peek(&token)->value == TOKlparen)
+                            break;
+                        stc = STCdeprecated;
                         goto Lstc;
                     case TOKfinal:        stc = STCfinal;        goto Lstc;
                     case TOKauto:         stc = STCauto;         goto Lstc;
@@ -418,7 +418,6 @@ Dsymbols *Parser::parseDeclDefs(int once)
                     case TOKoverride:     stc = STCoverride;     goto Lstc;
                     case TOKabstract:     stc = STCabstract;     goto Lstc;
                     case TOKsynchronized: stc = STCsynchronized; goto Lstc;
-                    case TOKdeprecated:   stc = STCdeprecated;   goto Lstc;
                     case TOKnothrow:      stc = STCnothrow;      goto Lstc;
                     case TOKpure:         stc = STCpure;         goto Lstc;
                     case TOKref:          stc = STCref;          goto Lstc;
@@ -463,6 +462,22 @@ Dsymbols *Parser::parseDeclDefs(int once)
                 a = parseBlock();
                 s = new StorageClassDeclaration(storageClass, a);
                 break;
+
+            case TOKdeprecated:
+                if (peek(&token)->value != TOKlparen)
+                {
+                    stc = STCdeprecated;
+                    goto Lstc;
+                }
+            {
+                nextToken();
+                check(TOKlparen);
+                Expression *e = parseAssignExp();
+                check(TOKrparen);
+                a = parseBlock();
+                s = new DeprecatedDeclaration(e, a);
+                break;
+            }
 
             case TOKextern:
                 if (peek(&token)->value != TOKlparen)
@@ -708,14 +723,37 @@ StorageClass Parser::parsePostfix()
         {
             case TOKconst:              stc |= STCconst;                break;
             case TOKinvariant:
-                if (!global.params.useDeprecated)
-                    error("use of 'invariant' rather than 'immutable' is deprecated");
+                deprecation("use of 'invariant' rather than 'immutable' is deprecated");
             case TOKimmutable:          stc |= STCimmutable;            break;
             case TOKshared:             stc |= STCshared;               break;
             case TOKwild:               stc |= STCwild;                 break;
             case TOKnothrow:            stc |= STCnothrow;              break;
             case TOKpure:               stc |= STCpure;                 break;
             case TOKat:                 stc |= parseAttribute();        break;
+
+            default: return stc;
+        }
+        composeStorageClass(stc);
+        nextToken();
+    }
+}
+
+StorageClass Parser::parseTypeCtor()
+{
+    StorageClass stc = 0;
+
+    while (1)
+    {
+        if (peek(&token)->value == TOKlparen)
+            return stc;
+        switch (token.value)
+        {
+            case TOKconst:              stc |= STCconst;                break;
+            case TOKinvariant:
+                deprecation("use of 'invariant' rather than 'immutable' is deprecated");
+            case TOKimmutable:          stc |= STCimmutable;            break;
+            case TOKshared:             stc |= STCshared;               break;
+            case TOKwild:               stc |= STCwild;                 break;
 
             default: return stc;
         }
@@ -1291,8 +1329,8 @@ Parameters *Parser::parseParameters(int *pvarargs, TemplateParameters **tpl)
                 case TOKimmutable:
                     if (peek(&token)->value == TOKlparen)
                         goto Ldefault;
-                    if (token.value == TOKinvariant && !global.params.useDeprecated)
-                        error("use of 'invariant' rather than 'immutable' is deprecated");
+                    if (token.value == TOKinvariant)
+                        deprecation("use of 'invariant' rather than 'immutable' is deprecated");
                     stc = STCimmutable;
                     goto L2;
 
@@ -1687,9 +1725,9 @@ BaseClasses *Parser::parseBaseClasses()
                 nextToken();
                 break;
         }
-        if (prot && !global.params.useDeprecated)
-            error("use of base class protection is deprecated");
-        if (token.value == TOKidentifier)
+        if (prot)
+            deprecation("use of base class protection is deprecated");
+        if (token.value == TOKidentifier || token.value == TOKdot)
         {
             BaseClass *b = new BaseClass(parseBasicType(), protection);
             baseclasses->push(b);
@@ -2394,8 +2432,7 @@ Type *Parser::parseBasicType()
             break;
 
         case TOKinvariant:
-            if (!global.params.useDeprecated)
-                error("use of 'invariant' rather than 'immutable' is deprecated");
+            deprecation("use of 'invariant' rather than 'immutable' is deprecated");
         case TOKimmutable:
             // invariant(type)
             nextToken();
@@ -2515,10 +2552,14 @@ Type *Parser::parseBasicType2(Type *t)
                 arguments = parseParameters(&varargs);
 
                 StorageClass stc = parsePostfix();
-                if (stc & (STCconst | STCimmutable | STCshared | STCwild))
-                    error("const/immutable/shared/inout attributes are only valid for non-static member functions");
-
                 TypeFunction *tf = new TypeFunction(arguments, t, varargs, linkage, stc);
+                if (stc & (STCconst | STCimmutable | STCshared | STCwild))
+                {
+                    if (save == TOKfunction)
+                        error("const/immutable/shared/inout attributes are only valid for non-static member functions");
+                    else
+                        tf = (TypeFunction *)tf->addSTC(stc);
+                }
 
                 if (save == TOKdelegate)
                     t = new TypeDelegate(tf);
@@ -2564,10 +2605,7 @@ Type *Parser::parseDeclarator(Type *t, Identifier **pident, TemplateParameters *
                  * although the D style would be:
                  *  int[]*[3] ident
                  */
-                if (!global.params.useDeprecated)
-                {
-                    error("C-style function pointer and pointer to array syntax is deprecated. Use 'function' to declare function pointers");
-                }
+                deprecation("C-style function pointer and pointer to array syntax is deprecated. Use 'function' to declare function pointers");
                 nextToken();
                 ts = parseDeclarator(t, pident);
                 check(TOKrparen);
@@ -2708,6 +2746,7 @@ Dsymbols *Parser::parseDeclarations(StorageClass storage_class, unsigned char *c
     Dsymbols *a;
     enum TOK tok = TOKreserved;
     enum LINK link = linkage;
+    unsigned structalign = 0;
 
     //printf("parseDeclarations() %s\n", token.toChars());
     if (!comment)
@@ -2739,8 +2778,7 @@ Dsymbols *Parser::parseDeclarations(StorageClass storage_class, unsigned char *c
             }
             break;
         case TOKtypedef:
-            if (!global.params.useDeprecated)
-                error("use of typedef is deprecated; use alias instead");
+            deprecation("use of typedef is deprecated; use alias instead");
             tok = token.value;
             nextToken();
             break;
@@ -2761,8 +2799,8 @@ Dsymbols *Parser::parseDeclarations(StorageClass storage_class, unsigned char *c
             case TOKimmutable:
                 if (peek(&token)->value == TOKlparen)
                     break;
-                if (token.value == TOKinvariant && !global.params.useDeprecated)
-                    error("use of 'invariant' rather than 'immutable' is deprecated");
+                if (token.value == TOKinvariant)
+                    deprecation("use of 'invariant' rather than 'immutable' is deprecated");
                 stc = STCimmutable;
                 goto L1;
 
@@ -2812,6 +2850,25 @@ Dsymbols *Parser::parseDeclarations(StorageClass storage_class, unsigned char *c
                 link = parseLinkage();
                 continue;
 
+            case TOKalign:
+            {
+                nextToken();
+                if (token.value == TOKlparen)
+                {
+                    nextToken();
+                    if (token.value == TOKint32v && token.uns64value > 0)
+                        structalign = (unsigned)token.uns64value;
+                    else
+                    {   error("positive integer expected, not %s", token.toChars());
+                        structalign = 1;
+                    }
+                    nextToken();
+                    check(TOKrparen);
+                }
+                else
+                    structalign = global.structalign;   // default
+                continue;
+            }
             default:
                 break;
         }
@@ -2828,12 +2885,28 @@ Dsymbols *Parser::parseDeclarations(StorageClass storage_class, unsigned char *c
         return parseAutoDeclarations(storage_class, comment);
     }
 
-    if (token.value == TOKclass)
+    if (token.value == TOKstruct ||
+        token.value == TOKunion ||
+        token.value == TOKclass ||
+        token.value == TOKinterface)
     {
-        AggregateDeclaration *s = (AggregateDeclaration *)parseAggregate();
-        s->storage_class |= storage_class;
+        Dsymbol *s = parseAggregate();
         Dsymbols *a = new Dsymbols();
         a->push(s);
+
+        if (storage_class)
+        {
+            s = new StorageClassDeclaration(storage_class, a);
+            a = new Dsymbols();
+            a->push(s);
+        }
+        if (structalign != 0)
+        {
+            s = new AlignDeclaration(structalign, a);
+            a = new Dsymbols();
+            a->push(s);
+        }
+
         addComment(s, comment);
         return a;
     }
@@ -2902,8 +2975,7 @@ L2:
             }
             if (tok == TOKtypedef)
             {   v = new TypedefDeclaration(loc, ident, t, init);
-                if (!global.params.useDeprecated)
-                    error("use of typedef is deprecated; use alias instead");
+                deprecation("use of typedef is deprecated; use alias instead");
             }
             else
             {   if (init)
@@ -3437,7 +3509,6 @@ void Parser::checkDanglingElse(Loc elseloc)
 
 Statement *Parser::parseStatement(int flags)
 {   Statement *s;
-    Token *t;
     Condition *condition;
     Statement *ifbody;
     Statement *elsebody;
@@ -3452,10 +3523,10 @@ Statement *Parser::parseStatement(int flags)
     switch (token.value)
     {
         case TOKidentifier:
-            /* A leading identifier can be a declaration, label, or expression.
+        {   /* A leading identifier can be a declaration, label, or expression.
              * The easiest case to check first is label:
              */
-            t = peek(&token);
+            Token *t = peek(&token);
             if (t->value == TOKcolon)
             {   // It's a label
 
@@ -3467,6 +3538,7 @@ Statement *Parser::parseStatement(int flags)
                 break;
             }
             // fallthrough to TOKdot
+        }
         case TOKdot:
         case TOKtypeof:
         case TOKvector:
@@ -3541,16 +3613,6 @@ Statement *Parser::parseStatement(int flags)
                 condition = parseStaticIfCondition();
                 goto Lcondition;
             }
-            if (t->value == TOKstruct || t->value == TOKunion || t->value == TOKclass)
-            {
-                nextToken();
-                Dsymbols *a = parseBlock();
-                Dsymbol *d = new StorageClassDeclaration(STCstatic, a);
-                s = new ExpStatement(loc, d);
-                if (flags & PSscope)
-                    s = new ScopeStatement(loc, s);
-                break;
-            }
             if (t->value == TOKimport)
             {   nextToken();
                 Dsymbols *imports = new Dsymbols();
@@ -3578,7 +3640,9 @@ Statement *Parser::parseStatement(int flags)
         case TOKalias:
         case TOKconst:
         case TOKauto:
+        case TOKabstract:
         case TOKextern:
+        case TOKalign:
         case TOKinvariant:
 #if DMDV2
         case TOKimmutable:
@@ -3591,6 +3655,10 @@ Statement *Parser::parseStatement(int flags)
         case TOKgshared:
         case TOKat:
 #endif
+        case TOKstruct:
+        case TOKunion:
+        case TOKclass:
+        case TOKinterface:
         Ldeclaration:
         {   Dsymbols *a;
 
@@ -3619,17 +3687,6 @@ Statement *Parser::parseStatement(int flags)
             break;
         }
 
-        case TOKstruct:
-        case TOKunion:
-        case TOKclass:
-        case TOKinterface:
-        {   Dsymbol *d;
-
-            d = parseAggregate();
-            s = new ExpStatement(loc, d);
-            break;
-        }
-
         case TOKenum:
         {   /* Determine if this is a manifest constant declaration,
              * or a conventional enum.
@@ -3654,7 +3711,7 @@ Statement *Parser::parseStatement(int flags)
         }
 
         case TOKmixin:
-        {   t = peek(&token);
+        {   Token *t = peek(&token);
             if (t->value == TOKlparen)
             {   // mixin(string)
                 Expression *e = parseAssignExp();
@@ -3714,9 +3771,7 @@ Statement *Parser::parseStatement(int flags)
             if (!(flags & PSsemi_ok))
             {
                 if (flags & PSsemi)
-                {   if (global.params.warnings)
-                        warning(loc, "use '{ }' for an empty statement, not a ';'");
-                }
+                    warning(loc, "use '{ }' for an empty statement, not a ';'");
                 else
                     error("use '{ }' for an empty statement, not a ';'");
             }
@@ -3739,8 +3794,8 @@ Statement *Parser::parseStatement(int flags)
             check(TOKrparen);
             if (token.value == TOKsemicolon)
                 nextToken();
-            else if (!global.params.useDeprecated)
-                error("do-while statement requires terminating ;");
+            else
+                deprecation("do-while statement without terminating ; is deprecated");
             s = new DoStatement(loc, body, condition);
             break;
         }
@@ -3908,8 +3963,7 @@ Statement *Parser::parseStatement(int flags)
                     arg = new Parameter(0, NULL, token.ident, NULL);
                     nextToken();
                     nextToken();
-                    if (!global.params.useDeprecated)
-                        error("if (v%s e) is deprecated, use if (auto v = e)", t->toChars());
+                    deprecation("if (v%s e) is deprecated, use if (auto v = e)", t->toChars());
                 }
             }
 
@@ -4196,6 +4250,10 @@ Statement *Parser::parseStatement(int flags)
         {   Expression *exp;
             Statement *body;
 
+            Token *t = peek(&token);
+            if (skipAttributes(t, &t) && t->value == TOKclass)
+                goto Ldeclaration;
+
             nextToken();
             if (token.value == TOKlparen)
             {
@@ -4292,8 +4350,7 @@ Statement *Parser::parseStatement(int flags)
             nextToken();
             s = parseStatement(PSsemi | PScurlyscope);
 #if DMDV2
-            if (!global.params.useDeprecated)
-                error("volatile statements deprecated; use synchronized statements instead");
+            deprecation("volatile statements deprecated; used synchronized statements instead");
 #endif
             s = new VolatileStatement(loc, s);
             break;
@@ -4324,7 +4381,7 @@ Statement *Parser::parseStatement(int flags)
                         if (!toklist)
                         {
                             // Look ahead to see if it is a label
-                            t = peek(&token);
+                            Token *t = peek(&token);
                             if (t->value == TOKcolon)
                             {   // It's a label
                                 label = token.ident;
@@ -4448,18 +4505,23 @@ int Parser::isDeclaration(Token *t, int needId, enum TOK endtok, Token **pt)
     int haveId = 0;
 
 #if DMDV2
-    if ((t->value == TOKconst ||
-         t->value == TOKinvariant ||
-         t->value == TOKimmutable ||
-         t->value == TOKwild ||
-         t->value == TOKshared) &&
-        peek(t)->value != TOKlparen)
-    {   /* const type
-         * immutable type
-         * shared type
-         * wild type
-         */
-        t = peek(t);
+    while (1)
+    {
+        if ((t->value == TOKconst ||
+             t->value == TOKinvariant ||
+             t->value == TOKimmutable ||
+             t->value == TOKwild ||
+             t->value == TOKshared) &&
+            peek(t)->value != TOKlparen)
+        {   /* const type
+             * immutable type
+             * shared type
+             * wild type
+             */
+            t = peek(t);
+            continue;
+        }
+        break;
     }
 #endif
 
@@ -5418,8 +5480,8 @@ Expression *Parser::parsePrimaryExp()
                          token.value == TOKdelegate ||
                          token.value == TOKreturn))
                     {
-                        if (token.value == TOKinvariant && !global.params.useDeprecated)
-                            error("use of 'invariant' rather than 'immutable' is deprecated");
+                        if (token.value == TOKinvariant)
+                            deprecation("use of 'invariant' rather than 'immutable' is deprecated");
                         tok2 = token.value;
                         nextToken();
                     }
@@ -5851,8 +5913,8 @@ Expression *Parser::parseUnaryExp()
             }
             else if ((token.value == TOKimmutable || token.value == TOKinvariant) && peekNext() == TOKrparen)
             {
-                if (token.value == TOKinvariant && !global.params.useDeprecated)
-                    error("use of 'invariant' rather than 'immutable' is deprecated");
+                if (token.value == TOKinvariant)
+                    deprecation("use of 'invariant' rather than 'immutable' is deprecated");
                 m = MODimmutable;
                 goto Lmod2;
             }
@@ -5901,7 +5963,9 @@ Expression *Parser::parseUnaryExp()
         case TOKinvariant:
         case TOKimmutable:      // immutable(type)(arguments)
         {
+            StorageClass stc = parseTypeCtor();
             Type *t = parseBasicType();
+            t = t->addSTC(stc);
             e = new TypeExp(loc, t);
             if (token.value != TOKlparen)
             {
@@ -6511,8 +6575,10 @@ Expression *Parser::parseNewExp(Expression *thisexp)
         return e;
     }
 
+    StorageClass stc = parseTypeCtor();
     t = parseBasicType();
     t = parseBasicType2(t);
+    t = t->addSTC(stc);
     if (t->ty == Taarray)
     {   TypeAArray *taa = (TypeAArray *)t;
         Type *index = taa->index;

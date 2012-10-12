@@ -409,7 +409,7 @@ code *cdorth(elem *e,regm_t *pretregs)
                 else
                     c1 = codelem(e11,&retregs,FALSE);
             }
-            rretregs = ALLREGS & ~retregs;
+            rretregs = ALLREGS & ~retregs & ~mBP;
             c2 = scodelem(ebase,&rretregs,retregs,TRUE);
             {
                 regm_t sregs = *pretregs & ~rretregs;
@@ -4026,6 +4026,7 @@ code *getoffset(elem *e,unsigned reg)
 #elif TARGET_WINDOS
         if (I64)
         {
+        L5:
             assert(reg != STACK);
             cs.IEVsym2 = e->EV.sp.Vsym;
             cs.IEVoffset2 = e->EV.sp.Voffset;
@@ -4049,6 +4050,10 @@ code *getoffset(elem *e,unsigned reg)
     case FLextern:
 #if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
         if (e->EV.sp.Vsym->ty() & mTYthread)
+            goto L5;
+#endif
+#if TARGET_WINDOS
+        if (I64 && e->EV.sp.Vsym->ty() & mTYthread)
             goto L5;
 #endif
     case FLdata:

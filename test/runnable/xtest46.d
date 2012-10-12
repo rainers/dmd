@@ -3108,11 +3108,11 @@ void test3559()
 
     static class B : A
     {
-        int foo(float a) { return 2; }
+        override int foo(float a) { return 2; }
         alias A.foo foo;
 
         alias A.bar bar;
-        int bar(float a) { return 2; }
+        override int bar(float a) { return 2; }
     }
 
     {
@@ -3479,7 +3479,7 @@ void test5554()
     interface I { MB foo(); }
     class B : A
     {
-        MC foo() { return null; }
+        override MC foo() { return null; }
     }
     class C : B, I
     {
@@ -3605,6 +3605,26 @@ void test1471()
 
 deprecated @disable int bug6389;
 static assert(!is(typeof(bug6389 = bug6389)));
+
+/***************************************************/
+// 4596
+
+class NoGo4596
+{
+    void fun()
+    {
+        static assert(!__traits(compiles, this = new NoGo4596));
+        static assert(!__traits(compiles, (1?this:this) = new NoGo4596));
+        static assert(!__traits(compiles, super = new Object));
+        static assert(!__traits(compiles, (1?super:super) = new Object));
+    }
+}
+
+void test4596()
+{
+    auto n = new NoGo4596;
+    n.fun();
+}
 
 /***************************************************/
 
@@ -3899,6 +3919,38 @@ void test2774()
 {
     int foo2774(int n){ return 0; }
     static assert(foo2774.mangleof == "_D7xtest468test2774FZv7foo2774MFiZi");
+}
+
+/***************************************************/
+// 3733
+
+class C3733
+{
+    int foo()        { return 1; }
+    int foo() shared { return 2; }
+
+    int bar()        { return foo(); }
+}
+void test3733()
+{
+    auto c = new C3733();
+    assert(c.bar() == 1);
+}
+
+/***************************************************/
+// 4392
+
+class C4392
+{
+    int foo() const { return 1; }
+    int foo()       { return 2; }
+
+    int bar() const { return foo(); }
+}
+void test4392()
+{
+    auto c = new C4392();
+    assert(c.bar() == 1);
 }
 
 /***************************************************/
@@ -4639,6 +4691,40 @@ void test2856()
 }
 
 /***************************************************/
+// 3091
+
+void test3091(inout int = 0)
+{
+    struct Foo {}
+
+    auto  pm = new Foo;                 static assert(is( typeof( pm) ==              Foo  * ));
+    auto  pc = new const Foo;           static assert(is( typeof( pc) ==        const(Foo) * ));
+    auto  pw = new inout Foo;           static assert(is( typeof( pw) ==        inout(Foo) * ));
+    auto psm = new shared Foo;          static assert(is( typeof(psm) ==       shared(Foo) * ));
+    auto psc = new shared const Foo;    static assert(is( typeof(psc) == shared(const(Foo))* ));
+    auto psw = new shared inout Foo;    static assert(is( typeof(psw) == shared(inout(Foo))* ));
+    auto  pi = new immutable Foo;       static assert(is( typeof( pi) ==    immutable(Foo) * ));
+
+    auto  m = Foo();                    static assert(is( typeof( m) ==              Foo   ));
+    auto  c = const Foo();              static assert(is( typeof( c) ==        const(Foo)  ));
+    auto  w = inout Foo();              static assert(is( typeof( w) ==        inout(Foo)  ));
+    auto sm = shared Foo();             static assert(is( typeof(sm) ==       shared(Foo)  ));
+    auto sc = shared const Foo();       static assert(is( typeof(sc) == shared(const(Foo)) ));
+    auto sw = shared inout Foo();       static assert(is( typeof(sw) == shared(inout(Foo)) ));
+    auto  i = immutable Foo();          static assert(is( typeof( i) ==    immutable(Foo)  ));
+}
+
+/***************************************************/
+// 6837
+
+template Id6837(T)
+{
+	alias T Id6837;
+}
+static assert(is(Id6837!(shared const int) == shared const int));
+static assert(is(Id6837!(shared inout int) == shared inout int));
+
+/***************************************************/
 // 6056 fixup
 
 template ParameterTypeTuple6056(func)
@@ -4821,11 +4907,11 @@ class Base3282
 }
 class Derived3282 : Base3282
 {
-    string f()
+    override string f()
     {
         return "Derived.f()";
     }
-    string f() const
+    override string f() const
     {
         return "Derived.f() const";
     }
@@ -4851,7 +4937,7 @@ class C7534
 class D7534 : C7534
 {
     override int foo(){ return 2; }
-    int foo() const { return 3; }
+    override int foo() const { return 3; }
     // Error: D.foo multiple overrides of same function
 }
 void test7534()
@@ -4885,8 +4971,8 @@ class V7534
 }
 class W7534 : V7534
 {
-    Y7534 foo(){ return new Y7534(1); }
-    Y7534 foo() const { return new Y7534(2); }
+    override Y7534 foo(){ return new Y7534(1); }
+    override Y7534 foo() const { return new Y7534(2); }
 }
 
 void test7534cov()
@@ -5508,6 +5594,7 @@ int main()
     test156();
     test4258();
     test4539();
+    test4596();
     test4963();
     test4031();
     test5437();
@@ -5521,6 +5608,8 @@ int main()
     test6335();
     test6228();
     test2774();
+    test3733();
+    test4392();
     test6220();
     test5799();
     test157();
@@ -5544,6 +5633,7 @@ int main()
     test6330();
     test6868();
     test2856();
+    test3091();
     test6056();
     test7073();
     test7150();

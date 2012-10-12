@@ -59,11 +59,25 @@ elem *appendDtors(IRState *irs, elem *er, size_t starti, size_t endi);
 bool ISREF(Declaration *var, Type *tb)
 {
 #if SARRAYVALUE
-    return (var->isParameter() && config.exe == EX_WIN64 && var->type->size(0) > REGSIZE)
+    return (var->isParameter() && config.exe == EX_WIN64 && (var->type->size(0) > REGSIZE || var->storage_class & STClazy))
             || var->isOut() || var->isRef();
 #else
     return (var->isParameter() && (var->type->toBasetype()->ty == Tsarray || (config.exe == EX_WIN64 && var->type->size(0) > REGSIZE)))
             || var->isOut() || var->isRef();
+#endif
+}
+
+/* If variable var of type typ is a reference due to Win64 calling conventions
+ */
+bool ISWIN64REF(Declaration *var)
+{
+#if SARRAYVALUE
+    return (config.exe == EX_WIN64 && var->isParameter() &&
+            (var->type->size(0) > REGSIZE || var->storage_class & STClazy)) &&
+            !(var->isOut() || var->isRef());
+#else
+    return (var->isParameter() && (var->type->toBasetype()->ty != Tsarray && (config.exe == EX_WIN64 && var->type->size(0) > REGSIZE)))
+            && !(var->isOut() || var->isRef());
 #endif
 }
 
@@ -813,7 +827,7 @@ elem *SymbolExp::toElem(IRState *irs)
             e = el_bin(OPadd, TYnptr, ethis, el_long(TYnptr, soffset));
             if (op == TOKvar)
                 e = el_una(OPind, TYnptr, e);
-            if (ISREF(var, tb))
+            if (ISREF(var, tb) && !(ISWIN64REF(var) && v && v->offset))
                 e = el_una(OPind, s->ty(), e);
             else if (op == TOKsymoff && nrvo)
             {   e = el_una(OPind, TYnptr, e);
@@ -835,7 +849,7 @@ elem *SymbolExp::toElem(IRState *irs)
                 e->ET = type->toCtype();
             el_setLoc(e, loc);
         }
-        if (ISREF(var, tb))
+        if (ISREF(var, tb) && !ISWIN64REF(var))
         {   e->Ety = TYnptr;
             e = el_una(OPind, s->ty(), e);
         }
@@ -2006,10 +2020,13 @@ elem *AssertExp::toElem(IRState *irs)
         {
             ts = symbol_genauto(t1->toCtype());
 #if TARGET_LINUX || TARGET_FREEBSD || TARGET_SOLARIS
-            einv = el_bin(OPcall, TYvoid, el_var(rtlsym[RTLSYM__DINVARIANT]), el_var(ts));
+            int rtl = RTLSYM__DINVARIANT;
+#elif TARGET_WINDOS
+            int rtl = I64 ? RTLSYM__DINVARIANT : RTLSYM_DINVARIANT;
 #else
-            einv = el_bin(OPcall, TYvoid, el_var(rtlsym[RTLSYM_DINVARIANT]), el_var(ts));
+            int rtl = RTLSYM_DINVARIANT;
 #endif
+            einv = el_bin(OPcall, TYvoid, el_var(rtlsym[rtl]), el_var(ts));
         }
         // If e1 is a struct object, call the struct invariant on it
         else if (global.params.useInvariants &&
@@ -2833,6 +2850,11 @@ elem *AssignExp::toElem(IRState *irs)
                  */
                 el_free(esize);
                 Expression *ti = t1->nextOf()->toBasetype()->getTypeInfo(NULL);
+                if (config.exe == EX_WIN64)
+                {
+                    eto   = addressElem(eto,   Type::tvoid->arrayOf());
+                    efrom = addressElem(efrom, Type::tvoid->arrayOf());
+                }
                 ep = el_params(eto, efrom, ti->toElem(irs), NULL);
                 int rtl = (op == TOKconstruct) ? RTLSYM_ARRAYCTOR : RTLSYM_ARRAYASSIGN;
                 e = el_bin(OPcall, type->totym(), el_var(rtlsym[rtl]), ep);
@@ -5119,6 +5141,11 @@ elem *StructLiteralExp::toElem(IRState *irs)
                         elem *esize = el_long(TYsize_t, ((TypeSArray *)t1b)->dim->toInteger());
                         e1 = el_pair(TYdarray, esize, e1);
                         ep = el_pair(TYdarray, el_copytree(esize), array_toPtr(el->type, ep));
+                        if (config.exe == EX_WIN64)
+                        {
+                            e1 = addressElem(e1, Type::tvoid->arrayOf());
+                            ep = addressElem(ep, Type::tvoid->arrayOf());
+                        }
                         ep = el_params(e1, ep, ti->toElem(irs), NULL);
                         int rtl = RTLSYM_ARRAYCTOR;
                         e1 = el_bin(OPcall, type->totym(), el_var(rtlsym[rtl]), ep);

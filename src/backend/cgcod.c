@@ -28,6 +28,7 @@
 #include        "global.h"
 #include        "type.h"
 #include        "exh.h"
+#include        "xmm.h"
 
 static char __file__[] = __FILE__;      /* for tassert.h                */
 #include        "tassert.h"
@@ -657,7 +658,11 @@ Lagain:
         // before function parameters were pushed the stack was
         // Aalign byte aligned
         targ_size_t psize = (Poffset + (REGSIZE - 1)) & ~(REGSIZE - 1);
+        if (config.exe == EX_WIN64)
+            // Parameters always consume multiple of 16 bytes
+            psize = (Poffset + 15) & ~15;
         int sz = psize + -Aoff + Poff + (needframe ? 0 : REGSIZE);
+        //printf("Aalign = %d, psize = x%llx, Poff = x%llx, needframe = %d\n", Aalign, psize, Poff, needframe);
         if (sz & (Aalign - 1))
         {   int adj = Aalign - (sz & (Aalign - 1));
             Aoff -= adj;
@@ -832,18 +837,30 @@ Lagain:
     while (topush)                      /* while registers to push      */
     {   unsigned reg = findreg(topush);
         topush &= ~mask[reg];
-        c = genpush(c, reg);
-        EBPtoESP += REGSIZE;
-        spoff += REGSIZE;
-#if ELFOBJ || MACHOBJ
-        if (config.fulltypes)
-        {   // Emit debug_frame data giving location of saved register
-            // relative to 0[EBP]
-            pinholeopt(c, NULL);
-            dwarf_CFA_set_loc(calcblksize(c));  // address after PUSH reg
-            dwarf_CFA_offset(reg, -EBPtoESP - REGSIZE);
+        if (reg >= XMM0)
+        {
+            // SUB RSP,16
+            c = cod3_stackadj(c, 16);
+            // MOVUPD 8[RSP],xmm
+            c = genc1(c,STOUPD,modregxrm(2,reg-XMM0,4) + 256*modregrm(0,4,SP),FLconst,8);
+            EBPtoESP += 16;
+            spoff += 16;
         }
+        else
+        {
+            c = genpush(c, reg);
+            EBPtoESP += REGSIZE;
+            spoff += REGSIZE;
+#if ELFOBJ || MACHOBJ
+            if (config.fulltypes)
+            {   // Emit debug_frame data giving location of saved register
+                // relative to 0[EBP]
+                pinholeopt(c, NULL);
+                dwarf_CFA_set_loc(calcblksize(c));  // address after PUSH reg
+                dwarf_CFA_offset(reg, -EBPtoESP - REGSIZE);
+            }
 #endif
+        }
     }
 
 Lcont:
@@ -952,7 +969,7 @@ void stackoffsets(int flags)
             if (s->Salignment > 0)
                 alignsize = s->Salignment;
 
-            //printf("symbol '%s', size = x%lx, align = %d, read = %x\n",s->Sident,(long)sz, (int)alignsize, s->Sflags & SFLread);
+            //printf("symbol '%s', size = x%lx, alignsize = %d, read = %x\n",s->Sident,(long)sz, (int)alignsize, s->Sflags & SFLread);
             assert((int)sz >= 0);
 
             if (pass == 1)
@@ -1053,6 +1070,13 @@ void stackoffsets(int flags)
 
                 case SCshadowreg:
                 case SCparameter:
+                    if (config.exe == EX_WIN64)
+                    {
+                        assert((Poffset & 7) == 0);
+                        s->Soffset = Poffset;
+                        Poffset += 8;
+                        break;
+                    }
                     Poffset = align(REGSIZE,Poffset); /* align on word stack boundary */
                     if (I64 && alignsize == 16 && Poffset & 8)
                         Poffset += 8;
