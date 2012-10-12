@@ -1331,7 +1331,7 @@ int tryMain(int argc, char *argv[])
     if (global.errors)
         fatal();
 
-    if (global.params.useInline)
+    if (0 && global.params.useInline)
     {
         /* The problem with useArrayBounds and useAssert is that the
          * module being linked to may not have generated them, so if
