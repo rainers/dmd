@@ -366,7 +366,7 @@ int main(string[] args)
                         (testArgs.mode == TestMode.RUN ? test_app_dmd : objfile),
                         (testArgs.mode == TestMode.RUN ? "" : "-c "),
                         join(testArgs.sources, " "));
-                version(Windows) command ~= " -map nul.map";
+                version(Windows) command ~= " -map xnul.map";
 
                 compile_output = execute(fThisRun, command, testArgs.mode != TestMode.FAIL_COMPILE);
             }
@@ -436,7 +436,7 @@ int main(string[] args)
 
             writeln("Test failed.  The logged output:");
             writeln(cast(string)std.file.read(output_file));
-            std.file.remove(output_file);
+//            std.file.remove(output_file);
             return 1;
         }
     }

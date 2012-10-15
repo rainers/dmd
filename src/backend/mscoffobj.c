@@ -93,6 +93,7 @@ static segidx_t segidx_drectve;         // contents of ".drectve" section
 static segidx_t segidx_debugs;
 static segidx_t segidx_debugt;
 static segidx_t segidx_xdata;
+static segidx_t segidx_pdata;
 
 static int jumpTableSeg;                // segment index for __jump_table
 
@@ -310,6 +311,7 @@ symbol * MsCoffObj::sym_cdata(tym_t ty,char *p,int len)
 #endif
     {
         //printf("MsCoffObj::sym_cdata(ty = %x, p = %x, len = %d, CDoffset = %x)\n", ty, p, len, CDoffset);
+        assert(0);                      // haven't figured out a section for it
         alignOffset(CDATA, tysize(ty));
         s = symboldata(CDoffset, ty);
         s->Sseg = CDATA;
@@ -434,7 +436,7 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
                           IMAGE_SCN_MEM_READ);              // CODE
     addScnhdr(".pdata",   IMAGE_SCN_CNT_INITIALIZED_DATA |
                           IMAGE_SCN_ALIGN_4BYTES |
-                          IMAGE_SCN_MEM_READ);              // CDATA
+                          IMAGE_SCN_MEM_READ);              // PDATA
     addScnhdr(".xdata",   IMAGE_SCN_CNT_INITIALIZED_DATA |
                           IMAGE_SCN_ALIGN_4BYTES |
                           IMAGE_SCN_MEM_READ);
@@ -451,7 +453,7 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
 #define SHI_DEBUGT      3
 #define SHI_DATA        4
 #define SHI_TEXT        5
-#define SHI_CDATA       6
+#define SHI_PDATA       6
 #define SHI_XDATA       7
 #define SHI_UDATA       8
 
@@ -461,7 +463,7 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
     getsegment2(SHI_DATA);
     assert(SegData[DATA]->SDseg == DATA);
 
-    getsegment2(SHI_CDATA);
+    getsegment2(SHI_PDATA);
     assert(SegData[CDATA]->SDseg == CDATA);
 
     getsegment2(SHI_UDATA);
@@ -480,6 +482,8 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
 
     segidx_drectve = getsegment2(SHI_DRECTVE);
     segidx_xdata   = getsegment2(SHI_XDATA);
+    segidx_pdata   = CDATA;                     // kludge for the moment, CDATA should really
+                                                // be separate from PDATA
 
     SegData[segidx_drectve]->SDbuf->setsize(0);
     SegData[segidx_drectve]->SDbuf->write("  ", 2);
@@ -945,7 +949,10 @@ void MsCoffObj::term()
                     else
                     {
 //printf("test2\n");
-                        rel.r_type = IMAGE_REL_AMD64_ADDR64;
+                        if (seg == segidx_pdata)
+                            rel.r_type = IMAGE_REL_AMD64_ADDR32NB;
+                        else
+                            rel.r_type = IMAGE_REL_AMD64_ADDR64;
                         rel.r_vaddr = r->offset;
                         rel.r_symndx = s->Sxtrnnum;
 #if 0
@@ -1721,6 +1728,19 @@ seg_data *MsCoffObj::tlsseg_bss()
     return MsCoffObj::tlsseg();
 }
 
+/*************************************
+ * Return segment indices for .pdata and .xdata sections
+ */
+
+segidx_t MsCoffObj::seg_pdata()
+{
+    return segidx_pdata;
+}
+
+segidx_t MsCoffObj::seg_xdata()
+{
+    return segidx_xdata;
+}
 
 /*******************************
  * Output an alias definition record.
@@ -1861,7 +1881,7 @@ segidx_t MsCoffObj::data_start(Symbol *sdata, targ_size_t datasize, segidx_t seg
 {
     targ_size_t alignbytes;
 
-    //printf("MsCoffObj::data_start(%s,size %d,seg %d)\n",sdata->Sident,datasize,seg);
+    //printf("MsCoffObj::data_start(%s,size %d,seg %d)\n",sdata->Sident,(int)datasize,seg);
     //symbol_print(sdata);
 
     assert(sdata->Sseg);

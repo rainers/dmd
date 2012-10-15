@@ -413,7 +413,7 @@ void outdata(symbol *s)
                     flags = CFoff;
                 else
                     flags = CFoff | CFseg;
-                if (I64)
+                if (I64 && tysize(dt->Dty) == 8)
                     flags |= CFoffset64;
                 offset += objmod->reftoident(seg,offset,sb,a,flags);
                 break;
