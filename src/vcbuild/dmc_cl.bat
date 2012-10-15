@@ -6,7 +6,7 @@ set copt=/nologo /link /LARGEADDRESSAWARE
 set cmd=
 :next
 if "%1" == "" goto done
-rem echo %1
+rem echo opt=%1
 
 set opt=%1
 rem add longdouble.c and strtold.c to the build, they are not in the makefile
@@ -14,6 +14,8 @@ if "%opt%" == "toir"     set opt=%opt%.c backend\strtold.c root\longdouble.c
 if "%opt%" == "toir.obj" set opt=%opt% strtold.obj longdouble.obj
 rem remove includes after ";"
 if "%opt%" == "tk" set opt=/Itk
+rem -DX=1 split into two arguments
+if "%opt%" == "1" goto shift
 
 if "%opt:~0,1%" == "-" goto opt
 if "%opt:~0,1%" == "/" goto opt

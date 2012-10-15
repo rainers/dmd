@@ -1702,6 +1702,7 @@ void VarDeclaration::semantic2(Scope *sc)
 void VarDeclaration::semantic3(Scope *sc)
 {
     Declaration::semantic3(sc);
+#if 0
     if (isDataseg() && !(storage_class & STCextern))
     {
         if(!rdinfo && Type::rdinfo && ident != Id::RTInfo && ident != Id::RDInfo)
@@ -1715,6 +1716,7 @@ void VarDeclaration::semantic3(Scope *sc)
             rdinfo = ti;
         }
     }
+#endif
 }
 
 void VarDeclaration::setFieldOffset(AggregateDeclaration *ad, unsigned *poffset, bool isunion)

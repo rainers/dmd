@@ -499,7 +499,7 @@ msc.obj : $(CH) mars.h msc.c
 	$(CC) -c $(MFLAGS) -I$(ROOT) msc
 
 mscoffobj.obj : $C\mscoff.h $C\mscoffobj.c
-	$(CC) -c $(MFLAGS) -I.;$(ROOT) $C\mscoffobj
+	$(CC) -c $(MFLAGS) -I. -I$(ROOT) $C\mscoffobj
 
 newman.obj : $(CH) $C\newman.c
 	$(CC) -c $(MFLAGS) $C\newman
@@ -526,7 +526,7 @@ rtlsym.obj : $C\rtlsym.h $C\rtlsym.c
 	$(CC) -c $(MFLAGS) $C\rtlsym
 
 scanmscoff.obj : $(TOTALH) $C\mscoff.h scanmscoff.c
-	$(CC) -c $(CFLAGS) -I.;$(ROOT);$C scanmscoff.c
+	$(CC) -c $(CFLAGS) -I. -I$(ROOT) -I$C scanmscoff.c
 
 ti_achar.obj : $C\tinfo.h $C\ti_achar.c
 	$(CC) -c $(MFLAGS) -I. $C\ti_achar

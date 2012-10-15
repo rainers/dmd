@@ -91,6 +91,7 @@ static Outbuffer *comdef_symbuf;        // Comdef's are stored here
 
 static segidx_t segidx_drectve;         // contents of ".drectve" section
 static segidx_t segidx_debugs;
+static segidx_t segidx_debugt;
 static segidx_t segidx_xdata;
 
 static int jumpTableSeg;                // segment index for __jump_table
@@ -419,6 +420,10 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
                           IMAGE_SCN_ALIGN_1BYTES |
                           IMAGE_SCN_MEM_READ |
                           IMAGE_SCN_MEM_DISCARDABLE);
+    addScnhdr(".debug$T", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                          IMAGE_SCN_ALIGN_1BYTES |
+                          IMAGE_SCN_MEM_READ |
+                          IMAGE_SCN_MEM_DISCARDABLE);
     addScnhdr(".data",    IMAGE_SCN_CNT_INITIALIZED_DATA |
                           IMAGE_SCN_ALIGN_4BYTES |
                           IMAGE_SCN_MEM_READ |
@@ -443,11 +448,12 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
 
 #define SHI_DRECTVE     1
 #define SHI_DEBUGS      2
-#define SHI_DATA        3
-#define SHI_TEXT        4
-#define SHI_CDATA       5
-#define SHI_XDATA       6
-#define SHI_UDATA       7
+#define SHI_DEBUGT      3
+#define SHI_DATA        4
+#define SHI_TEXT        5
+#define SHI_CDATA       6
+#define SHI_XDATA       7
+#define SHI_UDATA       8
 
     getsegment2(SHI_TEXT);
     assert(SegData[CODE]->SDseg == CODE);
@@ -461,15 +467,23 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
     getsegment2(SHI_UDATA);
     assert(SegData[UDATA]->SDseg == UDATA);
 
+    if (config.fulltypes)
+    {
+        segidx_debugs  = getsegment2(SHI_DEBUGS);
+        assert(SegData[DEBSYM]->SDseg == DEBSYM);
+        segidx_debugt  = getsegment2(SHI_DEBUGT);
+        assert(SegData[DEBTYP]->SDseg == DEBTYP);
+
+        objmod = obj;
+        cv_init();                  // initialize debug output code
+    }
+
     segidx_drectve = getsegment2(SHI_DRECTVE);
-    segidx_debugs  = getsegment2(SHI_DEBUGS);
     segidx_xdata   = getsegment2(SHI_XDATA);
 
     SegData[segidx_drectve]->SDbuf->setsize(0);
     SegData[segidx_drectve]->SDbuf->write("  ", 2);
 
-//    if (config.fulltypes)
-//        dwarf_initfile(filename);
     assert(objbuf->size() == 0);
     return obj;
 }
@@ -704,6 +718,8 @@ void MsCoffObj::termfile()
     //dbg_printf("MsCoffObj::termfile\n");
     if (configv.addlinenumbers)
     {
+        cv_term();
+
         //dwarf_termmodule();
     }
 }

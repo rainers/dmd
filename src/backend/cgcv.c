@@ -435,7 +435,18 @@ void cv_init()
                 cgcv.deb_offset = 0x80000000;
         }
 
+        if(config.fulltypes == CV4 && I64)
+            cgcv.signature = 4;
+
         objmod->write_bytes(SegData[DEBSYM],4,&cgcv.signature);
+        
+        if(config.fulltypes == CV4 && I64)
+        {
+            int dataf1 = 0xf1;
+            objmod->write_bytes(SegData[DEBSYM],4,&dataf1);
+            dataf1 = 0; //databytes + 4 * (prefix - 3);
+            objmod->write_bytes(SegData[DEBSYM],4,&dataf1);
+        }
 
         // Allocate an LF_ARGLIST with no arguments
         if (config.fulltypes == CV4)
@@ -2334,6 +2345,8 @@ STATIC void cv4_func(Funcsym *s)
 {
     SYMIDX si;
     int endarg;
+    if(I64)
+        return;
 
     cv4_outsym(s);              // put out function symbol
 
@@ -2345,7 +2358,7 @@ STATIC void cv4_func(Funcsym *s)
 #if MARS
         if (endarg == 0 && sa->Sclass != SCparameter && sa->Sclass != SCfastpar)
         {   static unsigned short endargs[] = { 2,S_ENDARG };
-
+         
             objmod->write_bytes(SegData[DEBSYM],sizeof(endargs),endargs);
             endarg = 1;
         }
@@ -2564,6 +2577,11 @@ void cv_term()
 #if TERMCODE || _WIN32 || MARS
                 debtyp_free(debtyp[0]);
 #endif
+            }
+            if(I64)
+            {
+                int symlen = SegData[DEBSYM]->SDoffset - 12;
+                objmod->bytes(DEBSYM, 8, 4, &symlen);
             }
             break;
 
