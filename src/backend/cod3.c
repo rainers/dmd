@@ -200,7 +200,7 @@ code *REGSAVE::save(code *c, int reg, unsigned *pidx)
         i = idx;
         idx += 16;
         // MOVD idx[RBP],xmm
-        c = genc1(c,0xF20F11,modregxrm(2, reg - XMM0, BPRM),FLregsave,(targ_uns) i);
+        c = genc1(c,STOSD,modregxrm(2, reg - XMM0, BPRM),FLregsave,(targ_uns) i);
     }
     else
     {
@@ -226,7 +226,7 @@ code *REGSAVE::restore(code *c, int reg, unsigned idx)
     {
         assert(alignment == 16);
         // MOVD xmm,idx[RBP]
-        c = genc1(c,0xF20F10,modregxrm(2, reg - XMM0, BPRM),FLregsave,(targ_uns) idx);
+        c = genc1(c,LODSD,modregxrm(2, reg - XMM0, BPRM),FLregsave,(targ_uns) idx);
     }
     else
     {   // MOV reg,idx[RBP]
@@ -442,7 +442,7 @@ void cod3_buildmodulector(Outbuffer* buf, int codeOffset, int refOffset)
     if (I64 && config.flags3 & CFG3pic)
     {   // LEA RAX,ModuleReference[RIP]
         buf->writeByte(REX | REX_W);
-        buf->writeByte(0x8D);
+        buf->writeByte(LEA);
         buf->writeByte(modregrm(0,AX,5));
         buf->write32(refOffset);
         ElfObj::addrel(seg, codeOffset + 3, R_X86_64_PC32, 3 /*STI_DATA*/, -4);
@@ -805,9 +805,9 @@ void outblkexitcode(block *bl, code*& c, int& anyspill, const char* sflsave, sym
                         code *cr;
                         int nalign = 0;
 
-                        gensaverestore(retregs,&cs,&cr);
+                        unsigned npush = gensaverestore(retregs,&cs,&cr);
                         if (STACKALIGN == 16)
-                        {   int npush = (numbitsset(retregs) + 1) * REGSIZE;
+                        {   npush += REGSIZE;
                             if (npush & (STACKALIGN - 1))
                             {   nalign = STACKALIGN - (npush & (STACKALIGN - 1));
                                 cs = cod3_stackadj(cs, nalign);
@@ -998,9 +998,9 @@ void outblkexitcode(block *bl, code*& c, int& anyspill, const char* sflsave, sym
                         code *cr;
                         int nalign = 0;
 
-                        gensaverestore(retregs,&cs,&cr);
+                        unsigned npush = gensaverestore(retregs,&cs,&cr);
                         if (STACKALIGN == 16)
-                        {   int npush = (numbitsset(retregs) + 1) * REGSIZE;
+                        {   npush += REGSIZE;
                             if (npush & (STACKALIGN - 1))
                             {   nalign = STACKALIGN - (npush & (STACKALIGN - 1));
                                 cs = cod3_stackadj(cs, nalign);
@@ -1702,7 +1702,7 @@ void cod3_ptrchk(code **pc,code *pcs,regm_t keepmsk)
 
         opsave = pcs->Iop;
         flagsave = pcs->Iflags;
-        pcs->Iop = 0x8D;
+        pcs->Iop = LEA;
         pcs->Irm |= modregrm(0,reg,0);
         pcs->Iflags &= ~(CFopsize | CFss | CFes | CFcs);        // no prefix bytes needed
         c = gen(c,pcs);                 // LEA reg,EA
@@ -1860,7 +1860,7 @@ bool cse_simple(code *c, elem *e)
         memset(c,0,sizeof(*c));
 
         // Make this an LEA instruction
-        c->Iop = 0x8D;                          // LEA
+        c->Iop = LEA;
         buildEA(c,reg,-1,1,e->E2->EV.Vuns);
         if (I64)
         {   if (sz == 8)
@@ -2633,10 +2633,20 @@ code* prolog_frame(unsigned farfunc, unsigned* xlocalsize, bool* enter)
 {
     code* c = NULL;
 
+    if (0 && config.exe == EX_WIN64)
+    {
+        // PUSH RBP
+        // LEA RBP,0[RSP]
+        c = gen1(c,0x50 + BP);
+        c = genc1(c,LEA,(REX_W<<16) | (modregrm(0,4,SP)<<8) | modregrm(2,BP,4),FLconst,0);
+        *enter = false;
+        return c;
+    }
+
     if (config.wflags & WFincbp && farfunc)
         c = gen1(c,0x40 + BP);      /* INC  BP                      */
     if (config.target_cpu < TARGET_80286 ||
-        config.exe & (EX_LINUX | EX_LINUX64 | EX_OSX | EX_OSX64 | EX_FREEBSD | EX_FREEBSD64 | EX_SOLARIS | EX_SOLARIS64) ||
+        config.exe & (EX_LINUX | EX_LINUX64 | EX_OSX | EX_OSX64 | EX_FREEBSD | EX_FREEBSD64 | EX_SOLARIS | EX_SOLARIS64 | EX_WIN64) ||
         !localsize ||
         config.flags & CFGstack ||
         (*xlocalsize >= 0x1000 && config.exe & EX_flat) ||
@@ -2795,6 +2805,40 @@ code* prolog_setupalloca()
     return c;
 }
 
+code* prolog_saveregs(code *c, regm_t topush)
+{
+    while (topush)                      /* while registers to push      */
+    {   unsigned reg = findreg(topush);
+        topush &= ~mask[reg];
+        if (reg >= XMM0)
+        {
+            // SUB RSP,16
+            c = cod3_stackadj(c, 16);
+            // MOVUPD 8[RSP],xmm
+            c = genc1(c,STOUPD,modregxrm(2,reg-XMM0,4) + 256*modregrm(0,4,SP),FLconst,8);
+            EBPtoESP += 16;
+            spoff += 16;
+        }
+        else
+        {
+            c = genpush(c, reg);
+            EBPtoESP += REGSIZE;
+            spoff += REGSIZE;
+#if ELFOBJ || MACHOBJ
+            if (config.fulltypes)
+            {   // Emit debug_frame data giving location of saved register
+                // relative to 0[EBP]
+                pinholeopt(c, NULL);
+                dwarf_CFA_set_loc(calcblksize(c));  // address after PUSH reg
+                dwarf_CFA_offset(reg, -EBPtoESP - REGSIZE);
+            }
+#endif
+        }
+    }
+    return c;
+}
+
+#if SCPP
 code* prolog_trace(bool farfunc, unsigned* regsaved)
 {
     symbol *s = rtlsym[farfunc ? RTLSYM_TRACE_PRO_F : RTLSYM_TRACE_PRO_N];
@@ -2834,6 +2878,7 @@ code* prolog_trace(bool farfunc, unsigned* regsaved)
     *regsaved = s->Sregsaved;
     return c;
 }
+#endif
 
 code* prolog_genvarargs(symbol* sv, regm_t* namedargs)
 {
@@ -2905,7 +2950,7 @@ code* prolog_genvarargs(symbol* sv, regm_t* namedargs)
     if (!hasframe)
         L2offset += 1;                                      // +1 for sib byte
     // LEA RDX,offset L2[RIP]
-    genc1(c,0x8D,(REX_W << 16) | modregrm(0,DX,5),FLconst,L2offset);
+    genc1(c,LEA,(REX_W << 16) | modregrm(0,DX,5),FLconst,L2offset);
     genregs(c,0x29,AX,DX);                                 // SUB RDX,RAX
     code_orrex(c, REX_W);
     // LEA RAX,voff+vsize-6*8-16+0x7F[RBP]
@@ -2913,7 +2958,7 @@ code* prolog_genvarargs(symbol* sv, regm_t* namedargs)
     if (!hasframe)
         // add sib byte for [RSP] addressing
         ea = (REX_W << 16) | (modregrm(0,4,SP) << 8) | modregxrm(2,AX,4);
-    genc1(c,0x8D,ea,FLconst,raxoff);
+    genc1(c,LEA,ea,FLconst,raxoff);
     gen2(c,0xFF,modregrm(3,4,DX));                         // JMP EDX
     for (int i = 0; i < 8; i++)
     {
@@ -2949,7 +2994,7 @@ code* prolog_genvarargs(symbol* sv, regm_t* namedargs)
     if (!hasframe)
         ea = (modregrm(0,4,SP) << 8) | modregrm(2,DX,4);
     Poffset = (Poffset + (REGSIZE - 1)) & ~(REGSIZE - 1);
-    genc1(c,0x8D,(REX_W << 16) | ea,FLconst,Poff + Poffset);
+    genc1(c,LEA,(REX_W << 16) | ea,FLconst,Poff + Poffset);
 
     // MOV 9[RAX],RDX
     genc1(c,0x89,(REX_W << 16) | modregrm(2,DX,AX),FLconst,9);
@@ -3392,7 +3437,7 @@ void epilog(block *b)
 
         if (localsize | usedalloca)
         {
-            c = genc1(c,0x8D,modregrm(1,SP,6),FLconst,(targ_uns)-2); /* LEA SP,-2[BP] */
+            c = genc1(c,LEA,modregrm(1,SP,6),FLconst,(targ_uns)-2); /* LEA SP,-2[BP] */
         }
         if (wflags & (WFsaveds | WFds | WFss | WFdgroup))
         {   if (cpopds)
@@ -3411,9 +3456,15 @@ void epilog(block *b)
         L4:
             assert(hasframe);
             if (xlocalsize | usedalloca)
-            {   if (config.target_cpu >= TARGET_80286 &&
-                    !(config.target_cpu >= TARGET_80386 &&
-                     config.flags4 & CFG4speed)
+            {
+                if (config.exe == EX_WIN64)
+                {   // See http://msdn.microsoft.com/en-us/library/tawsa7cb(v=vs.80).aspx
+                    // LEA RSP,0[RBP]
+                    c = genc1(c,LEA,(REX_W<<16)|modregrm(2,SP,BPRM),FLconst,0);
+                    c = gen1(c,0x58 + BP);      // POP RBP
+                }
+                else if (config.target_cpu >= TARGET_80286 &&
+                    !(config.target_cpu >= TARGET_80386 && config.flags4 & CFG4speed)
                    )
                     c = gen1(c,0xC9);           // LEAVE
                 else if (0 && xlocalsize == REGSIZE && !usedalloca && I32)
@@ -3473,7 +3524,7 @@ Lopt:
             if (
                 c->Iop == 0xC9 ||                                  // LEAVE
                 (c->Iop == 0x8B && c->Irm == modregrm(3,SP,BP)) || // MOV SP,BP
-                (c->Iop == 0x8D && c->Irm == modregrm(1,SP,6))     // LEA SP,-imm[BP]
+                (c->Iop == LEA && c->Irm == modregrm(1,SP,6))     // LEA SP,-imm[BP]
                )
                 cr->Iop = NOP;
             else if (c->Iop == 0x58 + BP)                       // if POP BP
@@ -4090,7 +4141,7 @@ void assignaddrc(code *c)
                 }
                 else
                 {   // LEA reg,EBPtoESP[ESP]
-                    c->Iop = 0x8D;
+                    c->Iop = LEA;
                     if (c->Irm & 8)
                         c->Irex |= REX_R;
                     c->Irm = modregrm(2,c->Irm & 7,4);
@@ -4798,7 +4849,7 @@ void pinholeopt(code *c,block *b)
             }
 
             /* Look for LEA reg,[ireg], replace with MOV reg,ireg       */
-            else if (op == 0x8D)
+            else if (op == LEA)
             {   rm = c->Irm & 7;
                 mod = c->Irm & modregrm(3,0,0);
                 if (mod == 0)

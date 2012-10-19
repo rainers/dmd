@@ -298,12 +298,15 @@ void genEEcode()
 
 /********************************************
  * Gen a save/restore sequence for mask of registers.
+ * Returns:
+ *      amount of stack consumed
  */
 
-void gensaverestore2(regm_t regm,code **csave,code **crestore)
+unsigned gensaverestore2(regm_t regm,code **csave,code **crestore)
 {
     code *cs1 = *csave;
     code *cs2 = *crestore;
+    unsigned stackused = 0;
 
     //printf("gensaverestore2(%s)\n", regm_str(regm));
     regm &= mBP | mES | ALLREGS | XMMREGS | mST0 | mST01;
@@ -313,6 +316,7 @@ void gensaverestore2(regm_t regm,code **csave,code **crestore)
         {
             if (i == ES)
             {
+                stackused += REGSIZE;
                 cs1 = gen1(cs1, 0x06);                  // PUSH ES
                 cs2 = cat(gen1(CNIL, 0x07),cs2);        // POP  ES
             }
@@ -320,13 +324,14 @@ void gensaverestore2(regm_t regm,code **csave,code **crestore)
             {
                 gensaverestore87(1 << i, &cs1, &cs2);
             }
-            else if (i >= XMM0)
+            else if (i >= XMM0 || I64)
             {   unsigned idx;
                 cs1 = regsave.save(cs1, i, &idx);
                 cs2 = regsave.restore(cs2, i, idx);
             }
             else
             {
+                stackused += REGSIZE;
                 cs1 = gen1(cs1,0x50 + (i & 7));         // PUSH i
                 code *c = gen1(NULL, 0x58 + (i & 7));   // POP  i
                 if (i & 8)
@@ -340,13 +345,14 @@ void gensaverestore2(regm_t regm,code **csave,code **crestore)
     }
     *csave = cs1;
     *crestore = cs2;
+    return stackused;
 }
 
-void gensaverestore(regm_t regm,code **csave,code **crestore)
+unsigned gensaverestore(regm_t regm,code **csave,code **crestore)
 {
     *csave = NULL;
     *crestore = NULL;
-    gensaverestore2(regm, csave, crestore);
+    return gensaverestore2(regm, csave, crestore);
 }
 
 /****************************************
@@ -1548,8 +1554,8 @@ code *tstresult(regm_t regm,tym_t tym,unsigned saveflag)
 
 #ifdef DEBUG
   //if (!(regm & (mBP | ALLREGS)))
-  //      printf("tstresult(regm = %s, tym = x%x, saveflag = %d)\n",
-  //          regm_str(regm),tym,saveflag);
+        //printf("tstresult(regm = %s, tym = x%x, saveflag = %d)\n",
+            //regm_str(regm),tym,saveflag);
 #endif
   assert(regm & (XMMREGS | mBP | ALLREGS));
   tym = tybasic(tym);
@@ -1832,8 +1838,8 @@ code *fixresult(elem *e,regm_t retregs,regm_t *pretregs)
         }
         c = cat(c,ce);
         cssave(e,retregs | *pretregs,opsflag);
-        forregs = 0;                    /* don't care about result in reg  */
-                                        /* cuz we have real result in rreg */
+        // Commented out due to Bugzilla 8840
+        //forregs = 0;    // don't care about result in reg cuz real result is in rreg
         retregs = *pretregs & ~mPSW;
   }
   if (forccs)                           /* if return result in flags    */
@@ -2785,7 +2791,7 @@ code *cdfunc(elem *e,regm_t *pretregs)
                 code *c1 = getregs(retregs);
                 // LEA preg,np[RSP]
                 unsigned np = stackpush - ep->EV.Vuns;   // stack delta to parameter
-                code *c2 = genc1(CNIL,0x8D,
+                code *c2 = genc1(CNIL,LEA,
                         (modregrm(0,4,SP) << 8) | modregxrm(2,preg,4), FLconst,np);
                 if (I64)
                     code_orrex(c2, REX_W);
@@ -4224,7 +4230,7 @@ code *loaddata(elem *e,regm_t *pretregs)
             ce->Iflags |= CFopsize;                     /* seg is 16 bits */
         c = cat(c,ce);
         reg = findreglsw(forregs);
-        ce = loadea(e,&cs,0x8B,reg,0,forregs,0);
+        ce = loadea(e,&cs,0x8B,reg,0,forregs,0);        // MOV reg,data
         c = cat(c,ce);
     }
     else if (sz >= 8)

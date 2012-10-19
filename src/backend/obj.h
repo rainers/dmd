@@ -197,6 +197,8 @@ struct MsCoffObj : Obj
 
     static int seg_pdata();
     static int seg_xdata();
+    static int seg_pdata_comdat();
+    static int seg_xdata_comdat();
 };
 
 #undef VIRTUAL
