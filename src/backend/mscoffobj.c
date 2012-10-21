@@ -92,8 +92,8 @@ static Outbuffer *comdef_symbuf;        // Comdef's are stored here
 static segidx_t segidx_drectve;         // contents of ".drectve" section
 static segidx_t segidx_debugs;
 static segidx_t segidx_debugt;
-static segidx_t segidx_xdata;
-static segidx_t segidx_pdata;
+static segidx_t segidx_xdata = UNKNOWN;
+static segidx_t segidx_pdata = UNKNOWN;
 
 static int jumpTableSeg;                // segment index for __jump_table
 
@@ -376,6 +376,9 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
     seg_tlsseg = UNKNOWN;
     seg_tlsseg_bss = UNKNOWN;
 
+    segidx_pdata = UNKNOWN;
+    segidx_xdata = UNKNOWN;
+
     // Initialize buffers
 
     if (!string_table)
@@ -434,13 +437,6 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
                           align |
                           IMAGE_SCN_MEM_EXECUTE |
                           IMAGE_SCN_MEM_READ);              // CODE
-    addScnhdr(".pdata",   IMAGE_SCN_CNT_INITIALIZED_DATA |
-                          IMAGE_SCN_ALIGN_4BYTES |
-                          IMAGE_SCN_MEM_READ);              // PDATA
-    addScnhdr(".xdata",   IMAGE_SCN_CNT_INITIALIZED_DATA |
-                          IMAGE_SCN_ALIGN_4BYTES |
-                          IMAGE_SCN_MEM_READ);
-
     addScnhdr(".bss",     IMAGE_SCN_CNT_UNINITIALIZED_DATA |
                           IMAGE_SCN_ALIGN_4BYTES |
                           IMAGE_SCN_MEM_READ |
@@ -453,9 +449,7 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
 #define SHI_DEBUGT      3
 #define SHI_DATA        4
 #define SHI_TEXT        5
-#define SHI_PDATA       6
-#define SHI_XDATA       7
-#define SHI_UDATA       8
+#define SHI_UDATA       6
 
     getsegment2(SHI_TEXT);
     assert(SegData[CODE]->SDseg == CODE);
@@ -463,8 +457,7 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
     getsegment2(SHI_DATA);
     assert(SegData[DATA]->SDseg == DATA);
 
-    getsegment2(SHI_PDATA);
-    assert(SegData[CDATA]->SDseg == CDATA);
+    segidx_drectve = getsegment2(SHI_DRECTVE);  // put this here just so UDATA can be seg 4
 
     getsegment2(SHI_UDATA);
     assert(SegData[UDATA]->SDseg == UDATA);
@@ -480,10 +473,6 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
         cv_init();                  // initialize debug output code
     }
 
-    segidx_drectve = getsegment2(SHI_DRECTVE);
-    segidx_xdata   = getsegment2(SHI_XDATA);
-    segidx_pdata   = CDATA;                     // kludge for the moment, CDATA should really
-                                                // be separate from PDATA
 
     SegData[segidx_drectve]->SDbuf->setsize(0);
     SegData[segidx_drectve]->SDbuf->write("  ", 2);
@@ -1735,11 +1724,23 @@ seg_data *MsCoffObj::tlsseg_bss()
 
 segidx_t MsCoffObj::seg_pdata()
 {
+    if (segidx_pdata == UNKNOWN)
+    {
+        segidx_pdata = MsCoffObj::getsegment(".pdata", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                          IMAGE_SCN_ALIGN_4BYTES |
+                                          IMAGE_SCN_MEM_READ);
+    }
     return segidx_pdata;
 }
 
 segidx_t MsCoffObj::seg_xdata()
 {
+    if (segidx_xdata == UNKNOWN)
+    {
+        segidx_xdata = MsCoffObj::getsegment(".xdata", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                          IMAGE_SCN_ALIGN_4BYTES |
+                                          IMAGE_SCN_MEM_READ);
+    }
     return segidx_xdata;
 }
 

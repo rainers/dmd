@@ -3070,11 +3070,17 @@ int ctfeRawCmp(Loc loc, Expression *e1, Expression *e2)
     {
         uinteger_t len1 = resolveArrayLength(e1);
         uinteger_t len2 = resolveArrayLength(e2);
-        uinteger_t len = (len1 < len2 ? len1 : len2);
-        int res = len == 0 ? 0 : ctfeCmpArrays(loc, e1, e2, len);
-        if (res == 0 && len1 != len2) // only for equality
-            return len1 - len2;
-        return res;
+        // workaround for dmc optimizer bug calculating wrong len for
+        // uinteger_t len = (len1 < len2 ? len1 : len2);
+        // if(len == 0) ...
+        if(len1 > 0 && len2 > 0)
+        {
+            uinteger_t len = (len1 < len2 ? len1 : len2);
+            int res = ctfeCmpArrays(loc, e1, e2, len);
+            if (res != 0)
+                return res;
+        }
+        return len1 - len2;
     }
     if (e1->type->isintegral())
     {
@@ -5774,6 +5780,8 @@ Expression *SliceExp::interpret(InterState *istate, CtfeGoal goal)
         Expression *e;
         dinteger_t ofs;
         Expression *agg = getAggregateFromPointer(e1, &ofs);
+        ilwr += ofs;
+        iupr += ofs;
         if (agg->op == TOKnull)
         {
             if (iupr == ilwr)
@@ -5794,11 +5802,15 @@ Expression *SliceExp::interpret(InterState *istate, CtfeGoal goal)
         assert(agg->op == TOKarrayliteral || agg->op == TOKstring);
         dinteger_t len = ArrayLength(Type::tsize_t, agg)->toInteger();
         //Type *pointee = ((TypePointer *)agg->type)->next;
-        if ((ilwr + ofs) < 0 || (iupr+ofs) > (len + 1) || iupr < ilwr)
+        if (ilwr < 0 || iupr > (len + 1) || iupr < ilwr)
         {
             error("pointer slice [%lld..%lld] exceeds allocated memory block [0..%lld]",
-                ilwr+ofs, iupr+ofs, len);
+                ilwr, iupr, len);
             return EXP_CANT_INTERPRET;
+        }
+        if (ofs != 0)
+        {   lwr = new IntegerExp(loc, ilwr, lwr->type);
+            upr = new IntegerExp(loc, iupr, upr->type);
         }
         e = new SliceExp(loc, agg, lwr, upr);
         e->type = type;
@@ -7121,8 +7133,6 @@ bool isCtfeValueValid(Expression *newval)
         assert(se->lwr && se->lwr != EXP_CANT_INTERPRET && se->lwr->op == TOKint64);
         assert(se->upr && se->upr != EXP_CANT_INTERPRET && se->upr->op == TOKint64);
         assert(se->e1->op == TOKarrayliteral || se->e1->op == TOKstring);
-        if (se->e1->op == TOKarrayliteral)
-            assert(((ArrayLiteralExp *)se->e1)->ownedByCtfe);
         return true;
     }
     if (newval->op == TOKvoid)

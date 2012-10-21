@@ -168,7 +168,7 @@ void out_config_init()
         config.fulltypes = (params->symdebug == 1) ? CVDWARF_D : CVDWARF_C;
 #endif
 #if SYMDEB_CODEVIEW
-        if (0 && params->is64bit)
+        if (params->is64bit)
         {
         }
         else

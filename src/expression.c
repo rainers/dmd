@@ -1594,7 +1594,7 @@ Expression *Expression::modifiableLvalue(Scope *sc, Expression *e)
     // See if this expression is a modifiable lvalue (i.e. not const)
 #if DMDV2
     if (type && !type->isMutable())
-    {   error("%s is not mutable", e->toChars());
+    {   e->error("%s is not mutable", e->toChars());
         return new ErrorExp();
     }
 #endif
@@ -3690,7 +3690,7 @@ Expression *StringExp::toLvalue(Scope *sc, Expression *e)
 
 Expression *StringExp::modifiableLvalue(Scope *sc, Expression *e)
 {
-    error("Cannot modify '%s'", toChars());
+    e->error("Cannot modify '%s'", toChars());
     return new ErrorExp();
 }
 
@@ -5118,6 +5118,11 @@ Expression *VarExp::toLvalue(Scope *sc, Expression *e)
 #endif
     if (var->storage_class & STClazy)
     {   error("lazy variables cannot be lvalues");
+        return new ErrorExp();
+    }
+    if (var->ident == Id::ctfe)
+    {
+        error("compiler-generated variable __ctfe is not an lvalue");
         return new ErrorExp();
     }
     return this;
@@ -8150,6 +8155,8 @@ Lagain:
                         error("constructor calls not allowed in loops or after labels");
                     if (sc->callSuper & (CSXsuper_ctor | CSXthis_ctor))
                         error("multiple constructor calls");
+                    if ((sc->callSuper & CSXreturn) && !(sc->callSuper & CSXany_ctor))
+                        error("an earlier return statement skips constructor");
                     sc->callSuper |= CSXany_ctor | CSXsuper_ctor;
                 }
 
@@ -8190,6 +8197,8 @@ Lagain:
                     error("constructor calls not allowed in loops or after labels");
                 if (sc->callSuper & (CSXsuper_ctor | CSXthis_ctor))
                     error("multiple constructor calls");
+                if ((sc->callSuper & CSXreturn) && !(sc->callSuper & CSXany_ctor))
+                    error("an earlier return statement skips constructor");
                 sc->callSuper |= CSXany_ctor | CSXthis_ctor;
             }
 
@@ -8565,7 +8574,12 @@ Expression *AddrExp::semantic(Scope *sc)
             {
                 if (!dve->hasOverloads)
                     f->tookAddressOf++;
-                Expression *e = new DelegateExp(loc, dve->e1, f, dve->hasOverloads);
+
+                Expression *e;
+                if ( f->needThis())
+                    e = new DelegateExp(loc, dve->e1, f, dve->hasOverloads);
+                else // It is a function pointer. Convert &v.f() --> (v, &V.f())
+                    e = new CommaExp(loc, dve->e1, new AddrExp(loc, new VarExp(loc, f)));
                 e = e->semantic(sc);
                 return e;
             }
@@ -10816,6 +10830,10 @@ Ltupleassign:
         op == TOKassign)
     {
         error("cannot rebind scope variables");
+    }
+    if (e1->op == TOKvar && ((VarExp*)e1)->var->ident == Id::ctfe)
+    {
+        error("cannot modify compiler-generated variable __ctfe");
     }
 
     type = e1->type;
