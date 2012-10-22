@@ -432,12 +432,12 @@ void cv_init()
                 cgcv.deb_offset = 0x80000000;
         }
 
-        if(config.fulltypes == CV4 && I64)
+        if(I64) // MS-COFF
             cgcv.signature = 4;
 
         objmod->write_bytes(SegData[DEBSYM],4,&cgcv.signature);
         
-        if(config.fulltypes == CV4 && I64)
+        if(0 && config.fulltypes == CV4 && I64)
         {
             int dataf1 = 0xf1;
             objmod->write_bytes(SegData[DEBSYM],4,&dataf1);

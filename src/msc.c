@@ -170,6 +170,7 @@ void out_config_init()
 #if SYMDEB_CODEVIEW
         if (params->is64bit)
         {
+            configv.addlinenumbers = 1;
         }
         else
         {

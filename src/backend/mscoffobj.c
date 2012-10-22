@@ -462,7 +462,7 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
     getsegment2(SHI_UDATA);
     assert(SegData[UDATA]->SDseg == UDATA);
 
-    if (config.fulltypes)
+    if (config.fulltypes || configv.addlinenumbers)
     {
         segidx_debugs  = getsegment2(SHI_DEBUGS);
         assert(SegData[DEBSYM]->SDseg == DEBSYM);
@@ -470,7 +470,8 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
         assert(SegData[DEBTYP]->SDseg == DEBTYP);
 
         objmod = obj;
-        cv_init();                  // initialize debug output code
+        if(config.fulltypes)
+            cv_init();                  // initialize debug output code
     }
 
 
@@ -710,6 +711,9 @@ void MsCoffObj::termfile()
 {
     //dbg_printf("MsCoffObj::termfile\n");
     if (configv.addlinenumbers)
+    {
+    }
+    if (config.fulltypes)
     {
         cv_term();
 
