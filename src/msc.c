@@ -168,6 +168,7 @@ void out_config_init()
         config.fulltypes = (params->symdebug == 1) ? CVDWARF_D : CVDWARF_C;
 #endif
 #if SYMDEB_CODEVIEW
+        if (params->is64bit)
         {
             configv.addlinenumbers = 1;
             config.fulltypes = CV8;

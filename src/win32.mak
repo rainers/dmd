@@ -165,7 +165,7 @@ OBJ8= go.obj gdag.obj gother.obj gflow.obj gloop.obj var.obj el.obj \
 	debug.obj code.obj cg87.obj cgxmm.obj cgsched.obj ee.obj csymbol.obj \
 	cgcod.obj cod1.obj cod2.obj cod3.obj cod4.obj cod5.obj outbuf.obj \
 	bcomplex.obj iasm.obj ptrntab.obj aa.obj ti_achar.obj md5.obj \
-	ti_pvoid.obj mscoffobj.obj pdata.obj cv8.obj \
+	ti_pvoid.obj mscoffobj.obj pdata.obj cv8.obj abuf.obj \
 
 
 # Root package
@@ -219,7 +219,7 @@ BACKSRC= $C\cdef.h $C\cc.h $C\oper.h $C\ty.h $C\optabgen.c \
 	$C\dwarf.c $C\dwarf.h $C\cppman.c $C\machobj.c \
 	$C\strtold.c $C\aa.h $C\aa.c $C\tinfo.h $C\ti_achar.c \
 	$C\md5.h $C\md5.c $C\ti_pvoid.c $C\xmm.h \
-	$C\mscoffobj.c $C\obj.h $C\pdata.c $C\cv8.c \
+	$C\mscoffobj.c $C\obj.h $C\pdata.c $C\cv8.c $C\abuf.c \
 	$C\backend.txt \
 	$C\html.h $C\html.c
 
@@ -388,6 +388,9 @@ bcomplex.obj : $C\bcomplex.c
 
 aa.obj : $C\tinfo.h $C\aa.h $C\aa.c
 	$(CC) -c $(MFLAGS) -I. $C\aa
+
+abuf.obj : $C\tinfo.h $C\abuf.h $C\abuf.c
+	$(CC) -c $(MFLAGS) -I. $C\abuf
 
 blockopt.obj : $C\blockopt.c
 	$(CC) -c $(MFLAGS) $C\blockopt

@@ -483,6 +483,7 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
         segidx_debugt  = getsegment2(SHI_DEBUGT);
         assert(SegData[DEBTYP]->SDseg == DEBTYP);
 
+#if 0
         if (config.fulltypes)
         {
             objmod = obj;
@@ -493,8 +494,8 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
             int32_t sgn = 4;
             obj->write_bytes(SegData[segidx_debugs], 4, &sgn); // CV7 signature
         }
+#endif
     }
-
 
     SegData[segidx_drectve]->SDbuf->setsize(0);
     SegData[segidx_drectve]->SDbuf->write("  ", 2);
@@ -740,9 +741,9 @@ void build_syment_table()
 void MsCoffObj::termfile()
 {
     //dbg_printf("MsCoffObj::termfile\n");
-    if (config.fulltypes)
+    if (configv.addlinenumbers)
     {
-        cv_term();
+        //cv_term();
         cv8_termmodule();
     }
 }
@@ -764,7 +765,7 @@ void MsCoffObj::term()
 
     if (configv.addlinenumbers)
     {
-        cv7_termfile();
+        //cv7_termfile();
         //dwarf_termfile();
         cv8_termfile();
     }
@@ -1224,15 +1225,15 @@ void MsCoffObj::cv7_termfile()
 
         int32_t hdr = 0xf4;
         int32_t len = srcFileBuf->size();
-        write_bytes(SegData[segidx_debugs], 4, &hdr);
-        write_bytes(SegData[segidx_debugs], 4, &len);
-        write_bytes(SegData[segidx_debugs], len, srcFileBuf->buf);
+        write_bytes(SegData[segidx_debugS], 4, &hdr);
+        write_bytes(SegData[segidx_debugS], 4, &len);
+        write_bytes(SegData[segidx_debugS], len, srcFileBuf->buf);
 
         hdr = 0xf3;
         len = srcFileNamesBuf->size();
-        write_bytes(SegData[segidx_debugs], 4, &hdr);
-        write_bytes(SegData[segidx_debugs], 4, &len);
-        write_bytes(SegData[segidx_debugs], len, srcFileNamesBuf->buf);
+        write_bytes(SegData[segidx_debugS], 4, &hdr);
+        write_bytes(SegData[segidx_debugS], 4, &len);
+        write_bytes(SegData[segidx_debugS], len, srcFileNamesBuf->buf);
     }
 
 #if 1
@@ -1284,10 +1285,10 @@ void MsCoffObj::cv7_termfile()
 
             int32_t hdr = 0xf2;
             int32_t len = sizeof(hdrdata) + linebuf->size();
-            write_bytes(SegData[segidx_debugs], 4, &hdr);
-            write_bytes(SegData[segidx_debugs], 4, &len);
-            write_bytes(SegData[segidx_debugs], sizeof(hdrdata), hdrdata);
-            write_bytes(SegData[segidx_debugs], linebuf->size(), linebuf->buf);
+            write_bytes(SegData[segidx_debugS], 4, &hdr);
+            write_bytes(SegData[segidx_debugS], 4, &len);
+            write_bytes(SegData[segidx_debugS], sizeof(hdrdata), hdrdata);
+            write_bytes(SegData[segidx_debugS], linebuf->size(), linebuf->buf);
 
             // reset linnum_data
             ld->linoff_count = 0;
@@ -2557,11 +2558,7 @@ int MsCoffObj::reftoident(segidx_t seg, targ_size_t offset, Symbol *s, targ_size
                 v = -((flags & CFREL) >> 24);
                 assert(v >= -5 && v <= 0);
             }
-            if (flags & CFseg)
-            {
-                MsCoffObj::addrel(seg, offset, s, 0, RELseg, v);
-            }
-            else if (flags & CFselfrel)
+            if (flags & CFselfrel)
             {
                 MsCoffObj::addrel(seg, offset, s, 0, RELrel, v);
             }

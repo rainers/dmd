@@ -292,7 +292,7 @@ L1:
     // 2 bytes of pad
     F4_buf->writeShort(0);
 
-    return length;
+    return length - 8; // subtract header size
 }
 
 void cv8_writesection(int seg, unsigned type, Outbuffer *buf)
