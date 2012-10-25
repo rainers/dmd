@@ -197,8 +197,12 @@ struct MsCoffObj : Obj
 
     static int seg_pdata();
     static int seg_xdata();
-    static int seg_pdata_comdat();
-    static int seg_xdata_comdat();
+    static int seg_pdata_comdat(Symbol *sfunc);
+    static int seg_xdata_comdat(Symbol *sfunc);
+
+    static int seg_debugS();
+    static int seg_debugT();
+    static int seg_debugS_comdat(Symbol *sfunc);
 
 private:
     void cv7_termfile();

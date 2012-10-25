@@ -219,6 +219,7 @@ void outdata(symbol *s)
                         objmod->pubdefsize(s->Sseg,s,s->Soffset,datasize);   // do the definition
                     searchfixlist(s);
                     if (config.fulltypes &&
+                        config.fulltypes != CV8 &&
                         !(s->Sclass == SCstatic && funcsym_p)) // not local static
                         cv_outsym(s);
 #if SCPP
@@ -349,6 +350,7 @@ void outdata(symbol *s)
     }
     assert(s->Sseg != UNKNOWN);
     if (config.fulltypes &&
+        config.fulltypes != CV8 &&
         !(s->Sclass == SCstatic && funcsym_p)) // not local static
         cv_outsym(s);
     searchfixlist(s);
@@ -512,7 +514,7 @@ void outcommon(symbol *s,targ_size_t n)
             }
 #endif
         }
-        if (config.fulltypes)
+        if (config.fulltypes && config.fulltypes != CV8)
             cv_outsym(s);
     }
 }
@@ -1345,7 +1347,7 @@ STATIC void writefunc2(symbol *sfunc)
         sfunc->ty() & mTYexport)
         objmod->export_symbol(sfunc,Poffset);      // export function definition
 
-    if (config.fulltypes)
+    if (config.fulltypes && config.fulltypes != CV8)
         cv_func(sfunc);                 // debug info for function
 
 #if MARS
