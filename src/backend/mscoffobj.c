@@ -35,6 +35,7 @@
 
 #include        "aa.h"
 #include        "tinfo.h"
+#include        "abuf.h"
 
 #if OMFOBJ
 
@@ -148,9 +149,20 @@ struct Relocation
     unsigned char rtype;   // RELxxxx
 #define RELaddr 0       // straight address
 #define RELrel  1       // relative to location to be fixed up
+#define RELseg  2       // segment of target
     short val;          // 0, -1, -2, -3, -4, -5
 };
 
+/*******************************************************
+ * debug info
+ */
+static void cv7_termfile();
+
+static AArray *infoFileName_table;
+static IDXSEC lineseg;
+static Outbuffer *srcFileNamesBuf;
+static Outbuffer *srcFileBuf;
+static Outbuffer *linebuf;
 
 /*******************************
  * Output a string into a string table
@@ -469,9 +481,16 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
         segidx_debugt  = getsegment2(SHI_DEBUGT);
         assert(SegData[DEBTYP]->SDseg == DEBTYP);
 
-        objmod = obj;
-        if(config.fulltypes)
+        if (config.fulltypes)
+        {
+            objmod = obj;
             cv_init();                  // initialize debug output code
+        }
+        else
+        {
+            int32_t sgn = 4;
+            obj->write_bytes(SegData[segidx_debugs], 4, &sgn); // CV7 signature
+        }
     }
 
 
@@ -710,14 +729,9 @@ void build_syment_table()
 void MsCoffObj::termfile()
 {
     //dbg_printf("MsCoffObj::termfile\n");
-    if (configv.addlinenumbers)
-    {
-    }
     if (config.fulltypes)
     {
         cv_term();
-
-        //dwarf_termmodule();
     }
 }
 
@@ -738,6 +752,7 @@ void MsCoffObj::term()
 
     if (configv.addlinenumbers)
     {
+        cv7_termfile();
         //dwarf_termfile();
     }
 
@@ -945,6 +960,10 @@ void MsCoffObj::term()
 //printf("test2\n");
                         if (pdata)
                             rel.r_type = IMAGE_REL_AMD64_ADDR32NB;
+                        else if(r->rtype == RELseg)
+                            rel.r_type = IMAGE_REL_AMD64_SECTION;
+                        else if(seg == DEBSYM)
+                            rel.r_type = IMAGE_REL_AMD64_SECREL;
                         else
                             rel.r_type = IMAGE_REL_AMD64_ADDR64;
                         rel.r_vaddr = r->offset;
@@ -1172,6 +1191,169 @@ void MsCoffObj::linnum(Srcpos srcpos, targ_size_t offset)
     ld->linoff_count++;
 }
 
+/*************************************
+ * Add a file to the source file debug entry header
+ */
+int cv7_line_addfile(const char* filename)
+{
+    if (!infoFileName_table) {
+        infoFileName_table = new AArray(&ti_abuf, sizeof(unsigned));
+        srcFileBuf = new Outbuffer;
+        srcFileNamesBuf = new Outbuffer;
+        srcFileNamesBuf->writeByte(0);
+    }
+
+    Abuf abuf;
+    abuf.buf = (const unsigned char*)filename;
+    abuf.length = strlen(filename);
+
+    unsigned *pidx = (unsigned *)infoFileName_table->get(&abuf);
+    if (!*pidx)                 // if no idx assigned yet
+    {
+        *pidx = srcFileBuf->size() + 1; // cannot use 0, used to indicate new entry
+
+        srcFileBuf->write32(srcFileNamesBuf->size());      // file name offset
+        srcFileBuf->writeByte(0x10);   // length of MD5?
+        srcFileBuf->writeByte(0x01);   // format?
+        for(int i = 0; i < 16; i++)
+            srcFileBuf->writeByte(0x0);   // MD5 of source file?
+        srcFileBuf->writeShort(0);     // padding
+
+        srcFileNamesBuf->writeString(filename);
+    }
+
+    return *pidx;
+}
+
+
+void MsCoffObj::cv7_termfile()
+{
+    //printf("cv7_termfile()\n");
+    return;
+
+    /* ======================================== */
+    // Put out line number info
+
+    // file_names
+    unsigned last_filenumber = 0;
+    const char* last_filename = NULL;
+    for (unsigned seg = 1; seg <= seg_count; seg++)
+    {
+        for (unsigned i = 0; i < SegData[seg]->SDlinnum_count; i++)
+        {
+            linnum_data *ld = &SegData[seg]->SDlinnum_data[i];
+            const char *filename;
+#if MARS
+            filename = ld->filename;
+#else
+            Sfile *sf = ld->filptr;
+            if (sf)
+                filename = sf->SFname;
+            else
+                filename = ::filename;
+#endif
+            if (last_filename == filename)
+            {
+                ld->filenumber = last_filenumber;
+            }
+            else
+            {
+                ld->filenumber = cv7_line_addfile(filename);
+
+                last_filenumber = ld->filenumber;
+                last_filename = filename;
+            }
+        }
+    }
+    if (srcFileNamesBuf && srcFileBuf)
+    {
+        // align to 4 bytes
+        while(srcFileNamesBuf->size() & 3)
+            srcFileNamesBuf->writeByte(0);
+        while(srcFileBuf->size() & 3)
+            srcFileBuf->writeByte(0);
+
+        int32_t hdr = 0xf4;
+        int32_t len = srcFileBuf->size();
+        write_bytes(SegData[segidx_debugs], 4, &hdr);
+        write_bytes(SegData[segidx_debugs], 4, &len);
+        write_bytes(SegData[segidx_debugs], len, srcFileBuf->buf);
+
+        hdr = 0xf3;
+        len = srcFileNamesBuf->size();
+        write_bytes(SegData[segidx_debugs], 4, &hdr);
+        write_bytes(SegData[segidx_debugs], 4, &len);
+        write_bytes(SegData[segidx_debugs], len, srcFileNamesBuf->buf);
+    }
+
+#if 1
+    // assert we haven't emitted anything but file table entries
+    //debugline.prologue_length = linebuf->size() - 10;
+    if(!linebuf)
+        linebuf = new Outbuffer;
+
+    for (unsigned seg = 1; seg <= seg_count; seg++)
+    {
+        seg_data *sd = SegData[seg];
+        unsigned addressmax = 0;
+        unsigned linestart = ~0;
+
+        if (!sd->SDlinnum_count)
+            continue;
+#if ELFOBJ
+        if (!sd->SDsym) // gdb ignores line number data without a DW_AT_name
+            continue;
+#endif
+
+        //printf("sd = %x, SDlinnum_count = %d\n", sd, sd->SDlinnum_count);
+        for (int i = 0; i < sd->SDlinnum_count; i++)
+        {   linnum_data *ld = &sd->SDlinnum_data[i];
+
+            if(ld->linoff_count <= 0)
+                continue;
+
+            //dwarf_appreladdr(lineseg,linebuf,seg,0);
+
+            unsigned line    = ld->linoff[0][0];          // line numbers beginning with 1
+            unsigned address = ld->linoff[0][1];       // instruction address
+            unsigned file    = ld->filenumber;
+            unsigned codelen = 1;
+
+            for (int j = 0; j < ld->linoff_count; j++)
+            {   
+                int line = ld->linoff[j][0];
+                int addr = ld->linoff[j][1] - ld->linoff[0][1];
+
+                linebuf->write32(addr);
+                linebuf->write32(line | 0x80000000);
+
+                if(addr >= codelen)
+                    codelen = addr + 1;
+            }
+
+            int32_t hdrdata[6] = { 0, address, codelen, file - 1, ld->linoff_count, linebuf->size() };
+
+            int32_t hdr = 0xf2;
+            int32_t len = sizeof(hdrdata) + linebuf->size();
+            write_bytes(SegData[segidx_debugs], 4, &hdr);
+            write_bytes(SegData[segidx_debugs], 4, &len);
+            write_bytes(SegData[segidx_debugs], sizeof(hdrdata), hdrdata);
+            write_bytes(SegData[segidx_debugs], linebuf->size(), linebuf->buf);
+
+            // reset linnum_data
+            ld->linoff_count = 0;
+            linebuf->reset();
+        }
+    }
+
+#endif
+
+    if (infoFileName_table)
+    {
+        delete infoFileName_table;
+        infoFileName_table = NULL;
+    }
+}
 
 /*******************************
  * Set start address
@@ -2395,7 +2577,11 @@ int MsCoffObj::reftoident(segidx_t seg, targ_size_t offset, Symbol *s, targ_size
                 v = -((flags & CFREL) >> 24);
                 assert(v >= -5 && v <= 0);
             }
-            if (flags & CFselfrel)
+            if (flags & CFseg)
+            {
+                MsCoffObj::addrel(seg, offset, s, 0, RELseg, v);
+            }
+            else if (flags & CFselfrel)
             {
                 MsCoffObj::addrel(seg, offset, s, 0, RELrel, v);
             }

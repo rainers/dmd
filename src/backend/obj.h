@@ -199,6 +199,9 @@ struct MsCoffObj : Obj
     static int seg_xdata();
     static int seg_pdata_comdat();
     static int seg_xdata_comdat();
+
+private:
+    void cv7_termfile();
 };
 
 #undef VIRTUAL

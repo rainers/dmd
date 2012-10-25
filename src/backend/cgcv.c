@@ -60,6 +60,10 @@ static unsigned debtyphash[DEBTYPHASHDIM];
  */
 #define CVIDMAX (0xFF0-20)   // the -20 is picked by trial and error
 
+///////////////////////////////
+#define CV7 I64
+#define S_GPROC_V3      0x1110
+
 #if 0
 #define DBG(a)  a
 #else
@@ -97,6 +101,8 @@ int cv_stringbytes(const char *name)
 {   size_t len;
 
     len = strlen(name);
+    if(cgcv.cstrings)
+        return len + 1;
     if (len > CVIDMAX)
         len = CVIDMAX;
     return len + ((len > 255) ? 4 : 1);
@@ -112,7 +118,11 @@ int cv_namestring(unsigned char *p,const char *name)
 {   unsigned len;
 
     len = strlen(name);
-    if (len > 255)
+    if(cgcv.cstrings)
+    {   memcpy(p, name, len + 1);
+        len++;
+    }
+    else if (len > 255)
     {   p[0] = 0xFF;
         p[1] = 0;
         if (len > CVIDMAX)
@@ -382,7 +392,7 @@ void cv_init()
     memset(debtyphash,0,sizeof(debtyphash));
 
     /* Reset for different OBJ file formats     */
-    if (I32)
+    if (I32 || I64)
     {
         // Adjust values in old CV tables for 32 bit ints
         dttab[TYenum] = dttab[TYlong];
@@ -432,31 +442,29 @@ void cv_init()
                 cgcv.deb_offset = 0x80000000;
         }
 
-        if(I64) // MS-COFF
+        if(CV7) // MS-COFF
+        {
             cgcv.signature = 4;
+            cgcv.sz_idx = 4;
+            cgcv.cstrings = true;
+        }
 
         objmod->write_bytes(SegData[DEBSYM],4,&cgcv.signature);
         
-        if(0 && config.fulltypes == CV4 && I64)
+        if(CV7)
         {
             int dataf1 = 0xf1;
             objmod->write_bytes(SegData[DEBSYM],4,&dataf1);
             dataf1 = 0; //databytes + 4 * (prefix - 3);
-            objmod->write_bytes(SegData[DEBSYM],4,&dataf1);
+            objmod->write_bytes(SegData[DEBSYM],4,&dataf1); // to be set with data length in cv_term
         }
 
         // Allocate an LF_ARGLIST with no arguments
-        if (config.fulltypes == CV4)
-        {   d = debtyp_alloc(4);
-            TOWORD(d->data,LF_ARGLIST);
-            TOWORD(d->data + 2,0);
-        }
-        else
-        {   d = debtyp_alloc(6);
-            TOWORD(d->data,LF_ARGLIST);
-            TOLONG(d->data + 2,0);
-        }
+        d = debtyp_alloc(2 + cgcv.sz_idx);
+        TOWORD(d->data,LF_ARGLIST);
+        TOIDX(d->data + 2,0);
 
+#if 0
         // Put out S_COMPILE record
         TOWORD(debsym + 2,S_COMPILE);
         switch (config.target_cpu)
@@ -472,17 +480,18 @@ void cv_init()
                                 debsym[4] = 6;  break;
             default:    assert(0);
         }
-        debsym[5] = (CPP != 0);         // 0==C, 1==C++
+        debsym[5] = (CV7 || CPP != 0);         // 0==C, 1==C++
         flags = (config.inline8087) ? (0<<3) : (1<<3);
-        if (I32)
+        if (I32 || I64)
             flags |= 0x80;              // 32 bit addresses
         flags |= memmodel[config.memmodel];
         TOWORD(debsym + 6,flags);
         version[0] = 'Z';
         strcpy(version + 1,VERSION);
-        cv_namestring(debsym + 8,version);
-        TOWORD(debsym,6 + sizeof(version));
+        int len = cv_namestring(debsym + 8,version);
+        TOWORD(debsym,6 + len);
         objmod->write_bytes(SegData[DEBSYM],8 + sizeof(version),debsym);
+#endif
 
 #if SYMDEB_TDB
         // Put out S_TDBNAME record
@@ -1748,10 +1757,10 @@ L1:
         case TYcptr:
 #endif
         Lptr:
-                        attribute |= I32 ? 10 : 0;      goto L2;
+                        attribute |= I32 || I64 ? 10 : 0;      goto L2;
 #if TARGET_SEGMENTED
         case TYfptr:
-        case TYvptr:    attribute |= I32 ? 11 : 1;      goto L2;
+        case TYvptr:    attribute |= I32 || I64 ? 11 : 1;      goto L2;
         case TYhptr:    attribute |= 2; goto L2;
 #endif
 
@@ -1870,7 +1879,7 @@ L1:
                 d = debtyp_alloc(6 + u + 1);
                 TOWORD(d->data,LF_ARRAY);
                 TOWORD(d->data + 2,next);
-                TOWORD(d->data + 4,I32 ? 0x12 : 0x11);  // T_LONG : T_SHORT
+                TOWORD(d->data + 4,I32 || I64 ? 0x12 : 0x11);  // T_LONG : T_SHORT
                 d->data[6 + u] = 0;             // no name
                 cv4_storenumeric(d->data + 6,size);
             }
@@ -1879,7 +1888,7 @@ L1:
                 d = debtyp_alloc(10 + u + 1);
                 TOWORD(d->data,LF_ARRAY);
                 TOLONG(d->data + 2,next);
-                TOLONG(d->data + 6,I32 ? 0x12 : 0x11);  // T_LONG : T_SHORT
+                TOLONG(d->data + 6,I32 || I64 ? 0x12 : 0x11);  // T_LONG : T_SHORT
                 d->data[10 + u] = 0;            // no name
                 cv4_storenumeric(d->data + 10,size);
             }
@@ -1909,24 +1918,13 @@ L1:
             paramidx = cv4_arglist(t,&nparam);
 
             // Construct an LF_PROCEDURE
-            if (config.fulltypes == CV4)
-            {   d = debtyp_alloc(2 + 2 + 1 + 1 + 2 + 2);
-                TOWORD(d->data,LF_PROCEDURE);
-                TOWORD(d->data + 2,next);               // return type
-                d->data[4] = call;
-                d->data[5] = 0;                 // reserved
-                TOWORD(d->data + 6,nparam);
-                TOWORD(d->data + 8,paramidx);
-            }
-            else
-            {   d = debtyp_alloc(2 + 4 + 1 + 1 + 2 + 4);
-                TOWORD(d->data,LF_PROCEDURE);
-                TOLONG(d->data + 2,next);               // return type
-                d->data[6] = call;
-                d->data[7] = 0;                 // reserved
-                TOWORD(d->data + 8,nparam);
-                TOLONG(d->data + 10,paramidx);
-            }
+            d = debtyp_alloc(2 + cgcv.sz_idx + 1 + 1 + 2 + cgcv.sz_idx);
+            TOWORD(d->data,LF_PROCEDURE);
+            TOIDX(d->data + 2,next);               // return type
+            d->data[2 + cgcv.sz_idx] = call;
+            d->data[3 + cgcv.sz_idx] = 0;                 // reserved
+            TOWORD(d->data + 4 + cgcv.sz_idx,nparam);
+            TOIDX(d->data + 6 + cgcv.sz_idx,paramidx);
 
             typidx = cv_debtyp(d);
             break;
@@ -1959,7 +1957,7 @@ L1:
             p = d->data;
             TOWORD(p,LF_VTSHAPE);
             TOWORD(p + 2,count);
-            descriptor = I32 ? 0x55 : (LARGECODE ? 0x11 : 0);
+            descriptor = I32 || I64 ? 0x55 : (LARGECODE ? 0x11 : 0);
             memset(p + 4,descriptor,(count + 1) >> 1);
 
             typidx = cv_debtyp(d);
@@ -1999,20 +1997,12 @@ L1:
 
         modifier = (tycv & (mTYconst | mTYimmutable)) ? 1 : 0;
         modifier |= (tycv & mTYvolatile) ? 2 : 0;
-        if (config.fulltypes == CV4)
-        {
-            d = debtyp_alloc(6);
-            TOWORD(d->data,LF_MODIFIER);
-            TOWORD(d->data + 2,modifier);
-            TOWORD(d->data + 4,typidx);
-        }
-        else
-        {
-            d = debtyp_alloc(10);
-            TOWORD(d->data,LF_MODIFIER);
-            TOLONG(d->data + 2,modifier);
-            TOLONG(d->data + 6,typidx);
-        }
+
+        d = debtyp_alloc(2 + 2 * cgcv.sz_idx);
+        TOWORD(d->data,LF_MODIFIER);
+        TOIDX(d->data + 2,modifier);
+        TOIDX(d->data + cgcv.sz_idx,typidx);
+
         typidx = cv_debtyp(d);
     }
 
@@ -2074,14 +2064,14 @@ STATIC void cv4_outsym(symbol *s)
 
         // Symbol type
         u = (s->Sclass == SCstatic) ? S_LPROC16 : S_GPROC16;
-        if (I32)
+        if (I32 || I64)
             u += S_GPROC32 - S_GPROC16;
         TOWORD(debsym + 2,u);
 
         if (config.fulltypes == CV4)
         {
             // Offsets
-            if (I32)
+            if (I32 || I64)
             {   TOLONG(debsym + 16,s->Ssize);           // proc length
                 TOLONG(debsym + 20,startoffset);        // debug start
                 TOLONG(debsym + 24,retoffset);          // debug end
@@ -2095,14 +2085,16 @@ STATIC void cv4_outsym(symbol *s)
             }
             length += cv_namestring(debsym + u + intsize + 2 + cgcv.sz_idx + 1,id);
             typidx = cv4_symtypidx(s);
-            TOIDX(debsym + u + intsize + 2,typidx);     // proc type
+            TOIDX(debsym + u + (CV7 ? 0 : intsize + 2),typidx);     // proc type
             debsym[u + intsize + 2 + cgcv.sz_idx] = tyfarfunc(tym) ? 4 : 0;
             TOWORD(debsym,length - 2);
+            if(CV7)
+                u += cgcv.sz_idx; // offset after proctype
         }
         else
         {
             // Offsets
-            if (I32)
+            if (I32 || I64)
             {   TOLONG(debsym + 16 + cgcv.sz_idx,s->Ssize);             // proc length
                 TOLONG(debsym + 20 + cgcv.sz_idx,startoffset);  // debug start
                 TOLONG(debsym + 24 + cgcv.sz_idx,retoffset);            // debug end
@@ -2126,7 +2118,9 @@ STATIC void cv4_outsym(symbol *s)
         objmod->write_bytes(SegData[DEBSYM],length,debsym);
 
         // Put out fixup for function start offset
-        objmod->reftoident(DEBSYM,soffset + u,s,0,CFseg | CFoff);
+        objmod->reftoident(DEBSYM,soffset + u,s,0, CV7 ? CFoff : CFseg | CFoff);
+        if(CV7) // and segment
+            objmod->reftoident(DEBSYM,soffset + u + intsize,s,0, CFseg);
     }
     else
     {   targ_size_t base;
@@ -2164,7 +2158,7 @@ STATIC void cv4_outsym(symbol *s)
             case_auto:
                 base = Aoff;
             L1:
-                TOWORD(debsym + 2,I32 ? S_BPREL32 : S_BPREL16);
+                TOWORD(debsym + 2,I32 || I64 ? S_BPREL32 : S_BPREL16);
                 if (config.fulltypes == CV4)
                 {   TOOFFSET(debsym + 4,s->Soffset + base + BPoff);
                     TOIDX(debsym + 4 + intsize,typidx);
@@ -2211,7 +2205,7 @@ STATIC void cv4_outsym(symbol *s)
             case SClocstat:
                 u = S_LDATA16;
             L2:
-                if (I32)
+                if (I32 || I64)
 				{
                     u += S_GDATA32 - S_GDATA16;
 #if 0 //  ot supported by optlink
@@ -2342,10 +2336,12 @@ STATIC void cv4_func(Funcsym *s)
 {
     SYMIDX si;
     int endarg;
-    if(I64)
-        return;
+
+    //if(I64) return;
 
     cv4_outsym(s);              // put out function symbol
+    if(I64)
+        goto Lnoargs;
 
     // Put out local symbols
     endarg = 0;
@@ -2411,7 +2407,7 @@ STATIC void cv4_func(Funcsym *s)
 #endif
             case TYnullptr:
             case TYnptr:
-                if (I32)
+                if (I32 || I64)
                     goto case_eax;
                 else
                     goto case_ax;
@@ -2423,7 +2419,7 @@ STATIC void cv4_func(Funcsym *s)
             case TYlong:
             case TYulong:
             case TYdchar:
-                if (I32)
+                if (I32 || I64)
                     goto case_eax;
                 else
                     goto case_dxax;
@@ -2448,14 +2444,14 @@ STATIC void cv4_func(Funcsym *s)
             case TYdouble_alias:
                 if (config.exe & EX_flat)
                     goto case_st0;
-                if (I32)
+                if (I32 || I64)
                     goto case_edxeax;
                 else
                     goto case_axbxcxdx;
 
             case TYllong:
             case TYullong:
-                assert(I32);
+                assert(I32 || I64);
                 goto case_edxeax;
 
             case TYldouble:
@@ -2533,6 +2529,7 @@ STATIC void cv4_func(Funcsym *s)
         objmod->write_bytes(SegData[DEBSYM],u + 2,sreturn);
     }
 
+    Lnoargs:
     // Put out end scope
     {   static unsigned short endproc[] = { 2,S_END };
 
