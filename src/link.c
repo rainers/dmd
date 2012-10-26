@@ -266,14 +266,14 @@ int runLINK()
          */
         const char *vcinstalldir = getenv("VCINSTALLDIR");
         if (vcinstalldir)
-        {   cmdbuf.writestring(" \"/LIBPATH:");
+        {   cmdbuf.writestring(" /LIBPATH:\"");
             cmdbuf.writestring(vcinstalldir);
             cmdbuf.writestring("\\lib\\amd64\"");
         }
 
         const char *windowssdkdir = getenv("WindowsSdkDir");
         if (windowssdkdir)
-        {   cmdbuf.writestring(" \"/LIBPATH:");
+        {   cmdbuf.writestring(" /LIBPATH:\"");
             cmdbuf.writestring(windowssdkdir);
             cmdbuf.writestring("\\lib\\x64\"");
         }
