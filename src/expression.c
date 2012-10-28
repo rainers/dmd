@@ -1705,13 +1705,13 @@ void Expression::checkPurity(Scope *sc, FuncDeclaration *f)
         {
             if (outerfunc->setImpure())
                 error("pure function '%s' cannot call impure function '%s'",
-                    outerfunc->toChars(), f->toChars());
+                    outerfunc->toPrettyChars(), f->toPrettyChars());
         }
     }
 #else
     if (sc->func && sc->func->isPure() && !sc->intypeof && !f->isPure())
         error("pure function '%s' cannot call impure function '%s'",
-            sc->func->toChars(), f->toChars());
+            sc->func->toPrettyChars(), f->toPrettyChars());
 #endif
 }
 
@@ -1805,8 +1805,13 @@ void Expression::checkSafety(Scope *sc, FuncDeclaration *f)
         !f->isSafe() && !f->isTrusted())
     {
         if (sc->func->setUnsafe())
+        {
+            if (loc.linnum == 0)  // e.g. implicitly generated dtor
+                loc = sc->func->loc;
+
             error("safe function '%s' cannot call system function '%s'",
-                sc->func->toChars(), f->toChars());
+                sc->func->toPrettyChars(), f->toPrettyChars());
+        }
     }
 }
 #endif
@@ -1842,12 +1847,9 @@ void Expression::checkModifiable(Scope *sc)
             }
             else
             {
-                const char *p =
-                    type->isImmutable() ? "immutable" :
-                    type->isConst() ? "const" :
-                    type->isWild() ? "wild" : NULL;
-                assert(p);
-                error("cannot modify %s expression %s", p, toChars());
+                OutBuffer buf;
+                MODtoBuffer(&buf, type->mod);
+                error("cannot modify %s expression %s", buf.toChars(), toChars());
             }
         }
     }
@@ -2902,8 +2904,6 @@ Lagain:
     FuncDeclaration *f;
     FuncLiteralDeclaration *fld;
     OverloadSet *o;
-    ClassDeclaration *cd;
-    ClassDeclaration *thiscd = NULL;
     Import *imp;
     Package *pkg;
     Type *t;
@@ -2919,9 +2919,6 @@ Lagain:
     //printf("s = '%s', s->kind = '%s', s->needThis() = %p\n", s->toChars(), s->kind(), s->needThis());
     if (s != olds && !s->isFuncDeclaration())
         checkDeprecated(sc, s);
-
-    if (sc->func)
-        thiscd = sc->func->parent->isClassDeclaration();
 
     // BUG: This should happen after overload resolution for functions, not before
     if (s->needThis())
@@ -3029,15 +3026,6 @@ Lagain:
     if (o)
     {   //printf("'%s' is an overload set\n", o->toChars());
         return new OverExp(o);
-    }
-    cd = s->isClassDeclaration();
-    if (cd && thiscd && cd->isBaseOf(thiscd, NULL) && sc->func->needThis())
-    {
-        // We need to add an implicit 'this' if cd is this class or a base class.
-        DotTypeExp *dte;
-
-        dte = new DotTypeExp(loc, new ThisExp(loc), s);
-        return dte->semantic(sc);
     }
     imp = s->isImport();
     if (imp)
@@ -5533,7 +5521,7 @@ Expression *DeclarationExp::semantic(Scope *sc)
                     s->toPrettyChars(), sc->func->toChars());
                 return new ErrorExp();
             }
-            else if (!global.params.useDeprecated)
+            else
             {   // Disallow shadowing
 
                 for (Scope *scx = sc->enclosing; scx && scx->func == sc->func; scx = scx->enclosing)
@@ -5543,7 +5531,7 @@ Expression *DeclarationExp::semantic(Scope *sc)
                         (s2 = scx->scopesym->symtab->lookup(s->ident)) != NULL &&
                         s != s2)
                     {
-                        deprecation("shadowing declaration %s is deprecated", s->toPrettyChars());
+                        error("is shadowing declaration %s", s->toPrettyChars());
                         return new ErrorExp();
                     }
                 }
@@ -7580,14 +7568,9 @@ Expression *CallExp::resolveUFCS(Scope *sc)
                 return new ErrorExp();
             }
             if (!e->type->isMutable())
-            {   const char *p = NULL;
-                if (e->type->isConst())
-                    p = "const";
-                else if (e->type->isImmutable())
-                    p = "immutable";
-                else
-                    p = "inout";
-                error("cannot remove key from %s associative array %s", p, e->toChars());
+            {   OutBuffer buf;
+                MODtoBuffer(&buf, e->type->mod);
+                error("cannot remove key from %s associative array %s", buf.toChars(), e->toChars());
                 return new ErrorExp();
             }
             Expression *key = (*arguments)[0];
@@ -8326,12 +8309,12 @@ Lagain:
         if (sc->func && !tf->purity && !(sc->flags & SCOPEdebug))
         {
             if (sc->func->setImpure())
-                error("pure function '%s' cannot call impure %s '%s'", sc->func->toChars(), p, e1->toChars());
+                error("pure function '%s' cannot call impure %s '%s'", sc->func->toPrettyChars(), p, e1->toChars());
         }
         if (sc->func && tf->trust <= TRUSTsystem)
         {
             if (sc->func->setUnsafe())
-                error("safe function '%s' cannot call system %s '%s'", sc->func->toChars(), p, e1->toChars());
+                error("safe function '%s' cannot call system %s '%s'", sc->func->toPrettyChars(), p, e1->toChars());
         }
 
         if (!tf->callMatch(NULL, arguments))
@@ -9002,7 +8985,7 @@ Expression *DeleteExp::semantic(Scope *sc)
         IndexExp *ae = (IndexExp *)(e1);
         Type *tb1 = ae->e1->type->toBasetype();
         if (tb1->ty == Taarray)
-            deprecation("delete aa[key] deprecated, use aa.remove(key)");
+            error("delete aa[key] deprecated, use aa.remove(key)");
     }
 
     return this;
@@ -10337,11 +10320,6 @@ Expression *AssignExp::semantic(Scope *sc)
         }
     }
 
-    e2 = e2->semantic(sc);
-    if (e2->op == TOKerror)
-        return new ErrorExp();
-    e2 = resolveProperties(sc, e2);
-
     /* With UFCS, e.f = value
      * Could mean:
      *      .f(e, value)
@@ -10378,7 +10356,6 @@ Expression *AssignExp::semantic(Scope *sc)
             }
         }
     }
-Le1:
     e1 = e1->semantic(sc);
     if (e1->op == TOKerror)
         return new ErrorExp();
@@ -10417,6 +10394,11 @@ Le1:
         ethis  = NULL;
     L3:
     {
+        e2 = e2->semantic(sc);
+        if (e2->op == TOKerror)
+            return new ErrorExp();
+        e2 = resolveProperties(sc, e2);
+
         assert(td);
         Expressions a;
         a.push(e2);
@@ -10444,6 +10426,11 @@ Le1:
         ethis = NULL;
     L4:
     {
+        e2 = e2->semantic(sc);
+        if (e2->op == TOKerror)
+            return new ErrorExp();
+        e2 = resolveProperties(sc, e2);
+
         assert(fd);
         FuncDeclaration *f = fd;
         Expressions a;
@@ -10488,6 +10475,16 @@ Le1:
     }
 
     assert(e1->type);
+    Type *t1 = e1->type->toBasetype();
+
+    e2 = e2->inferType(t1);
+    if (!e2->rvalue())
+        return new ErrorExp();
+
+    e2 = e2->semantic(sc);
+    if (e2->op == TOKerror)
+        return new ErrorExp();
+    e2 = resolveProperties(sc, e2);
 
     /* Rewrite tuple assignment as a tuple of assignments.
      */
@@ -10570,8 +10567,6 @@ Ltupleassign:
         if (v->storage_class & (STCout | STCref))
             refinit = 1;
     }
-
-    Type *t1 = e1->type->toBasetype();
 
     /* If it is an assignment from a 'foreign' type,
      * check for operator overloading.
@@ -10716,10 +10711,6 @@ Ltupleassign:
             t1 = e1->type->toBasetype();
         }
     }
-
-    e2 = e2->inferType(t1);
-    if (!e2->rvalue())
-        return new ErrorExp();
 
     if (e1->op == TOKarraylength)
     {
