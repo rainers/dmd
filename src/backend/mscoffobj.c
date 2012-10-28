@@ -376,7 +376,7 @@ int MsCoffObj::data_readonly(char *p, int len)
  * One source file can generate multiple .obj files.
  */
 
-MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *csegname)
+MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *objfile, const char *csegname)
 {
     //printf("MsCoffObj::init()\n");
     MsCoffObj *obj = new MsCoffObj();
@@ -501,7 +501,7 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
     SegData[segidx_drectve]->SDbuf->write("  ", 2);
 
     if (config.fulltypes)
-        cv8_initfile(filename);
+        cv8_initfile(filename, objfile);
     assert(objbuf->size() == 0);
     return obj;
 }

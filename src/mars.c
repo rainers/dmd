@@ -44,7 +44,7 @@ int response_expand(int *pargc, char ***pargv);
 void browse(const char *url);
 void getenv_setargv(const char *envvar, int *pargc, char** *pargv);
 
-void obj_start(char *srcfile);
+void obj_start(const char *srcfile, const char *objfile);
 void obj_end(Library *library, File *objfile);
 
 void printCtfePerformanceStats();
@@ -1433,7 +1433,7 @@ int tryMain(int argc, char *argv[])
             if (global.params.verbose)
                 printf("code      %s\n", m->toChars());
             if (i == 0)
-                obj_start(m->srcfile->toChars());
+                obj_start(m->srcfile->toChars(), modules[0]->objfile->toChars());
             m->genobjfile(0);
             if (!global.errors && global.params.doDocComments)
                 m->gendocfile();
@@ -1451,7 +1451,7 @@ int tryMain(int argc, char *argv[])
             if (global.params.verbose)
                 printf("code      %s\n", m->toChars());
             if (global.params.obj)
-            {   obj_start(m->srcfile->toChars());
+            {   obj_start(m->srcfile->toChars(), m->objfile->toChars());
                 m->genobjfile(global.params.multiobj);
                 obj_end(library, m->objfile);
                 obj_write_deferred(library);

@@ -122,7 +122,7 @@ struct MachObj : Obj
 
 struct MsCoffObj : Obj
 {
-    static MsCoffObj *init(Outbuffer *, const char *filename, const char *csegname);
+    static MsCoffObj *init(Outbuffer *, const char *filename, const char *objfile, const char *csegname);
     VIRTUAL void initfile(const char *filename, const char *csegname, const char *modname);
     VIRTUAL void termfile();
     VIRTUAL void term();

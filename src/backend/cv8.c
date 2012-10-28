@@ -39,6 +39,9 @@ static char __file__[] = __FILE__;      /* for tassert.h                */
 #if MARS
 #if TARGET_WINDOS
 
+// The "F1" section, with symbolic information
+static Outbuffer *F1_buf;
+
 // The "F2" section, which is the line numbers
 static Outbuffer *F2_buf;
 
@@ -73,6 +76,8 @@ static unsigned linepairnum;
 
 unsigned cv8_addfile(const char *filename);
 void cv8_writesection(int seg, unsigned type, Outbuffer *buf);
+void cv8_flushsection(int seg, unsigned type, Outbuffer *buf);
+static void cv8_writeCompiland(const char *filename);
 
 /************************************************
  * Called at the start of an object file generation.
@@ -80,11 +85,15 @@ void cv8_writesection(int seg, unsigned type, Outbuffer *buf);
  * Input:
  *      filename        source file name
  */
-void cv8_initfile(const char *filename)
+void cv8_initfile(const char *filename, const char *objfile)
 {
     //printf("cv8_initfile()\n");
 
     // Recycle buffers; much faster than delete/renew
+
+    if (!F1_buf)
+        F1_buf = new Outbuffer(1024);
+    F1_buf->setsize(0);
 
     if (!F2_buf)
         F2_buf = new Outbuffer(1024);
@@ -108,6 +117,8 @@ void cv8_initfile(const char *filename)
     linepair->setsize(0);
     linepairstart = 0;
     linepairnum = 0;
+
+    cv8_writeCompiland(objfile);
 }
 
 void cv8_termfile()
@@ -119,8 +130,8 @@ void cv8_termfile()
 
     int seg = MsCoffObj::seg_debugS();
 
-    unsigned v = 4;
-    objmod->bytes(seg,0,4,&v);
+    // Write out "F1" section
+    cv8_flushsection(seg, 0xF1, F1_buf);
 
     // Write out "F2" sections
     unsigned length = funcdata->size();
@@ -128,7 +139,42 @@ void cv8_termfile()
     for (unsigned u = 0; u < length; u += sizeof(FuncData))
     {   FuncData *fd = (FuncData *)(p + u);
 
-        F2_buf->setsize(0);
+        int f2seg = seg;
+        if (symbol_iscomdat(fd->sfunc))
+        {
+            f2seg = MsCoffObj::seg_debugS_comdat(fd->sfunc);
+        }
+        cv8_flushsection(f2seg, 0xF2, F2_buf); // ensures 4 hdr written to f2seg and F2_buf empty
+#if 1
+        cv8_flushsection(f2seg, 0xF1, F1_buf);
+
+        int namelen = strlen(fd->sfunc->Sident);
+        unsigned short id = 0x1110; // S_GPROC32_V3
+        unsigned short len = 2 + 8 * 4 + 2 + 1 + namelen + 1;
+        F1_buf->write(&len, 2);
+        F1_buf->write(&id, 2);
+        F1_buf->write32(0); // pparent;
+        F1_buf->write32(0); // pend;
+        F1_buf->write32(0); // next;
+        F1_buf->write32(fd->section_length); // proc_len;
+        F1_buf->write32(0); // debug_start;
+        F1_buf->write32(fd->section_length-1); // debug_end;
+        F1_buf->write32(0); // proctype;
+        F1_buf->write32(0); // offset;
+        unsigned reloffset = SegData[f2seg]->SDoffset + 8 + F1_buf->size();
+        F1_buf->writezeros(2); // segment;
+        F1_buf->writeByte(0); // flags;
+        F1_buf->write(fd->sfunc->Sident, namelen + 1);
+
+        id = 6; // S_END
+        len = 2;
+        F1_buf->write(&len, 2);
+        F1_buf->write(&id, 2);
+
+        cv8_flushsection(f2seg, 0xF1, F1_buf);
+
+        objmod->reftoident(f2seg, reloffset, fd->sfunc, 0, CFseg | CFoff);
+#endif
 
         F2_buf->write32(fd->sfunc->Soffset);
         F2_buf->write32(0);
@@ -138,15 +184,8 @@ void cv8_termfile()
         F2_buf->write32(fd->linepairnum * 8 + 12);
         F2_buf->write(linepair->buf + fd->linepairstart * 8, fd->linepairnum * 8);
 
-        int f2seg = seg;
-        if (symbol_iscomdat(fd->sfunc))
-        {
-            f2seg = MsCoffObj::seg_debugS_comdat(fd->sfunc);
-            objmod->bytes(f2seg,0,4,&v);
-        }
-
         unsigned offset = SegData[f2seg]->SDoffset + 8;
-        cv8_writesection(f2seg, 0xF2, F2_buf);
+        cv8_flushsection(f2seg, 0xF2, F2_buf);
         objmod->reftoident(f2seg, offset, fd->sfunc, 0, CFseg | CFoff);
     }
 
@@ -322,6 +361,33 @@ void cv8_writesection(int seg, unsigned type, Outbuffer *buf)
     // Align to 4
     unsigned pad = ((length + 3) & ~3) - length;
     objmod->lidata(seg,off+8+length,pad);
+}
+
+void cv8_flushsection(int seg, unsigned type, Outbuffer *buf)
+{
+    if(buf->size() == 0)
+        return;
+
+    unsigned off = SegData[seg]->SDoffset;
+    if(off == 0)
+    {
+        unsigned v = 4;
+        objmod->bytes(seg,0,4,&v);
+    }
+
+    cv8_writesection(seg, type, buf);
+    buf->setsize(0);
+}
+
+static void cv8_writeCompiland(const char *filename)
+{
+    int flen = strlen(filename);
+    unsigned short len = 2 + 4 + flen + 1;
+    F1_buf->write(&len, 2);
+    unsigned short id = 0x1101; // S_COMPILAND_V3
+    F1_buf->write(&id, 2);
+    F1_buf->write32(0);
+    F1_buf->write(filename, flen + 1);
 }
 
 #endif
