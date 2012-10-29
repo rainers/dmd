@@ -219,7 +219,6 @@ void outdata(symbol *s)
                         objmod->pubdefsize(s->Sseg,s,s->Soffset,datasize);   // do the definition
                     searchfixlist(s);
                     if (config.fulltypes &&
-                        config.fulltypes != CV8 &&
                         !(s->Sclass == SCstatic && funcsym_p)) // not local static
                         cv_outsym(s);
 #if SCPP
@@ -350,7 +349,6 @@ void outdata(symbol *s)
     }
     assert(s->Sseg != UNKNOWN);
     if (config.fulltypes &&
-        config.fulltypes != CV8 &&
         !(s->Sclass == SCstatic && funcsym_p)) // not local static
         cv_outsym(s);
     searchfixlist(s);
@@ -514,7 +512,7 @@ void outcommon(symbol *s,targ_size_t n)
             }
 #endif
         }
-        if (config.fulltypes && config.fulltypes != CV8)
+        if (config.fulltypes)
             cv_outsym(s);
     }
 }
