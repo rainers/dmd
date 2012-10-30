@@ -26,6 +26,7 @@
 #include        "dt.h"
 #include        "exh.h"
 #include        "cgcv.h"
+#include        "cv4.h"
 #include        "obj.h"
 #include        "outbuf.h"
 
@@ -51,10 +52,6 @@ static Outbuffer *F3_buf;
 // The "F4" section, which is global and a lists info about source files.
 static Outbuffer *F4_buf;
 
-static const char *srcfilename;
-static unsigned srcfileoff;
-static Symbol *sfunc;
-
 /* Fixups that go into F1 section
  */
 struct F1_Fixups
@@ -76,18 +73,18 @@ struct FuncData
     unsigned srcfileoff;
     unsigned linepairstart;     // starting index of offset/line pairs in linebuf[]
     unsigned linepairnum;       // number of offset/line pairs
+    Outbuffer *f1buf;
+    Outbuffer *f1fixup;
 };
+
+FuncData currentfuncdata;
 
 static Outbuffer *funcdata;     // array of FuncData's
 
 static Outbuffer *linepair;     // array of offset/line pairs
-static unsigned linepairstart;
-static unsigned linepairnum;
 
 unsigned cv8_addfile(const char *filename);
 void cv8_writesection(int seg, unsigned type, Outbuffer *buf);
-void cv8_flushsection(int seg, unsigned type, Outbuffer *buf);
-static void cv8_writeCompiland(const char *filename);
 
 /************************************************
  * Called at the start of an object file generation.
@@ -95,7 +92,7 @@ static void cv8_writeCompiland(const char *filename);
  * Input:
  *      filename        source file name
  */
-void cv8_initfile(const char *filename, const char *objfile)
+void cv8_initfile(const char *filename)
 {
     //printf("cv8_initfile()\n");
 
@@ -129,15 +126,13 @@ void cv8_initfile(const char *filename, const char *objfile)
     if (!linepair)
         linepair = new Outbuffer(1024);
     linepair->setsize(0);
-    linepairstart = 0;
-    linepairnum = 0;
+
+    memset(&currentfuncdata, 0, sizeof(currentfuncdata));
 
     cv_init();
-
-    cv8_writeCompiland(objfile);
 }
 
-void cv8_termfile()
+void cv8_termfile(const char *objfilename)
 {
     //printf("cv8_termfile()\n");
 
@@ -146,8 +141,18 @@ void cv8_termfile()
 
     int seg = MsCoffObj::seg_debugS();
 
-    // Write out "F1" section
-    cv8_flushsection(seg, 0xF1, F1_buf);
+    unsigned v = 4;
+    objmod->bytes(seg,0,4,&v);
+
+    /* Start with starting symbol in separate "F1" section
+     */
+    Outbuffer buf(1024);
+    size_t len = strlen(objfilename);
+    buf.writeWord(2 + 4 + len + 1);
+    buf.writeWord(S_COMPILAND_V3);
+    buf.write32(0);
+    buf.write(objfilename, len + 1);
+    cv8_writesection(seg, 0xF1, &buf);
 
     // Write out "F2" sections
     unsigned length = funcdata->size();
@@ -155,42 +160,7 @@ void cv8_termfile()
     for (unsigned u = 0; u < length; u += sizeof(FuncData))
     {   FuncData *fd = (FuncData *)(p + u);
 
-        int f2seg = seg;
-        if (symbol_iscomdat(fd->sfunc))
-        {
-            f2seg = MsCoffObj::seg_debugS_comdat(fd->sfunc);
-        }
-        cv8_flushsection(f2seg, 0xF2, F2_buf); // ensures 4 hdr written to f2seg and F2_buf empty
-#if 1
-        cv8_flushsection(f2seg, 0xF1, F1_buf);
-
-        int namelen = strlen(fd->sfunc->Sident);
-        unsigned short id = 0x1110; // S_GPROC32_V3
-        unsigned short len = 2 + 8 * 4 + 2 + 1 + namelen + 1;
-        F1_buf->write(&len, 2);
-        F1_buf->write(&id, 2);
-        F1_buf->write32(0); // pparent;
-        F1_buf->write32(0); // pend;
-        F1_buf->write32(0); // next;
-        F1_buf->write32(fd->section_length); // proc_len;
-        F1_buf->write32(0); // debug_start;
-        F1_buf->write32(fd->section_length-1); // debug_end;
-        F1_buf->write32(0); // proctype;
-        F1_buf->write32(0); // offset;
-        unsigned reloffset = SegData[f2seg]->SDoffset + 8 + F1_buf->size();
-        F1_buf->writezeros(2); // segment;
-        F1_buf->writeByte(0); // flags;
-        F1_buf->write(fd->sfunc->Sident, namelen + 1);
-
-        id = 6; // S_END
-        len = 2;
-        F1_buf->write(&len, 2);
-        F1_buf->write(&id, 2);
-
-        cv8_flushsection(f2seg, 0xF1, F1_buf);
-
-        objmod->reftoident(f2seg, reloffset, fd->sfunc, 0, CFseg | CFoff);
-#endif
+        F2_buf->setsize(0);
 
         F2_buf->write32(fd->sfunc->Soffset);
         F2_buf->write32(0);
@@ -200,9 +170,32 @@ void cv8_termfile()
         F2_buf->write32(fd->linepairnum * 8 + 12);
         F2_buf->write(linepair->buf + fd->linepairstart * 8, fd->linepairnum * 8);
 
+        int f2seg = seg;
+        if (symbol_iscomdat(fd->sfunc))
+        {
+            f2seg = MsCoffObj::seg_debugS_comdat(fd->sfunc);
+            objmod->bytes(f2seg,0,4,&v);
+        }
+
         unsigned offset = SegData[f2seg]->SDoffset + 8;
-        cv8_flushsection(f2seg, 0xF2, F2_buf);
+        cv8_writesection(f2seg, 0xF2, F2_buf);
         objmod->reftoident(f2seg, offset, fd->sfunc, 0, CFseg | CFoff);
+
+        if (f2seg != seg && fd->f1buf->size())
+        {
+            // Write out "F1" section
+            unsigned f1offset = SegData[f2seg]->SDoffset;
+            cv8_writesection(f2seg, 0xF1, fd->f1buf);
+
+            // Fixups for "F1" section
+            length = fd->f1fixup->size();
+            p = fd->f1fixup->buf;
+            for (unsigned u = 0; u < length; u += sizeof(F1_Fixups))
+            {   F1_Fixups *f = (F1_Fixups *)(p + u);
+
+                objmod->reftoident(f2seg, f1offset + 8 + f->offset, f->s, 0, CFseg | CFoff);
+            }
+        }
     }
 
     // Write out "F3" section
@@ -211,17 +204,20 @@ void cv8_termfile()
     // Write out "F4" section
     cv8_writesection(seg, 0xF4, F4_buf);
 
-    // Write out "F1" section
-    unsigned f1offset = SegData[seg]->SDoffset;
-    cv8_writesection(seg, 0xF1, F1_buf);
+    if (F1_buf->size())
+    {
+        // Write out "F1" section
+        unsigned f1offset = SegData[seg]->SDoffset;
+        cv8_writesection(seg, 0xF1, F1_buf);
 
-    // Fixups for "F1" section
-    length = F1fixup->size();
-    p = F1fixup->buf;
-    for (unsigned u = 0; u < length; u += sizeof(F1_Fixups))
-    {   F1_Fixups *f = (F1_Fixups *)(p + u);
+        // Fixups for "F1" section
+        length = F1fixup->size();
+        p = F1fixup->buf;
+        for (unsigned u = 0; u < length; u += sizeof(F1_Fixups))
+        {   F1_Fixups *f = (F1_Fixups *)(p + u);
 
-        objmod->reftoident(seg, f1offset + 8 + f->offset, f->s, 0, CFseg | CFoff);
+            objmod->reftoident(seg, f1offset + 8 + f->offset, f->s, 0, CFseg | CFoff);
+        }
     }
 
     // Write out .debug$T section
@@ -240,7 +236,7 @@ void cv8_initmodule(const char *filename, const char *modulename)
     /* Experiments show that filename doesn't have to be qualified if
      * it is relative to the directory the .exe file is in.
      */
-    srcfileoff = cv8_addfile(filename);
+    currentfuncdata.srcfileoff = cv8_addfile(filename);
 }
 
 void cv8_termmodule()
@@ -255,26 +251,76 @@ void cv8_termmodule()
 void cv8_func_start(Symbol *sfunc)
 {
     //printf("cv8_func_start(%s)\n", sfunc->Sident);
-    linepairstart += linepairnum;
-    linepairnum = 0;
-    srcfilename = NULL;
+    currentfuncdata.sfunc = sfunc;
+    currentfuncdata.section_length = 0;
+    currentfuncdata.srcfilename = NULL;
+    currentfuncdata.srcfileoff = 0;
+    currentfuncdata.linepairstart += currentfuncdata.linepairnum;
+    currentfuncdata.linepairnum = 0;
+    currentfuncdata.f1buf = F1_buf;
+    currentfuncdata.f1fixup = F1fixup;
+    if (symbol_iscomdat(sfunc))
+    {
+        currentfuncdata.f1buf = new Outbuffer(128);
+        currentfuncdata.f1fixup = new Outbuffer(128);
+    }
 }
 
 void cv8_func_term(Symbol *sfunc)
 {
     //printf("cv8_func_term(%s)\n", sfunc->Sident);
 
-    FuncData fd;
-    memset(&fd, 0, sizeof(fd));
+    assert(currentfuncdata.sfunc == sfunc);
+    currentfuncdata.section_length = retoffset + retsize;
 
-    fd.sfunc = sfunc;
-    fd.section_length = retoffset + retsize;
-    fd.srcfilename = srcfilename;
-    fd.srcfileoff = srcfileoff;
-    fd.linepairstart = linepairstart;
-    fd.linepairnum = linepairnum;
+    funcdata->write(&currentfuncdata, sizeof(currentfuncdata));
 
-    funcdata->write(&fd, sizeof(fd));
+    // Write function symbol
+    idx_t typidx = cv_typidx(sfunc->Stype);
+    const char *id = sfunc->prettyIdent ? sfunc->prettyIdent : prettyident(sfunc);
+    size_t len = strlen(id);
+    /*
+     *  2       length (not including these 2 bytes)
+     *  2       S_GPROC_V3
+     *  4       parent
+     *  4       pend
+     *  4       pnext
+     *  4       size of function
+     *  4       size of function prolog
+     *  4       offset to function epilog
+     *  4       type index
+     *  6       seg:offset of function start
+     *  1       flags
+     *  n       0 terminated name string
+     */
+    Outbuffer *buf = currentfuncdata.f1buf;
+    buf->reserve(2 + 2 + 4 * 7 + 6 + 1 + len + 1);
+    buf->writeWordn( 2 + 4 * 7 + 6 + 1 + len + 1);
+    buf->writeWordn(sfunc->Sclass == SCstatic ? S_LPROC_V3 : S_GPROC_V3);
+    buf->write32(0);            // parent
+    buf->write32(0);            // pend
+    buf->write32(0);            // pnext
+    buf->write32(currentfuncdata.section_length);       // size of function
+    buf->write32(startoffset);          // size of prolog
+    buf->write32(retoffset);                    // offset to epilog
+    buf->write32(typidx);
+
+    F1_Fixups f1f;
+    f1f.s = sfunc;
+    f1f.offset = buf->size();
+    currentfuncdata.f1fixup->write(&f1f, sizeof(f1f));
+    buf->write32(0);
+    buf->writeWordn(0);
+
+    buf->writeByte(0);
+    buf->writen(id, len + 1);
+
+    // Write function end symbol
+    buf->writeWord(2);
+    buf->writeWord(S_END);
+
+    currentfuncdata.f1buf = F1_buf;
+    currentfuncdata.f1fixup = F1fixup;
 }
 
 /**********************************************
@@ -283,24 +329,24 @@ void cv8_func_term(Symbol *sfunc)
 void cv8_linnum(Srcpos srcpos, targ_size_t offset)
 {
     //printf("cv8_linnum(file = %s, line = %d, offset = x%x)\n", srcpos.Sfilename, (int)srcpos.Slinnum, (unsigned)offset);
-    if (srcfilename)
+    if (currentfuncdata.srcfilename)
     {
         /* Ignore line numbers from different files in the same function.
          * This can happen with inlined functions.
          * To make this work would require a separate F2 section for each different file.
          */
-        if (srcfilename != srcpos.Sfilename &&
-            strcmp(srcfilename, srcpos.Sfilename))
+        if (currentfuncdata.srcfilename != srcpos.Sfilename &&
+            strcmp(currentfuncdata.srcfilename, srcpos.Sfilename))
             return;
     }
     else
     {
-        srcfilename = srcpos.Sfilename;
-        srcfileoff  = cv8_addfile(srcpos.Sfilename);
+        currentfuncdata.srcfilename = srcpos.Sfilename;
+        currentfuncdata.srcfileoff  = cv8_addfile(srcpos.Sfilename);
     }
     linepair->write32((unsigned)offset);
     linepair->write32((unsigned)srcpos.Slinnum | 0x80000000);
-    ++linepairnum;
+    ++currentfuncdata.linepairnum;
 }
 
 /**********************************************
@@ -372,7 +418,7 @@ L1:
     F4_buf->writeShort(0);
 
     //printf("\tadded %x\n", length);
-    return length - 8; // subtract header size
+    return length;
 }
 
 void cv8_writesection(int seg, unsigned type, Outbuffer *buf)
@@ -394,57 +440,6 @@ void cv8_writesection(int seg, unsigned type, Outbuffer *buf)
     unsigned pad = ((length + 3) & ~3) - length;
     objmod->lidata(seg,off+8+length,pad);
 }
-
-void cv8_flushsection(int seg, unsigned type, Outbuffer *buf)
-{
-    if(buf->size() == 0)
-        return;
-
-    unsigned off = SegData[seg]->SDoffset;
-    if(off == 0)
-    {
-        unsigned v = 4;
-        objmod->bytes(seg,0,4,&v);
-    }
-
-    cv8_writesection(seg, type, buf);
-    buf->setsize(0);
-}
-
-static void cv8_writeCompiland(const char *filename)
-{
-    int flen = strlen(filename);
-    unsigned short len = 2 + 4 + flen + 1;
-    F1_buf->write(&len, 2);
-    unsigned short id = 0x1101; // S_COMPILAND_V3
-    F1_buf->write(&id, 2);
-    F1_buf->write32(0);
-    F1_buf->write(filename, flen + 1);
-}
-
-#define S_COMPILAND_V3  0x1101
-#define S_THUNK_V3      0x1102
-#define S_BLOCK_V3      0x1103
-#define S_LABEL_V3      0x1105
-#define S_REGISTER_V3   0x1106
-#define S_CONSTANT_V3   0x1107
-#define S_UDT_V3        0x1108
-#define S_BPREL_V3      0x110B
-#define S_LDATA_V3      0x110C
-#define S_GDATA_V3      0x110D
-#define S_PUB_V3        0x110E
-#define S_LPROC_V3      0x110F
-#define S_GPROC_V3      0x1110
-#define S_BPREL_XXXX_V3 0x1111
-#define S_MSTOOL_V3     0x1116
-#define S_PUB_FUNC1_V3  0x1125
-#define S_PUB_FUNC2_V3  0x1127
-#define S_SECTINFO_V3   0x1136
-#define S_SUBSECTINFO_V3 0x1137
-#define S_ENTRYPOINT_V3 0x1138
-#define S_SECUCOOKIE_V3 0x113A
-#define S_MSTOOLINFO_V3 0x113C
-#define S_MSTOOLENV_V3  0x113D
 
 void cv8_outsym(Symbol *s)
 {

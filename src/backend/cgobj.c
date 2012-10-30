@@ -746,7 +746,7 @@ void Obj::termfile()
  * Terminate package.
  */
 
-void Obj::term()
+void Obj::term(const char *objfilename)
 {
         //printf("Obj::term()\n");
         list_t dl;
