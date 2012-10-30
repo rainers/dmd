@@ -278,14 +278,6 @@ int runLINK()
             cmdbuf.writestring("\\lib\\x64\"");
         }
 
-        // copy LIB64 environment variable to LIB
-        if(const char* p = getenv("LIB64"))
-        {
-            char* q = (char *) alloca(strlen(p) + 5);
-            strcat(strcpy(q, "LIB="), p);
-            putenv(q);
-        }
-
         char *p = cmdbuf.toChars();
 
         FileName *lnkfilename = NULL;

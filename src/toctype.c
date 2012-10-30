@@ -139,7 +139,6 @@ type *TypeDArray::toCtype()
         }
         else
             t = type_fake(TYdarray);
-
     }
     if(hasPointers())
         t->Tflags |= TFhasPointers;

@@ -206,9 +206,6 @@ struct MsCoffObj : Obj
     static int seg_debugS();
     VIRTUAL int seg_debugT();
     static int seg_debugS_comdat(Symbol *sfunc);
-
-private:
-    void cv7_termfile();
 };
 
 #undef VIRTUAL
