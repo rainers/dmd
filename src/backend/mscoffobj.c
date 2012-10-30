@@ -91,7 +91,7 @@ static Outbuffer *comdef_symbuf;        // Comdef's are stored here
 
 static segidx_t segidx_drectve;         // contents of ".drectve" section
 static segidx_t segidx_debugS = UNKNOWN;
-static segidx_t segidx_debugt;
+static segidx_t segidx_debugT = UNKNOWN;
 static segidx_t segidx_xdata = UNKNOWN;
 static segidx_t segidx_pdata = UNKNOWN;
 
@@ -469,7 +469,7 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
     {
         segidx_debugS  = getsegment2(SHI_DEBUGS);
         assert(SegData[DEBSYM]->SDseg == DEBSYM);
-        segidx_debugt  = getsegment2(SHI_DEBUGT);
+        segidx_debugT  = getsegment2(SHI_DEBUGT);
         assert(SegData[DEBTYP]->SDseg == DEBTYP);
     }
 

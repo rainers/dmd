@@ -52,7 +52,6 @@ struct Cgcv
     int LCFDoffset;
     int LCFDpointer;
     int FD_code;                // frame for references to code
-    bool cstrings;
 };
 
 extern Cgcv cgcv;

@@ -75,7 +75,6 @@ void outthunk(symbol *sthunk,symbol *sfunc,unsigned p,tym_t thisty,
 
 #endif
 
-
 /***************************
  * Write out statically allocated data.
  * Input:
@@ -143,7 +142,7 @@ void outdata(symbol *s)
                 else
 #endif
                 {
-                    dt->DTabytes += objmod->data_readonly(dt->DTpbytes,dt->DTnbytes,&dt->DTseg); // += ??? data_readonly returns offset
+                    dt->DTabytes += objmod->data_readonly(dt->DTpbytes,dt->DTnbytes,&dt->DTseg);
                 }
                 break;
             }
@@ -314,7 +313,6 @@ void outdata(symbol *s)
         }
         case mTYnear:
         case 0:
-        {
             if (
                 s->Sseg == 0 ||
                 s->Sseg == UNKNOWN)
@@ -322,7 +320,6 @@ void outdata(symbol *s)
             seg = objmod->data_start(s,datasize,DATA);
             s->Sfl = FLdata;            // initialized data
             break;
-        }
         default:
             assert(0);
       }

@@ -1271,7 +1271,7 @@ void VarDeclaration::toObjFile(int multiobj)
 #if 0
             if(rdinfo)
                 rdinfo->toObjFile(multiobj);
-#else
+#elif 0
             if(hasPointers())
             {
                 if(!type->vtinfo)
