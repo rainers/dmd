@@ -1722,6 +1722,7 @@ unsigned cv4_typidx(type *t)
     unsigned dt;
     unsigned attribute;
     unsigned char call;
+    unsigned idxtype;
 
     //dbg_printf("cv4_typidx(%p)\n",t);
     if (!t)
@@ -1805,7 +1806,8 @@ L1:
         case TYhptr:    attribute |= 2; goto L2;
 #endif
 
-        L2:
+L2:
+#if 0 // is the hack still necessary, it crashes when building druntime with debug info
             if (config.fulltypes == CV4)
             {
                 // This is a hack to duplicate bugs in VC, so that the VC
@@ -1821,6 +1823,7 @@ L1:
                     break;
                 }
             }
+#endif
             if ((next & 0xFF00) == 0 && !(attribute & 0xE0))
                 typidx = next | dt;
             else
@@ -1990,7 +1993,7 @@ L1:
                 size = type_size(t);
         Larray:
             u = cv4_numericbytes(size);
-            unsigned idxtype = I32 ? 0x12 : 0x11;  // T_LONG : T_SHORT
+            idxtype = I32 ? 0x12 : 0x11;  // T_LONG : T_SHORT
             if (I64)
                 idxtype = 0x23;                    // T_UQUAD
             switch (config.fulltypes)

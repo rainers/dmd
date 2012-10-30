@@ -5,12 +5,12 @@
 #define OEM 0x42        // Digital Mars OEM number (picked at random)
 
 // Symbol Indices
-#define S_COMPILE       (CV7 ? 0x1101 : 1)
+#define S_COMPILE       1
 #define S_REGISTER      2
 #define S_CONST         3
 #define S_UDT           4
 #define S_SSEARCH       5
-#define S_END           (CV7 ? 0x114f : 6)
+#define S_END           6
 #define S_SKIP          7
 #define S_CVRESERVE     8
 #define S_OBJNAME       9
@@ -38,8 +38,8 @@
 #define S_LDATA32       0x201
 #define S_GDATA32       0x202
 #define S_PUB32         0x203
-#define S_LPROC32       (CV7 ? 0x110F : 0x204)
-#define S_GPROC32       (CV7 ? 0x1147 : 0x205)
+#define S_LPROC32       0x204
+#define S_GPROC32       0x205
 #define S_THUNK32       0x206
 #define S_BLOCK32       0x207
 #define S_WITH32        0x208
@@ -51,14 +51,14 @@
 #define S_GTHREAD32     0x20E
 
 // Leaf Indices
-#define LF_MODIFIER     (CV7 ? 0x1001 : 1)
+#define LF_MODIFIER     1
 #define LF_POINTER      2
 #define LF_ARRAY        3
 #define LF_CLASS        4
 #define LF_STRUCTURE    5
 #define LF_UNION        6
 #define LF_ENUM         7
-#define LF_PROCEDURE    (CV7 ? 0x1008 : 8)
+#define LF_PROCEDURE    8
 #define LF_MFUNCTION    9
 #define LF_VTSHAPE      0x0A
 #define LF_COBOL0       0x0B
@@ -80,7 +80,7 @@
 #define LF_DELEGATE     0x19
 
 #define LF_SKIP         0x200
-#define LF_ARGLIST      (CV7 ? 0x1201 : 0x201)
+#define LF_ARGLIST      0x201
 #define LF_DEFARG       0x202
 #define LF_LIST         0x203
 #define LF_FIELDLIST    0x204
