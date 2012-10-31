@@ -188,8 +188,8 @@ void cv8_termfile(const char *objfilename)
             cv8_writesection(f2seg, 0xF1, fd->f1buf);
 
             // Fixups for "F1" section
-            length = fd->f1fixup->size();
-            p = fd->f1fixup->buf;
+            unsigned length = fd->f1fixup->size();
+            unsigned char *p = fd->f1fixup->buf;
             for (unsigned u = 0; u < length; u += sizeof(F1_Fixups))
             {   F1_Fixups *f = (F1_Fixups *)(p + u);
 
@@ -211,7 +211,7 @@ void cv8_termfile(const char *objfilename)
         cv8_writesection(seg, 0xF1, F1_buf);
 
         // Fixups for "F1" section
-        length = F1fixup->size();
+        unsigned length = F1fixup->size();
         p = F1fixup->buf;
         for (unsigned u = 0; u < length; u += sizeof(F1_Fixups))
         {   F1_Fixups *f = (F1_Fixups *)(p + u);
@@ -235,6 +235,8 @@ void cv8_initmodule(const char *filename, const char *modulename)
 
     /* Experiments show that filename doesn't have to be qualified if
      * it is relative to the directory the .exe file is in.
+     * but that is a bad idea, because build directory and executable and working directory
+     * are not guaranteed to be the same, so please write the absolute path
      */
     currentfuncdata.srcfileoff = cv8_addfile(filename);
 }
