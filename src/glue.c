@@ -242,7 +242,7 @@ void obj_start(const char *srcfile, const char *objfile)
 
 void obj_end(Library *library, File *objfile)
 {
-    objmod->term();
+    objmod->term(objfile->toChars());
     delete objmod;
     objmod = NULL;
 

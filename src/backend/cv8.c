@@ -92,7 +92,7 @@ void cv8_writesection(int seg, unsigned type, Outbuffer *buf);
  * Input:
  *      filename        source file name
  */
-void cv8_initfile(const char *filename)
+void cv8_initfile(const char *filename, const char *objfilename)
 {
     //printf("cv8_initfile()\n");
 
