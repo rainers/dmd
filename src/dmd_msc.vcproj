@@ -414,6 +414,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\ctfeexpr.c"
+				>
+			</File>
+			<File
 				RelativePath=".\declaration.c"
 				>
 			</File>
@@ -909,11 +913,19 @@
 					>
 				</File>
 				<File
+					RelativePath=".\backend\cpp.h"
+					>
+				</File>
+				<File
 					RelativePath=".\backend\cppman.c"
 					>
 				</File>
 				<File
 					RelativePath=".\backend\cv4.h"
+					>
+				</File>
+				<File
+					RelativePath=".\backend\cv8.c"
 					>
 				</File>
 				<File
@@ -1037,10 +1049,6 @@
 					>
 				</File>
 				<File
-					RelativePath=".\backend\obj.h"
-					>
-				</File>
-				<File
 					RelativePath=".\backend\oper.h"
 					>
 				</File>
@@ -1058,6 +1066,10 @@
 				</File>
 				<File
 					RelativePath=".\backend\outbuf.h"
+					>
+				</File>
+				<File
+					RelativePath=".\backend\pdata.c"
 					>
 				</File>
 				<File
