@@ -555,7 +555,7 @@ void ClassDeclaration::toDebug()
     {
         size_t n = vtbl.dim;                   // number of virtual functions
         if (n)
-        {
+        {   // 4 bits per descriptor
             debtyp_t *vshape = debtyp_alloc(4 + (n + 1) / 2);
             TOWORD(vshape->data,LF_VTSHAPE);
             TOWORD(vshape->data + 2,config.fulltypes == CV8 ? n : 1); // should always be n?
