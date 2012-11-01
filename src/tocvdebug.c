@@ -542,9 +542,9 @@ void ClassDeclaration::toDebug()
 #else
     const char *id = isCPPinterface() ? ident->toChars() : toPrettyChars();
 #endif
-    unsigned leaf = config.fulltypes == CV8 ? LF_CLASS_V2 : LF_CLASS;
+    unsigned leaf = config.fulltypes == CV8 ? LF_CLASS_V3 : LF_CLASS;
 
-    unsigned numidx = (leaf == LF_CLASS_V2) ? 18 : 12;
+    unsigned numidx = (leaf == LF_CLASS_V3) ? 18 : 12;
     unsigned len = numidx + cv4_numericbytes(size);
     debtyp_t *d = debtyp_alloc(len + cv_stringbytes(id));
     cv4_storenumeric(d->data + numidx,size);
@@ -558,7 +558,7 @@ void ClassDeclaration::toDebug()
         {
             debtyp_t *vshape = debtyp_alloc(4 + (n + 1) / 2);
             TOWORD(vshape->data,LF_VTSHAPE);
-            TOWORD(vshape->data + 2,1);
+            TOWORD(vshape->data + 2,config.fulltypes == CV8 ? n : 1); // should always be n?
 
             n = 0;
             unsigned char descriptor = 0;
@@ -579,7 +579,7 @@ void ClassDeclaration::toDebug()
         TOWORD(d->data + 8,0);          // dList
         TOWORD(d->data + 10,vshapeidx);
     }
-    else if (leaf == LF_CLASS_V2)
+    else if (leaf == LF_CLASS_V3)
     {
         TOLONG(d->data + 10,0);         // dList
         TOLONG(d->data + 14,vshapeidx);
@@ -594,7 +594,7 @@ void ClassDeclaration::toDebug()
 
     if (!members)                       // if reference only
     {
-        if (leaf == LF_CLASS_V2)
+        if (leaf == LF_CLASS_V3)
         {
             TOWORD(d->data + 2,0);          // count: number of fields is 0
             TOLONG(d->data + 6,0);          // field list is 0
@@ -918,6 +918,8 @@ int VarDeclaration::cvMember(unsigned char *p)
                 nwritten += 2;
             nwritten += 6 + cv_stringbytes(id);
         }
+        if (config.fulltypes == CV8)
+            nwritten = ((nwritten + 3) & ~3); // 4-byte alignment
     }
     else
     {
@@ -930,8 +932,8 @@ int VarDeclaration::cvMember(unsigned char *p)
                 if (storage_class & STCfield)
                 {
                     TOWORD(p,LF_MEMBER_V3);
-                    TOWORD(p + 2,typidx);
-                    TOLONG(p + 4,attribute);
+                    TOWORD(p + 2,attribute);
+                    TOLONG(p + 4,typidx);
                     cv4_storenumeric(p + 8, offset);
                     nwritten = 8 + cv4_numericbytes( offset);
                     nwritten += cv_namestring(p + nwritten, id);
@@ -939,8 +941,8 @@ int VarDeclaration::cvMember(unsigned char *p)
                 else if (isStatic())
                 {
                     TOWORD(p,LF_STMEMBER_V3);
-                    TOWORD(p + 2,typidx);
-                    TOLONG(p + 4,attribute);
+                    TOWORD(p + 2,attribute);
+                    TOLONG(p + 4,typidx);
                     nwritten = 8;
                     nwritten += cv_namestring(p + nwritten, id);
                 }
@@ -969,6 +971,10 @@ int VarDeclaration::cvMember(unsigned char *p)
              default:
                 assert(0);
         }
+
+        if (config.fulltypes == CV8)
+            while(nwritten & 3)
+                p[nwritten++] = 0xf4 - (nwritten & 3);
 
 #ifdef DEBUG
         assert(nwritten == cvMember(NULL));

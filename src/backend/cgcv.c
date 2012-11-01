@@ -115,6 +115,11 @@ int cv_namestring(unsigned char *p,const char *name)
     if (config.fulltypes == CV8)
     {
         memcpy(p, name, len + 1);
+#if 0
+        for(int i = 0; i < len; i++)
+            if(p[i] == '.')
+                p[i] = '@';
+#endif
         return len + 1;
     }
     if (len > 255)
@@ -897,6 +902,12 @@ idx_t cv4_struct(Classsym *s,int flags)
         d = debtyp_alloc(len + cv_stringbytes(id));
         cv4_storenumeric(d->data + numidx,size);
     }
+    else if (config.fulltypes == CV8)
+    {   numidx = (st->Sflags & STRunion) ? 10 : 18;
+        len = numidx + cv4_numericbytes(size);
+        d = debtyp_alloc(len + cv_stringbytes(id));
+        cv4_storenumeric(d->data + numidx,size);
+    }
     else
     {   numidx = (st->Sflags & STRunion) ? 10 : 18;
         len = numidx + 4;
@@ -906,16 +917,18 @@ idx_t cv4_struct(Classsym *s,int flags)
     len += cv_namestring(d->data + len,id);
     switch (s->Sclass)
     {   case SCstruct:
-            leaf = LF_STRUCTURE;
+            leaf = config.fulltypes == CV8 ? LF_STRUCTURE_V3 : LF_STRUCTURE;
             if (st->Sflags & STRunion)
-            {   leaf = LF_UNION;
+            {   leaf = config.fulltypes == CV8 ? LF_UNION_V3 : LF_UNION;
                 break;
             }
             if (st->Sflags & STRclass)
-                leaf = LF_CLASS;
+                leaf = config.fulltypes == CV8 ? LF_CLASS_V3 : LF_CLASS;
             goto L1;
-        L1:
-            if (config.fulltypes == CV4)
+L1:
+            if (config.fulltypes == CV8)
+                TOLONG(d->data + 10,0);         // dList
+            else if (config.fulltypes == CV4)
                 TOWORD(d->data + 8,0);          // dList
             else
                 TOLONG(d->data + 10,0);         // dList
@@ -968,7 +981,9 @@ idx_t cv4_struct(Classsym *s,int flags)
         else
 #endif
         {
-            if (config.fulltypes == CV4)
+            if (config.fulltypes == CV8)
+                TOLONG(d->data + 14,0);         // vshape
+            else if (config.fulltypes == CV4)
                 TOWORD(d->data + 10,0);         // vshape
             else
                 TOLONG(d->data + 14,0);         // vshape
@@ -1014,7 +1029,11 @@ printf("fwd struct ref\n");
     {
         //printf("refonly\n");
         TOWORD(d->data + 2,0);          // count: number of fields is 0
-        if (config.fulltypes == CV4)
+        if (config.fulltypes == CV8)
+        {   TOLONG(d->data + 6,0);              // field list is 0
+            TOWORD(d->data + 4,property);
+        }
+        else if (config.fulltypes == CV4)
         {   TOWORD(d->data + 4,0);              // field list is 0
             TOWORD(d->data + 6,property);
         }

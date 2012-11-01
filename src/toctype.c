@@ -510,6 +510,10 @@ type *TypeClass::toCtype()
     if (ctype)
         return ctype;
 
+#if 0
+    ctype = type_alloc(TYint);
+    return ctype;
+#endif
     /* Need this symbol to do C++ name mangling
      */
     const char *name = sym->isCPPinterface() ? sym->ident->toChars()
