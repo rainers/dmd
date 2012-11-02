@@ -645,7 +645,7 @@ void ClassDeclaration::toDebug()
      * of the fields. I have not been able to determine why.
      * (Could it be because the base class is "forward referenced"?)
      */
-#if 0
+#if 1
     // Add in base classes
     for (size_t i = 0; i < baseclasses->dim; i++)
     {   BaseClass *bc = (*baseclasses)[i];
@@ -675,7 +675,7 @@ void ClassDeclaration::toDebug()
     TOWORD(p,config.fulltypes == CV8 ? LF_FIELDLIST_V2 : LF_FIELDLIST);
     p += 2;
 
-#if 0
+#if 1
     // Add in base classes
     for (size_t i = 0; i < baseclasses->dim; i++)
     {   BaseClass *bc = (*baseclasses)[i];
