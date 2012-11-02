@@ -2119,9 +2119,17 @@ L2:
         }
 
         case TYstruct:
-        {   int foo = t->Ttag->Stypidx;
-            typidx = cv4_struct(t->Ttag,0);
-            //printf("struct '%s' %x %x\n", t->Ttag->Sident, foo, typidx);
+        {
+#if MARS
+            if (config.fulltypes == CV8)
+                typidx = cv8_fwdref(t->Ttag);
+            else
+#endif
+            {
+                int foo = t->Ttag->Stypidx;
+                typidx = cv4_struct(t->Ttag,0);
+                //printf("struct '%s' %x %x\n", t->Ttag->Sident, foo, typidx);
+            }
             break;
         }
 
