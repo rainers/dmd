@@ -3328,7 +3328,7 @@ MATCH TypeBasic::implicitConvTo(Type *to)
         if (tob->flags & TFLAGSintegral)
             return MATCHnomatch;
 
-        assert(tob->flags & TFLAGSfloating);
+        assert(tob->flags & TFLAGSfloating || to->ty == Tvector);
 
         // Disallow implicit conversion from complex to non-complex
         if (flags & TFLAGScomplex && !(tob->flags & TFLAGScomplex))

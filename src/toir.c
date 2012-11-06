@@ -436,8 +436,14 @@ int intrinsic_op(char *name)
         "4math6rndtolFNaNbNfeZl",
         "4math6yl2xp1FNaNbNfeeZe",
 
+        "4simd10__simd_stoFNaNbNfE4core4simd3XMMNhG16vNhG16vZNhG16v",
+        "4simd10__simd_stoFNaNbNfE4core4simd3XMMdNhG16vZNhG16v",
+        "4simd10__simd_stoFNaNbNfE4core4simd3XMMfNhG16vZNhG16v",
         "4simd6__simdFNaNbNfE4core4simd3XMMNhG16vNhG16vZNhG16v",
         "4simd6__simdFNaNbNfE4core4simd3XMMNhG16vNhG16vhZNhG16v",
+        "4simd6__simdFNaNbNfE4core4simd3XMMNhG16vZNhG16v",
+        "4simd6__simdFNaNbNfE4core4simd3XMMdZNhG16v",
+        "4simd6__simdFNaNbNfE4core4simd3XMMfZNhG16v",
         "4simd9__simd_ibFNaNbNfE4core4simd3XMMNhG16vhZNhG16v",
 
         "5bitop2btFNaNbNfxPkkZi",
@@ -468,8 +474,14 @@ int intrinsic_op(char *name)
         "4math6rndtolFNaNbNfeZl",
         "4math6yl2xp1FNaNbNfeeZe",
 
+        "4simd10__simd_stoFNaNbNfE4core4simd3XMMNhG16vNhG16vZNhG16v",
+        "4simd10__simd_stoFNaNbNfE4core4simd3XMMdNhG16vZNhG16v",
+        "4simd10__simd_stoFNaNbNfE4core4simd3XMMfNhG16vZNhG16v",
         "4simd6__simdFNaNbNfE4core4simd3XMMNhG16vNhG16vZNhG16v",
         "4simd6__simdFNaNbNfE4core4simd3XMMNhG16vNhG16vhZNhG16v",
+        "4simd6__simdFNaNbNfE4core4simd3XMMNhG16vZNhG16v",
+        "4simd6__simdFNaNbNfE4core4simd3XMMdZNhG16v",
+        "4simd6__simdFNaNbNfE4core4simd3XMMfZNhG16v",
         "4simd9__simd_ibFNaNbNfE4core4simd3XMMNhG16vhZNhG16v",
 
         "5bitop2btFNaNbNfxPmmZi",
@@ -500,6 +512,12 @@ int intrinsic_op(char *name)
         OPrndtol,
         OPyl2xp1,
 
+        OPvector,
+        OPvector,
+        OPvector,
+        OPvector,
+        OPvector,
+        OPvector,
         OPvector,
         OPvector,
         OPvector,
