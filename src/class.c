@@ -302,6 +302,7 @@ void ClassDeclaration::semantic(Scope *sc)
     {
         isdeprecated = true;
     }
+    userAttributes = sc->userAttributes;
 
     if (sc->linkage == LINKcpp)
         error("cannot create C++ classes");
@@ -626,6 +627,7 @@ void ClassDeclaration::semantic(Scope *sc)
     {   sc->offset = PTRSIZE * 2;       // allow room for __vptr and __monitor
         alignsize = PTRSIZE;
     }
+    sc->userAttributes = NULL;
     structsize = sc->offset;
     Scope scsave = *sc;
     size_t members_dim = members->dim;
@@ -1294,6 +1296,7 @@ void InterfaceDeclaration::semantic(Scope *sc)
     {
         isdeprecated = true;
     }
+    userAttributes = sc->userAttributes;
 
     // Expand any tuples in baseclasses[]
     for (size_t i = 0; i < baseclasses->dim; )
@@ -1437,6 +1440,7 @@ void InterfaceDeclaration::semantic(Scope *sc)
     sc->explicitProtection = 0;
 //    structalign = sc->structalign;
     sc->offset = PTRSIZE * 2;
+    sc->userAttributes = NULL;
     structsize = sc->offset;
     inuse++;
 

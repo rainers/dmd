@@ -324,6 +324,7 @@ idx_t cv_debtyp(debtyp_t *d)
         }
         hashi = hash % DEBTYPHASHDIM;
         hash %= DEBTYPVECDIM;
+//printf(" hashi = %d", hashi);
 
         if (vec_testbit(hash,debtypvec))
         {
@@ -1895,16 +1896,26 @@ L2:
         Ldarray:
             switch (config.fulltypes)
             {
+#if MARS
                 case CV8:
+                {   // Make next a pointer to next
+                    type *tp = type_allocn(TYnptr, t->Tnext);
+                    idx_t pnext = cv4_typidx(tp);
+                    type_free(tp);
+                    typidx = cv8_darray(t->Tnext, pnext);
+                    return typidx;
+#if 0
                     d = debtyp_alloc(18);
                     TOWORD(d->data, 0x100F);
                     TOWORD(d->data + 2, OEM);
-                    TOLONG(d->data + 4, 1);     // 1 = dynamic array
-                    TOWORD(d->data + 8, 2);     // count of type indices to follow
+                    TOWORD(d->data + 4, 1);     // 1 = dynamic array
+                    TOLONG(d->data + 6, 2);     // count of type indices to follow
                     TOLONG(d->data + 10, 0x23); // index type, T_UQUAD
                     TOLONG(d->data + 14, next); // element type
+#endif
                     break;
-
+                }
+#endif
                 case CV4:
 #if 1
                     d = debtyp_alloc(12);
@@ -1938,8 +1949,8 @@ L2:
                     d = debtyp_alloc(18);
                     TOWORD(d->data, 0x100F);
                     TOWORD(d->data + 2, OEM);
-                    TOLONG(d->data + 4, 2);     // 2 = associative array
-                    TOWORD(d->data + 8, 2);     // count of type indices to follow
+                    TOWORD(d->data + 4, 2);     // 2 = associative array
+                    TOLONG(d->data + 6, 2);     // count of type indices to follow
                     TOLONG(d->data + 10, key);  // key type
                     TOLONG(d->data + 14, next); // element type
                     break;
@@ -1968,7 +1979,6 @@ L2:
             break;
 
         Ldelegate:
-            assert(config.fulltypes == CV4);
             tv = type_fake(TYnptr);
             tv->Tcount++;
             key = cv4_typidx(tv);
@@ -1979,8 +1989,8 @@ L2:
                     d = debtyp_alloc(18);
                     TOWORD(d->data, 0x100F);
                     TOWORD(d->data + 2, OEM);
-                    TOLONG(d->data + 4, 3);     // 3 = delegate
-                    TOWORD(d->data + 8, 2);     // count of type indices to follow
+                    TOWORD(d->data + 4, 3);     // 3 = delegate
+                    TOLONG(d->data + 6, 2);     // count of type indices to follow
                     TOLONG(d->data + 10, key);  // key type
                     TOLONG(d->data + 14, next); // element type
                     break;
@@ -2007,14 +2017,19 @@ L2:
             typidx = cv_debtyp(d);
             break;
 
-        case TYcent:    // treat as long[2]
-            next = dttab4[TYllong];
-            goto Lcent;
-        case TYucent:   // treat as ulong[2]
-            next = dttab4[TYullong];
-        Lcent:
-            size = 16;
-            goto Larray;
+        case TYcent:
+            if (t->Tnext)
+                goto Ldelegate;
+            assert(dt);
+            typidx = dt;
+            break;
+
+        case TYucent:
+            if (t->Tnext)
+                goto Ldarray;
+            assert(dt);
+            typidx = dt;
+            break;
 
         case TYarray:
             if (t->Tflags & TFsizeunknown)
@@ -2878,9 +2893,11 @@ void cv_outsym(symbol *s)
         case CVTDB:
             cv4_outsym(s);
             break;
+#if MARS
         case CV8:
             cv8_outsym(s);
             break;
+#endif
         default:
             assert(0);
     }

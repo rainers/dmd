@@ -181,6 +181,7 @@ void FuncDeclaration::semantic(Scope *sc)
     else
         linkage = sc->linkage;
     protection = sc->protection;
+    userAttributes = sc->userAttributes;
 
     if (!originalType)
         originalType = type;
@@ -890,6 +891,7 @@ void FuncDeclaration::semantic3(Scope *sc)
         sc2->flags = sc->flags & ~SCOPEcontract;
         sc2->tf = NULL;
         sc2->noctor = 0;
+        sc2->userAttributes = NULL;
 
         // Declare 'this'
         AggregateDeclaration *ad = isThis();

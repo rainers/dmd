@@ -133,7 +133,7 @@ void gatherTestParameters(ref TestArgs testArgs, string input_dir, string input_
     string file = cast(string)std.file.read(input_file);
 
     findTestParameter(file, "REQUIRED_ARGS", testArgs.requiredArgs);
-    //testArgs.requiredArgs ~= "-unittest ";
+    testArgs.requiredArgs ~= " -g"; //"-unittest ";
     
     if (! findTestParameter(file, "PERMUTE_ARGS", testArgs.permuteArgs))
     {

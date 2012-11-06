@@ -418,6 +418,7 @@ void StructDeclaration::semantic(Scope *sc)
     assert(!isAnonymous());
     if (sc->stc & STCabstract)
         error("structs, unions cannot be abstract");
+    userAttributes = sc->userAttributes;
 
     if (sizeok == SIZEOKnone)            // if not already done the addMember step
     {
@@ -474,6 +475,7 @@ void StructDeclaration::semantic(Scope *sc)
     sc2->protection = PROTpublic;
     sc2->explicitProtection = 0;
     sc2->structalign = STRUCTALIGN_DEFAULT;
+    sc2->userAttributes = NULL;
 
     size_t members_dim = members->dim;
 

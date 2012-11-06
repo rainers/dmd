@@ -40,6 +40,8 @@ static char __file__[] = __FILE__;      /* for tassert.h                */
 #if MARS
 #if TARGET_WINDOS
 
+#include        <direct.h>
+
 // The "F1" section, which is the symbols
 static Outbuffer *F1_buf;
 
@@ -403,10 +405,33 @@ unsigned cv8_addfile(const char *filename)
     unsigned char *p = F3_buf->buf;
     size_t len = strlen(filename);
 
+    // ensure the filename is absolute to help the debugger to find the source
+    // without having to know the working directory during compilation
+    static char cwd[260];
+    static unsigned cwdlen;
+    bool abs = (*filename == '\\') ||
+               (*filename == '/')  ||
+               (*filename && filename[1] == ':');
+
+    if (!abs && cwd[0] == 0)
+    {
+        if (getcwd(cwd, sizeof(cwd)))
+        {
+            cwdlen = strlen(cwd);
+            if(cwd[cwdlen - 1] != '\\' && cwd[cwdlen - 1] != '/')
+                cwd[cwdlen++] = '\\';
+        }
+    }
     unsigned off = 1;
     while (off + len < length)
     {
-        if (memcmp(p + off, filename, len + 1) == 0)
+        if (!abs)
+        {
+            if (memcmp(p + off, cwd, cwdlen) == 0 &&
+                memcmp(p + off + cwdlen, filename, len + 1) == 0)
+                goto L1;
+        }
+        else if (memcmp(p + off, filename, len + 1) == 0)
         {   // Already there
             //printf("\talready there at %x\n", off);
             goto L1;
@@ -415,6 +440,8 @@ unsigned cv8_addfile(const char *filename)
     }
     off = length;
     // Add it
+    if(!abs)
+        F3_buf->write(cwd, cwdlen);
     F3_buf->write(filename, len + 1);
 
 L1:
@@ -480,11 +507,13 @@ void cv8_writesection(int seg, unsigned type, Outbuffer *buf)
 void cv8_outsym(Symbol *s)
 {
     //printf("cv8_outsym(s = '%s')\n", s->Sident);
+    //type_print(s->Stype);
     //symbol_print(s);
     if (s->Sflags & SFLnodebug)
         return;
 
     idx_t typidx = cv_typidx(s->Stype);
+    //printf("typidx = %x\n", typidx);
     const char *id = s->prettyIdent ? s->prettyIdent : prettyident(s);
     size_t len = strlen(id);
 
@@ -497,6 +526,7 @@ void cv8_outsym(Symbol *s)
     {
         case SCparameter:
         case SCregpar:
+        case SCshadowreg:
             if (s->Sfl == FLreg)
             {
                 s->Sfl = FLpara;
@@ -538,7 +568,6 @@ void cv8_outsym(Symbol *s)
 
         case SCfastpar:
         case SCregister:
-        case SCshadowreg:
             if (s->Sfl != FLreg)
                 goto case_auto;
         case SCpseudo:
@@ -563,9 +592,10 @@ void cv8_outsym(Symbol *s)
         case SCcomdef:
             sr = S_GDATA_V3;
         Ldata:
+//return;
             /*
              *  2       length (not including these 2 bytes)
-             *  2       S_GDATA_V3
+             *  2       S_GDATA_V2
              *  4       typidx
              *  6       ref to symbol
              *  n       0 terminated name string
@@ -697,6 +727,75 @@ idx_t cv8_fwdref(Symbol *s)
     return typidx;
 }
 
+/****************************************
+ * Return type index for a darray.
+ * Input:
+ *      tnext   element type
+ *      etypidx type index for pointer to element
+ */
+idx_t cv8_darray(type *tnext, idx_t etypidx)
+{
+    //printf("cv8_darray(etypidx = %x)\n", etypidx);
+    /* Put out a struct:
+     *    struct S {
+     *      size_t length;
+     *      T* ptr;
+     *    }
+     */
+    static const unsigned char fl[0x26] =
+    {
+        0x03, 0x12,             // LF_FIELDLIST_V2
+        0x0d, 0x15,             // LF_MEMBER_V3
+        0x03, 0x00,             // attribute
+        0x23, 0x00, 0x00, 0x00, // size_t
+        0x00, 0x00,             // offset
+        0x6c, 0x65, 0x6e, 0x67, 0x74, 0x68, 0x00,
+        0xf3, 0xf2, 0xf1,
+        0x0d, 0x15,
+        0x03, 0x00,
+        0x00, 0x00, 0x00, 0x00, // etypidx
+        0x08, 0x00,
+        0x70, 0x74, 0x72, 0x00,
+        0xf2, 0xf1,
+    };
+
+    debtyp_t *f = debtyp_alloc(0x26);
+    memcpy(f->data,fl,0x26);
+    TOLONG(f->data + 26, etypidx);
+    idx_t fieldlist = cv_debtyp(f);
+
+    const char *id;
+    switch (tnext->Tty)
+    {
+        case mTYimmutable | TYchar:
+            id = "string";
+            break;
+
+        case mTYimmutable | TYwchar_t:
+            id = "wstring";
+            break;
+
+        case mTYimmutable | TYdchar:
+            id = "dstring";
+            break;
+
+        default:
+            id = "dArray";
+            break;
+    }
+
+    debtyp_t *d = debtyp_alloc(20 + cv_stringbytes(id));
+    TOWORD(d->data, LF_STRUCTURE_V3);
+    TOWORD(d->data + 2, 2);     // count
+    TOWORD(d->data + 4, 0);     // property
+    TOLONG(d->data + 6, fieldlist);
+    TOLONG(d->data + 10, 0);    // dList
+    TOLONG(d->data + 14, 0);    // vtshape
+    TOWORD(d->data + 18, 16);   // size
+    cv_namestring(d->data + 20, id);
+
+    return cv_debtyp(d);
+}
 
 #endif
 #endif
