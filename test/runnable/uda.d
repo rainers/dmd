@@ -1,17 +1,19 @@
 
 import core.stdc.stdio;
 
+template Tuple(T...)
+{
+     alias T Tuple;
+}
+
+
+
 enum EEE = 7;
 ["hello"] struct SSS { }
 
 [3] { [4][EEE][SSS] int foo; }
 
 pragma(msg, __traits(getAttributes, foo));
-
-template Tuple(T...)
-{
-     alias T Tuple;
-}
 
 alias Tuple!(__traits(getAttributes, foo)) TP;
 
@@ -64,11 +66,53 @@ void test3()
 
 /************************************************/
 
+[1] void foo4();
+[2] void foo4(int x);
+
+void test4()
+{
+    int i = 1;
+    foreach (o; __traits(getOverloads, uda, "foo4"))
+    {
+        alias Tuple!(__traits(getAttributes, o)) attrs;
+        pragma(msg, attrs.stringof);
+	assert(attrs[0] == i);
+	++i;
+    }
+}
+
+/************************************************/
+
+pragma(msg, __traits(getAttributes, aa));
+alias Tuple!(__traits(getAttributes, aa)) Taa;
+[10] int aa;
+
+pragma(msg, __traits(getAttributes, bb));
+alias Tuple!(__traits(getAttributes, bb)) Tbb;
+[20] int bb;
+alias Tuple!(__traits(getAttributes, bb)) Tbbc;
+
+[30] int cc;
+pragma(msg, __traits(getAttributes, cc));
+alias Tuple!(__traits(getAttributes, cc)) Tcc;
+
+void test5()
+{
+    assert(Taa[0] == 10);
+    assert(Tbb[0] == 20);
+    assert(Tbbc[0] == 20);
+    assert(Tcc[0] == 30);
+}
+
+/************************************************/
+
 int main()
 {
     test1();
     test2();
     test3();
+    test4();
+    test5();
 
     printf("Success\n");
     return 0;
