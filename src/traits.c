@@ -64,7 +64,10 @@ static int fptraits(void *param, FuncDeclaration *f)
 
     if (p->e1->op == TOKdotvar)
     {   DotVarExp *dve = (DotVarExp *)p->e1;
-        e = new DotVarExp(0, dve->e1, new FuncAliasDeclaration(f, 0));
+        if (dve->e1->op == TOKdottype)
+            e = new DsymbolExp(0, new FuncAliasDeclaration(f, 0));
+        else
+            e = new DotVarExp(0, dve->e1, new FuncAliasDeclaration(f, 0));
     }
     else
         e = new DsymbolExp(0, new FuncAliasDeclaration(f, 0));
@@ -225,7 +228,11 @@ Expression *TraitsExp::semantic(Scope *sc)
         Object *o = (*args)[0];
         Dsymbol *s = getDsymbol(o);
         if (s)
+        {
+            if (FuncDeclaration *fd = s->isFuncDeclaration())   // Bugzilla 8943
+                s = fd->toAliasFunc();
             s = s->toParent();
+        }
         if (!s)
         {
             error("argument %s has no parent", o->toChars());

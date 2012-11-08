@@ -2306,7 +2306,7 @@ void TemplateDeclaration::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
         if (hgs->ddoc)
             tp = (*origParameters)[i];
         if (i)
-            buf->writeByte(',');
+            buf->writestring(", ");
         tp->toCBuffer(buf, hgs);
     }
     buf->writeByte(')');
@@ -2347,7 +2347,7 @@ char *TemplateDeclaration::toChars()
     {
         TemplateParameter *tp = (*parameters)[i];
         if (i)
-            buf.writeByte(',');
+            buf.writestring(", ");
         tp->toCBuffer(&buf, &hgs);
     }
     buf.writeByte(')');
@@ -6036,7 +6036,7 @@ void TemplateInstance::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
         for (i = 0; i < args->dim; i++)
         {
             if (i)
-                buf->writeByte(',');
+                buf->writestring(", ");
             Object *oarg = (*args)[i];
             ObjectToCBuffer(buf, hgs, oarg);
         }
