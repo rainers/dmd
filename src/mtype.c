@@ -5275,6 +5275,7 @@ void TypeFunction::toDecoBuffer(OutBuffer *buf, int flag)
             case TRUSTsafe:
                 buf->writestring("Nf");
                 break;
+            default: break;
         }
     }
     // Write argument types
@@ -5330,6 +5331,7 @@ void TypeFunction::toCBufferWithAttributes(OutBuffer *buf, Identifier *ident, Hd
         case TRUSTsafe:
             buf->writestring("@safe ");
             break;
+        default: break;
     }
 
     if (hgs->ddoc != 1)
@@ -5459,6 +5461,7 @@ void TypeFunction::attributesToCBuffer(OutBuffer *buf, int mod)
         case TRUSTsafe:
             buf->writestring(" @safe");
             break;
+        default: break;
     }
 }
 

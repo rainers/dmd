@@ -4770,6 +4770,26 @@ void test6056()
 }
 
 /***************************************************/
+// 6356
+
+int f6356()(int a)
+{
+    return a*a;
+}
+
+alias f6356!() g6356;     // comment this out to eliminate the errors
+
+pure nothrow @safe int i6356()
+{
+    return f6356(1);
+}
+
+void test6356()
+{
+    assert(i6356() == 1);
+}
+
+/***************************************************/
 // 7108
 
 static assert(!__traits(hasMember, int, "x"));
@@ -5520,6 +5540,36 @@ void test8917()
 
 /***************************************************/
 
+struct S162
+{
+    static int generateMethodStubs( Class )()
+    {
+	int text;
+
+	foreach( m; __traits( allMembers, Class ) )
+	{
+	    static if( is( typeof( mixin( m ) ) ) && is( typeof( mixin( m ) ) == function ) )
+	    {
+		pragma(msg, __traits( getOverloads, Class, m ));
+	    }
+	}
+
+	return text;
+    }
+
+    enum int ttt = generateMethodStubs!( S162 )();
+
+    float height();
+    int get( int );
+    int get( long );
+    void clear();
+
+    void draw( int );
+    void draw( long );
+}
+
+/***************************************************/
+
 int main()
 {
     test1();
@@ -5740,6 +5790,7 @@ int main()
     test2856();
     test3091();
     test6056();
+    test6356();
     test7073();
     test7150();
     test7160();

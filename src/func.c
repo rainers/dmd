@@ -112,7 +112,6 @@ Dsymbol *FuncDeclaration::syntaxCopy(Dsymbol *s)
     return f;
 }
 
-
 // Do the semantic analysis on the external interface to the function.
 
 void FuncDeclaration::semantic(Scope *sc)
@@ -891,6 +890,7 @@ void FuncDeclaration::semantic3(Scope *sc)
         sc2->flags = sc->flags & ~SCOPEcontract;
         sc2->tf = NULL;
         sc2->noctor = 0;
+        sc2->speculative = sc->speculative || isSpeculative() != NULL;
         sc2->userAttributes = NULL;
 
         // Declare 'this'

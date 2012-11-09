@@ -1534,8 +1534,7 @@ Lnomatch:
             }
         }
         else if (storage_class & (STCconst | STCimmutable | STCmanifest) ||
-                 type->isConst() || type->isImmutable() ||
-                 parent->isAggregateDeclaration())
+                 type->isConst() || type->isImmutable())
         {
             /* Because we may need the results of a const declaration in a
              * subsequent type, such as an array dimension, before semantic2()
@@ -1644,6 +1643,11 @@ Lnomatch:
                 else
                     init = i2;          // no errors, keep result
             }
+        }
+        else if (parent->isAggregateDeclaration())
+        {
+            scope = new Scope(*sc);
+            scope->setNoFree();
         }
         sc = sc->pop();
     }
