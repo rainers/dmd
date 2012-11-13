@@ -145,20 +145,20 @@ void Statement::deprecation(const char *format, ...)
     va_end( ap );
 }
 
-int Statement::hasBreak()
+bool Statement::hasBreak()
 {
     //printf("Statement::hasBreak()\n");
     return FALSE;
 }
 
-int Statement::hasContinue()
+bool Statement::hasContinue()
 {
     return FALSE;
 }
 
 // TRUE if statement uses exception handling
 
-int Statement::usesEH()
+bool Statement::usesEH()
 {
     return FALSE;
 }
@@ -678,7 +678,7 @@ void CompoundStatement::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
     }
 }
 
-int CompoundStatement::usesEH()
+bool CompoundStatement::usesEH()
 {
     for (size_t i = 0; i < statements->dim; i++)
     {   Statement *s = (*statements)[i];
@@ -902,17 +902,17 @@ void UnrolledLoopStatement::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
     buf->writenl();
 }
 
-int UnrolledLoopStatement::hasBreak()
+bool UnrolledLoopStatement::hasBreak()
 {
     return TRUE;
 }
 
-int UnrolledLoopStatement::hasContinue()
+bool UnrolledLoopStatement::hasContinue()
 {
     return TRUE;
 }
 
-int UnrolledLoopStatement::usesEH()
+bool UnrolledLoopStatement::usesEH()
 {
     for (size_t i = 0; i < statements->dim; i++)
     {   Statement *s = (*statements)[i];
@@ -1011,18 +1011,18 @@ Statement *ScopeStatement::semantic(Scope *sc)
     return this;
 }
 
-int ScopeStatement::hasBreak()
+bool ScopeStatement::hasBreak()
 {
     //printf("ScopeStatement::hasBreak() %s\n", toChars());
     return statement ? statement->hasBreak() : FALSE;
 }
 
-int ScopeStatement::hasContinue()
+bool ScopeStatement::hasContinue()
 {
     return statement ? statement->hasContinue() : FALSE;
 }
 
-int ScopeStatement::usesEH()
+bool ScopeStatement::usesEH()
 {
     return statement ? statement->usesEH() : FALSE;
 }
@@ -1084,17 +1084,17 @@ Statement *WhileStatement::semantic(Scope *sc)
     return s;
 }
 
-int WhileStatement::hasBreak()
+bool WhileStatement::hasBreak()
 {
     return TRUE;
 }
 
-int WhileStatement::hasContinue()
+bool WhileStatement::hasContinue()
 {
     return TRUE;
 }
 
-int WhileStatement::usesEH()
+bool WhileStatement::usesEH()
 {
     assert(0);
     return body ? body->usesEH() : 0;
@@ -1180,17 +1180,17 @@ Statement *DoStatement::semantic(Scope *sc)
     return this;
 }
 
-int DoStatement::hasBreak()
+bool DoStatement::hasBreak()
 {
     return TRUE;
 }
 
-int DoStatement::hasContinue()
+bool DoStatement::hasContinue()
 {
     return TRUE;
 }
 
-int DoStatement::usesEH()
+bool DoStatement::usesEH()
 {
     return body ? body->usesEH() : 0;
 }
@@ -1432,18 +1432,18 @@ Statement *ForStatement::scopeCode(Scope *sc, Statement **sentry, Statement **se
     return this;
 }
 
-int ForStatement::hasBreak()
+bool ForStatement::hasBreak()
 {
     //printf("ForStatement::hasBreak()\n");
     return TRUE;
 }
 
-int ForStatement::hasContinue()
+bool ForStatement::hasContinue()
 {
     return TRUE;
 }
 
-int ForStatement::usesEH()
+bool ForStatement::usesEH()
 {
     return (init && init->usesEH()) || body->usesEH();
 }
@@ -2367,17 +2367,17 @@ bool ForeachStatement::checkForArgTypes()
     return result;
 }
 
-int ForeachStatement::hasBreak()
+bool ForeachStatement::hasBreak()
 {
     return TRUE;
 }
 
-int ForeachStatement::hasContinue()
+bool ForeachStatement::hasContinue()
 {
     return TRUE;
 }
 
-int ForeachStatement::usesEH()
+bool ForeachStatement::usesEH()
 {
     return body->usesEH();
 }
@@ -2624,17 +2624,17 @@ Statement *ForeachRangeStatement::semantic(Scope *sc)
 #endif
 }
 
-int ForeachRangeStatement::hasBreak()
+bool ForeachRangeStatement::hasBreak()
 {
     return TRUE;
 }
 
-int ForeachRangeStatement::hasContinue()
+bool ForeachRangeStatement::hasContinue()
 {
     return TRUE;
 }
 
-int ForeachRangeStatement::usesEH()
+bool ForeachRangeStatement::usesEH()
 {
     assert(0);
     return body->usesEH();
@@ -2779,7 +2779,7 @@ Statement *IfStatement::semantic(Scope *sc)
     return this;
 }
 
-int IfStatement::usesEH()
+bool IfStatement::usesEH()
 {
     return (ifbody && ifbody->usesEH()) || (elsebody && elsebody->usesEH());
 }
@@ -2915,7 +2915,7 @@ Statements *ConditionalStatement::flatten(Scope *sc)
     return a;
 }
 
-int ConditionalStatement::usesEH()
+bool ConditionalStatement::usesEH()
 {
     return (ifbody && ifbody->usesEH()) || (elsebody && elsebody->usesEH());
 }
@@ -3067,7 +3067,7 @@ Lerror:
     return body;
 }
 
-int PragmaStatement::usesEH()
+bool PragmaStatement::usesEH()
 {
     return body && body->usesEH();
 }
@@ -3300,12 +3300,12 @@ Statement *SwitchStatement::semantic(Scope *sc)
     return this;
 }
 
-int SwitchStatement::hasBreak()
+bool SwitchStatement::hasBreak()
 {
     return TRUE;
 }
 
-int SwitchStatement::usesEH()
+bool SwitchStatement::usesEH()
 {
     return body ? body->usesEH() : 0;
 }
@@ -3447,7 +3447,7 @@ int CaseStatement::compare(Object *obj)
     return exp->compare(cs2->exp);
 }
 
-int CaseStatement::usesEH()
+bool CaseStatement::usesEH()
 {
     return statement->usesEH();
 }
@@ -3607,7 +3607,7 @@ Statement *DefaultStatement::semantic(Scope *sc)
     return this;
 }
 
-int DefaultStatement::usesEH()
+bool DefaultStatement::usesEH()
 {
     return statement->usesEH();
 }
@@ -3991,7 +3991,9 @@ Statement *ReturnStatement::semantic(Scope *sc)
             if (!fd->vresult)
             {   // Declare vresult
                 Scope *sco = fd->scout ? fd->scout : scx;
-                VarDeclaration *v = new VarDeclaration(loc, tret, Id::result, NULL);
+                if (!fd->outId)
+                    fd->outId = Id::result;
+                VarDeclaration *v = new VarDeclaration(loc, tret, fd->outId, NULL);
                 v->noscope = 1;
                 v->storage_class |= STCresult;
                 if (((TypeFunction *)fd->type)->isref)
@@ -4425,17 +4427,17 @@ Lbody:
     return this;
 }
 
-int SynchronizedStatement::hasBreak()
+bool SynchronizedStatement::hasBreak()
 {
     return FALSE; //TRUE;
 }
 
-int SynchronizedStatement::hasContinue()
+bool SynchronizedStatement::hasContinue()
 {
     return FALSE; //TRUE;
 }
 
-int SynchronizedStatement::usesEH()
+bool SynchronizedStatement::usesEH()
 {
     return TRUE;
 }
@@ -4557,7 +4559,7 @@ void WithStatement::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
         body->toCBuffer(buf, hgs);
 }
 
-int WithStatement::usesEH()
+bool WithStatement::usesEH()
 {
     return body ? body->usesEH() : 0;
 }
@@ -4627,12 +4629,12 @@ Statement *TryCatchStatement::semantic(Scope *sc)
     return this;
 }
 
-int TryCatchStatement::hasBreak()
+bool TryCatchStatement::hasBreak()
 {
     return FALSE; //TRUE;
 }
 
-int TryCatchStatement::usesEH()
+bool TryCatchStatement::usesEH()
 {
     return TRUE;
 }
@@ -4828,17 +4830,17 @@ void TryFinallyStatement::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
     buf->writenl();
 }
 
-int TryFinallyStatement::hasBreak()
+bool TryFinallyStatement::hasBreak()
 {
     return FALSE; //TRUE;
 }
 
-int TryFinallyStatement::hasContinue()
+bool TryFinallyStatement::hasContinue()
 {
     return FALSE; //TRUE;
 }
 
-int TryFinallyStatement::usesEH()
+bool TryFinallyStatement::usesEH()
 {
     return TRUE;
 }
@@ -4894,7 +4896,7 @@ void OnScopeStatement::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
     statement->toCBuffer(buf, hgs);
 }
 
-int OnScopeStatement::usesEH()
+bool OnScopeStatement::usesEH()
 {
     return 1;
 }
@@ -5242,7 +5244,7 @@ Statements *LabelStatement::flatten(Scope *sc)
 }
 
 
-int LabelStatement::usesEH()
+bool LabelStatement::usesEH()
 {
     return statement ? statement->usesEH() : FALSE;
 }

@@ -96,6 +96,9 @@ enum PROT
     PROTexport,
 };
 
+// this is used for printing the protection in json, traits, docs, etc.
+static const char* Pprotectionnames[] = {NULL, "none", "private", "package", "protected", "public", "export"};
+
 /* State of symbol in winding its way through the passes of the compiler
  */
 enum PASS
@@ -168,7 +171,7 @@ struct Dsymbol : Object
     char *toHChars();
     virtual void toHBuffer(OutBuffer *buf, HdrGenState *hgs);
     virtual void toCBuffer(OutBuffer *buf, HdrGenState *hgs);
-    virtual void toDocBuffer(OutBuffer *buf);
+    virtual void toDocBuffer(OutBuffer *buf, Scope *sc);
     virtual void toJsonBuffer(OutBuffer *buf);
     virtual unsigned size(Loc loc);
     virtual int isforwardRef();

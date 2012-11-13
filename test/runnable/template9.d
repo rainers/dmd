@@ -867,6 +867,36 @@ void test5801()
 }
 
 /**********************************/
+// 5832
+
+struct Bar5832(alias v) {}
+
+template isBar5832a(T)
+{
+    static if (is(T _ : Bar5832!(v), alias v))
+        enum isBar5832a = true;
+    else
+        enum isBar5832a = false;
+}
+template isBar5832b(T)
+{
+    static if (is(T _ : Bar5832!(v), alias int v))
+        enum isBar5832b = true;
+    else
+        enum isBar5832b = false;
+}
+template isBar5832c(T)
+{
+    static if (is(T _ : Bar5832!(v), alias string v))
+        enum isBar5832c = true;
+    else
+        enum isBar5832c = false;
+}
+static assert( isBar5832a!(Bar5832!1234));
+static assert( isBar5832b!(Bar5832!1234));
+static assert(!isBar5832c!(Bar5832!1234));
+
+/**********************************/
 // 2550
 
 template pow10_2550(long n)
@@ -1519,6 +1549,27 @@ void test8976()
     static assert(!is(typeof(          h8976!()() )));
 }
 
+/****************************************/
+// 8940
+
+const int n8940; // or `immutable`
+static this() { n8940 = 3; }
+
+void f8940(T)(ref int val)
+{
+    assert(val == 3);
+    ++val;
+}
+
+static assert(!__traits(compiles,  f8940!void(n8940))); // fails
+void test8940()
+{
+    assert(n8940 == 3);
+    static assert(!__traits(compiles, f8940!void(n8940)));
+    //assert(n8940 == 3); // may pass as compiler caches comparison result
+    //assert(n8940 != 4); // may pass but likely will fail
+}
+
 /**********************************/
 
 int main()
@@ -1582,6 +1633,7 @@ int main()
     test14();
     test8129();
     test8976();
+    test8940();
 
     printf("Success\n");
     return 0;

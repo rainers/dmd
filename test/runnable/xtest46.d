@@ -5500,6 +5500,60 @@ void test8108()
 }
 
 /***************************************************/
+// 6141 + 8526
+
+void test6141()
+{
+    static void takeADelegate(void delegate()) {}
+    auto items = new int[1];
+    items[0] = 17;
+    foreach (ref item; items)
+    {
+        // both asserts fail
+        assert(item == 17);
+        assert(&item == items.ptr);
+
+        takeADelegate({ auto x = &item; });
+    }
+
+    foreach(ref val; [3])
+    {
+        auto dg = { int j = val; };
+        assert(&val != null); // Assertion failure
+        assert(val == 3);
+    }
+
+    static void f(lazy int) {}
+    int i = 0;
+    auto dg = { int j = i; };
+    foreach(ref val; [3])
+    {
+        f(val);
+        assert(&val != null); // Assertion failure
+        assert(val == 3);
+    }
+}
+
+void test8526()
+{
+    static void call(void delegate() dg) { dg(); }
+
+    foreach (i, j; [0])
+    {
+        call({
+            assert(i == 0); // fails, i is corrupted
+        });
+    }
+
+    foreach (n; 0..1)
+    {
+        call({
+            assert(n == 0); // fails, n is corrupted
+        });
+    }
+}
+
+/***************************************************/
 
 template ParameterTuple(alias func)
 {
@@ -5567,6 +5621,78 @@ struct S162
     void draw( int );
     void draw( long );
 }
+
+/***************************************************/
+
+void test163() {
+    static class C { int x; int y; }
+
+    immutable C c = new C();
+    shared C c2 = new C();
+    shared const C c3 = new C();
+
+    class D { int x; int y; }
+    immutable D d;
+    assert(!__traits(compiles, d = new D()));
+
+    static struct S { int x; int y; }
+
+    immutable S* s = new S();
+    shared S* s2 = new S();
+    shared const S* s3 = new S();
+
+    shared S* s4;
+    assert(!__traits(compiles, s4 = new immutable(S)()));
+
+    struct T { int x; int y; }
+    immutable T* t;
+    assert(!__traits(compiles, t = new T()));
+
+    immutable int* pi = new int();
+    immutable void* pv = new int();
+
+    immutable int[] ai = new int[1];
+    immutable void[] av = new int[2];
+}
+
+/***************************************************/
+struct S9000
+{ ubyte i = ubyte.max; }
+
+enum E9000 = S9000.init;
+
+/***************************************************/
+
+mixin template DefineCoreType(string type)
+{
+    struct Faulty
+    {
+        static int x;
+
+        static void instance()
+        {
+	    x = 3;
+        }
+
+	X164!() xxx;
+    }
+}
+
+mixin DefineCoreType!("");
+
+
+mixin template A164()
+{
+    static this()
+    {
+    }
+}
+
+struct X164()
+{
+    mixin A164!();
+}
+
 
 /***************************************************/
 
@@ -5819,8 +5945,11 @@ int main()
     test160();
     test8665();
     test8108();
+    test6141();
+    test8526();
     test161();
     test8917();
+    test163();
 
     printf("Success\n");
     return 0;

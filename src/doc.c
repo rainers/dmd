@@ -1,3 +1,4 @@
+
 // Compiler implementation of the D programming language
 // Copyright (c) 1999-2012 by Digital Mars
 // All Rights Reserved
@@ -190,7 +191,7 @@ DDOC_PARAM_ID  = $(TD $0)\n\
 DDOC_PARAM_DESC = $(TD $0)\n\
 DDOC_BLANKLINE  = $(BR)$(BR)\n\
 \n\
-DDOC_ANCHOR     = <a name=\"$0\"></a>\n\
+DDOC_ANCHOR     = <a name=\"$1\"></a>\n\
 DDOC_PSYMBOL    = $(U $0)\n\
 DDOC_KEYWORD    = $(B $0)\n\
 DDOC_PARAM      = $(I $0)\n\
@@ -495,7 +496,7 @@ void Dsymbol::emitDitto(Scope *sc)
 
     b.writestring("$(DDOC_DITTO ");
         o = b.offset;
-        toDocBuffer(&b);
+        toDocBuffer(&b, sc);
         //printf("b: '%.*s'\n", b.offset, b.data);
         /* If 'this' is a function template, then highlightCode() was
          * already run by FuncDeclaration::toDocbuffer().
@@ -557,15 +558,8 @@ void ScopeDsymbol::emitMemberComments(Scope *sc)
 
 void emitProtection(OutBuffer *buf, PROT prot)
 {
-    const char *p;
+    const char *p = (prot == PROTpublic) ? NULL : Pprotectionnames[prot];
 
-    switch (prot)
-    {
-        case PROTpackage:       p = "package";   break;
-        case PROTprotected:     p = "protected"; break;
-        case PROTexport:        p = "export";    break;
-        default:                p = NULL;        break;
-    }
     if (p)
         buf->printf("%s ", p);
 }
@@ -607,7 +601,7 @@ void Declaration::emitComment(Scope *sc)
 
     buf->writestring(ddoc_decl_s);
         o = buf->offset;
-        toDocBuffer(buf);
+        toDocBuffer(buf, sc);
         highlightCode(sc, this, buf, o);
         sc->lastoffset = buf->offset;
     buf->writestring(ddoc_decl_e);
@@ -636,7 +630,7 @@ void AggregateDeclaration::emitComment(Scope *sc)
     dc->pmacrotable = &sc->module->macrotable;
 
     buf->writestring(ddoc_decl_s);
-    toDocBuffer(buf);
+    toDocBuffer(buf, sc);
     sc->lastoffset = buf->offset;
     buf->writestring(ddoc_decl_e);
 
@@ -689,7 +683,7 @@ void TemplateDeclaration::emitComment(Scope *sc)
 
     buf->writestring(ddoc_decl_s);
         o = buf->offset;
-        ss->toDocBuffer(buf);
+        ss->toDocBuffer(buf, sc);
         if (ss == this)
             highlightCode(sc, this, buf, o);
         sc->lastoffset = buf->offset;
@@ -733,7 +727,7 @@ void EnumDeclaration::emitComment(Scope *sc)
     dc->pmacrotable = &sc->module->macrotable;
 
     buf->writestring(ddoc_decl_s);
-        toDocBuffer(buf);
+        toDocBuffer(buf, sc);
         sc->lastoffset = buf->offset;
     buf->writestring(ddoc_decl_e);
 
@@ -764,7 +758,7 @@ void EnumMember::emitComment(Scope *sc)
 
     buf->writestring(ddoc_decl_s);
         o = buf->offset;
-        toDocBuffer(buf);
+        toDocBuffer(buf, sc);
         highlightCode(sc, this, buf, o);
         sc->lastoffset = buf->offset;
     buf->writestring(ddoc_decl_e);
@@ -812,7 +806,7 @@ static void emitAnchor(OutBuffer *buf, Dsymbol *s)
 
 /******************************* toDocBuffer **********************************/
 
-void Dsymbol::toDocBuffer(OutBuffer *buf)
+void Dsymbol::toDocBuffer(OutBuffer *buf, Scope *sc)
 {
     //printf("Dsymbol::toDocbuffer() %s\n", toChars());
     HdrGenState hgs;
@@ -873,12 +867,12 @@ void declarationToDocBuffer(Declaration *decl, OutBuffer *buf, TemplateDeclarati
     }
 }
 
-void Declaration::toDocBuffer(OutBuffer *buf)
+void Declaration::toDocBuffer(OutBuffer *buf, Scope *sc)
 {
     declarationToDocBuffer(this, buf, NULL);
 }
 
-void AliasDeclaration::toDocBuffer(OutBuffer *buf)
+void AliasDeclaration::toDocBuffer(OutBuffer *buf, Scope *sc)
 {
     //printf("AliasDeclaration::toDocbuffer() %s\n", toChars());
     if (ident)
@@ -964,7 +958,7 @@ void prettyPrintDsymbol(OutBuffer *buf, Dsymbol *s, Dsymbol *parent)
     }
 }
 
-void TypedefDeclaration::toDocBuffer(OutBuffer *buf)
+void TypedefDeclaration::toDocBuffer(OutBuffer *buf, Scope *sc)
 {
     if (ident)
     {
@@ -979,7 +973,7 @@ void TypedefDeclaration::toDocBuffer(OutBuffer *buf)
 }
 
 
-void FuncDeclaration::toDocBuffer(OutBuffer *buf)
+void FuncDeclaration::toDocBuffer(OutBuffer *buf, Scope *sc)
 {
     //printf("FuncDeclaration::toDocbuffer() %s\n", toChars());
     if (ident)
@@ -999,13 +993,13 @@ void FuncDeclaration::toDocBuffer(OutBuffer *buf)
         }
         else
         {
-            Declaration::toDocBuffer(buf);
+            Declaration::toDocBuffer(buf, sc);
         }
     }
 }
 
 #if DMDV1
-void CtorDeclaration::toDocBuffer(OutBuffer *buf)
+void CtorDeclaration::toDocBuffer(OutBuffer *buf, Scope *sc)
 {
     HdrGenState hgs;
 
@@ -1015,7 +1009,7 @@ void CtorDeclaration::toDocBuffer(OutBuffer *buf)
 }
 #endif
 
-void AggregateDeclaration::toDocBuffer(OutBuffer *buf)
+void AggregateDeclaration::toDocBuffer(OutBuffer *buf, Scope *sc)
 {
     if (ident)
     {
@@ -1028,7 +1022,7 @@ void AggregateDeclaration::toDocBuffer(OutBuffer *buf)
     }
 }
 
-void StructDeclaration::toDocBuffer(OutBuffer *buf)
+void StructDeclaration::toDocBuffer(OutBuffer *buf, Scope *sc)
 {
     //printf("StructDeclaration::toDocbuffer() %s\n", toChars());
     if (ident)
@@ -1042,7 +1036,7 @@ void StructDeclaration::toDocBuffer(OutBuffer *buf)
             (td = parent->isTemplateDeclaration()) != NULL &&
             td->onemember == this)
         {   unsigned o = buf->offset;
-            td->toDocBuffer(buf);
+            td->toDocBuffer(buf, sc);
             highlightCode(NULL, this, buf, o);
         }
         else
@@ -1054,7 +1048,7 @@ void StructDeclaration::toDocBuffer(OutBuffer *buf)
     }
 }
 
-void ClassDeclaration::toDocBuffer(OutBuffer *buf)
+void ClassDeclaration::toDocBuffer(OutBuffer *buf, Scope *sc)
 {
     //printf("ClassDeclaration::toDocbuffer() %s\n", toChars());
     if (ident)
@@ -1068,7 +1062,7 @@ void ClassDeclaration::toDocBuffer(OutBuffer *buf)
             (td = parent->isTemplateDeclaration()) != NULL &&
             td->onemember == this)
         {   unsigned o = buf->offset;
-            td->toDocBuffer(buf);
+            td->toDocBuffer(buf, sc);
             highlightCode(NULL, this, buf, o);
         }
         else
@@ -1109,7 +1103,7 @@ void ClassDeclaration::toDocBuffer(OutBuffer *buf)
 }
 
 
-void EnumDeclaration::toDocBuffer(OutBuffer *buf)
+void EnumDeclaration::toDocBuffer(OutBuffer *buf, Scope *sc)
 {
     if (ident)
     {
@@ -1119,7 +1113,7 @@ void EnumDeclaration::toDocBuffer(OutBuffer *buf)
     }
 }
 
-void EnumMember::toDocBuffer(OutBuffer *buf)
+void EnumMember::toDocBuffer(OutBuffer *buf, Scope *sc)
 {
     if (ident)
     {

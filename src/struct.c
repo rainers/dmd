@@ -288,6 +288,7 @@ unsigned AggregateDeclaration::placeField(
 
 int AggregateDeclaration::isNested()
 {
+    assert((isnested & ~1) == 0);
     return isnested;
 }
 
@@ -387,7 +388,9 @@ void StructDeclaration::semantic(Scope *sc)
 
     assert(type);
     if (!members)                       // if forward reference
+    {
         return;
+    }
 
     if (symtab)
     {   if (sizeok == SIZEOKdone || !scope)

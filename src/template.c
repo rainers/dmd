@@ -2133,8 +2133,28 @@ FuncDeclaration *TemplateDeclaration::deduceFunctionTemplate(Scope *sc, Loc loc,
     if (!td_best)
     {
         if (!(flags & 1))
-            ::error(loc, "%s %s.%s does not match any function template declaration",
+        {
+            ::error(loc, "%s %s.%s does not match any function template declaration. Candidates are:",
                     kind(), parent->toPrettyChars(), ident->toChars());
+
+            // Display candidate template functions
+            int numToDisplay = 5; // sensible number to display
+            for (TemplateDeclaration *td = this; td; td = td->overnext)
+            {
+                ::errorSupplemental(td->loc, "%s", td->toPrettyChars());
+                if (!global.params.verbose && --numToDisplay == 0)
+                {
+                    // Too many overloads to sensibly display.
+                    // Just show count of remaining overloads.
+                    int remaining = 0;
+                    for (; td; td = td->overnext)
+                        ++remaining;
+                    if (remaining > 0)
+                        ::errorSupplemental(loc, "... (%d more, -v to show) ...", remaining);
+                    break;
+                }
+            }
+        }
         goto Lerror;
     }
     if (td_ambig)
@@ -2153,8 +2173,6 @@ FuncDeclaration *TemplateDeclaration::deduceFunctionTemplate(Scope *sc, Loc loc,
     ti->semantic(sc, fargs);
     fd_best = ti->toAlias()->isFuncDeclaration();
     if (!fd_best)
-        goto Lerror;
-    if (!((TypeFunction*)fd_best->type)->callMatch(fd_best->needThis() && !fd_best->isCtorDeclaration() ? ethis : NULL, fargs))
         goto Lerror;
 
     if (FuncLiteralDeclaration *fld = fd_best->isFuncLiteralDeclaration())
@@ -2361,6 +2379,18 @@ char *TemplateDeclaration::toChars()
         tp->toCBuffer(&buf, &hgs);
     }
     buf.writeByte(')');
+
+    if (onemember && onemember->toAlias())
+    {
+        FuncDeclaration *fd = onemember->toAlias()->isFuncDeclaration();
+        if (fd && fd->type)
+        {
+            TypeFunction *tf = (TypeFunction *)fd->type;
+            char const* args = Parameter::argsTypesToChars(tf->parameters, tf->varargs);
+            buf.writestring(args);
+        }
+    }
+
 #if DMDV2
     if (constraint)
     {   buf.writestring(" if (");
@@ -3185,21 +3215,34 @@ MATCH TypeInstance::deduceType(Scope *sc,
                 TemplateParameter *tp = (*parameters)[j];
                 // BUG: use tp->matchArg() instead of the following
                 TemplateValueParameter *tv = tp->isTemplateValueParameter();
-                if (!tv)
-                    goto Lnomatch;
-                Expression *e = (Expression *)(*dedtypes)[j];
-                if (e)
+                TemplateAliasParameter *ta = tp->isTemplateAliasParameter();
+                if (tv)
                 {
-                    if (!e1->equals(e))
-                        goto Lnomatch;
+                    Expression *e = (Expression *)(*dedtypes)[j];
+                    if (e)
+                    {
+                        if (!e1->equals(e))
+                            goto Lnomatch;
+                    }
+                    else
+                    {   Type *vt = tv->valType->semantic(0, sc);
+                        MATCH m = (MATCH)e1->implicitConvTo(vt);
+                        if (!m)
+                            goto Lnomatch;
+                        (*dedtypes)[j] = e1;
+                    }
                 }
-                else
-                {   Type *vt = tv->valType->semantic(0, sc);
-                    MATCH m = (MATCH)e1->implicitConvTo(vt);
-                    if (!m)
-                        goto Lnomatch;
+                else if (ta)
+                {
+                    if (ta->specType)
+                    {
+                        if (!e1->type->equals(ta->specType))
+                            goto Lnomatch;
+                    }
                     (*dedtypes)[j] = e1;
                 }
+                else
+                    goto Lnomatch;
             }
             else if (s1 && s2)
             {
@@ -5710,8 +5753,15 @@ Identifier *TemplateInstance::genIdent(Objects *args)
           Lsa:
             buf.writeByte('S');
             Declaration *d = sa->isDeclaration();
+          Lsa2:
             if (d && (!d->type || !d->type->deco))
-            {   error("forward reference of %s", d->toChars());
+            {
+                FuncAliasDeclaration *fad = d->isFuncAliasDeclaration();
+                if (fad)
+                {   d = fad->toAliasFunc();
+                    goto Lsa2;
+                }
+                error("forward reference of %s %s", d->kind(), d->toChars());
                 continue;
             }
 #if 0
@@ -6256,25 +6306,30 @@ void TemplateMixin::semantic(Scope *sc)
     {
         if (!td->semanticRun)
         {
-            /* Cannot handle forward references if mixin is a struct member,
-             * because addField must happen during struct's semantic, not
-             * during the mixin semantic.
-             * runDeferred will re-run mixin's semantic outside of the struct's
-             * semantic.
-             */
-            semanticRun = PASSinit;
-            AggregateDeclaration *ad = toParent()->isAggregateDeclaration();
-            if (ad)
-                ad->sizeok = SIZEOKfwd;
+            if (td->scope)
+                td->semantic(td->scope);
             else
             {
-                // Forward reference
-                //printf("forward reference - deferring\n");
-                scope = scx ? scx : new Scope(*sc);
-                scope->setNoFree();
-                scope->module->addDeferredSemantic(this);
+                /* Cannot handle forward references if mixin is a struct member,
+                 * because addField must happen during struct's semantic, not
+                 * during the mixin semantic.
+                 * runDeferred will re-run mixin's semantic outside of the struct's
+                 * semantic.
+                 */
+                semanticRun = PASSinit;
+                AggregateDeclaration *ad = toParent()->isAggregateDeclaration();
+                if (ad)
+                    ad->sizeok = SIZEOKfwd;
+                else
+                {
+                    // Forward reference
+                    //printf("forward reference - deferring\n");
+                    scope = scx ? scx : new Scope(*sc);
+                    scope->setNoFree();
+                    scope->module->addDeferredSemantic(this);
+                }
+                return;
             }
-            return;
         }
     }
 
@@ -6625,6 +6680,6 @@ void TemplateMixin::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 void TemplateMixin::toObjFile(int multiobj)
 {
     //printf("TemplateMixin::toObjFile('%s')\n", toChars());
-    TemplateInstance::toObjFile(multiobj);
+    TemplateInstance::toObjFile(0);
 }
 
