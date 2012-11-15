@@ -378,6 +378,9 @@ Expression *resolveUFCSProperties(Scope *sc, Expression *e1, Expression *e2 = NU
 
         if (e2)
         {
+            // run semantic without gagging
+            e2 = e2->semantic(sc);
+
             /* .f(e1) = e2
              */
             Expression *ex = e->syntaxCopy();
@@ -1200,6 +1203,8 @@ Type *functionParameters(Loc loc, Scope *sc, TypeFunction *tf,
                 }
             }
 #endif
+            if (!(p->storageClass & (STCref | STCout)))
+                arg = arg->optimize(WANTvalue);
         }
         else
         {
@@ -1260,8 +1265,8 @@ Type *functionParameters(Loc loc, Scope *sc, TypeFunction *tf,
                 }
             }
             arg->rvalue();
+            arg = arg->optimize(WANTvalue);
         }
-        arg = arg->optimize(WANTvalue);
     L3:
         (*arguments)[i] =  arg;
     }
@@ -3029,7 +3034,9 @@ Lagain:
             error("forward reference to %s", toChars());
             return new ErrorExp();
         }
-        return new VarExp(loc, s->isFuncDeclaration(), hasOverloads);
+        FuncDeclaration *fd = s->isFuncDeclaration();
+        fd->type = f->type;
+        return new VarExp(loc, fd, hasOverloads);
     }
     o = s->isOverloadSet();
     if (o)
@@ -5144,11 +5151,11 @@ Expression *VarExp::modifiableLvalue(Scope *sc, Expression *e)
 
 #if (BUG6652 == 1)
     VarDeclaration *v = var->isVarDeclaration();
-    if (v && (v->storage_class & STCbug6652))
+    if (v && (v->storage_class & STCbug6652) && v->type->isMutable())
         warning("variable modified in foreach body requires ref storage class");
 #elif (BUG6652 == 2)
     VarDeclaration *v = var->isVarDeclaration();
-    if (v && (v->storage_class & STCbug6652))
+    if (v && (v->storage_class & STCbug6652) && v->type->isMutable())
         deprecation("variable modified in foreach body requires ref storage class");
 #endif
 
@@ -8596,7 +8603,14 @@ Expression *AddrExp::semantic(Scope *sc)
              * otherwise the 'pure' is missing from the type assigned to x.
              */
 
-            error("forward reference to %s", e1->toChars());
+            if (e1->op == TOKvar)
+            {
+                VarExp *ve = (VarExp *)e1;
+                Declaration *d = ve->var;
+                error("forward reference to %s %s", d->kind(), d->toChars());
+            }
+            else
+                error("forward reference to %s", e1->toChars());
             return new ErrorExp();
         }
 
@@ -9116,6 +9130,8 @@ Expression *CastExp::semantic(Scope *sc)
             error("cannot cast %s to tuple type %s", e1->toChars(), to->toChars());
             return new ErrorExp();
         }
+        if (e1->type->ty == Terror)
+            return new ErrorExp();
 
         if (!to->equals(e1->type))
         {

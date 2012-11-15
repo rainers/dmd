@@ -1461,7 +1461,7 @@ Lretry:
             if (!inferparams || !prmtype->reliesOnTident(inferparams))
             {
                 // should copy prmtype to avoid affecting semantic result
-                prmtype = prmtype->syntaxCopy()->semantic(loc, paramscope);
+                prmtype = prmtype->syntaxCopy()->semantic(fd->loc, paramscope);
             }
 
 #if DMDV2
@@ -5050,9 +5050,11 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
             AggregateDeclaration *ad = sd->isAggregateDeclaration();
             if (ad)
                 ad->deferred = this;
-            goto Laftersemantic;
+            break;
         }
     }
+    if (Module::deferred.dim)
+        goto Laftersemantic;
 
     /* ConditionalDeclaration may introduce eponymous declaration,
      * so we should find it once again after semantic.
