@@ -35,7 +35,7 @@
 extern "C" char * __cdecl __locale_decpoint;
 #endif
 
-extern int HtmlNamedEntity(unsigned char *p, int length);
+extern int HtmlNamedEntity(unsigned char *p, size_t length);
 
 #define LS 0x2028       // UTF line separator
 #define PS 0x2029       // UTF paragraph separator
@@ -243,7 +243,7 @@ StringTable Lexer::stringtable;
 OutBuffer Lexer::stringbuffer;
 
 Lexer::Lexer(Module *mod,
-        unsigned char *base, unsigned begoffset, unsigned endoffset,
+        unsigned char *base, size_t begoffset, size_t endoffset,
         int doDocComment, int commentToken)
     : loc(mod, 1)
 {
@@ -2936,7 +2936,7 @@ static Keyword keywords[] =
 
 int Token::isKeyword()
 {
-    for (unsigned u = 0; u < sizeof(keywords) / sizeof(keywords[0]); u++)
+    for (size_t u = 0; u < sizeof(keywords) / sizeof(keywords[0]); u++)
     {
         if (keywords[u].value == value)
             return 1;
@@ -2946,7 +2946,7 @@ int Token::isKeyword()
 
 void Lexer::initKeywords()
 {
-    unsigned nkeywords = sizeof(keywords) / sizeof(keywords[0]);
+    size_t nkeywords = sizeof(keywords) / sizeof(keywords[0]);
 
     stringtable.init(6151);
 
@@ -2955,7 +2955,7 @@ void Lexer::initKeywords()
 
     cmtable_init();
 
-    for (unsigned u = 0; u < nkeywords; u++)
+    for (size_t u = 0; u < nkeywords; u++)
     {
         //printf("keyword[%d] = '%s'\n",u, keywords[u].name);
         const char *s = keywords[u].name;

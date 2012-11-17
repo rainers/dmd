@@ -531,7 +531,7 @@ void ClassDeclaration::semantic(Scope *sc)
          */
         if (vthis)              // if inheriting from nested class
         {   // Use the base class's 'this' member
-            isnested = 1;
+            isnested = true;
             if (storage_class & STCstatic)
                 error("static class cannot inherit from nested class %s", baseClass->toChars());
             if (toParent2() != baseClass->toParent2() &&
@@ -552,7 +552,7 @@ void ClassDeclaration::semantic(Scope *sc)
                         baseClass->toChars(),
                         baseClass->toParent2()->toChars());
                 }
-                isnested = 0;
+                isnested = false;
             }
         }
         else if (!(storage_class & STCstatic))
@@ -564,7 +564,7 @@ void ClassDeclaration::semantic(Scope *sc)
 
 
                 if (ad || fd)
-                {   isnested = 1;
+                {   isnested = true;
                     Type *t;
                     if (ad)
                         t = ad->handle;
@@ -1490,11 +1490,9 @@ void InterfaceDeclaration::semantic(Scope *sc)
 
 int InterfaceDeclaration::isBaseOf(ClassDeclaration *cd, int *poffset)
 {
-    unsigned j;
-
     //printf("%s.InterfaceDeclaration::isBaseOf(cd = '%s')\n", toChars(), cd->toChars());
     assert(!baseClass);
-    for (j = 0; j < cd->interfaces_dim; j++)
+    for (size_t j = 0; j < cd->interfaces_dim; j++)
     {
         BaseClass *b = cd->interfaces[j];
 
@@ -1528,7 +1526,7 @@ int InterfaceDeclaration::isBaseOf(ClassDeclaration *cd, int *poffset)
 int InterfaceDeclaration::isBaseOf(BaseClass *bc, int *poffset)
 {
     //printf("%s.InterfaceDeclaration::isBaseOf(bc = '%s')\n", toChars(), bc->base->toChars());
-    for (unsigned j = 0; j < bc->baseInterfaces_dim; j++)
+    for (size_t j = 0; j < bc->baseInterfaces_dim; j++)
     {
         BaseClass *b = &bc->baseInterfaces[j];
 
@@ -1698,7 +1696,7 @@ void BaseClass::copyBaseInterfaces(BaseClasses *vtblInterfaces)
     baseInterfaces = (BaseClass *)mem.calloc(baseInterfaces_dim, sizeof(BaseClass));
 
     //printf("%s.copyBaseInterfaces()\n", base->toChars());
-    for (int i = 0; i < baseInterfaces_dim; i++)
+    for (size_t i = 0; i < baseInterfaces_dim; i++)
     {
         BaseClass *b = &baseInterfaces[i];
         BaseClass *b2 = base->interfaces[i];

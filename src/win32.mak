@@ -110,6 +110,8 @@ TOLF=tolf
 ZIP=zip32
 # Copy to another directory
 SCP=$(CP)
+# PVS-Studio command line executable
+PVS="c:\Program Files (x86)\PVS-Studio\x64\PVS-Studio"
 
 ##### User configuration switches
 
@@ -229,19 +231,22 @@ BACKSRC= $C\cdef.h $C\cc.h $C\oper.h $C\ty.h $C\optabgen.c \
 	$C\html.h $C\html.c
 
 # Toolkit
-TKSRC= $(TK)\filespec.h $(TK)\mem.h $(TK)\list.h $(TK)\vec.h \
-	$(TK)\filespec.c $(TK)\mem.c $(TK)\vec.c $(TK)\list.c
+TKSRCC=	$(TK)\filespec.c $(TK)\mem.c $(TK)\vec.c $(TK)\list.c
+TKSRC= $(TK)\filespec.h $(TK)\mem.h $(TK)\list.h $(TK)\vec.h $(TKSRCC)
 
 # Root package
-ROOTSRC= $(ROOT)\root.h $(ROOT)\root.c $(ROOT)\array.c \
-	$(ROOT)\rmem.h $(ROOT)\rmem.c $(ROOT)\port.h \
-	$(ROOT)\stringtable.h $(ROOT)\stringtable.c \
-	$(ROOT)\gnuc.h $(ROOT)\gnuc.c $(ROOT)\man.c $(ROOT)\port.c \
-	$(ROOT)\response.c $(ROOT)\async.h $(ROOT)\async.c \
-	$(ROOT)\speller.h $(ROOT)\speller.c \
-	$(ROOT)\aav.h $(ROOT)\aav.c \
-	$(ROOT)\longdouble.h $(ROOT)\longdouble.c \
-	$(ROOT)\dmgcmem.c
+ROOTSRCC=$(ROOT)\root.c $(ROOT)\array.c $(ROOT)\rmem.c $(ROOT)\stringtable.c \
+	$(ROOT)\man.c $(ROOT)\port.c $(ROOT)\async.c $(ROOT)\response.c \
+	$(ROOT)\speller.c $(ROOT)\aav.c $(ROOT)\longdouble.c $(ROOT)\dmgcmem.c
+ROOTSRC= $(ROOT)\root.h \
+	$(ROOT)\rmem.h $(ROOT)\port.h \
+	$(ROOT)\stringtable.h \
+	$(ROOT)\gnuc.h $(ROOT)\gnuc.c \
+	$(ROOT)\async.h \
+	$(ROOT)\speller.h \
+	$(ROOT)\aav.h \
+	$(ROOT)\longdouble.h \
+	$(ROOTSRCC)
 # Removed garbage collector bits (look in history)
 #	$(ROOT)\gc\bits.c $(ROOT)\gc\gc.c $(ROOT)\gc\gc.h $(ROOT)\gc\mscbitops.h \
 #	$(ROOT)\gc\bits.h $(ROOT)\gc\gccbitops.h $(ROOT)\gc\linux.c $(ROOT)\gc\os.h \
@@ -355,6 +360,14 @@ scp: detab tolf $(MAKEFILES)
 	$(SCP) $(BACKSRC) $(SCPDIR)/src/backend
 	$(SCP) $(TKSRC) $(SCPDIR)/src/tk
 	$(SCP) $(ROOTSRC) $(SCPDIR)/src/root
+
+pvs:
+	$(PVS) --cfg PVS-Studio.cfg --cl-params /I$(ROOT) /Tp doc.c --source-file doc.c
+#	$(PVS) --cfg PVS-Studio.cfg --cl-params /I$(ROOT) /I$C /I$(TK) /Tp tocvdebug.c --source-file tocvdebug.c
+#	$(PVS) --cfg PVS-Studio.cfg --cl-params /I$(ROOT) /Tp $(SRCS) --source-file $(SRCS)
+#	$(PVS) --cfg PVS-Studio.cfg --cl-params /I$(ROOT) /Tp $(ROOTSRCC) --source-file $(ROOTSRCC)
+#	$(PVS) --cfg PVS-Studio.cfg --cl-params /I$C;$(TK) /Tp $(BACKSRC) --source-file $(BACKSRC)
+#	$(PVS) --cfg PVS-Studio.cfg --cl-params /I$(TK) /Tp $(TKSRCC) --source-file $(TKSRCC)
 
 
 ############################## Generated Source ##############################

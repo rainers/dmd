@@ -40,9 +40,9 @@ long __cdecl __ehfilter(LPEXCEPTION_POINTERS ep);
 #endif
 
 
-int response_expand(int *pargc, char ***pargv);
+int response_expand(size_t *pargc, char ***pargv);
 void browse(const char *url);
-void getenv_setargv(const char *envvar, int *pargc, char** *pargv);
+void getenv_setargv(const char *envvar, size_t *pargc, char** *pargv);
 
 void obj_start(const char *srcfile, const char *objfile);
 void obj_end(Library *library, File *objfile);
@@ -310,8 +310,8 @@ void usage()
 #else
     const char fpic[] = "";
 #endif
-    printf("DMD%s D Compiler %s\n%s %s\n",
-        sizeof(size_t) == 4 ? "32" : "64",
+    printf("DMD%d D Compiler %s\n%s %s\n",
+        sizeof(size_t) * 8,
         global.version, global.copyright, global.written);
     printf("\
 Documentation: http://www.dlang.org/index.html\n\
@@ -389,7 +389,7 @@ extern "C"
 }
 #endif
 
-int tryMain(int argc, char *argv[])
+int tryMain(size_t argc, char *argv[])
 {
     mem.init();                         // initialize storage allocator
     mem.setStackBottom(&argv);
@@ -401,8 +401,7 @@ int tryMain(int argc, char *argv[])
     Strings libmodules;
     char *p;
     Module *m;
-    int status = EXIT_SUCCESS;
-    int argcstart = argc;
+    size_t argcstart = argc;
     int setdebuglib = 0;
     char noboundscheck = 0;
         int setdefaultlib = 0;
@@ -747,7 +746,7 @@ int tryMain(int argc, char *argv[])
                 else
                     global.params.debuglevel = 1;
             }
-            else if (memcmp(p + 1, "version", 5) == 0)
+            else if (memcmp(p + 1, "version", 7) == 0)
             {
                 // Parse:
                 //      -version=number
@@ -1483,6 +1482,7 @@ int tryMain(int argc, char *argv[])
     if (global.errors)
         fatal();
 
+    int status = EXIT_SUCCESS;
     if (!global.params.objfiles->dim)
     {
         if (global.params.link)
@@ -1516,7 +1516,7 @@ int tryMain(int argc, char *argv[])
     return status;
 }
 
-int main(int argc, char *argv[])
+int main(size_t argc, char *argv[])
 {
     int status = -1;
 #if WINDOWS_SEH
@@ -1542,7 +1542,7 @@ int main(int argc, char *argv[])
  * The string is separated into arguments, processing \ and ".
  */
 
-void getenv_setargv(const char *envvar, int *pargc, char** *pargv)
+void getenv_setargv(const char *envvar, size_t *pargc, char** *pargv)
 {
     char *p;
 
@@ -1556,7 +1556,7 @@ void getenv_setargv(const char *envvar, int *pargc, char** *pargv)
 
     env = mem.strdup(env);      // create our own writable copy
 
-    int argc = *pargc;
+    size_t argc = *pargc;
     Strings *argv = new Strings();
     argv->setDim(argc);
 

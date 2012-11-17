@@ -326,7 +326,7 @@ struct Type : Object
     virtual Type *nextOf();
     uinteger_t sizemask();
     virtual int needsDestruction();
-    virtual int needsNested();
+    virtual bool needsNested();
 
     static void error(Loc loc, const char *format, ...);
     static void warning(Loc loc, const char *format, ...);
@@ -479,7 +479,7 @@ struct TypeSArray : TypeArray
     Expression *toExpression();
     int hasPointers();
     int needsDestruction();
-    int needsNested();
+    bool needsNested();
     TypeTuple *toArgTypes();
 #if CPP_MANGLE
     void toCppMangle(OutBuffer *buf, CppMangleState *cms);
@@ -653,7 +653,7 @@ struct TypeFunction : TypeNext
     bool parameterEscapes(Parameter *p);
     Type *addStorageClass(StorageClass stc);
 
-    int callMatch(Expression *ethis, Expressions *toargs, int flag = 0);
+    MATCH callMatch(Expression *ethis, Expressions *toargs, int flag = 0);
     type *toCtype();
     enum RET retStyle();
 
@@ -781,7 +781,7 @@ struct TypeStruct : Type
     int isAssignable(int blit = 0);
     int checkBoolean();
     int needsDestruction();
-    int needsNested();
+    bool needsNested();
     dt_t **toDt(dt_t **pdt);
     MATCH deduceType(Scope *sc, Type *tparam, TemplateParameters *parameters, Objects *dedtypes, unsigned *wildmatch = NULL);
     TypeInfoDeclaration *getTypeInfoDeclaration();
@@ -823,7 +823,7 @@ struct TypeEnum : Type
     int checkBoolean();
     int isAssignable(int blit = 0);
     int needsDestruction();
-    int needsNested();
+    bool needsNested();
     MATCH implicitConvTo(Type *to);
     MATCH constConv(Type *to);
     Type *toBasetype();
@@ -866,7 +866,7 @@ struct TypeTypedef : Type
     int checkBoolean();
     int isAssignable(int blit = 0);
     int needsDestruction();
-    int needsNested();
+    bool needsNested();
     Type *toBasetype();
     MATCH implicitConvTo(Type *to);
     MATCH constConv(Type *to);
