@@ -455,6 +455,7 @@ int tryMain(int argc, char *argv[])
     global.params.is64bit = (sizeof(size_t) == 8);
 
 #if TARGET_WINDOS
+	global.params.genCOFF = 0;
     global.params.is64bit = 0;
     global.params.defaultlibname = "phobos";
 #elif TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS

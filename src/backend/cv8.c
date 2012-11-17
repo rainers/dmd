@@ -512,9 +512,10 @@ void cv8_outsym(Symbol *s)
     if (s->Sflags & SFLnodebug)
         return;
 
-    idx_t typidx = cv_typidx(s->Stype);
-    //printf("typidx = %x\n", typidx);
     const char *id = s->prettyIdent ? s->prettyIdent : prettyident(s);
+	bool isthis = strcmp (id, "this") == 0;
+    idx_t typidx = cv4_typidx(s->Stype, isthis);
+    //printf("typidx = %x\n", typidx);
     size_t len = strlen(id);
 
     F1_Fixups f1f;
@@ -713,7 +714,7 @@ idx_t cv8_fwdref(Symbol *s)
     debtyp_t *d = debtyp_alloc(len + cv_stringbytes(s->Sident));
     TOWORD(d->data, leaf);
     TOWORD(d->data + 2, 0);     // number of fields
-    TOWORD(d->data + 4, 0x80);  // property
+    TOWORD(d->data + 4, 0x280); // property
     TOLONG(d->data + 6, 0);     // field list
     if (leaf == LF_CLASS_V3 || leaf == LF_STRUCTURE_V3)
     {
@@ -803,7 +804,7 @@ idx_t cv8_darray(type *t, idx_t etypidx)
     debtyp_t *d = debtyp_alloc(20 + cv_stringbytes(id));
     TOWORD(d->data, LF_STRUCTURE_V3);
     TOWORD(d->data + 2, 2);     // count
-    TOWORD(d->data + 4, 0);     // property
+    TOWORD(d->data + 4, 0x200); // property
     TOLONG(d->data + 6, fieldlist);
     TOLONG(d->data + 10, 0);    // dList
     TOLONG(d->data + 14, 0);    // vtshape
@@ -875,7 +876,7 @@ idx_t cv8_ddelegate(type *t, idx_t functypidx)
     debtyp_t *d = debtyp_alloc(20 + cv_stringbytes(id));
     TOWORD(d->data, LF_STRUCTURE_V3);
     TOWORD(d->data + 2, 2);     // count
-    TOWORD(d->data + 4, 0);     // property
+    TOWORD(d->data + 4, 0x200); // property
     TOLONG(d->data + 6, fieldlist);
     TOLONG(d->data + 10, 0);    // dList
     TOLONG(d->data + 14, 0);    // vtshape

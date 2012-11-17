@@ -333,7 +333,7 @@ symbol * MsCoffObj::sym_cdata(tym_t ty,char *p,int len)
 int MsCoffObj::data_readonly(char *p, int len, segidx_t *pseg)
 {
     int oldoff;
-    if (I64)
+    if (I64 || I32)
     {
         oldoff = Doffset;
         SegData[DATA]->SDbuf->reserve(len);
@@ -943,6 +943,8 @@ void MsCoffObj::term(const char *objfilename)
                             }
 #endif
                         }
+						else
+							assert(false); // not implemented for I32
                     }
                     else
                     {
@@ -2362,7 +2364,7 @@ int MsCoffObj::reftoident(segidx_t seg, targ_size_t offset, Symbol *s, targ_size
     }
     else
     {
-        if (I64)
+        if (I64 || I32)
         {
             //if (s->Sclass != SCcomdat)
                 //val += s->Soffset;

@@ -83,7 +83,7 @@ unsigned cv4_memfunctypidx(FuncDeclaration *fd)
         else
         {
             assert(ad->handle);
-            thisidx = cv4_typidx(ad->handle->toCtype());
+            thisidx = cv4_typidx(ad->handle->toCtype(), true);
         }
 
         unsigned nparam;
@@ -609,6 +609,7 @@ void ClassDeclaration::toDebug()
     {
         TOLONG(d->data + 10,0);         // dList
         TOLONG(d->data + 14,vshapeidx);
+		property |= 0x200;
     }
     TOWORD(d->data,leaf);
 

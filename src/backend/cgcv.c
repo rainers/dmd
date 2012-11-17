@@ -115,7 +115,7 @@ int cv_namestring(unsigned char *p,const char *name)
     if (config.fulltypes == CV8)
     {
         memcpy(p, name, len + 1);
-#if 0
+#if 1
         for(int i = 0; i < len; i++)
             if(p[i] == '.')
                 p[i] = '@';
@@ -1739,7 +1739,7 @@ STATIC unsigned cv4_symtypidx(symbol *s)
  * Return CV4 type index for a type.
  */
 
-unsigned cv4_typidx(type *t)
+unsigned cv4_typidx(type *t, bool isthis)
 {   unsigned typidx;
     unsigned u;
     unsigned next;
@@ -1859,7 +1859,7 @@ L2:
                 typidx = next | dt;
             else
             {
-                if (tycv & (mTYconst | mTYimmutable))
+                if (tycv & (mTYconst | mTYimmutable)) // || isthis)
                     attribute |= 0x400;
                 if (tycv & mTYvolatile)
                     attribute |= 0x200;
@@ -1879,6 +1879,8 @@ L2:
                         TOLONG(d->data + 2,next);
                         /* BUG: attribute bits are unknown, 0x1000C is maaaagic
                          */
+						//if(!isthis && t->Tnext && tybasic(t->Tnext->Tty) == TYstruct)
+						//	attribute |= 0x20; // make it a reference to allow '.' syntax in debugger
                         TOLONG(d->data + 6,attribute | 0x1000C);
                         break;
 

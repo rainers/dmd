@@ -62,7 +62,7 @@ unsigned cv4_numericbytes(targ_size_t value);
 void cv4_storenumeric(unsigned char *p,targ_size_t value);
 idx_t cv_debtyp ( debtyp_t *d );
 int cv_namestring ( unsigned char *p , const char *name );
-unsigned cv4_typidx(type *t);
+unsigned cv4_typidx(type *t, bool isthis = false);
 idx_t cv4_arglist(type *t,unsigned *pnparam);
 unsigned char cv4_callconv(type *t);
 

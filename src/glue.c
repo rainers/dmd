@@ -228,8 +228,9 @@ void obj_start(const char *srcfile, const char *objfile)
 #if TARGET_WINDOS
     // Produce Ms COFF files for 64 bit code, OMF for 32 bit code
     assert(objbuf.size() == 0);
-    objmod = global.params.is64bit == 1 ? MsCoffObj::init(&objbuf, srcfile, objfile, NULL)
-                                        :       Obj::init(&objbuf, srcfile, NULL);
+    bool mscoff = global.params.genCOFF || global.params.is64bit;
+    objmod = mscoff ? MsCoffObj::init(&objbuf, srcfile, objfile, NULL)
+                    :       Obj::init(&objbuf, srcfile, NULL);
 #else
     objmod = Obj::init(&objbuf, srcfile, NULL);
 #endif
