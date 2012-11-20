@@ -3,6 +3,10 @@ Microsoft Visual Studio Solution File, Format Version 10.00
 # Visual Studio 2008
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "dmd_msc", "dmd_msc.vcproj", "{BAE0389D-7D3F-4D5E-AE0E-C871776E8432}"
 EndProject
+Project("{002A2DE9-8BB6-484D-9802-7E4AD4084715}") = "druntime", "..\..\druntime\druntime.visualdproj", "{4317D44C-209D-467B-8602-A7FD84A1EBA9}"
+EndProject
+Project("{002A2DE9-8BB6-484D-9802-7E4AD4084715}") = "phobos", "..\..\phobos\phobos.visualdproj", "{A67AF41B-8085-45AF-8F1E-EEB5B40F06F4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -19,6 +23,18 @@ Global
 		{BAE0389D-7D3F-4D5E-AE0E-C871776E8432}.Release|Win32.Build.0 = Release|Win32
 		{BAE0389D-7D3F-4D5E-AE0E-C871776E8432}.Release|x64.ActiveCfg = Release|x64
 		{BAE0389D-7D3F-4D5E-AE0E-C871776E8432}.Release|x64.Build.0 = Release|x64
+		{4317D44C-209D-467B-8602-A7FD84A1EBA9}.Debug|Win32.ActiveCfg = Debug|Win32
+		{4317D44C-209D-467B-8602-A7FD84A1EBA9}.Debug|Win32.Build.0 = Debug|Win32
+		{4317D44C-209D-467B-8602-A7FD84A1EBA9}.Debug|x64.ActiveCfg = Debug|Win32
+		{4317D44C-209D-467B-8602-A7FD84A1EBA9}.Release|Win32.ActiveCfg = Release|Win32
+		{4317D44C-209D-467B-8602-A7FD84A1EBA9}.Release|Win32.Build.0 = Release|Win32
+		{4317D44C-209D-467B-8602-A7FD84A1EBA9}.Release|x64.ActiveCfg = Release|Win32
+		{A67AF41B-8085-45AF-8F1E-EEB5B40F06F4}.Debug|Win32.ActiveCfg = Debug|Win32
+		{A67AF41B-8085-45AF-8F1E-EEB5B40F06F4}.Debug|Win32.Build.0 = Debug|Win32
+		{A67AF41B-8085-45AF-8F1E-EEB5B40F06F4}.Debug|x64.ActiveCfg = Debug|Win32
+		{A67AF41B-8085-45AF-8F1E-EEB5B40F06F4}.Release|Win32.ActiveCfg = Release|Win32
+		{A67AF41B-8085-45AF-8F1E-EEB5B40F06F4}.Release|Win32.Build.0 = Release|Win32
+		{A67AF41B-8085-45AF-8F1E-EEB5B40F06F4}.Release|x64.ActiveCfg = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

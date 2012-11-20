@@ -57,6 +57,8 @@ void out_config_init()
 #if TARGET_WINDOS
     if (params->is64bit)
     {   config.exe = EX_WIN64;
+        config.obj = OBJ_COFF;
+
         config.fpxmmregs = TRUE;
 
         // Not sure we really need these two lines, try removing them later
@@ -65,6 +67,7 @@ void out_config_init()
     }
     else
     {   config.exe = EX_NT;
+        config.obj = params->genCOFF ? OBJ_COFF : OBJ_OMF;
         config.flags2 |= CFG2seh;       // Win32 eh
     }
 

@@ -168,7 +168,7 @@ int findNoMainError(int fd) {
 int runLINK()
 {
 #if _WIN32
-    if (global.params.is64bit)
+	if (global.params.is64bit || global.params.genCOFF)
     {
         OutBuffer cmdbuf;
 
@@ -275,14 +275,20 @@ int runLINK()
         if (vcinstalldir)
         {   cmdbuf.writestring(" /LIBPATH:\"");
             cmdbuf.writestring(vcinstalldir);
-            cmdbuf.writestring("\\lib\\amd64\"");
+            if(global.params.is64bit)
+                cmdbuf.writestring("\\lib\\amd64\"");
+            else
+                cmdbuf.writestring("\\lib\"");
         }
 
         const char *windowssdkdir = getenv("WindowsSdkDir");
         if (windowssdkdir)
         {   cmdbuf.writestring(" /LIBPATH:\"");
             cmdbuf.writestring(windowssdkdir);
-            cmdbuf.writestring("\\lib\\x64\"");
+            if(global.params.is64bit)
+                cmdbuf.writestring("\\lib\\x64\"");
+            else
+                cmdbuf.writestring("\\lib\"");
         }
 
         char *p = cmdbuf.toChars();
@@ -301,14 +307,17 @@ int runLINK()
                 sprintf(p, "@%s", lnkfilename->toChars());
         }
 
-        char *linkcmd = getenv("LINKCMD64");
+        char *linkcmd = getenv("LINKCMD");
         if (!linkcmd)
         {
             if (vcinstalldir)
             {
                 OutBuffer linkcmdbuf;
                 linkcmdbuf.writestring(vcinstalldir);
-                linkcmdbuf.writestring("\\bin\\amd64\\link");
+                if(global.params.is64bit)
+                    linkcmdbuf.writestring("\\bin\\amd64\\link");
+                else
+                    linkcmdbuf.writestring("\\bin\\link");
                 linkcmd = linkcmdbuf.toChars();
                 linkcmdbuf.extractData();
             }
@@ -734,7 +743,7 @@ int executecmd(char *cmd, char *args, int useenv)
         fflush(stdout);
     }
 
-    if (global.params.is64bit)
+	if (global.params.is64bit || global.params.genCOFF)
     {
     }
     else

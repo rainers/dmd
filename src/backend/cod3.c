@@ -3807,7 +3807,7 @@ void cod3_thunk(symbol *sthunk,symbol *sfunc,unsigned p,tym_t thisty,
     objmod->pubdef(cseg,sthunk,sthunk->Soffset);
 #endif
 #if TARGET_WINDOS
-    if (config.exe == EX_WIN64)
+    if (config.obj == OBJ_COFF)
         objmod->pubdef(cseg,sthunk,sthunk->Soffset);
 #endif
     searchfixlist(sthunk);              /* resolve forward refs */

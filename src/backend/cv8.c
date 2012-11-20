@@ -248,7 +248,7 @@ void cv8_initmodule(const char *filename, const char *modulename)
 void cv8_termmodule()
 {
     //printf("cv8_termmodule()\n");
-    assert(config.exe == EX_WIN64);
+    assert(config.obj == OBJ_COFF);
 }
 
 /******************************************
@@ -550,13 +550,13 @@ void cv8_outsym(Symbol *s)
             buf->writeWordn(0x1111);
             buf->write32(s->Soffset + base + BPoff);
             buf->write32(typidx);
-            buf->writeWordn(334);       // relative to RBP
+            buf->writeWordn(I64 ? 334 : 22);       // relative to RBP/EBP
             buf->writen(id, len + 1);
 #else
             // This is supposed to work, implicit BP relative addressing, but it does not
             buf->reserve(2 + 2 + 4 + 4 + len + 1);
             buf->writeWordn( 2 + 4 + 4 + len + 1);
-            buf->writeWordn(0x1006);
+            buf->writeWordn(S_BPREL_V3);
             buf->write32(s->Soffset + base + BPoff);
             buf->write32(typidx);
             buf->writen(id, len + 1);
@@ -766,19 +766,21 @@ idx_t cv8_darray(type *t, idx_t etypidx)
         0x03, 0x00,             // attribute
         0x23, 0x00, 0x00, 0x00, // size_t
         0x00, 0x00,             // offset
-        0x6c, 0x65, 0x6e, 0x67, 0x74, 0x68, 0x00,
+        'l', 'e', 'n', 'g', 't', 'h', 0x00,
         0xf3, 0xf2, 0xf1,
         0x0d, 0x15,
         0x03, 0x00,
         0x00, 0x00, 0x00, 0x00, // etypidx
         0x08, 0x00,
-        0x70, 0x74, 0x72, 0x00,
+        'p', 't', 'r', 0x00,
         0xf2, 0xf1,
     };
 
     debtyp_t *f = debtyp_alloc(0x26);
     memcpy(f->data,fl,0x26);
+    TOLONG(f->data + 6, I64 ? 0x23 : 0x22); // size_t
     TOLONG(f->data + 26, ptridx);
+    TOWORD(f->data + 30, NPTRSIZE);
     idx_t fieldlist = cv_debtyp(f);
 
     const char *id;
@@ -808,7 +810,7 @@ idx_t cv8_darray(type *t, idx_t etypidx)
     TOLONG(d->data + 6, fieldlist);
     TOLONG(d->data + 10, 0);    // dList
     TOLONG(d->data + 14, 0);    // vtshape
-    TOWORD(d->data + 18, 16);   // size
+    TOWORD(d->data + 18, 2 * NPTRSIZE);   // size
     cv_namestring(d->data + 20, id);
 
     return cv_debtyp(d);
@@ -869,6 +871,7 @@ idx_t cv8_ddelegate(type *t, idx_t functypidx)
     memcpy(f->data,fl,sizeof(fl));
     TOLONG(f->data + 6, pvidx);
     TOLONG(f->data + 23, ptridx);
+    TOWORD(f->data + 27, NPTRSIZE);
     idx_t fieldlist = cv_debtyp(f);
 
     const char *id = "dDelegate";
@@ -880,7 +883,7 @@ idx_t cv8_ddelegate(type *t, idx_t functypidx)
     TOLONG(d->data + 6, fieldlist);
     TOLONG(d->data + 10, 0);    // dList
     TOLONG(d->data + 14, 0);    // vtshape
-    TOWORD(d->data + 18, 16);   // size
+    TOWORD(d->data + 18, 2 * NPTRSIZE);   // size
     cv_namestring(d->data + 20, id);
 #endif
     return cv_debtyp(d);
@@ -941,7 +944,7 @@ idx_t cv8_daarray(type *t, idx_t keyidx, idx_t validx)
     TOLONG(d->data + 6, fieldlist);
     TOLONG(d->data + 10, 0);    // dList
     TOLONG(d->data + 14, 0);    // vtshape
-    TOWORD(d->data + 18, 16);   // size
+    TOWORD(d->data + 18, NPTRSIZE);   // size
     cv_namestring(d->data + 20, id);
 
 #endif

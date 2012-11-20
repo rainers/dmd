@@ -566,6 +566,8 @@ int tryMain(size_t argc, char *argv[])
                 global.params.is64bit = 0;
             else if (strcmp(p + 1, "m64") == 0)
                 global.params.is64bit = 1;
+            else if (strcmp(p + 1, "coff") == 0)
+                global.params.genCOFF = 1;
             else if (strcmp(p + 1, "profile") == 0)
                 global.params.trace = 1;
             else if (strcmp(p + 1, "v") == 0)

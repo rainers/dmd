@@ -650,7 +650,7 @@ void FuncDeclaration::toObjFile(int multiobj)
             objmod->ehsections();   // initialize exception handling sections
 #endif
 #if TARGET_WINDOS
-            if (I64)
+            if (I64 || global.params.genCOFF)
             {
                 objmod->external_def("main");
                 objmod->ehsections();   // initialize exception handling sections
@@ -667,7 +667,7 @@ void FuncDeclaration::toObjFile(int multiobj)
         else if (strcmp(s->Sident, "main") == 0 && linkage == LINKc)
         {
 #if TARGET_WINDOS
-            if (I64)
+            if (I64 || global.params.genCOFF)
             {
                 objmod->includelib("LIBCMT");
                 objmod->includelib("OLDNAMES");
@@ -683,7 +683,7 @@ void FuncDeclaration::toObjFile(int multiobj)
 #if TARGET_WINDOS
         else if (func->isWinMain() && onlyOneMain(loc))
         {
-            if (I64)
+            if (I64 || global.params.genCOFF)
             {
                 objmod->includelib("uuid");
                 objmod->includelib("LIBCMT");
@@ -701,7 +701,7 @@ void FuncDeclaration::toObjFile(int multiobj)
         // Pull in RTL startup code
         else if (func->isDllMain() && onlyOneMain(loc))
         {
-            if (I64)
+            if (I64 || global.params.genCOFF)
             {
                 objmod->includelib("uuid");
                 objmod->includelib("LIBCMT");

@@ -79,7 +79,7 @@ class LibOMF : public Library
 
 Library *Library::factory()
 {
-    return global.params.is64bit ? LibMSCoff_factory() : new LibOMF();
+	return global.params.is64bit || global.params.genCOFF ? LibMSCoff_factory() : new LibOMF();
 }
 
 LibOMF::LibOMF()

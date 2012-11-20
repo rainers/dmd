@@ -648,7 +648,9 @@ void build_syment_table()
 
         struct syment sym;
 
-        syment_set_name(&sym, s->Sident);
+        char dest[DEST_LEN+1];
+        char *destr = obj_mangle2(s, dest);
+        syment_set_name(&sym, destr);
 
         sym.n_value = 0;
         switch (s->Sclass)
@@ -697,7 +699,9 @@ void build_syment_table()
 
         struct syment sym;
 
-        syment_set_name(&sym, s->Sident);
+        char dest[DEST_LEN+1];
+        char *destr = obj_mangle2(s, dest);
+        syment_set_name(&sym, destr);
 
         sym.n_scnum = IMAGE_SYM_UNDEFINED;
         sym.n_type = 0;
@@ -943,21 +947,61 @@ void MsCoffObj::term(const char *objfilename)
                             }
 #endif
                         }
-						else
-							assert(false); // not implemented for I32
+                        else if (I32)
+                        {
+                            rel.r_type = (r->rtype == RELrel)
+                                    ? IMAGE_REL_I386_REL32
+                                    : IMAGE_REL_I386_DIR32;
+
+                            if (s->Stype->Tty & mTYthread)
+                                rel.r_type = IMAGE_REL_I386_SECREL;
+
+                            if (s->Sclass == SCextern ||
+                                s->Sclass == SCcomdef ||
+                                s->Sclass == SCcomdat ||
+                                s->Sclass == SCglobal)
+                            {
+                                rel.r_vaddr = r->offset;
+                                rel.r_symndx = s->Sxtrnnum;
+                            }
+                            else
+                            {
+                                rel.r_vaddr = r->offset;
+                                rel.r_symndx = s->Sxtrnnum;
+                            }
+                        }
+                        else
+                            assert(false); // not implemented for I16
                     }
                     else
                     {
 //printf("test2\n");
-                        if (pdata)
-                            rel.r_type = IMAGE_REL_AMD64_ADDR32NB;
-                        else
-                            rel.r_type = IMAGE_REL_AMD64_ADDR64;
+                        if (I64)
+                        {
+                            if (pdata)
+                                rel.r_type = IMAGE_REL_AMD64_ADDR32NB;
+                            else
+                                rel.r_type = IMAGE_REL_AMD64_ADDR64;
 
-                        if (r->rtype == RELseg)
-                            rel.r_type = IMAGE_REL_AMD64_SECTION;
-                        else if (r->rtype == RELaddr32)
-                            rel.r_type = IMAGE_REL_AMD64_SECREL;
+                            if (r->rtype == RELseg)
+                                rel.r_type = IMAGE_REL_AMD64_SECTION;
+                            else if (r->rtype == RELaddr32)
+                                rel.r_type = IMAGE_REL_AMD64_SECREL;
+                        }
+                        else if (I32)
+                        {
+                            if (pdata)
+                                rel.r_type = IMAGE_REL_I386_DIR32NB;
+                            else
+                                rel.r_type = IMAGE_REL_I386_DIR32;
+
+                            if (r->rtype == RELseg)
+                                rel.r_type = IMAGE_REL_I386_SECTION;
+                            else if (r->rtype == RELaddr32)
+                                rel.r_type = IMAGE_REL_I386_SECREL;
+                        }
+                        else
+                            assert(false); // not implemented for I16
 
                         rel.r_vaddr = r->offset;
                         rel.r_symndx = s->Sxtrnnum;
@@ -1090,7 +1134,7 @@ printf("test4\n");
                  */
                 //assert(rel.r_symndx <= 20000);
 
-                assert(rel.r_type <= 0x10);
+                assert(rel.r_type <= 0x14);
                 fobjbuf->write(&rel, sizeof(rel));
                 foffset += sizeof(rel);
             }
@@ -1813,34 +1857,36 @@ char *obj_mangle2(Symbol *s,char *dest)
             {
                 char *pstr = unsstr(type_paramsize(s->Stype));
                 size_t pstrlen = strlen(pstr);
-                size_t destlen = len + 1 + pstrlen + 1;
+                size_t prelen = I32 ? 1 : 0;
+                size_t destlen = prelen + len + 1 + pstrlen + 1;
 
                 if (destlen > DEST_LEN)
                     dest = (char *)mem_malloc(destlen);
-                memcpy(dest,name,len);
-                dest[len] = '@';
-                memcpy(dest + 1 + len, pstr, pstrlen + 1);
+                dest[0] = '_';
+                memcpy(dest + prelen,name,len);
+                dest[prelen + len] = '@';
+                memcpy(dest + prelen + 1 + len, pstr, pstrlen + 1);
                 break;
             }
         case mTYman_cpp:
         case mTYman_d:
         case mTYman_sys:
-        case mTYman_c:
+        case_mTYman_c64:
         case 0:
             if (len >= DEST_LEN)
                 dest = (char *)mem_malloc(len + 1);
             memcpy(dest,name,len+1);// copy in name and trailing 0
             break;
 
-#if 0
         case mTYman_c:
+            if(I64)
+                goto case_mTYman_c64;
             // Prepend _ to identifier
             if (len >= DEST_LEN - 1)
                 dest = (char *)mem_malloc(1 + len + 1);
             dest[0] = '_';
             memcpy(dest + 1,name,len+1);// copy in name and trailing 0
             break;
-#endif
 
         default:
 #ifdef DEBUG
@@ -2318,6 +2364,8 @@ void MsCoffObj::reftocodeseg(segidx_t seg,targ_size_t offset,targ_size_t val)
     int save = buf->size();
     buf->setsize(offset);
     val -= funcsym_p->Soffset;
+    if (I32)
+        MsCoffObj::addrel(seg, offset, funcsym_p, 0, RELaddr, 0);
 //    MsCoffObj::addrel(seg, offset, funcsym_p, 0, RELaddr);
 //    if (I64)
 //        buf->write64(val);
