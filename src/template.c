@@ -2354,11 +2354,13 @@ void TemplateDeclaration::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
         buf->writenl();
         buf->writebyte('{');
         buf->writenl();
+        buf->level++;
         for (size_t i = 0; i < members->dim; i++)
         {
             Dsymbol *s = (*members)[i];
             s->toCBuffer(buf, hgs);
         }
+        buf->level--;
         buf->writebyte('}');
         buf->writenl();
         hgs->tpltMember--;
@@ -5283,7 +5285,7 @@ void TemplateInstance::semanticTiargs(Loc loc, Scope *sc, Objects *tiargs, int f
         }
         else if (sa)
         {
-                Lsa:
+        Lsa:
             TemplateDeclaration *td = sa->isTemplateDeclaration();
             if (td && !td->semanticRun && td->literal)
                 td->semantic(sc);
@@ -6218,7 +6220,11 @@ void TemplateMixin::semantic(Scope *sc)
         // This for when a class/struct contains mixin members, and
         // is done over because of forward references
         if (parent && toParent()->isAggregateDeclaration())
+        {
+            if (sc->parent != parent)
+                return;
             semanticRun = PASSsemantic;            // do over
+        }
         else
         {
 #if LOG
