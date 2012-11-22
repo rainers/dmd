@@ -94,7 +94,7 @@ void cv8_writesection(int seg, unsigned type, Outbuffer *buf);
  * Input:
  *      filename        source file name
  */
-void cv8_initfile(const char *filename, const char *objfilename)
+void cv8_initfile(const char *filename)
 {
     //printf("cv8_initfile()\n");
 
@@ -215,7 +215,7 @@ void cv8_termfile(const char *objfilename)
         cv8_writesection(seg, 0xF1, F1_buf);
 
         // Fixups for "F1" section
-        unsigned length = F1fixup->size();
+        length = F1fixup->size();
         p = F1fixup->buf;
         for (unsigned u = 0; u < length; u += sizeof(F1_Fixups))
         {   F1_Fixups *f = (F1_Fixups *)(p + u);
@@ -239,8 +239,6 @@ void cv8_initmodule(const char *filename, const char *modulename)
 
     /* Experiments show that filename doesn't have to be qualified if
      * it is relative to the directory the .exe file is in.
-     * but that is a bad idea, because build directory and executable and working directory
-     * are not guaranteed to be the same, so please write the absolute path
      */
     currentfuncdata.srcfileoff = cv8_addfile(filename);
 }

@@ -101,23 +101,10 @@ void obj_write_deferred(Library *library)
             assert(mname);
         }
 
+        obj_start(mname);
+
         static int count;
         count++;                // sequence for generating names
-
-        /* Set object file name to be source name with sequence number,
-         * as mangled symbol names get way too long.
-         */
-        char *fname = FileName::removeExt(mname);
-        OutBuffer namebuf;
-        unsigned hash = 0;
-        for (char *p = s->toChars(); *p; p++)
-            hash += *p;
-        namebuf.printf("%s_%x_%x.%s", fname, count, hash, global.obj_ext);
-        namebuf.writeByte(0);
-        mem.free(fname);
-        fname = (char *)namebuf.extractData();
-
-        obj_start(mname, fname);
 
         /* Create a module that's a doppelganger of m, with just
          * enough to be able to create the moduleinfo.
@@ -142,6 +129,19 @@ void obj_write_deferred(Library *library)
         }
 
         md->genobjfile(0);
+
+        /* Set object file name to be source name with sequence number,
+         * as mangled symbol names get way too long.
+         */
+        char *fname = FileName::removeExt(mname);
+        OutBuffer namebuf;
+        unsigned hash = 0;
+        for (char *p = s->toChars(); *p; p++)
+            hash += *p;
+        namebuf.printf("%s_%x_%x.%s", fname, count, hash, global.obj_ext);
+        namebuf.writeByte(0);
+        mem.free(fname);
+        fname = (char *)namebuf.extractData();
 
         //printf("writing '%s'\n", fname);
         File *objfile = new File(fname);
@@ -217,7 +217,7 @@ symbol *callFuncsAndGates(Module *m, symbols *sctors, StaticDtorDeclarations *ec
 
 Outbuffer objbuf;
 
-void obj_start(const char *srcfile, const char *objfile)
+void obj_start(char *srcfile)
 {
     //printf("obj_start()\n");
 
@@ -229,7 +229,7 @@ void obj_start(const char *srcfile, const char *objfile)
     // Produce Ms COFF files for 64 bit code, OMF for 32 bit code
     assert(objbuf.size() == 0);
     bool mscoff = global.params.genCOFF || global.params.is64bit;
-    objmod = mscoff ? MsCoffObj::init(&objbuf, srcfile, objfile, NULL)
+    objmod = mscoff ? MsCoffObj::init(&objbuf, srcfile, NULL)
                     :       Obj::init(&objbuf, srcfile, NULL);
 #else
     objmod = Obj::init(&objbuf, srcfile, NULL);

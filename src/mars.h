@@ -455,7 +455,7 @@ void util_progress();
 struct Dsymbol;
 class Library;
 struct File;
-void obj_start(const char *srcfile, const char *objfile);
+void obj_start(char *srcfile);
 void obj_end(Library *library, File *objfile);
 void obj_append(Dsymbol *s);
 void obj_write_deferred(Library *library);
