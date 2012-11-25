@@ -24,15 +24,16 @@ void usage()
           "   example: d_do_test runnable pi d\n"
           "\n"
           "   relevant environment variables:\n"
-          "      ARGS:        set to execute all combinations of\n"
-          "      DMD:         compiler to use, ex: ../src/dmd\n"
-          "      OS:          win32, linux, freebsd, osx\n"
-          "      RESULTS_DIR: base directory for test results\n"
+          "      ARGS:          set to execute all combinations of\n"
+          "      REQUIRED_ARGS: arguments always passed to the compiler\n"
+          "      DMD:           compiler to use, ex: ../src/dmd\n"
+          "      OS:            win32, linux, freebsd, osx\n"
+          "      RESULTS_DIR:   base directory for test results\n"
           "   windows vs non-windows portability env vars:\n"
-          "      DSEP:        \\\\ or /\n"
-          "      SEP:         \\ or /\n"
-          "      OBJ:        .obj or .o\n"
-          "      EXE:        .exe or <null>\n");
+          "      DSEP:          \\\\ or /\n"
+          "      SEP:           \\ or /\n"
+          "      OBJ:          .obj or .o\n"
+          "      EXE:          .exe or <null>\n");
 }
 
 enum TestMode
@@ -211,9 +212,10 @@ string[] combinations(string argstr)
     return results;
 }
 
-string genTempFilename()
+string genTempFilename(string result_path)
 {
     auto a = appender!string();
+    a.put(result_path);
     foreach (ref e; 0 .. 8)
     {
         formattedWrite(a, "%x", rndGen.front);
@@ -274,9 +276,9 @@ string readSafe(string filename)
     return cast(string) text;
 }
 
-string execute(ref File f, string command, bool expectpass)
+string execute(ref File f, string command, bool expectpass, string result_path)
 {
-    auto filename = genTempFilename();
+    auto filename = genTempFilename(result_path);
     scope(exit) removeIfExists(filename);
 
     auto rc = system(command ~ " > " ~ filename ~ " 2>&1");
@@ -326,9 +328,10 @@ int main(string[] args)
     envData.model         = getenv("MODEL");
     envData.required_args = getenv("REQUIRED_ARGS");
 
+    string result_path    = envData.results_dir ~ envData.sep;
     string input_file     = input_dir ~ envData.sep ~ test_name ~ "." ~ test_extension;
-    string output_dir     = envData.results_dir ~ envData.sep ~ input_dir;
-    string output_file    = envData.results_dir ~ envData.sep ~ input_dir ~ envData.sep ~ test_name ~ "." ~ test_extension ~ ".out";
+    string output_dir     = result_path ~ input_dir;
+    string output_file    = result_path ~ input_dir ~ envData.sep ~ test_name ~ "." ~ test_extension ~ ".out";
     string test_app_dmd_base = output_dir ~ envData.sep ~ test_name ~ "_";
 
     TestArgs testArgs;
@@ -369,7 +372,7 @@ int main(string[] args)
             string[] toCleanup;
             scope(success) foreach (file; toCleanup) collectException(std.file.remove(file));
 
-            auto thisRunName = genTempFilename();
+            auto thisRunName = genTempFilename(result_path);
             auto fThisRun = File(thisRunName, "w");
             scope(exit)
             {
@@ -392,19 +395,18 @@ int main(string[] args)
                         join(testArgs.sources, " "));
                 version(Windows) command ~= " -map nul.map";
 
-                compile_output = execute(fThisRun, command, testArgs.mode != TestMode.FAIL_COMPILE);
+                compile_output = execute(fThisRun, command, testArgs.mode != TestMode.FAIL_COMPILE, result_path);
             }
             else
             {
                 foreach (filename; testArgs.sources)
                 {
-                    string newo= envData.results_dir ~ envData.sep ~
-                        replace(replace(filename, ".d", envData.obj), envData.sep~"imports"~envData.sep, envData.sep);
+                    string newo= result_path ~ replace(replace(filename, ".d", envData.obj), envData.sep~"imports"~envData.sep, envData.sep);
                     toCleanup ~= newo;
 
                     string command = format("%s -m%s -I%s %s %s -od%s -c %s", envData.dmd, envData.model, input_dir,
                         testArgs.requiredArgs, c, output_dir, filename);
-                    compile_output ~= execute(fThisRun, command, testArgs.mode != TestMode.FAIL_COMPILE);
+                    compile_output ~= execute(fThisRun, command, testArgs.mode != TestMode.FAIL_COMPILE, result_path);
                 }
 
                 if (testArgs.mode == TestMode.RUN)
@@ -413,7 +415,7 @@ int main(string[] args)
                     string command = format("%s -m%s %s -od%s -of%s %s", envData.dmd, envData.model, envData.required_args, output_dir, test_app_dmd, join(toCleanup, " "));
                     version(Windows) command ~= " -map nul.map";
 
-                    execute(fThisRun, command, true);
+                    execute(fThisRun, command, true, result_path);
                 }
             }
 
@@ -440,7 +442,7 @@ int main(string[] args)
                 string command = test_app_dmd;
                 if (testArgs.executeArgs) command ~= " " ~ testArgs.executeArgs;
 
-                execute(fThisRun, command, true);
+                execute(fThisRun, command, true, result_path);
             }
 
             fThisRun.close();
@@ -450,7 +452,7 @@ int main(string[] args)
                 f.write("Executing post-test script: ");
                 string prefix = "";
                 version (Windows) prefix = "bash ";
-                execute(f, prefix ~ testArgs.postScript ~ " " ~ thisRunName, true);
+                execute(f, prefix ~ testArgs.postScript ~ " " ~ thisRunName, true, result_path);
             }
         }
         catch(Exception e)
