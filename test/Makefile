@@ -62,11 +62,17 @@ ifeq (,$(OS))
     endif
 else
     ifeq (Windows_NT,$(OS))
-	OS:=win32
-    else
-        ifeq (Win_32,$(OS))
-	    OS:=win32
+        ifeq ($(findstring WOW64, $(shell uname)),WOW64)
+            OS:=win64
+        else
+            OS:=win32
         endif
+    endif
+    ifeq (Win_32,$(OS))
+	OS:=win32
+    endif
+    ifeq (Win_64,$(OS))
+	OS:=win64
     endif
 endif
 export OS
@@ -81,20 +87,13 @@ export RESULTS_DIR=test_results
 export MODEL=32
 export REQUIRED_ARGS=
 
-ifeq ($(OS),win32)
+ifeq ($(findstring win,$(OS)),win)
 export ARGS=-inline -release -g -O -unittest
-export DMD=../../windows/bin/dmd.exe
-# export DMD=../../windows/bin/dmd_msc.exe
-# export DMD=../../lib/dmd/x64/Release/dmd_msc.exe
-# export DMD=../../lib/dmd/x64/Debug/dmd_msc.exe
-# export DMD=../../lib/dmd/win32/Release/dmd_msc.exe
-# export DMD=/opt/gdc/bin/gdmd
+export DMD=../src/dmd.exe
 export EXE=.exe
 export OBJ=.obj
 export DSEP=\\
-export SEP=$(subst /,\,/)
-export MKDIR=c:\u\unix\usr\local\wbin\mkdir -p
-export TOUCH=c:\u\unix\usr\local\wbin\touch
+export SEP=$(shell echo '\')
 # bug in vim syntax hilighting, needed to kick it back into life: ')
 else
 export ARGS=-inline -release -gc -O -unittest -fPIC
@@ -103,8 +102,6 @@ export EXE=
 export OBJ=.o
 export DSEP=/
 export SEP=/
-export MKDIR=mkdir -p
-export TOUCH=touch
 endif
 
 ifeq ($(OS),freebsd)
@@ -123,11 +120,28 @@ DISABLED_TESTS += test17
 DISABLED_SH_TESTS += test39
 endif
 
-ifeq ($(OS),win32)
-DISABLED_SH_TESTS += test2 test35 test39 test44
-endif
+ifeq ($(OS),win64)
+DISABLED_TESTS += dhry
+DISABLED_TESTS += eh
+DISABLED_TESTS += eh2
+DISABLED_TESTS += integrate
+DISABLED_TESTS += statictor
+DISABLED_TESTS += test15
+DISABLED_TESTS += test17
+DISABLED_TESTS += test3
+DISABLED_TESTS += test4
+DISABLED_TESTS += testaa
+DISABLED_TESTS += testargtypes
+DISABLED_TESTS += testthread
+DISABLED_TESTS += testxmm
+DISABLED_TESTS += testzip
+DISABLED_TESTS += variadic
 
-d_do_test = ./$(RESULTS_DIR)/d_do_test$(EXE)
+DISABLED_SH_TESTS += test2
+DISABLED_SH_TESTS += test35
+DISABLED_SH_TESTS += test39
+DISABLED_SH_TESTS += test44
+endif
 
 runnable_tests=$(wildcard runnable/*.d) $(wildcard runnable/*.sh)
 runnable_test_results=$(addsuffix .out,$(addprefix $(RESULTS_DIR)/,$(runnable_tests)))
@@ -146,18 +160,18 @@ $(addsuffix .d.out,$(addprefix $(RESULTS_DIR)/runnable/,$(DISABLED_TESTS))): $(R
 $(addsuffix .sh.out,$(addprefix $(RESULTS_DIR)/runnable/,$(DISABLED_SH_TESTS))): $(RESULTS_DIR)/.created
 	$(QUIET) echo " ... $@ - disabled"
 
-$(RESULTS_DIR)/runnable/%.d.out: runnable/%.d $(RESULTS_DIR)/.created $(d_do_test) $(DMD)
-	$(QUIET) $(d_do_test) $(<D) $* d
+$(RESULTS_DIR)/runnable/%.d.out: runnable/%.d $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test $(DMD)
+	$(QUIET) ./$(RESULTS_DIR)/d_do_test $(<D) $* d
 
-$(RESULTS_DIR)/runnable/%.sh.out: runnable/%.sh $(RESULTS_DIR)/.created $(d_do_test) $(DMD)
+$(RESULTS_DIR)/runnable/%.sh.out: runnable/%.sh $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test $(DMD)
 	$(QUIET) echo " ... $(<D)/$*.sh"
 	$(QUIET) ./$(<D)/$*.sh
 
-$(RESULTS_DIR)/compilable/%.d.out: compilable/%.d $(RESULTS_DIR)/.created $(d_do_test) $(DMD)
-	$(QUIET) $(d_do_test) $(<D) $* d
+$(RESULTS_DIR)/compilable/%.d.out: compilable/%.d $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test $(DMD)
+	$(QUIET) ./$(RESULTS_DIR)/d_do_test $(<D) $* d
 
-$(RESULTS_DIR)/fail_compilation/%.d.out: fail_compilation/%.d $(RESULTS_DIR)/.created $(d_do_test) $(DMD)
-	$(QUIET) $(d_do_test) $(<D) $* d
+$(RESULTS_DIR)/fail_compilation/%.d.out: fail_compilation/%.d $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test $(DMD)
+	$(QUIET) ./$(RESULTS_DIR)/d_do_test $(<D) $* d
 
 $(RESULTS_DIR)/fail_compilation/%.html.out: fail_compilation/%.html $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test $(DMD)
 	$(QUIET) ./$(RESULTS_DIR)/d_do_test $(<D) $* html
@@ -167,37 +181,38 @@ quick:
 
 clean:
 	@echo "Removing output directory: $(RESULTS_DIR)"
-	$(QUIET)rm -rf $(RESULTS_DIR)
+	$(QUIET)if [ -e $(RESULTS_DIR) ]; then rm -rf $(RESULTS_DIR); fi
 
 $(RESULTS_DIR)/.created:
 	@echo Creating output directory: $(RESULTS_DIR) 
-	$(QUIET)$(MKDIR) $(RESULTS_DIR)
-	$(QUIET)$(MKDIR) $(RESULTS_DIR)/runnable
-	$(QUIET)$(MKDIR) $(RESULTS_DIR)/compilable
-	$(QUIET)$(MKDIR) $(RESULTS_DIR)/fail_compilation
-	$(QUIET)$(TOUCH) $(RESULTS_DIR)/.created
+	$(QUIET)if [ ! -d $(RESULTS_DIR) ]; then mkdir $(RESULTS_DIR); fi
+	$(QUIET)if [ ! -d $(RESULTS_DIR)/runnable ]; then mkdir $(RESULTS_DIR)/runnable; fi
+	$(QUIET)if [ ! -d $(RESULTS_DIR)/compilable ]; then mkdir $(RESULTS_DIR)/compilable; fi
+	$(QUIET)if [ ! -d $(RESULTS_DIR)/fail_compilation ]; then mkdir $(RESULTS_DIR)/fail_compilation; fi
+	$(QUIET)touch $(RESULTS_DIR)/.created
 
 run_tests: start_runnable_tests start_compilable_tests start_fail_compilation_tests
 
 run_runnable_tests: $(runnable_test_results)
 
-start_runnable_tests: $(RESULTS_DIR)/.created $(d_do_test)
+start_runnable_tests: $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test
 	@echo "Running runnable tests"
 	$(QUIET)$(MAKE) --no-print-directory run_runnable_tests
 
 run_compilable_tests: $(compilable_test_results)
 
-start_compilable_tests: $(RESULTS_DIR)/.created $(d_do_test)
+start_compilable_tests: $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test
 	@echo "Running compilable tests"
 	$(QUIET)$(MAKE) --no-print-directory run_compilable_tests
 
 run_fail_compilation_tests: $(fail_compilation_test_results)
 
-start_fail_compilation_tests: $(RESULTS_DIR)/.created $(d_do_test)
+start_fail_compilation_tests: $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test
 	@echo "Running fail compilation tests"
 	$(QUIET)$(MAKE) --no-print-directory run_fail_compilation_tests
 
-$(d_do_test): d_do_test.d $(RESULTS_DIR)/.created $(DMD)
+$(RESULTS_DIR)/d_do_test: d_do_test.d $(RESULTS_DIR)/.created
 	@echo "Building d_do_test tool"
+	@echo "OS: $(OS)"
 	$(QUIET)$(DMD) -m$(MODEL) -od$(RESULTS_DIR) -of$(RESULTS_DIR)$(DSEP)d_do_test d_do_test.d
 
