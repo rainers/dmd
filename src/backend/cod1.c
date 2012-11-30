@@ -2193,7 +2193,7 @@ code *callclib(elem *e,unsigned clib,regm_t *pretregs,regm_t keepmask)
                 info[CLIBullngdbl].retregs32 = mAX;
                 info[CLIBdblullng].retregs32 = mAX;
             }
-            else if (config.obj == OBJ_COFF)
+            else if (config.objfmt == OBJ_COFF)
             {
                 strcpy(lib[CLIBldiv].Sident, "_ms_alldiv");
                 strcpy(lib[CLIBlmod].Sident, "_ms_allrem");   info[CLIBlmod].retregs32 = mAX|mDX;

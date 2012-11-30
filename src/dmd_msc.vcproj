@@ -2146,6 +2146,10 @@
 				</File>
 			</Filter>
 		</Filter>
+		<File
+			RelativePath=".\win32.mak"
+			>
+		</File>
 	</Files>
 	<Globals>
 	</Globals>

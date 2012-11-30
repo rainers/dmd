@@ -24,6 +24,7 @@
 
 #include "mars.h"
 #include "lib.h"
+#include "cdef.h"
 
 #define LOG 0
 
@@ -79,7 +80,7 @@ class LibOMF : public Library
 
 Library *Library::factory()
 {
-	return global.params.is64bit || global.params.genCOFF ? LibMSCoff_factory() : new LibOMF();
+    return global.params.objfmt == OBJ_COFF ? LibMSCoff_factory() : new LibOMF();
 }
 
 LibOMF::LibOMF()

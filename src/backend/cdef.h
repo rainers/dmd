@@ -711,7 +711,7 @@ struct Config
                                    2:   fast inline 8087 code
                                  */
     short memmodel;             // 0:S,X,N,F, 1:M, 2:C, 3:L, 4:V
-    unsigned obj;               // target object format
+    unsigned objfmt;            // target object format
 #define OBJ_OMF         1
 #define OBJ_COFF        2
 #define OBJ_ELF         3

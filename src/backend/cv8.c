@@ -246,7 +246,7 @@ void cv8_initmodule(const char *filename, const char *modulename)
 void cv8_termmodule()
 {
     //printf("cv8_termmodule()\n");
-    assert(config.obj == OBJ_COFF);
+    assert(config.objfmt == OBJ_COFF);
 }
 
 /******************************************

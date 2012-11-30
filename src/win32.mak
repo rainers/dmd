@@ -521,8 +521,14 @@ glue.obj : $(CH) $(TOTALH) $C\rtlsym.h mars.h module.h glue.c
 imphint.obj : imphint.c
 	$(CC) -c $(CFLAGS) $*
 
+libomf.obj : $(TOTALH) lib.h libomf.c
+	$(CC) -c $(CFLAGS) -I$C $(PREC) $*
+
+link.obj : $(TOTALH) link.c
+	$(CC) -c $(CFLAGS) -I$C $(PREC) $*
+
 mars.obj : $(TOTALH) module.h mars.h mars.c
-	$(CC) -c $(CFLAGS) $(PREC) $* -Ae
+	$(CC) -c $(CFLAGS) -I$C $(PREC) $* -Ae
 
 md5.obj : $C\md5.h $C\md5.c
 	$(CC) -c $(MFLAGS) $C\md5
@@ -699,8 +705,6 @@ intrange.obj : $(TOTALH) intrange.h intrange.c
 json.obj : $(TOTALH) json.h json.c
 lexer.obj : $(TOTALH) lexer.c
 libmscoff.obj : $(TOTALH) lib.h libmscoff.c
-libomf.obj : $(TOTALH) lib.h libomf.c
-link.obj : $(TOTALH) link.c
 macro.obj : $(TOTALH) macro.h macro.c
 mangle.obj : $(TOTALH) dsymbol.h declaration.h mangle.c
 opover.obj : $(TOTALH) expression.h opover.c

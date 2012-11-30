@@ -44,6 +44,8 @@
 
 #include        "arraytypes.h"
 
+#include        "cdef.h"
+
 int executecmd(char *cmd, char *args, int useenv);
 int executearg0(char *cmd, char *args);
 
@@ -168,7 +170,7 @@ int findNoMainError(int fd) {
 int runLINK()
 {
 #if _WIN32
-	if (global.params.is64bit || global.params.genCOFF)
+    if (global.params.objfmt == OBJ_COFF)
     {
         OutBuffer cmdbuf;
 
@@ -745,7 +747,7 @@ int executecmd(char *cmd, char *args, int useenv)
         fflush(stdout);
     }
 
-	if (global.params.is64bit || global.params.genCOFF)
+    if (global.params.objfmt == OBJ_COFF)
     {
     }
     else

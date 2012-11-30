@@ -54,10 +54,10 @@ void out_config_init()
     config.memmodel = 0;
     config.flags |= CFGuchar;   // make sure TYchar is unsigned
     tytab[TYchar] |= TYFLuns;
+    config.objfmt = params->objfmt;
 #if TARGET_WINDOS
     if (params->is64bit)
     {   config.exe = EX_WIN64;
-        config.obj = OBJ_COFF;
 
         config.fpxmmregs = TRUE;
 
@@ -67,7 +67,6 @@ void out_config_init()
     }
     else
     {   config.exe = EX_NT;
-        config.obj = params->genCOFF ? OBJ_COFF : OBJ_OMF;
         config.flags2 |= CFG2seh;       // Win32 eh
     }
 
@@ -171,7 +170,7 @@ void out_config_init()
         config.fulltypes = (params->symdebug == 1) ? CVDWARF_D : CVDWARF_C;
 #endif
 #if SYMDEB_CODEVIEW
-        if (params->genCOFF || params->is64bit)
+        if (params->objfmt == OBJ_COFF)
         {
             configv.addlinenumbers = 1;
             config.fulltypes = CV8;

@@ -193,7 +193,7 @@ void outdata(symbol *s)
                             objmod->lidata(pseg->SDseg, pseg->SDoffset, datasize);
 #endif
 #if OMFOBJ
-                            if (config.obj == OBJ_COFF)
+                            if (config.objfmt == OBJ_COFF)
                                 objmod->lidata(pseg->SDseg, pseg->SDoffset, datasize);
                             else
                                 pseg->SDoffset += datasize;
@@ -213,7 +213,7 @@ void outdata(symbol *s)
                     if (s->Sclass == SCglobal || s->Sclass == SCstatic) // if a pubdef to be done
 #endif
 #if OMFOBJ
-                    if (s->Sclass == SCglobal || (s->Sclass == SCstatic && config.obj == OBJ_COFF)) // if a pubdef to be done
+                    if (s->Sclass == SCglobal || (s->Sclass == SCstatic && config.objfmt == OBJ_COFF)) // if a pubdef to be done
 #endif
                         objmod->pubdefsize(s->Sseg,s,s->Soffset,datasize);   // do the definition
                     searchfixlist(s);
@@ -338,7 +338,7 @@ void outdata(symbol *s)
         || s->Sclass == SCstatic
 #endif
 #if OMFOBJ
-        || (s->Sclass == SCstatic && config.obj == OBJ_COFF)
+        || (s->Sclass == SCstatic && config.objfmt == OBJ_COFF)
 #endif
         )
     {
@@ -487,7 +487,7 @@ void outcommon(symbol *s,targ_size_t n)
             objmod->common_block(s, 0, n, 1);
 #endif
 #if OMFOBJ
-            if (config.obj == OBJ_COFF)
+            if (config.objfmt == OBJ_COFF)
                 objmod->common_block(s, 0, n, 1);
             else
             {

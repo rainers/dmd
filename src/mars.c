@@ -37,8 +37,10 @@
 #if WINDOWS_SEH
 #include <windows.h>
 long __cdecl __ehfilter(LPEXCEPTION_POINTERS ep);
+#undef PASCAL // windef.h conflicts with definition in cdef.h
 #endif
 
+#include "cdef.h"
 
 int response_expand(size_t *pargc, char ***pargv);
 void browse(const char *url);
@@ -49,7 +51,7 @@ void obj_end(Library *library, File *objfile);
 
 void printCtfePerformanceStats();
 
-static bool parse_arch(size_t argc, char** argv, bool is64bit);
+static const char* parse_arch(size_t argc, char** argv, const char* arch);
 
 Global global;
 
@@ -456,10 +458,14 @@ int tryMain(size_t argc, char *argv[])
     global.params.is64bit = (sizeof(size_t) == 8);
 
 #if TARGET_WINDOS
-	global.params.genCOFF = 0;
+	global.params.objfmt = OBJ_OMF;
     global.params.is64bit = 0;
     global.params.defaultlibname = "phobos";
-#elif TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
+#elif TARGET_LINUX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
+	global.params.objfmt = OBJ_ELF;
+    global.params.defaultlibname = "phobos2";
+#elif TARGET_OSX
+	global.params.objfmt = OBJ_MACH;
     global.params.defaultlibname = "phobos2";
 #elif TARGET_NET
 #else
@@ -522,12 +528,13 @@ int tryMain(size_t argc, char *argv[])
     char** dflags_argv = NULL;
     getenv_setargv("DFLAGS", &dflags_argc, &dflags_argv);
 
-    char is64bit = global.params.is64bit; // use default
-    is64bit = parse_arch(argc, argv, is64bit);
-    is64bit = parse_arch(dflags_argc, dflags_argv, is64bit);
-    global.params.is64bit = is64bit;
+    const char *arch = global.params.is64bit ? "64" : "32"; // use default
+    arch = parse_arch(argc, argv, arch);
+    arch = parse_arch(dflags_argc, dflags_argv, arch);
+    char is64bit = arch[0] == '6';
 
-    inifile(argv[0], inifilename, is64bit ? "Environment64" : "Environment32");
+    char envsection[80] = "Environment";
+    inifile(argv[0], inifilename, strcat(envsection, arch));
 
     getenv_setargv("DFLAGS", &argc, &argv);
 
@@ -577,11 +584,20 @@ int tryMain(size_t argc, char *argv[])
                 global.params.trace = 1;
             }
             else if (strcmp(p + 1, "m32") == 0)
+            {
                 global.params.is64bit = 0;
+                global.params.objfmt = TARGET_WINDOS ? OBJ_OMF : global.params.objfmt;
+            }
             else if (strcmp(p + 1, "m64") == 0)
+            {
                 global.params.is64bit = 1;
-            else if (strcmp(p + 1, "coff") == 0)
-                global.params.genCOFF = 1;
+                global.params.objfmt = TARGET_WINDOS ? OBJ_COFF : global.params.objfmt;
+            }
+            else if (strcmp(p + 1, "m32ms") == 0)
+            {
+                global.params.is64bit = 0;
+                global.params.objfmt = TARGET_WINDOS ? OBJ_COFF : global.params.objfmt;
+            }
             else if (strcmp(p + 1, "profile") == 0)
                 global.params.trace = 1;
             else if (strcmp(p + 1, "v") == 0)
@@ -1025,6 +1041,14 @@ int tryMain(size_t argc, char *argv[])
         VersionCondition::addPredefinedGlobalIdent("Win32");
 #endif
     }
+#if TARGET_WINDOS
+    if (global.params.objfmt == OBJ_COFF)
+        VersionCondition::addPredefinedGlobalIdent("CRuntime_Microsoft");
+    else
+        VersionCondition::addPredefinedGlobalIdent("CRuntime_DigitalMars");
+#else
+    VersionCondition::addPredefinedGlobalIdent("CRuntime_GNU");
+#endif
     if (global.params.doDocComments)
         VersionCondition::addPredefinedGlobalIdent("D_Ddoc");
     if (global.params.cov)
@@ -1664,21 +1688,19 @@ Ldone:
  * to detect the desired architecture.
  */
 
-static bool parse_arch(size_t argc, char** argv, bool is64bit)
+static const char* parse_arch(size_t argc, char** argv, const char* arch)
 {
     for (size_t i = 0; i < argc; ++i)
     {   char* p = argv[i];
         if (p[0] == '-')
         {
-            if (strcmp(p + 1, "m32") == 0)
-                is64bit = 0;
-            else if (strcmp(p + 1, "m64") == 0)
-                is64bit = 1;
+            if (strcmp(p + 1, "m32") == 0 || strcmp(p + 1, "m32ms") == 0 || strcmp(p + 1, "m64") == 0)
+                arch = p + 2;
             else if (strcmp(p + 1, "run") == 0)
                 break;
         }
     }
-    return is64bit;
+    return arch;
 }
 
 #if WINDOWS_SEH

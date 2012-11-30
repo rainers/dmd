@@ -52,12 +52,6 @@ static char __file__[] = __FILE__;      // for tassert.h
 #define DEST_LEN (IDMAX + IDOHD + 1)
 char *obj_mangle2(Symbol *s,char *dest);
 
-#if MARS
-// C++ name mangling is handled by front end
-#define cpp_mangle(s) ((s)->Sident)
-#endif
-
-
 /******************************************
  */
 
