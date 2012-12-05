@@ -1230,11 +1230,7 @@ void FuncDeclaration::semantic3(Scope *sc)
                 if (f->isnothrow && (global.errors != nothrowErrors) )
                     error("'%s' is nothrow yet may throw", toChars());
                 if (flags & FUNCFLAGnothrowInprocess)
-                {
-                    flags &= ~FUNCFLAGnothrowInprocess;
-                    if (!(blockexit & BEthrow))
-                        f->isnothrow = TRUE;
-                }
+                    f->isnothrow = !(blockexit & BEthrow);
 #endif
                 //printf("callSuper = x%x\n", sc2->callSuper);
 
@@ -2932,6 +2928,8 @@ enum PURE FuncDeclaration::isPure()
 enum PURE FuncDeclaration::isPureBypassingInference()
 {
     if (flags & FUNCFLAGpurityInprocess)
+        return PUREfwdref;
+    else if (type->nextOf() == NULL)
         return PUREfwdref;
     else
         return isPure();

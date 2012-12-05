@@ -1970,12 +1970,12 @@ Expression *Type::getProperty(Loc loc, Identifier *ident)
     else if (ident == Id::init)
     {
         Type *tb = toBasetype();
+        e = defaultInitLiteral(loc);
         if (tb->ty == Tstruct && tb->needsNested())
         {
-            e = defaultInit(loc);
+            StructLiteralExp *se = (StructLiteralExp *)e;
+            se->sinit = se->sd->toInitializer();
         }
-        else
-            e = defaultInitLiteral(loc);
     }
     else if (ident == Id::mangleof)
     {   const char *s;
@@ -2048,13 +2048,13 @@ Expression *Type::dotExp(Scope *sc, Expression *e, Identifier *ident)
         }
         else if (ident == Id::init)
         {
-            if (toBasetype()->ty == Tstruct &&
-                ((TypeStruct *)toBasetype())->sym->isNested())
+            Type *tb = toBasetype();
+            e = defaultInitLiteral(e->loc);
+            if (tb->ty == Tstruct && tb->needsNested())
             {
-                e = defaultInit(e->loc);
+                StructLiteralExp *se = (StructLiteralExp *)e;
+                se->sinit = se->sd->toInitializer();
             }
-            else
-                e = defaultInitLiteral(e->loc);
             goto Lreturn;
         }
     }
@@ -5712,77 +5712,106 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
 }
 
 
+Type *getIndirection(Type *t)
+{
+    t = t->toBasetype();
+
+    if (t->ty == Tsarray)
+    {   while (t->ty == Tsarray)
+            t = t->nextOf()->toBasetype();
+    }
+    if (t->ty == Tarray || t->ty == Tpointer)
+        return t->nextOf()->toBasetype();
+    if (t->ty == Taarray || t->ty == Tclass)
+        return t;
+    if (t->ty == Tstruct)
+        return t->hasPointers() ? t : NULL; // TODO
+
+    // should consider TypeDelegate?
+    return NULL;
+}
+
 /********************************************
  * Do this lazily, as the parameter types might be forward referenced.
  */
 void TypeFunction::purityLevel()
 {
+    //printf("purityLevel(%s)\n", toChars());
+
     TypeFunction *tf = this;
-    if (tf->purity == PUREfwdref)
+    if (tf->purity == PUREfwdref && tf->next)
     {   /* Evaluate what kind of purity based on the modifiers for the parameters
          */
-        tf->purity = PUREstrong;        // assume strong until something weakens it
-        if (tf->parameters)
+        enum PURE purity = PUREstrong;  // assume strong until something weakens it
+        size_t dim = Parameter::dim(tf->parameters);
+
+        if (dim)
         {
-            size_t dim = Parameter::dim(tf->parameters);
+            Type *tret = tf->next;
+            assert(tret);
+            Type *treti = tf->isref ? tret->toBasetype() : getIndirection(tret);
+            if (treti && (treti->mod & MODimmutable))
+                treti = NULL;   // indirection is immutable
+            //printf("  tret = %s, treti = %s\n", tret->toChars(), treti ? treti->toChars() : "NULL");
+
             for (size_t i = 0; i < dim; i++)
             {   Parameter *fparam = Parameter::getNth(tf->parameters, i);
                 if (fparam->storageClass & STClazy)
                 {
-                    tf->purity = PUREweak;
+                    purity = PUREweak;
                     break;
                 }
                 if (fparam->storageClass & STCout)
                 {
-                    tf->purity = PUREweak;
+                    purity = PUREweak;
                     break;
                 }
                 if (!fparam->type)
                     continue;
-                if (fparam->storageClass & STCref)
+
+                Type *tprm = fparam->type;
+                Type *tprmi = fparam->storageClass & STCref ? tprm->toBasetype() : getIndirection(tprm);
+                //printf("  [%d] tprm = %s, tprmi = %s\n", i, tprm->toChars(), tprmi ? tprmi->toChars() : "NULL");
+
+                if (!tprmi || (tprmi->mod & MODimmutable))
+                    continue;           // there is no mutable indirection
+                if (tprmi->isMutable())
+                {   purity = PUREweak;      // indirection is mutable
+                    break;
+                }
+                if (!treti)
+                    continue;   // mutable indirection is never returned
+
+                if (purity < PUREstrong)
+                    continue;
+
+                // Determine the parameter is really PUREconst or not
+                assert(tprmi->mod & (MODconst | MODwild));
+                if (tprmi->constConv(treti))    // simple case
+                    purity = PUREconst;
+                else if (tprmi->invariantOf()->equals(treti->invariantOf()))
+                    continue;
+                else
                 {
-                    if (!(fparam->type->mod & (MODconst | MODimmutable | MODwild)))
-                    {   tf->purity = PUREweak;
-                        break;
-                    }
-                    if (fparam->type->mod & MODconst)
-                    {   tf->purity = PUREconst;
-                        continue;
-                    }
+                    /* The rest of this is little strict; fix later.
+                     * For example:
+                     *
+                     *      struct S { immutable* p; }
+                     *      pure S foo(const int* p);
+                     *
+                     * which would maintain strong purity.
+                     */
+                    if (tprmi->hasPointers() || treti->hasPointers())
+                        purity = PUREconst;
                 }
-                Type *t = fparam->type->toBasetype();
-                if (!t->hasPointers())
-                    continue;
-                if (t->mod & (MODimmutable | MODwild))
-                    continue;
-                /* The rest of this is too strict; fix later.
-                 * For example, the only pointer members of a struct may be immutable,
-                 * which would maintain strong purity.
-                 */
-                if (t->mod & MODconst)
-                {   tf->purity = PUREconst;
-                    continue;
-                }
-                Type *tn = t->nextOf();
-                if (tn)
-                {   tn = tn->toBasetype();
-                    if (tn->ty == Tpointer || tn->ty == Tarray)
-                    {   /* Accept immutable(T)* and immutable(T)[] as being strongly pure
-                         */
-                        if (tn->mod & (MODimmutable | MODwild))
-                            continue;
-                        if (tn->mod & MODconst)
-                        {   tf->purity = PUREconst;
-                            continue;
-                        }
-                    }
-                }
+
                 /* Should catch delegates and function pointers, and fold in their purity
                  */
-                tf->purity = PUREweak;          // err on the side of too strict
-                break;
             }
         }
+
+        //printf("  --> purity: %d\n", purity);
+        tf->purity = purity;
     }
 }
 
@@ -6010,7 +6039,6 @@ MATCH TypeFunction::callMatch(Expression *ethis, Expressions *args, int flag)
                         {
                             Expression *arg = (*args)[u];
                             assert(arg);
-#if 1
                             if (arg->op == TOKfunction)
                             {
                                 arg = ((FuncExp *)arg)->inferType(tb->nextOf(), 1);
@@ -6025,23 +6053,19 @@ MATCH TypeFunction::callMatch(Expression *ethis, Expressions *args, int flag)
                             if (tret)
                             {
                                 if (ta->next->equals(arg->type))
-                                {   m = MATCHexact;
-                                }
+                                    m = MATCHexact;
+                                else if (tret->toBasetype()->ty == Tvoid)
+                                    m = MATCHconvert;
                                 else
                                 {
                                     m = arg->implicitConvTo(tret);
                                     if (m == MATCHnomatch)
-                                    {
-                                        if (tret->toBasetype()->ty == Tvoid)
-                                            m = MATCHconvert;
-                                    }
+                                        m = arg->implicitConvTo(ta->next);
                                 }
                             }
                             else
                                 m = arg->implicitConvTo(ta->next);
-#else
-                            m = arg->implicitConvTo(ta->next);
-#endif
+
                             if (m == MATCHnomatch)
                                 goto Nomatch;
                             if (m < match)
