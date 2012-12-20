@@ -380,6 +380,11 @@ L1:
     return debtyptop++ + cgcv.deb_offset;
 }
 
+idx_t cv_numdebtypes()
+{
+    return debtyptop;
+}
+
 /****************************
  * Store a null record at DEB_NULL.
  */
@@ -1879,9 +1884,11 @@ L2:
                         TOLONG(d->data + 2,next);
                         /* BUG: attribute bits are unknown, 0x1000C is maaaagic
                          */
-						//if(!isthis && t->Tnext && tybasic(t->Tnext->Tty) == TYstruct)
-						//	attribute |= 0x20; // make it a reference to allow '.' syntax in debugger
-                        TOLONG(d->data + 6,attribute | 0x1000C);
+                        if(t->Tnext && tybasic(t->Tnext->Tty) == TYstruct) // !isthis && 
+                            attribute |= 0x20; // make it a reference to allow '.' syntax in debugger
+                        if(I64)
+                            attribute |= 0x1000C;
+                        TOLONG(d->data + 6,attribute);
                         break;
 
                     default:

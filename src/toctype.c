@@ -215,7 +215,11 @@ type *TypePointer::toCtype()
 
     //printf("TypePointer::toCtype() %s\n", toChars());
     if (ctype)
+    {
+        if (inToCType)
+            ctype->Tnext = next->toCtype(); // assume recursion checked elsewhere
         return ctype;
+    }
 
     if (1 || global.params.symdebug)
     {   /* Need to always do this, otherwise C++ name mangling
@@ -223,7 +227,9 @@ type *TypePointer::toCtype()
          */
         t = type_alloc(TYnptr);
         ctype = t;
+        inToCType = true;
         tn = next->toCtype();
+        inToCType = false;
         t->Tnext = tn;
         tn->Tcount++;
     }
@@ -238,7 +244,11 @@ type *TypeFunction::toCtype()
 {   type *t;
 
     if (ctype)
+    {
+        if (inToCType)
+            ctype->Tnext = next->toCtype(); // assume recursion checked elsewhere
         return ctype;
+    }
 
     if (1)
     {
@@ -264,7 +274,11 @@ type *TypeFunction::toCtype()
         if(!next)
             t->Tnext = type_alloc(TYvoid);
         else
+        {
+            inToCType = true;
             t->Tnext = next->toCtype();
+            inToCType = false;
+        }
         t->Tnext->Tcount++;
         t->Tparamtypes = paramtypes;
     }
@@ -276,7 +290,11 @@ type *TypeDelegate::toCtype()
 {   type *t;
 
     if (ctype)
+    {
+        if (inToCType)
+            ctype->Tnext = next->toCtype(); // assume recursion checked elsewhere
         return ctype;
+    }
 
     if (0 && global.params.symdebug)
     {
@@ -317,13 +335,19 @@ type *TypeDelegate::toCtype()
         if (global.params.symdebug == 1)
         {
             // Generate D symbolic debug info, rather than C
-            t = type_allocn(TYdelegate, next->toCtype());
+            t = type_alloc(TYdelegate);
+            ctype = t;
+            inToCType = true;
+            type *tn = next->toCtype();
+            inToCType = false;
+            t->Tnext = tn;
+            t->Tnext->Tcount++;
         }
         else
             t = type_fake(TYdelegate);
+        t->Tcount++;
     }
 
-    t->Tcount++;
     ctype = t;
     return t;
 }

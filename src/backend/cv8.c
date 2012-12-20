@@ -42,6 +42,8 @@ static char __file__[] = __FILE__;      /* for tassert.h                */
 
 #include        <direct.h>
 
+char *cpp_typetostring(type *t,char *prefix); // from newman.c
+
 // The "F1" section, which is the symbols
 static Outbuffer *F1_buf;
 
@@ -757,7 +759,7 @@ idx_t cv8_darray(type *t, idx_t etypidx)
     idx_t ptridx = cv4_typidx(tp);
     type_free(tp);
 
-    static const unsigned char fl[0x26] =
+    static const unsigned char fl[] =
     {
         0x03, 0x12,             // LF_FIELDLIST_V2
         0x0d, 0x15,             // LF_MEMBER_V3
@@ -774,13 +776,14 @@ idx_t cv8_darray(type *t, idx_t etypidx)
         0xf2, 0xf1,
     };
 
-    debtyp_t *f = debtyp_alloc(0x26);
-    memcpy(f->data,fl,0x26);
+    debtyp_t *f = debtyp_alloc(sizeof(fl));
+    memcpy(f->data,fl,sizeof(fl));
     TOLONG(f->data + 6, I64 ? 0x23 : 0x22); // size_t
     TOLONG(f->data + 26, ptridx);
     TOWORD(f->data + 30, NPTRSIZE);
     idx_t fieldlist = cv_debtyp(f);
 
+    char idstr[30];
     const char *id;
     switch (t->Tnext->Tty)
     {
@@ -797,7 +800,22 @@ idx_t cv8_darray(type *t, idx_t etypidx)
             break;
 
         default:
-            id = "dArray";
+#if 0
+            static struct rdtsc { 
+                rdtsc()
+                {
+                    long _tsc;
+                    __asm rdtsc; 
+                    __asm mov _tsc, EAX;
+                    tsc = _tsc;
+                }
+                long tsc; 
+            } unique;
+            sprintf(idstr, "dArray_%x_%x", unique.tsc, etypidx);
+            id = idstr;
+#else
+            id = cpp_typetostring(t->Tnext, "dArray_");
+#endif
             break;
     }
 
@@ -811,7 +829,12 @@ idx_t cv8_darray(type *t, idx_t etypidx)
     TOWORD(d->data + 18, 2 * NPTRSIZE);   // size
     cv_namestring(d->data + 20, id);
 
-    return cv_debtyp(d);
+    idx_t top = cv_numdebtypes();
+    idx_t debidx = cv_debtyp(d);
+    if(top != cv_numdebtypes())
+        cv8_udt(id, debidx);
+
+    return debidx;
 }
 
 /****************************************
@@ -848,7 +871,7 @@ idx_t cv8_ddelegate(type *t, idx_t functypidx)
     TOLONG(d->data + 10, key);  // void* type
     TOLONG(d->data + 14, functypidx); // function type
 #else
-    static const unsigned char fl[0x27] =
+    static const unsigned char fl[] =
     {
         0x03, 0x12,             // LF_FIELDLIST_V2
         0x0d, 0x15,             // LF_MEMBER_V3

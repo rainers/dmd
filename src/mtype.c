@@ -2328,6 +2328,7 @@ TypeNext::TypeNext(TY ty, Type *next)
         : Type(ty)
 {
     this->next = next;
+    inToCType = false;
 }
 
 void TypeNext::toDecoBuffer(OutBuffer *buf, int flag)

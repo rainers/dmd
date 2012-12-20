@@ -1002,6 +1002,13 @@ STATIC void cpp_basic_data_type(type *t)
             CHAR('_');
             goto dochar;
 
+        case TYucent:  // for I64, same as TYdarray
+            CHAR('_');
+            CHAR(t->Tnext ? 'P' : 'Q');
+            if (t->Tnext)
+                cpp_pointer_type(t);
+            break;
+
 #if TARGET_SEGMENTED
         case TYsptr:
         case TYcptr:

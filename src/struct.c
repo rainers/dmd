@@ -104,7 +104,7 @@ void AggregateDeclaration::semantic3(Scope *sc)
         sc->pop();
 
         if (!getRTInfo && Type::rtinfo && 
-            (!isDeprecated() || global.params.useDeprecated) && // don't do it for deprectated
+            (!isDeprecated() || global.params.useDeprecated) && // don't do it for unused deprecated types
             (type && type->ty != Terror)) // or error types
         {   // Evaluate: gcinfo!type
             Objects *tiargs = new Objects();
