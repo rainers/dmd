@@ -1308,7 +1308,12 @@ Type *Type::aliasthisOf()
                     {
                         TemplateInstance *spec = fd->isSpeculative();
                         int olderrs = global.errors;
+                        // If it isn't speculative, we need to show errors
+                        unsigned oldgag = global.gag;
+                        if (global.gag && !spec)
+                            global.gag = 0;
                         fd->semantic3(fd->scope);
+                        global.gag = oldgag;
                         // Update the template instantiation with the number
                         // of errors which occured.
                         if (spec && global.errors != olderrs)
@@ -3759,8 +3764,17 @@ void TypeSArray::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol
             }
             if (o->dyncast() == DYNCAST_EXPRESSION)
             {
-                *ps = NULL;
-                *pe = (Expression *)o;
+                Expression *e = (Expression *)o;
+                if (e->op == TOKdsymbol)
+                {
+                    *ps = ((DsymbolExp *)e)->s;
+                    *pe = NULL;
+                }
+                else
+                {
+                    *ps = NULL;
+                    *pe = e;
+                }
                 return;
             }
             if (o->dyncast() == DYNCAST_TYPE)
@@ -8003,6 +8017,7 @@ L1:
             e = e->semantic(sc);
             return e;
         }
+        accessCheck(e->loc, sc, e, d);
         VarExp *ve = new VarExp(e->loc, d, 1);
         if (d->isVarDeclaration() && d->needThis())
             ve->type = d->type->addMod(e->type->mod);
@@ -8672,6 +8687,7 @@ L1:
                 return e;
             }
         }
+        accessCheck(e->loc, sc, e, d);
         VarExp *ve = new VarExp(e->loc, d, 1);
         if (d->isVarDeclaration() && d->needThis())
             ve->type = d->type->addMod(e->type->mod);

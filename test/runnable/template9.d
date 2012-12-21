@@ -1704,6 +1704,205 @@ void test9076()
 }
 
 /**********************************/
+// 9083
+
+template isFunction9083(X...) if (X.length == 1)
+{
+    enum isFunction9083 = true;
+}
+
+struct S9083
+{
+    static string func(alias Class)()
+    {
+        foreach (m; __traits(allMembers, Class))
+        {
+            pragma(msg, m);  // prints "func"
+            enum x1 = isFunction9083!(mixin(m));  //NG
+            enum x2 = isFunction9083!(func);      //OK
+        }
+        return "";
+    }
+}
+enum nothing9083 = S9083.func!S9083();
+
+class C9083
+{
+    int x;  // some class members
+
+    void func()
+    {
+        void templateFunc(T)(ref const T obj)
+        {
+            enum x1 = isFunction9083!(mixin("x"));  // NG
+            enum x2 = isFunction9083!(x);           // NG
+        }
+        templateFunc(this);
+    }
+}
+
+/**********************************/
+// 9100
+
+template Id(alias A) { alias Id = A; }
+template ErrId(alias A) { static assert(0); }
+template TypeTuple9100(TL...) { alias TypeTuple9100 = TL; }
+
+class C9100
+{
+    int value;
+
+    int fun() { return value; }
+    int tfun(T)() { return value; }
+    TypeTuple9100!(int, long) field;
+
+    void test()
+    {
+        this.value = 1;
+        auto c = new C9100();
+        c.value = 2;
+
+        alias t1a = Id!(c.fun);             // OK
+        alias t1b = Id!(this.fun);          // Prints weird error, bad
+        // -> internally given TOKdotvar
+        assert(t1a() == this.value);
+        assert(t1b() == this.value);
+
+        alias t2a = Id!(c.tfun);            // OK
+        static assert(!__traits(compiles, ErrId!(this.tfun)));
+        alias t2b = Id!(this.tfun);         // No error occurs, why?
+        // -> internally given TOKdottd
+        assert(t2a!int() == this.value);
+        assert(t2b!int() == this.value);
+
+        alias t3a = Id!(foo9100);           // OK
+        alias t3b = Id!(mixin("foo9100"));  // Prints weird error, bad
+        // -> internally given TOKtemplate
+        assert(t3a() == 10);
+        assert(t3b() == 10);
+
+        assert(field[0] == 0);
+        alias t4a = TypeTuple9100!(field);              // NG
+        alias t4b = TypeTuple9100!(GetField9100!());    // NG
+        t4a[0] = 1; assert(field[0] == 1);
+        t4b[0] = 2; assert(field[0] == 2);
+    }
+}
+
+int foo9100()() { return 10; }
+template GetField9100() { alias GetField9100 = C9100.field[0]; }
+
+void test9100()
+{
+    (new C9100()).test();
+}
+
+/**********************************/
+// 9101
+
+class Node9101
+{
+    template ForwardCtorNoId()
+    {
+        this() {} // default constructor
+        void foo() { 0 = 1; }    // wrong code
+    }
+}
+enum x9101 = __traits(compiles, Node9101.ForwardCtorNoId!());
+
+/**********************************/
+// 9124
+
+struct Foo9124a(N...)
+{
+    enum SIZE = N[0];
+    private int _val;
+
+    public void opAssign (T) (T other)
+    if (is(T unused == Foo9124a!(_N), _N...))
+    {
+        _val = other._val;          // compile error
+        this._val = other._val;     // explicit this make it work
+    }
+
+    public auto opUnary (string op) () if (op == "~") {
+        Foo9124a!(SIZE) result = this;
+        return result;
+    }
+}
+void test9124a()
+{
+    Foo9124a!(28) a;
+    Foo9124a!(28) b = ~a;
+}
+
+// --------
+
+template Foo9124b(T, U, string OP)
+{
+    enum N = T.SIZE;
+    alias Foo9124b = Foo9124b!(false, true, N);
+}
+struct Foo9124b(bool S, bool L, N...)
+{
+    enum SIZE = 5;
+    long[1] _a = 0;
+    void someFunction() const {
+        auto data1 = _a;        // Does not compile
+        auto data2 = this._a;   // <--- Compiles
+    }
+    auto opBinary(string op, T)(T) {
+        Foo9124b!(typeof(this), T, op) test;
+    }
+}
+void test9124b()
+{
+    auto p = Foo9124b!(false, false, 5)();
+    auto q = Foo9124b!(false, false, 5)();
+    p|q;
+    p&q;
+}
+
+/**********************************/
+// 9143
+
+struct Foo9143a(bool S, bool L)
+{
+    auto noCall() {
+        Foo9143a!(S, false) x1;         // compiles if this line commented
+        static if(S) Foo9143a!(true,  false) x2;
+        else         Foo9143a!(false, false) x2;
+    }
+    this(T)(T other)        // constructor
+    if (is(T unused == Foo9143a!(P, Q), bool P, bool Q)) { }
+}
+
+struct Foo9143b(bool L, size_t N)
+{
+    void baaz0() {
+        bar!(Foo9143b!(false, N))();    // line 7
+        // -> move to before the baaz semantic
+    }
+    void baaz() {
+        bar!(Foo9143b!(false, 2LU))();  // line 3
+        bar!(Foo9143b!(true, 2LU))();   // line 4
+        bar!(Foo9143b!(L, N))();        // line 5
+        bar!(Foo9143b!(true, N))();     // line 6
+        bar!(Foo9143b!(false, N))();    // line 7
+    }
+    void bar(T)()
+    if (is(T unused == Foo9143b!(_L, _N), bool _L, size_t _N))
+    {}
+}
+
+void test9143()
+{
+    Foo9143a!(false, true) k = Foo9143a!(false, false)();
+
+    auto p = Foo9143b!(true, 2LU)();
+}
+
+/**********************************/
 
 int main()
 {
@@ -1771,6 +1970,10 @@ int main()
     test9026();
     test9038();
     test9076();
+    test9100();
+    test9124a();
+    test9124b();
+    test9143();
 
     printf("Success\n");
     return 0;

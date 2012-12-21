@@ -436,12 +436,17 @@ void vwarning(Loc loc, const char *format, va_list);
 void verrorSupplemental(Loc loc, const char *format, va_list ap);
 void verrorPrint(Loc loc, const char *header, const char *format, va_list ap, const char *p1 = NULL, const char *p2 = NULL);
 void vdeprecation(Loc loc, const char *format, va_list ap, const char *p1 = NULL, const char *p2 = NULL);
+
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noreturn))
+#endif
 void fatal();
+
 void err_nomem();
 int runLINK();
 void deleteExeFile();
 int runProgram();
-const char *inifile(const char *argv0, const char *inifile, const char* section);
+const char *inifile(const char *argv0, const char *inifile, const char* envsectionname);
 void halt();
 void util_progress();
 

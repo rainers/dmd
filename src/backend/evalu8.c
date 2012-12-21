@@ -45,6 +45,10 @@
 #define fmodl fmod
 #endif
 
+#if _MSC_VER
+#define isnan _isnan
+#endif
+
 #include        "cc.h"
 #include        "oper.h"                /* OPxxxx definitions           */
 #include        "global.h"

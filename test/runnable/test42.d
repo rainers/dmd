@@ -5388,6 +5388,61 @@ void test8987(){
 }
 
 /***************************************************/
+// 8796
+
+int* wrong8796(int* p)
+{
+    *p++ = 1;
+    return p;
+}
+
+void test8796()
+{
+    int[3] arr;
+    int* q = arr.ptr;
+    q = wrong8796(q);
+    assert(q != arr.ptr);
+}
+
+/***************************************************/
+// 9171
+
+ulong bitcomb9171(ulong v)
+{
+    if(v)
+    {
+        ulong result;
+        if(v & 1)
+        {
+            auto r = bitcomb9171(v >> 1);
+	    printf("r=%016llx\n", r);
+
+            auto z = ((r & (r-1) ^ r));
+	    check9171("str", z>>1);
+//	    printf("z=%016llx\n", z>>1);
+            return r;
+        }
+        else
+        {
+            auto fb = v & (v-1) ^ v;
+            result = (fb >> 1) | (v ^ fb);
+        }
+        return result;
+    }
+    return 0;
+}
+
+void check9171(const char *s, ulong v)
+{
+    assert(v == 0x80000000);
+}
+
+void test9171()
+{
+    bitcomb9171(0b1110000000000000010000000000000000000000000000000001);
+}
+
+/***************************************************/
 
 int main()
 {
@@ -5658,6 +5713,8 @@ int main()
     test247();
     test8340();
     test8376();
+    test8796();
+    test9171();
 
     writefln("Success");
     return 0;

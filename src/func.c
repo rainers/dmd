@@ -170,7 +170,12 @@ void FuncDeclaration::semantic(Scope *sc)
     storage_class |= sc->stc & ~STCref;
     ad = isThis();
     if (ad)
+    {
         storage_class |= ad->storage_class & (STC_TYPECTOR | STCsynchronized);
+
+        if (StructDeclaration *sd = ad->isStructDeclaration())
+            sd->makeNested();
+    }
 
     //printf("function storage_class = x%llx, sc->stc = x%llx, %x\n", storage_class, sc->stc, Declaration::isFinal());
 
@@ -1276,7 +1281,10 @@ void FuncDeclaration::semantic3(Scope *sc)
 
                     e = e->trySemantic(sc2);
                     if (!e)
-                        error("no match for implicit super() call in constructor");
+                    {
+                        const char* impGen = ((CtorDeclaration*)this)->isImplicit ? "implicitly generated " : "";
+                        error("no match for implicit super() call in %sconstructor", impGen);
+                    }
                     else
                     {
                         Statement *s = new ExpStatement(0, e);
@@ -1667,7 +1675,16 @@ void FuncDeclaration::semantic3(Scope *sc)
     }
 
     if (global.gag && global.errors != nerrors)
+    {
+        /* Errors happened when compiling this function.
+         */
         semanticRun = PASSsemanticdone; // Ensure errors get reported again
+        /* Except that re-running semantic3() doesn't always produce errors a second
+         * time through.
+         * See Bugzilla 8348
+         * Need a better way to deal with this than gagging.
+         */
+    }
     else
     {
         semanticRun = PASSsemantic3done;
@@ -1981,7 +1998,25 @@ Statement *FuncDeclaration::mergeFensure(Statement *sf)
             // Make the call: __ensure(result)
             Expression *eresult = NULL;
             if (outId)
+            {
                 eresult = new IdentifierExp(loc, outId);
+
+                Type *t1 = fdv->type->nextOf()->toBasetype();
+                Type *t2 = this->type->nextOf()->toBasetype();
+                int offset;
+                if (t1->isBaseOf(t2, &offset) && offset != 0)
+                {
+                    /* Making temporary reference variable is necessary
+                     * to match offset difference in covariant return.
+                     * See bugzilla 5204.
+                     */
+                    ExpInitializer *ei = new ExpInitializer(0, eresult);
+                    VarDeclaration *v = new VarDeclaration(0, t1, Lexer::uniqueId("__covres"), ei);
+                    DeclarationExp *de = new DeclarationExp(0, v);
+                    VarExp *ve = new VarExp(0, v);
+                    eresult = new CommaExp(0, de, ve);
+                }
+            }
             Expression *e = new CallExp(loc, new VarExp(loc, fdv->fdensure, 0), eresult);
             Statement *s2 = new ExpStatement(loc, e);
 
@@ -3352,6 +3387,7 @@ CtorDeclaration::CtorDeclaration(Loc loc, Loc endloc, StorageClass stc, Type *ty
     : FuncDeclaration(loc, endloc, Id::ctor, stc, type)
 {
     //printf("CtorDeclaration(loc = %s) %s\n", loc.toChars(), toChars());
+    this->isImplicit = false;
 }
 
 Dsymbol *CtorDeclaration::syntaxCopy(Dsymbol *s)
@@ -3424,8 +3460,11 @@ void CtorDeclaration::semantic(Scope *sc)
 
     sc->pop();
 
-    // See if it's the default constructor
-    if (ad && tf->varargs == 0 && Parameter::dim(tf->parameters) == 0)
+    /* See if it's the default constructor
+     * But, template constructor should not become a default constructor.
+     */
+    if (ad && tf->varargs == 0 && Parameter::dim(tf->parameters) == 0
+        && (!this->parent->isTemplateInstance() || this->parent->isTemplateMixin()))
     {
         StructDeclaration *sd = ad->isStructDeclaration();
         if (sd)
@@ -3438,7 +3477,9 @@ void CtorDeclaration::semantic(Scope *sc)
             sd->noDefaultCtor = TRUE;
         }
         else
+        {
             ad->defaultCtor = this;
+        }
     }
 }
 

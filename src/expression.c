@@ -440,6 +440,48 @@ Expression *resolveUFCSProperties(Scope *sc, Expression *e1, Expression *e2 = NU
     return e;
 }
 
+/*********************************
+ * Attempt to find a type property. If failed, attempt to find
+ * UFCS property. If UFCS found, return expression. Otherwise
+ * show type property error message.
+ * Returns non-NULL only if UFCS property found.
+ */
+Expression * resolveProperty(Scope *sc, Expression **e1, Expression *e2)
+{
+    enum TOK op = (*e1)->op;
+    UnaExp *una = (UnaExp *)(*e1);
+    Type *t = una->e1->type;
+    int olderrors = global.errors;
+    una->e1 = una->e1->semantic(sc);
+    if (global.errors == olderrors && una->e1->type)
+    {
+        unsigned errors = global.startGagging();
+        // try property gagged
+        if (op == TOKdotti)
+            *e1 = ((DotTemplateInstanceExp *)una)->semantic(sc, 1);
+        else if (op == TOKdot)
+            *e1 = ((DotIdExp *)una)->semantic(sc, 1);
+
+        if (global.endGagging(errors) || (*e1)->op == TOKerror)
+        {
+            (*e1)->op = op;
+            errors = global.startGagging();  // try UFCS gagged
+            Expression *e = resolveUFCSProperties(sc, una, e2);
+            if (!global.endGagging(errors) && (*e1)->op != TOKerror)
+                return e;  // found UFCS
+
+            // try property non-gagged
+            una->type = t;  // restore type
+            if (op == TOKdotti)
+                *e1 = ((DotTemplateInstanceExp *)una)->semantic(sc, 1);
+            else if (op == TOKdot)
+                *e1 = ((DotIdExp *)una)->semantic(sc, 1);
+        }
+    }
+
+    return NULL;
+}
+
 /******************************
  * Perform semantic() on an array of Expressions.
  */
@@ -888,7 +930,12 @@ Type *functionParameters(Loc loc, Scope *sc, TypeFunction *tf,
     {
         TemplateInstance *spec = fd->isSpeculative();
         int olderrs = global.errors;
+        // If it isn't speculative, we need to show errors
+        unsigned oldgag = global.gag;
+        if (global.gag && !spec)
+            global.gag = 0;
         fd->semantic3(fd->scope);
+        global.gag = oldgag;
         // Update the template instantiation with the number
         // of errors which occured.
         if (spec && global.errors != olderrs)
@@ -1712,7 +1759,7 @@ void Expression::checkPurity(Scope *sc, FuncDeclaration *f)
          *   }
          *   pure string test() {
          *     char[] allocator() { return new char[1]; }  // impure
-         *     return escape!allocator();	// [a]
+         *     return escape!allocator();       // [a]
          *   }
          */
         if (getFuncTemplateDecl(outerfunc) &&
@@ -5545,11 +5592,17 @@ Expression *DeclarationExp::semantic(Scope *sc)
      */
     Dsymbol *s = declaration;
 
-    AttribDeclaration *ad = declaration->isAttribDeclaration();
-    if (ad)
+    while (1)
     {
-        if (ad->decl && ad->decl->dim == 1)
-            s = (*ad->decl)[0];
+        AttribDeclaration *ad = s->isAttribDeclaration();
+        if (ad)
+        {
+            if (ad->decl && ad->decl->dim == 1)
+            {   s = (*ad->decl)[0];
+                continue;
+            }
+        }
+        break;
     }
 
     if (s->isVarDeclaration())
@@ -7032,7 +7085,14 @@ Expression *DotIdExp::semantic(Scope *sc, int flag)
         if (global.endGagging(errors))  // if failed to find the property
         {
             e1->type = t1;              // kludge to restore type
+            errors = global.startGagging();
             e = resolveUFCSProperties(sc, this);
+            if (global.endGagging(errors))
+            {
+                // both lookups failed, lookup property again for better error message
+                e1->type = t1;  // restore type
+                e = t1->dotExp(sc, e1, ident);
+            }
         }
         e = e->semantic(sc);
         return e;
@@ -7356,9 +7416,17 @@ Expression *DotTemplateInstanceExp::semantic(Scope *sc, int flag)
 
         unsigned errors = global.startGagging();
         e = die->semantic(sc, 1);
+        Type *t = e1->type;
         if (global.endGagging(errors))
         {
-            return resolveUFCSProperties(sc, this);
+            errors = global.startGagging();
+            e = resolveUFCSProperties(sc, this);
+            if (!global.endGagging(errors))
+                return e;
+
+            // both lookups failed, lookup property again for better error message
+            e->type = t;  // restore type
+            e = die->semantic(sc, 1);
         }
     }
 
@@ -10405,33 +10473,13 @@ Expression *AssignExp::semantic(Scope *sc)
      */
     if (e1->op == TOKdotti)
     {
-        DotTemplateInstanceExp *dti = (DotTemplateInstanceExp *)e1;
-        int olderrors = global.errors;
-        dti->e1 = dti->e1->semantic(sc);
-        if (global.errors == olderrors && dti->e1->type)
-        {
-            unsigned errors = global.startGagging();
-            e1 = dti->semantic(sc, 1);
-            if (global.endGagging(errors) || e1->op == TOKerror)
-            {
-                return resolveUFCSProperties(sc, dti, e2);
-            }
-        }
+        Expression *e = resolveProperty(sc, &e1, e2);
+        if (e) return e;
     }
     else if (e1->op == TOKdot)
     {
-        DotIdExp *die = (DotIdExp *)e1;
-        int olderrors = global.errors;
-        die->e1 = die->e1->semantic(sc);
-        if (global.errors == olderrors && die->e1->type)
-        {
-            unsigned errors = global.startGagging();
-            e1 = die->semantic(sc, 1);
-            if (global.endGagging(errors) || e1->op == TOKerror)
-            {
-                return resolveUFCSProperties(sc, die, e2);
-            }
-        }
+        Expression *e = resolveProperty(sc, &e1, e2);
+        if (e) return e;
 
         VarDeclaration * vd = NULL;
         if (e1->op == TOKvar)
@@ -10763,19 +10811,6 @@ Ltupleassign:
     {
         Type *t2 = e2->type->toBasetype();
 
-        if (t2->ty == Tsarray && !t2->implicitConvTo(t1->nextOf()))
-        {   // static array assignment should check their lengths
-            TypeSArray *tsa1 = (TypeSArray *)t1;
-            TypeSArray *tsa2 = (TypeSArray *)t2;
-            uinteger_t dim1 = tsa1->dim->toInteger();
-            uinteger_t dim2 = tsa2->dim->toInteger();
-            if (dim1 != dim2)
-            {
-                error("mismatched array lengths, %d and %d", (int)dim1, (int)dim2);
-                return new ErrorExp();
-            }
-        }
-
         if (e1->op == TOKindex &&
             ((IndexExp *)e1)->e1->type->toBasetype()->ty == Taarray)
         {
@@ -10870,6 +10905,26 @@ Ltupleassign:
         (t2->ty == Tarray || t2->ty == Tsarray) &&
         t2->nextOf()->implicitConvTo(t1->nextOf()))
     {
+        if (((SliceExp *)e1)->lwr == NULL)
+        {
+            Type *tx1 = ((SliceExp *)e1)->e1->type->toBasetype();
+            Type *tx2 = t2;
+            if (e2->op == TOKslice && ((SliceExp *)e2)->lwr == NULL)
+                tx2 = ((SliceExp *)e2)->e1->type->toBasetype();
+            if (tx1->ty == Tsarray && tx2->ty == Tsarray)
+            {   // sa1[] = sa2[];
+                // sa1[] = sa2;
+                TypeSArray *tsa1 = (TypeSArray *)tx1;
+                TypeSArray *tsa2 = (TypeSArray *)tx2;
+                uinteger_t dim1 = tsa1->dim->toInteger();
+                uinteger_t dim2 = tsa2->dim->toInteger();
+                if (dim1 != dim2)
+                {
+                    error("mismatched array lengths, %d and %d", (int)dim1, (int)dim2);
+                    return new ErrorExp();
+                }
+            }
+        }
         if (op != TOKblit &&
             (e2->op == TOKslice && ((UnaExp *)e2)->e1->isLvalue() ||
              e2->op == TOKcast  && ((UnaExp *)e2)->e1->isLvalue() ||

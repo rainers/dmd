@@ -167,6 +167,38 @@ Dsymbol *getDsymbol(Object *oarg)
     return sa;
 }
 
+/***********************
+ * Try to get value from manifest constant
+ */
+
+Expression *getValue(Expression *e)
+{
+    if (e && e->op == TOKvar)
+    {
+        VarDeclaration *v = ((VarExp *)e)->var->isVarDeclaration();
+        if (v && v->storage_class & STCmanifest)
+        {   ExpInitializer *ei = v->init->isExpInitializer();
+            if (ei)
+                e = ei->exp;
+        }
+    }
+    return e;
+}
+Expression *getValue(Dsymbol *&s)
+{
+    Expression *e = NULL;
+    if (s)
+    {
+        VarDeclaration *v = s->isVarDeclaration();
+        if (v && v->storage_class & STCmanifest)
+        {   ExpInitializer *ei = v->init->isExpInitializer();
+            if (ei)
+                e = ei->exp, s = NULL;
+        }
+    }
+    return e;
+}
+
 /******************************
  * If o1 matches o2, return 1.
  * Else, return 0.
@@ -176,10 +208,10 @@ int match(Object *o1, Object *o2, TemplateDeclaration *tempdecl, Scope *sc)
 {
     Type *t1 = isType(o1);
     Type *t2 = isType(o2);
-    Expression *e1 = isExpression(o1);
-    Expression *e2 = isExpression(o2);
     Dsymbol *s1 = isDsymbol(o1);
     Dsymbol *s2 = isDsymbol(o2);
+    Expression *e1 = s1 ? getValue(s1) : getValue(isExpression(o1));
+    Expression *e2 = s2 ? getValue(s2) : getValue(isExpression(o2));
     Tuple *u1 = isTuple(o1);
     Tuple *u2 = isTuple(o2);
 
@@ -190,24 +222,9 @@ int match(Object *o1, Object *o2, TemplateDeclaration *tempdecl, Scope *sc)
      * we'll do that another day.
      */
 
-    if (s1)
-    {
-        VarDeclaration *v1 = s1->isVarDeclaration();
-        if (v1 && v1->storage_class & STCmanifest)
-        {   ExpInitializer *ei1 = v1->init->isExpInitializer();
-            if (ei1)
-                e1 = ei1->exp, s1 = NULL;
-        }
-    }
-    if (s2)
-    {
-        VarDeclaration *v2 = s2->isVarDeclaration();
-        if (v2 && v2->storage_class & STCmanifest)
-        {   ExpInitializer *ei2 = v2->init->isExpInitializer();
-            if (ei2)
-                e2 = ei2->exp, s2 = NULL;
-        }
-    }
+    /* Manifest constants should be compared by their values,
+     * at least in template arguments.
+     */
 
     if (t1)
     {
@@ -241,10 +258,8 @@ int match(Object *o1, Object *o2, TemplateDeclaration *tempdecl, Scope *sc)
         if (e1 && e2)
         {
             printf("match %d\n", e1->equals(e2));
-            e1->print();
-            e2->print();
-            e1->type->print();
-            e2->type->print();
+            printf("\te1 = %p %s %s %s\n", e1, e1->type->toChars(), Token::toChars(e1->op), e1->toChars());
+            printf("\te2 = %p %s %s %s\n", e2, e2->type->toChars(), Token::toChars(e2->op), e2->toChars());
         }
 #endif
         if (!e2)
@@ -3197,13 +3212,10 @@ MATCH TypeInstance::deduceType(Scope *sc,
                 break;
 
             Type *t1 = isType(o1);
-
-            Expression *e1 = isExpression(o1);
-            Expression *e2 = isExpression(o2);
-
             Dsymbol *s1 = isDsymbol(o1);
             Dsymbol *s2 = isDsymbol(o2);
-
+            Expression *e1 = s1 ? getValue(s1) : getValue(isExpression(o1));
+            Expression *e2 = isExpression(o2);
             Tuple *v1 = isTuple(o1);
             Tuple *v2 = isTuple(o2);
 #if 0
@@ -4972,7 +4984,8 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
             a = scx->scopesym->members;
         }
         else
-        {   Module *m = sc->module->importedFrom;
+        {   //Module *m = sc->module->importedFrom;
+            Module *m = tempdecl->scope->module->importedFrom;
             //printf("\t2: adding to module %s instead of module %s\n", m->toChars(), sc->module->toChars());
             a = m->members;
             if (m->semanticRun >= 3)
@@ -5208,7 +5221,7 @@ void TemplateInstance::semanticTiargs(Loc loc, Scope *sc, Objects *tiargs, int f
         Expression *ea = isExpression(o);
         Dsymbol *sa = isDsymbol(o);
 
-        //printf("1: (*tiargs)[%d] = %p, %p, %p, ea=%p, ta=%p\n", j, o, isDsymbol(o), isTuple(o), ea, ta);
+        //printf("1: (*tiargs)[%d] = %p, s=%p, v=%p, ea=%p, ta=%p\n", j, o, isDsymbol(o), isTuple(o), ea, ta);
         if (ta)
         {
             //printf("type %s\n", ta->toChars());
@@ -5217,6 +5230,7 @@ void TemplateInstance::semanticTiargs(Loc loc, Scope *sc, Objects *tiargs, int f
             if (ea)
             {
                 ea = ea->semantic(sc);
+                //printf("-> ea = %s %s\n", Token::toChars(ea->op), ea->toChars());
                 /* This test is to skip substituting a const var with
                  * its initializer. The problem is the initializer won't
                  * match with an 'alias' parameter. Instead, do the
@@ -5272,6 +5286,7 @@ void TemplateInstance::semanticTiargs(Loc loc, Scope *sc, Objects *tiargs, int f
         }
         else if (ea)
         {
+            //printf("+[%d] ea = %s %s\n", j, Token::toChars(ea->op), ea->toChars());
             ea = ea->semantic(sc);
             if (flags & 1) // only used by __traits, must not interpret the args
                 ea = ea->optimize(WANTvalue);
@@ -5285,6 +5300,7 @@ void TemplateInstance::semanticTiargs(Loc loc, Scope *sc, Objects *tiargs, int f
                 if (global.errors != olderrs)
                     ea = new ErrorExp();
             }
+            //printf("-[%d] ea = %s %s\n", j, Token::toChars(ea->op), ea->toChars());
             (*tiargs)[j] = ea;
             if (ea->op == TOKtype)
             {   ta = ea->type;
@@ -5312,6 +5328,20 @@ void TemplateInstance::semanticTiargs(Loc loc, Scope *sc, Objects *tiargs, int f
                     (*tiargs)[j] = sa = fe->td;
                     goto Lsa;
                 }
+            }
+            if (ea->op == TOKdotvar)
+            {   // translate expression to dsymbol.
+                sa = ((DotVarExp *)ea)->var;
+                goto Ldsym;
+            }
+            if (ea->op == TOKtemplate)
+            {   sa = ((TemplateExp *)ea)->td;
+                goto Ldsym;
+            }
+            if (ea->op == TOKdottd)
+            {   // translate expression to dsymbol.
+                sa = ((DotTemplateExp *)ea)->td;
+                goto Ldsym;
             }
             if (ea->op == TOKtuple)
             {   // Expand tuple
@@ -5501,8 +5531,14 @@ TemplateDeclaration *TemplateInstance::findBestMatch(Scope *sc, Expressions *far
         if (!td->semanticRun)
         {
             if (td->scope)
-            {   // Try to fix forward reference
+            {   // Try to fix forward reference. Ungag errors while doing so.
+                int oldgag = global.gag;
+                if (global.isSpeculativeGagging() && !td->isSpeculative())
+                    global.gag = 0;
+
                 td->semantic(td->scope);
+
+                global.gag = oldgag;
             }
             if (!td->semanticRun)
             {

@@ -2057,7 +2057,7 @@ void highlightText(Scope *sc, Dsymbol *s, OutBuffer *buf, size_t offset)
                         buf->remove(iCodeStart, i - iCodeStart);
                         i = buf->insert(iCodeStart, codebuf.data, codebuf.offset);
                         i = buf->insert(i, ")\n", 2);
-                        i--;
+                        i -= 2; // in next loop, c should be '\n'
                     }
                     else
                     {   static char pre[] = "$(D_CODE \n";
@@ -2206,9 +2206,6 @@ void highlightCode2(Scope *sc, Dsymbol *s, OutBuffer *buf, size_t offset)
     OutBuffer res;
     unsigned char *lastp = buf->data;
     const char *highlight;
-
-    // let things like: string s = "$1$2 $ &#36;4";
-    escapeDdocString(buf, 0);
 
     //printf("highlightCode2('%.*s')\n", buf->offset - 1, buf->data);
     res.reserve(buf->offset);

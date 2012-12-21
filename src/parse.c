@@ -371,16 +371,15 @@ Dsymbols *Parser::parseDeclDefs(int once)
             case TOKgshared:      stc = STCgshared;      goto Lstc;
             //case TOKmanifest:   stc = STCmanifest;     goto Lstc;
             case TOKat:
-                if (peek(&token)->value == TOKlparen)   // @( ArgumentList )
-                {
-                    nextToken();
-                    Expressions *exps = parseArguments();
-                    a = parseBlock();
-                    s = new UserAttributeDeclaration(exps, a);
-                    break;
-                }
-                stc = parseAttribute();
-                goto Lstc;
+            {
+                Expressions *exps = NULL;
+                stc = parseAttribute(&exps);
+                if (stc)
+                    goto Lstc;                  // it's a predefined attribute
+                a = parseBlock();
+                s = new UserAttributeDeclaration(exps, a);
+                break;
+            }
 #endif
 
             Lstc:
@@ -436,7 +435,14 @@ Dsymbols *Parser::parseDeclDefs(int once)
                     case TOKtls:          stc = STCtls;          goto Lstc;
                     case TOKgshared:      stc = STCgshared;      goto Lstc;
                     //case TOKmanifest:   stc = STCmanifest;     goto Lstc;
-                    case TOKat:           stc = parseAttribute(); goto Lstc;
+                    case TOKat:
+                    {   Expressions *udas = NULL;
+                        stc = parseAttribute(&udas);
+                        if (udas)
+                            // BUG: Should fix this
+                            error("user defined attributes must be first");
+                        goto Lstc;
+                    }
                     default:
                         break;
                 }
@@ -493,6 +499,7 @@ Dsymbols *Parser::parseDeclDefs(int once)
 
             case TOKlbracket:
             {
+                warning(loc, "use @(attributes) instead of [attributes]");
                 Expressions *exps = parseArguments();
                 a = parseBlock();
                 s = new UserAttributeDeclaration(exps, a);
@@ -702,30 +709,63 @@ void Parser::composeStorageClass(StorageClass stc)
 #endif
 
 /***********************************************
- * Parse storage class, lexer is on '@'
+ * Parse attribute, lexer is on '@'.
+ * Input:
+ *      pudas           array of UDAs to append to
+ * Returns:
+ *      storage class   if a predefined attribute; also scanner remains on identifier.
+ *      0               if not a predefined attribute
+ *      *pudas          set if user defined attribute, scanner is past UDA
+ *      *pudas          NULL if not a user defined attribute
  */
 
 #if DMDV2
-StorageClass Parser::parseAttribute()
+StorageClass Parser::parseAttribute(Expressions **pudas)
 {
     nextToken();
+    Expressions *udas = NULL;
     StorageClass stc = 0;
-    if (token.value != TOKidentifier)
+    if (token.value == TOKidentifier)
     {
-        error("identifier expected after @, not %s", token.toChars());
+        if (token.ident == Id::property)
+            stc = STCproperty;
+        else if (token.ident == Id::safe)
+            stc = STCsafe;
+        else if (token.ident == Id::trusted)
+            stc = STCtrusted;
+        else if (token.ident == Id::system)
+            stc = STCsystem;
+        else if (token.ident == Id::disable)
+            stc = STCdisable;
+        else
+        {   // Allow identifier, template instantiation, or function call
+            Expression *exp = parsePrimaryExp();
+            if (token.value == TOKlparen)
+                exp = new CallExp(loc, exp, parseArguments());
+
+            udas = new Expressions();
+            udas->push(exp);
+        }
     }
-    else if (token.ident == Id::property)
-        stc = STCproperty;
-    else if (token.ident == Id::safe)
-        stc = STCsafe;
-    else if (token.ident == Id::trusted)
-        stc = STCtrusted;
-    else if (token.ident == Id::system)
-        stc = STCsystem;
-    else if (token.ident == Id::disable)
-        stc = STCdisable;
+    else if (token.value == TOKlparen)
+    {   // @( ArgumentList )
+        // Concatenate with existing
+        udas = parseArguments();
+    }
     else
-        error("valid attribute identifiers are @property, @safe, @trusted, @system, @disable not @%s", token.toChars());
+    {
+        error("@identifier or @(ArgumentList) expected, not @%s", token.toChars());
+    }
+
+    if (stc)
+    {
+    }
+    else if (udas)
+    {
+        *pudas = UserAttributeDeclaration::concat(*pudas, udas);
+    }
+    else
+        error("valid attributes are @property, @safe, @trusted, @system, @disable");
     return stc;
 }
 #endif
@@ -750,7 +790,14 @@ StorageClass Parser::parsePostfix()
             case TOKwild:               stc |= STCwild;                 break;
             case TOKnothrow:            stc |= STCnothrow;              break;
             case TOKpure:               stc |= STCpure;                 break;
-            case TOKat:                 stc |= parseAttribute();        break;
+            case TOKat:
+            {   Expressions *udas = NULL;
+                stc |= parseAttribute(&udas);
+                if (udas)
+                    // BUG: Should fix this
+                    error("user defined attributes cannot appear as postfixes");
+                break;
+            }
 
             default: return stc;
         }
@@ -2759,6 +2806,7 @@ Dsymbols *Parser::parseDeclarations(StorageClass storage_class, unsigned char *c
     enum LINK link = linkage;
     unsigned structalign = 0;
     Loc loc = this->loc;
+    Expressions *udas = NULL;
 
     //printf("parseDeclarations() %s\n", token.toChars());
     if (!comment)
@@ -2900,7 +2948,13 @@ Dsymbols *Parser::parseDeclarations(StorageClass storage_class, unsigned char *c
             case TOKtls:        stc = STCtls;            goto L1;
             case TOKgshared:    stc = STCgshared;        goto L1;
             case TOKenum:       stc = STCmanifest;       goto L1;
-            case TOKat:         stc = parseAttribute();  goto L1;
+            case TOKat:
+            {
+                stc = parseAttribute(&udas);
+                if (stc)
+                    goto L1;
+                continue;
+            }
 #endif
             L1:
                 if (storage_class & stc)
@@ -2944,16 +2998,6 @@ Dsymbols *Parser::parseDeclarations(StorageClass storage_class, unsigned char *c
         break;
     }
 
-    /* Look for auto initializers:
-     *  storage_class identifier = initializer;
-     */
-    if (storage_class &&
-        token.value == TOKidentifier &&
-        peek(&token)->value == TOKassign)
-    {
-        return parseAutoDeclarations(storage_class, comment);
-    }
-
     if (token.value == TOKstruct ||
         token.value == TOKunion ||
         token.value == TOKclass ||
@@ -2975,9 +3019,37 @@ Dsymbols *Parser::parseDeclarations(StorageClass storage_class, unsigned char *c
             a = new Dsymbols();
             a->push(s);
         }
+        if (udas)
+        {
+            s = new UserAttributeDeclaration(udas, a);
+            a = new Dsymbols();
+            a->push(s);
+        }
 
         addComment(s, comment);
         return a;
+    }
+
+    if (udas)
+    {
+        // Need to improve this
+//      error("user defined attributes not allowed for local declarations");
+    }
+
+    /* Look for auto initializers:
+     *  storage_class identifier = initializer;
+     */
+    if (storage_class &&
+        token.value == TOKidentifier &&
+        peek(&token)->value == TOKassign)
+    {
+
+        if (udas)
+        {
+            // Need to improve this
+            error("user defined attributes not allowed for auto declarations");
+        }
+        return parseAutoDeclarations(storage_class, comment);
     }
 
     /* Look for return type inference for template functions.
@@ -3037,6 +3109,7 @@ L2:
              * The grammar has already been fixed to preclude them.
              */
 
+            assert(!udas);
             if (token.value == TOKassign)
             {
                 nextToken();
@@ -3098,17 +3171,7 @@ L2:
                 constraint = parseConstraint();
             parseContracts(f);
             addComment(f, NULL);
-            Dsymbol *s;
-            if (link == linkage)
-            {
-                s = f;
-            }
-            else
-            {
-                Dsymbols *ax = new Dsymbols();
-                ax->push(f);
-                s = new LinkDeclaration(link, ax);
-            }
+            Dsymbol *s = f;
             /* A template parameter list means it's a function template
              */
             if (tpl)
@@ -3119,6 +3182,18 @@ L2:
                 TemplateDeclaration *tempdecl =
                     new TemplateDeclaration(loc, s->ident, tpl, constraint, decldefs, 0);
                 s = tempdecl;
+            }
+            if (link != linkage)
+            {
+                Dsymbols *ax = new Dsymbols();
+                ax->push(s);
+                s = new LinkDeclaration(link, ax);
+            }
+            if (udas)
+            {
+                Dsymbols *ax = new Dsymbols();
+                ax->push(s);
+                s = new UserAttributeDeclaration(udas, ax);
             }
             addComment(s, comment);
             a->push(s);
@@ -3134,15 +3209,20 @@ L2:
 
             VarDeclaration *v = new VarDeclaration(loc, t, ident, init);
             v->storage_class = storage_class;
-            if (link == linkage)
-                a->push(v);
-            else
+            Dsymbol *s = v;
+            if (link != linkage)
             {
                 Dsymbols *ax = new Dsymbols();
-                ax->push(v);
-                Dsymbol *s = new LinkDeclaration(link, ax);
-                a->push(s);
+                ax->push(s);
+                s = new LinkDeclaration(link, ax);
             }
+            if (udas)
+            {
+                Dsymbols *ax = new Dsymbols();
+                ax->push(s);
+                s = new UserAttributeDeclaration(udas, ax);
+            }
+            a->push(s);
             switch (token.value)
             {   case TOKsemicolon:
                     nextToken();
@@ -5154,74 +5234,6 @@ int Parser::isExpression(Token **pt)
     return TRUE;
 }
 
-/**********************************************
- * Skip over
- *      instance foo.bar(parameters...)
- * Output:
- *      if (pt), *pt is set to the token following the closing )
- * Returns:
- *      1       it's valid instance syntax
- *      0       invalid instance syntax
- */
-
-int Parser::isTemplateInstance(Token *t, Token **pt)
-{
-    t = peek(t);
-    if (t->value != TOKdot)
-    {
-        if (t->value != TOKidentifier)
-            goto Lfalse;
-        t = peek(t);
-    }
-    while (t->value == TOKdot)
-    {
-        t = peek(t);
-        if (t->value != TOKidentifier)
-            goto Lfalse;
-        t = peek(t);
-    }
-    if (t->value != TOKlparen)
-        goto Lfalse;
-
-    // Skip over the template arguments
-    while (1)
-    {
-        while (1)
-        {
-            t = peek(t);
-            switch (t->value)
-            {
-                case TOKlparen:
-                    if (!skipParens(t, &t))
-                        goto Lfalse;
-                    continue;
-                case TOKrparen:
-                    break;
-                case TOKcomma:
-                    break;
-                case TOKeof:
-                case TOKsemicolon:
-                    goto Lfalse;
-                default:
-                    continue;
-            }
-            break;
-        }
-
-        if (t->value != TOKcomma)
-            break;
-    }
-    if (t->value != TOKrparen)
-        goto Lfalse;
-    t = peek(t);
-    if (pt)
-        *pt = t;
-    return 1;
-
-Lfalse:
-    return 0;
-}
-
 /*******************************************
  * Skip parens, brackets.
  * Input:
@@ -5310,7 +5322,59 @@ int Parser::skipAttributes(Token *t, Token **pt)
             case TOKat:
                 t = peek(t);
                 if (t->value == TOKidentifier)
+                {   /* @identifier
+                     * @identifier!arg
+                     * @identifier!(arglist)
+                     * any of the above followed by (arglist)
+                     * @predefined_attribute
+                     */
+                    if (t->ident == Id::property ||
+                        t->ident == Id::safe ||
+                        t->ident == Id::trusted ||
+                        t->ident == Id::system ||
+                        t->ident == Id::disable)
+                        break;
+                    t = peek(t);
+                    if (t->value == TOKnot)
+                    {
+                        t = peek(t);
+                        if (t->value == TOKlparen)
+                        {   // @identifier!(arglist)
+                            if (!skipParens(t, &t))
+                                goto Lerror;
+                            // t is on closing parenthesis
+                            t = peek(t);
+                        }
+                        else
+                        {
+                            // @identifier!arg
+                            // Do low rent skipTemplateArgument
+                            if (t->value == TOKvector)
+                            {   // identifier!__vector(type)
+                                t = peek(t);
+                                if (!skipParens(t, &t))
+                                    goto Lerror;
+                            }
+                            t = peek(t);
+                        }
+                    }
+                    if (t->value == TOKlparen)
+                    {
+                        if (!skipParens(t, &t))
+                            goto Lerror;
+                        // t is on closing parenthesis
+                        t = peek(t);
+                        continue;
+                    }
+                    continue;
+                }
+                if (t->value == TOKlparen)
+                {   // @( ArgumentList )
+                    if (!skipParens(t, &t))
+                        goto Lerror;
+                    // t is on closing parenthesis
                     break;
+                }
                 goto Lerror;
             default:
                 goto Ldone;
@@ -6924,5 +6988,4 @@ void initPrecedence()
     precedence[TOKcomma] = PREC_expr;
     precedence[TOKdeclaration] = PREC_expr;
 }
-
 

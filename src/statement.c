@@ -563,7 +563,7 @@ Statement *CompoundStatement::semantic(Scope *sc)
                          * As:
                          *      s;
                          *      try { s1; s2; }
-                         *      catch (Object __o)
+                         *      catch (Throwable __o)
                          *      { sexception; throw __o; }
                          */
                         Statements *a = new Statements();
@@ -579,11 +579,13 @@ Statement *CompoundStatement::semantic(Scope *sc)
                         Statement *handler = sexception;
                         if (sexception->blockExit(FALSE) & BEfallthru)
                         {   handler = new ThrowStatement(0, new IdentifierExp(0, id));
+                            ((ThrowStatement *)handler)->internalThrow = true;
                             handler = new CompoundStatement(0, sexception, handler);
                         }
 
                         Catches *catches = new Catches();
                         Catch *ctch = new Catch(0, NULL, id, handler);
+                        ctch->internalCatch = true;
                         catches->push(ctch);
                         s = new TryCatchStatement(0, body, catches);
 
@@ -1252,6 +1254,7 @@ ForStatement::ForStatement(Loc loc, Statement *init, Expression *condition, Expr
     this->increment = increment;
     this->body = body;
     this->nest = 0;
+    this->relatedLabeled = NULL;
 }
 
 Statement *ForStatement::syntaxCopy()
@@ -1328,6 +1331,7 @@ Statement *ForStatement::semanticInit(Scope *sc)
                 Statement *handler = sexception;
                 if (sexception->blockExit(FALSE) & BEfallthru)
                 {   handler = new ThrowStatement(0, new IdentifierExp(0, id));
+                    ((ThrowStatement *)handler)->internalThrow = true;
                     handler = new CompoundStatement(0, sexception, handler);
                 }
                 Catches *catches = new Catches();
@@ -1340,6 +1344,7 @@ Statement *ForStatement::semanticInit(Scope *sc)
                 //printf("ex {{{\n");
                 s = s->semantic(sc);
                 //printf("}}}\n");
+                this->relatedLabeled = s;
                 statement = s;
 
                 if (init)
@@ -1366,6 +1371,7 @@ Statement *ForStatement::semanticInit(Scope *sc)
                 //printf("fi {{{\n");
                 s = s->semantic(sc);
                 //printf("}}} fi\n");
+                this->relatedLabeled = s;
                 statement = s;
 
                 if (init)
@@ -1812,9 +1818,7 @@ Lagain:
                     {
                         /* Reference to immutable data should be marked as const
                          */
-                        if (aggr->checkCtorInit(sc))
-                            var->storage_class |= STCctorinit;
-                        else if (!tn->isMutable())
+                        if (!tn->isMutable())
                             var->storage_class |= STCconst;
 
                         Type *t = tab->nextOf();
@@ -5000,11 +5004,13 @@ ThrowStatement::ThrowStatement(Loc loc, Expression *exp)
     : Statement(loc)
 {
     this->exp = exp;
+    this->internalThrow = false;
 }
 
 Statement *ThrowStatement::syntaxCopy()
 {
     ThrowStatement *s = new ThrowStatement(loc, exp->syntaxCopy());
+    s->internalThrow = internalThrow;
     return s;
 }
 
@@ -5040,7 +5046,8 @@ int ThrowStatement::blockExit(bool mustNotThrow)
 
         // Bugzilla 8675
         // Throwing Errors is allowed even if mustNotThrow
-        if (cd != ClassDeclaration::errorException &&
+        if (!internalThrow &&
+            cd != ClassDeclaration::errorException &&
             !ClassDeclaration::errorException->isBaseOf(cd, NULL))
             error("%s is thrown but not caught", exp->type->toChars());
     }
@@ -5432,6 +5439,7 @@ Statement *ImportStatement::semantic(Scope *sc)
         }
 
         s->semantic(sc);
+        s->semantic2(sc);
         sc->insert(s);
 
         for (size_t i = 0; i < s->aliasdecls.dim; i++)
