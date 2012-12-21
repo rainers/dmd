@@ -359,7 +359,6 @@ struct TypeError : Type
 struct TypeNext : Type
 {
     Type *next;
-    bool inToCType;
 
     TypeNext(TY ty, Type *next);
     void toDecoBuffer(OutBuffer *buf, int flag);

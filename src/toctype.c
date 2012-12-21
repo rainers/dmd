@@ -216,7 +216,7 @@ type *TypePointer::toCtype()
     //printf("TypePointer::toCtype() %s\n", toChars());
     if (ctype)
     {
-        if (inToCType)
+        if (!ctype->Tnext)
             ctype->Tnext = next->toCtype(); // assume recursion checked elsewhere
         return ctype;
     }
@@ -227,9 +227,7 @@ type *TypePointer::toCtype()
          */
         t = type_alloc(TYnptr);
         ctype = t;
-        inToCType = true;
         tn = next->toCtype();
-        inToCType = false;
         t->Tnext = tn;
         tn->Tcount++;
     }
@@ -245,7 +243,7 @@ type *TypeFunction::toCtype()
 
     if (ctype)
     {
-        if (inToCType)
+        if (!ctype->Tnext)
             ctype->Tnext = next->toCtype(); // assume recursion checked elsewhere
         return ctype;
     }
@@ -274,11 +272,7 @@ type *TypeFunction::toCtype()
         if(!next)
             t->Tnext = type_alloc(TYvoid);
         else
-        {
-            inToCType = true;
             t->Tnext = next->toCtype();
-            inToCType = false;
-        }
         t->Tnext->Tcount++;
         t->Tparamtypes = paramtypes;
     }
@@ -291,7 +285,7 @@ type *TypeDelegate::toCtype()
 
     if (ctype)
     {
-        if (inToCType)
+        if (!ctype->Tnext)
             ctype->Tnext = next->toCtype(); // assume recursion checked elsewhere
         return ctype;
     }
@@ -337,9 +331,7 @@ type *TypeDelegate::toCtype()
             // Generate D symbolic debug info, rather than C
             t = type_alloc(TYdelegate);
             ctype = t;
-            inToCType = true;
             type *tn = next->toCtype();
-            inToCType = false;
             t->Tnext = tn;
             t->Tnext->Tcount++;
         }

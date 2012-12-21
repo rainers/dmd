@@ -947,9 +947,19 @@ STATIC void cpp_basic_data_type(type *t)
         case TYint:     c = 'H';        goto dochar;
         case TYuint:    c = 'I';        goto dochar;
         case TYlong:    c = 'J';        goto dochar;
-        case TYulong:   c = 'K';        goto dochar;
         case TYfloat:   c = 'M';        goto dochar;
         case TYdouble:  c = 'N';        goto dochar;
+
+        case TYulong:  // for I32, same as TYdarray
+            if(t->Tnext)
+            {
+                CHAR('_');
+                CHAR('P');
+                cpp_pointer_type(t);
+                break;
+            }
+            c = 'K';
+            goto dochar;
 
         case TYdouble_alias:
                         if (intsize == 4)
