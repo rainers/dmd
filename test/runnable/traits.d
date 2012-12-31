@@ -604,7 +604,7 @@ string toString23(E)(E value) if (is(E == enum)) {
    return null;
 }
 
-enum OddWord { acini, alembicated, prolegomena, aprosexia } 
+enum OddWord { acini, alembicated, prolegomena, aprosexia }
 
 void test23()
 {
@@ -660,11 +660,16 @@ alias T6073!(__traits(parent, S6073)) U6073;    // error
 static assert(__traits(isSame, V6073, U6073));  // same instantiation == same arguemnts
 
 /********************************************************/
+// 7027
 
-struct Foo7027 {
-  int a;
-}
+struct Foo7027 { int a; }
 static assert(!__traits(compiles, { return Foo7027.a; }));
+
+/********************************************************/
+// 9213
+
+class Foo9213 { int a; }
+static assert(!__traits(compiles, { return Foo9213.a; }));
 
 /********************************************************/
 
@@ -888,6 +893,68 @@ struct S9091
 }
 
 /********************************************************/
+
+struct CtorS_9237 { this(int x) { } }
+struct DtorS_9237 { ~this() { } }
+struct PostblitS_9237 { this(this) { } }
+
+struct NonPOD1_9237
+{
+    CtorS_9237 field;  // nonPOD -> ng
+}
+
+struct NonPOD2_9237
+{
+    CtorS_9237[2] field;  // static array of nonPOD -> ng
+}
+
+struct POD1_9237
+{
+    CtorS_9237* field;  // pointer to nonPOD -> ok
+}
+
+struct POD2_9237
+{
+    CtorS_9237[] field;  // dynamic array of nonPOD -> ok
+}
+
+struct POD3_9237
+{
+    int x = 123;
+}
+
+class C_9273 { }
+
+void test9237()
+{
+    int x;
+    struct NS_9237  // acceses .outer -> nested
+    {
+        void foo() { x++; }
+    }
+
+    struct NonNS_9237 { }  // doesn't access .outer -> non-nested
+    static struct StatNS_9237 { }  // can't access .outer -> non-nested
+
+    static assert(!__traits(isPOD, NS_9237));
+    static assert(__traits(isPOD, NonNS_9237));
+    static assert(__traits(isPOD, StatNS_9237));
+    static assert(!__traits(isPOD, CtorS_9237));
+    static assert(!__traits(isPOD, DtorS_9237));
+    static assert(!__traits(isPOD, PostblitS_9237));
+    static assert(!__traits(isPOD, NonPOD1_9237));
+    static assert(!__traits(isPOD, NonPOD2_9237));
+    static assert(__traits(isPOD, POD1_9237));
+    static assert(__traits(isPOD, POD2_9237));
+    static assert(__traits(isPOD, POD3_9237));
+
+    // non-structs are POD types
+    static assert(__traits(isPOD, C_9273));
+    static assert(__traits(isPOD, int));
+    static assert(__traits(isPOD, int*));
+    static assert(__traits(isPOD, int[]));
+    static assert(!__traits(compiles, __traits(isPOD, 123) ));
+}
 
 int main()
 {

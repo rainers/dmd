@@ -4295,11 +4295,13 @@ MATCH TemplateValueParameter::matchArg(Scope *sc,
     if (!ei && oarg)
     {
         Dsymbol *si = isDsymbol(oarg);
-        if (si && si->isFuncDeclaration())
+        FuncDeclaration *f;
+        if (si && (f = si->isFuncDeclaration()) != NULL)
         {
-            ei = new VarExp(loc, (FuncDeclaration *)si);
+            ei = new VarExp(loc, f);
             ei = ei->semantic(sc);
-            ei = resolveProperties(sc, ei);
+            if (!f->needThis())
+                ei = resolveProperties(sc, ei);
             ei = ei->ctfeInterpret();
         }
         else
@@ -5102,19 +5104,24 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
      * on them due to forward references, we cannot run semantic2()
      * or semantic3() yet.
      */
+    bool found_deferred_ad = false;
     for (size_t i = 0; i < Module::deferred.dim; i++)
     {   Dsymbol *sd = Module::deferred[i];
 
-        if (sd->parent == this)
+        AggregateDeclaration *ad = sd->isAggregateDeclaration();
+        if (ad && ad->parent && ad->parent->isTemplateInstance())
         {
-        //printf("deferred %s %s\n", sd->parent->toChars(), sd->toChars());
-            AggregateDeclaration *ad = sd->isAggregateDeclaration();
-            if (ad)
+            //printf("deferred template aggregate: %s %s\n",
+            //        sd->parent->toChars(), sd->toChars());
+            found_deferred_ad = true;
+            if (ad->parent == this)
+            {
                 ad->deferred = this;
-            break;
+                break;
+            }
         }
     }
-    if (Module::deferred.dim)
+    if (found_deferred_ad)
         goto Laftersemantic;
 
     /* ConditionalDeclaration may introduce eponymous declaration,
@@ -5766,6 +5773,7 @@ int TemplateInstance::hasNestedArgs(Objects *args)
             nested |= hasNestedArgs(&va->objects);
         }
     }
+    //printf("-TemplateInstance::hasNestedArgs('%s') = %d\n", tempdecl->ident->toChars(), nested);
     return nested;
 }
 
