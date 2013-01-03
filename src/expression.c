@@ -8000,6 +8000,17 @@ Lagain:
         {
             ad = ((TypeStruct *)t1)->sym;
 #if DMDV2
+
+            if (ad->sizeok == SIZEOKnone && !ad->ctor &&
+                ad->search(0, Id::ctor, 0))
+            {
+                // The constructor hasn't been found yet, see bug 8741
+                // This can happen if we are inferring type from
+                // from VarDeclaration::semantic() in declaration.c
+                error("cannot create a struct until its size is determined");
+                return new ErrorExp();
+            }
+
             // First look for constructor
             if (e1->op == TOKtype && ad->ctor && (ad->noDefaultCtor || arguments && arguments->dim))
             {
@@ -11436,7 +11447,20 @@ Expression *CatExp::semantic(Scope *sc)
         Type *tb1next = tb1->nextOf();
         Type *tb2next = tb2->nextOf();
 
-        if ((tb1->ty == Tsarray || tb1->ty == Tarray) &&
+        if (tb1next && tb2next &&
+            (tb1next->implicitConvTo(tb2next) >= MATCHconst ||
+             tb2next->implicitConvTo(tb1next) >= MATCHconst)
+           )
+        {
+            /* Here to avoid the case of:
+             *    void*[] a = [cast(void*)1];
+             *    void*[] b = [cast(void*)2];
+             *    a ~ b;
+             * becoming:
+             *    a ~ [cast(void*)b];
+             */
+        }
+        else if ((tb1->ty == Tsarray || tb1->ty == Tarray) &&
             e2->implicitConvTo(tb1next) >= MATCHconvert)
         {
             checkPostblit(e2->loc, tb2);
