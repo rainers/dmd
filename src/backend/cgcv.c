@@ -1864,7 +1864,7 @@ L2:
                 typidx = next | dt;
             else
             {
-                if (tycv & (mTYconst | mTYimmutable)) // || isthis)
+                if (tycv & (mTYconst | mTYimmutable) || isthis)
                     attribute |= 0x400;
                 if (tycv & mTYvolatile)
                     attribute |= 0x200;
@@ -1884,7 +1884,7 @@ L2:
                         TOLONG(d->data + 2,next);
                         /* BUG: attribute bits are unknown, 0x1000C is maaaagic
                          */
-                        if(t->Tnext && tybasic(t->Tnext->Tty) == TYstruct) // !isthis && 
+                        if(!isthis && t->Tnext && tybasic(t->Tnext->Tty) == TYstruct) // 
                             attribute |= 0x20; // make it a reference to allow '.' syntax in debugger
                         if(I64)
                             attribute |= 0x1000C;
