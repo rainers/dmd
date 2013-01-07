@@ -3977,7 +3977,9 @@ Expression *TypeSArray::dotExp(Scope *sc, Expression *e, Identifier *ident)
 #endif
     if (ident == Id::length)
     {
-        e = dim;
+        Loc oldLoc = e->loc;
+        e = dim->copy();
+        e->loc = oldLoc;
     }
     else if (ident == Id::ptr)
     {
