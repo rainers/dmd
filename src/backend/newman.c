@@ -980,7 +980,19 @@ STATIC void cpp_basic_data_type(type *t)
             CHAR(c);
             break;
 
-        case TYllong:   c = 'J';        goto dochar2;
+        case TYllong:  // for I32, same as TYdelegate 
+            CHAR('_');
+            CHAR(t->Tnext ? 'D' : 'J');
+            if (t->Tnext)
+                cpp_pointer_type(t);
+            break;
+        case TYcent:  // for I64, same as TYdelegate
+            CHAR('_');
+            CHAR(t->Tnext ? 'D' : 'L');
+            if (t->Tnext)
+                cpp_pointer_type(t);
+            break;
+
         case TYullong:  c = 'K';        goto dochar2;
         case TYbool:    c = 'N';        goto dochar2;   // was 'X' prior to 8.1b8
         case TYwchar_t:
