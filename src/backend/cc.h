@@ -5,8 +5,7 @@
 // Written by Walter Bright
 /*
  * This source file is made available for personal use
- * only. The license is in /dmd/src/dmd/backendlicense.txt
- * or /dm/src/dmd/backendlicense.txt
+ * only. The license is in backendlicense.txt
  * For any other uses, please contact Digital Mars.
  */
 
@@ -1084,6 +1083,7 @@ struct Symbol
     Symbol *Snext;              // next in threaded list
     dt_t *Sdt;                  // variables: initializer
     int Salignment;             // variables: alignment, 0 or -1 means default alignment
+    int Salignsize();           // variables: return alignment
     type *Stype;                // type of Symbol
     #define ty() Stype->Tty
 
@@ -1301,7 +1301,8 @@ struct Symbol
     char Sident[SYM_PREDEF_SZ]; // identifier string (dynamic array)
                                 // (the size is for static Symbols)
 
-    int needThis();     // !=0 if symbol needs a 'this' pointer
+    int needThis();             // !=0 if symbol needs a 'this' pointer
+    bool Sisdead(bool anyiasm); // if variable is not referenced
 };
 
 #if __DMC__
@@ -1414,7 +1415,6 @@ enum FL
         FLfast,         // ref to variable passed as register
         FLpara,         // ref to function parameter variable
         FLextern,       // ref to external variable
-        FLtmp,          // ref to a stack temporary, int contains temp number
         FLcode,         // offset to code
         FLblock,        // offset to block
         FLudata,        // ref to udata segment variable

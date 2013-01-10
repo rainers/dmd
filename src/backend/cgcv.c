@@ -1,12 +1,11 @@
 // Copyright (C) 1984-1998 by Symantec
-// Copyright (C) 2000-2012 by Digital Mars
+// Copyright (C) 2000-2013 by Digital Mars
 // All Rights Reserved
 // http://www.digitalmars.com
 // Written by Walter Bright
 /*
  * This source file is made available for personal use
- * only. The license is in /dmd/src/dmd/backendlicense.txt
- * or /dm/src/dmd/backendlicense.txt
+ * only. The license is in backendlicense.txt
  * For any other uses, please contact Digital Mars.
  */
 
@@ -2359,13 +2358,13 @@ STATIC void cv4_outsym(symbol *s)
                     s->Sfl = FLreg;
                     goto case_register;
                 }
-                base = Poff - BPoff;    // cancel out add of BPoff
+                base = Para.size - BPoff;    // cancel out add of BPoff
                 goto L1;
             case SCauto:
                 if (s->Sfl == FLreg)
                     goto case_register;
             case_auto:
-                base = Aoff;
+                base = Auto.size;
             L1:
                 TOWORD(debsym + 2,I32 ? S_BPREL32 : S_BPREL16);
                 if (config.fulltypes == CV4)
@@ -2386,7 +2385,7 @@ STATIC void cv4_outsym(symbol *s)
 
             case SCfastpar:
                 if (s->Sfl != FLreg)
-                {   base = FASToff;
+                {   base = Fast.size;
                     goto L1;
                 }
                 goto case_register;

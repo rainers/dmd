@@ -5,8 +5,7 @@
 // Written by Walter Bright
 /*
  * This source file is made available for personal use
- * only. The license is in /dmd/src/dmd/backendlicense.txt
- * or /dm/src/dmd/backendlicense.txt
+ * only. The license is in backendlicense.txt
  * For any other uses, please contact Digital Mars.
  */
 
@@ -920,11 +919,13 @@ code *cdaddass(elem *e,regm_t *pretregs)
             /* Handle shortcuts. Watch out for if result has    */
             /* to be in flags.                                  */
 
-            if (reghasvalue(ALLREGS,i,&reg) && i != 1 && i != -1 &&
+            if (reghasvalue(byte ? BYTEREGS : ALLREGS,i,&reg) && i != 1 && i != -1 &&
                 !opsize)
             {
                 cs.Iop = op1;
                 cs.Irm |= modregrm(0,reg,0);
+                if (I64 && byte && reg >= 4)
+                    cs.Irex |= REX;
             }
             else
             {
@@ -945,8 +946,8 @@ code *cdaddass(elem *e,regm_t *pretregs)
                         }
                         break;
                 }
+                cs.Iop ^= byte;             /* for byte operations  */
             }
-            cs.Iop ^= byte;             /* for byte operations  */
             cs.Iflags |= opsize;
             if (forccs)
                 cs.Iflags |= CFpsw;

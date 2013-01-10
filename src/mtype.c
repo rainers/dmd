@@ -4,7 +4,6 @@
 // All Rights Reserved
 // written by Walter Bright
 // http://www.digitalmars.com
-// http://www.dsource.org/projects/dmd/browser/trunk/src/mtype.c
 // License for redistribution is by either the Artistic License
 // in artistic.txt, or the GNU General Public License in gnu.txt.
 // See the included readme.txt for details.
@@ -5619,9 +5618,9 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
 
             if (fparam->defaultArg)
             {   Expression *e = fparam->defaultArg;
-                e = e->inferType(fparam->type);
-                e = e->semantic(argsc);
-                e = resolveProperties(argsc, e);
+                Initializer *init = new ExpInitializer(e->loc, e);
+                init = init->semantic(argsc, fparam->type, INITnointerpret);
+                e = init->toExpression();
                 if (e->op == TOKfunction)               // see Bugzilla 4820
                 {   FuncExp *fe = (FuncExp *)e;
                     // Replace function literal with a function symbol,

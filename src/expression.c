@@ -5989,6 +5989,12 @@ Expression *IsExp::semantic(Scope *sc)
                 for (size_t i = 0; i < dim; i++)
                 {   Parameter *arg = Parameter::getNth(params, i);
                     assert(arg && arg->type);
+                    /* If one of the default arguments was an error,
+                       don't return an invalid tuple
+                    */
+                    if (tok2 == TOKparameters && arg->defaultArg &&
+                        arg->defaultArg->op == TOKerror)
+                        return new ErrorExp();
                     args->push(new Parameter(arg->storageClass, arg->type,
                         (tok2 == TOKparameters) ? arg->ident : NULL,
                         (tok2 == TOKparameters) ? arg->defaultArg : NULL));
@@ -8290,6 +8296,8 @@ Lagain:
                 }
 
                 f = resolveFuncCall(sc, loc, cd->baseClass->ctor, NULL, NULL, arguments, 0);
+                if (!f)
+                    return new ErrorExp();
                 accessCheck(loc, sc, NULL, f);
                 checkDeprecated(sc, f);
 #if DMDV2
@@ -8332,6 +8340,8 @@ Lagain:
             }
 
             f = resolveFuncCall(sc, loc, cd->ctor, NULL, NULL, arguments, 0);
+            if (!f)
+                return new ErrorExp();
             checkDeprecated(sc, f);
 #if DMDV2
             checkPurity(sc, f);
@@ -10624,13 +10634,13 @@ Expression *AssignExp::semantic(Scope *sc)
     Type *t1 = e1->type->toBasetype();
 
     e2 = e2->inferType(t1);
-    if (!e2->rvalue())
-        return new ErrorExp();
 
     e2 = e2->semantic(sc);
     if (e2->op == TOKerror)
         return new ErrorExp();
     e2 = resolveProperties(sc, e2);
+    if (!e2->rvalue())
+        return new ErrorExp();
 
     /* Rewrite tuple assignment as a tuple of assignments.
      */

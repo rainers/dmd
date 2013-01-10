@@ -99,7 +99,7 @@ Global::Global()
     "\nMSIL back-end (alpha release) by Cristian L. Vlasceanu and associates.";
 #endif
     ;
-    version = "v2.061";
+    version = "v2.062";
     global.structalign = STRUCTALIGN_DEFAULT;
 
     memset(&params, 0, sizeof(Param));
@@ -318,7 +318,7 @@ void usage()
         sizeof(size_t) * 8,
         global.version, global.copyright, global.written);
     printf("\
-Documentation: http://www.dlang.org/index.html\n\
+Documentation: http://dlang.org/\n\
 Usage:\n\
   dmd files.d ... { -switch }\n\
 \n\
@@ -848,35 +848,35 @@ int tryMain(size_t argc, char *argv[])
 #if DMDV1
                 browse("http://www.digitalmars.com/d/1.0/dmd-windows.html");
 #else
-                browse("http://www.dlang.org/dmd-windows.html");
+                browse("http://dlang.org/dmd-windows.html");
 #endif
 #endif
 #if linux
 #if DMDV1
                 browse("http://www.digitalmars.com/d/1.0/dmd-linux.html");
 #else
-                browse("http://www.dlang.org/dmd-linux.html");
+                browse("http://dlang.org/dmd-linux.html");
 #endif
 #endif
 #if __APPLE__
 #if DMDV1
                 browse("http://www.digitalmars.com/d/1.0/dmd-osx.html");
 #else
-                browse("http://www.dlang.org/dmd-osx.html");
+                browse("http://dlang.org/dmd-osx.html");
 #endif
 #endif
 #if __FreeBSD__
 #if DMDV1
                 browse("http://www.digitalmars.com/d/1.0/dmd-freebsd.html");
 #else
-                browse("http://www.dlang.org/dmd-freebsd.html");
+                browse("http://dlang.org/dmd-freebsd.html");
 #endif
 #endif
 #if __OpenBSD__
 #if DMDV1
                 browse("http://www.digitalmars.com/d/1.0/dmd-openbsd.html");
 #else
-                browse("http://www.dlang.org/dmd-openbsd.html");
+                browse("http://dlang.org/dmd-openbsd.html");
 #endif
 #endif
                 exit(EXIT_SUCCESS);
