@@ -23,6 +23,8 @@ struct HdrGenState
     int inBinExp;
     int inArrExp;
     int emitInst;
+    int autoMember;
+
     int pretty;         // use toPrettyChars instead of toChars
     struct
     {
@@ -33,5 +35,3 @@ struct HdrGenState
 
     HdrGenState() { memset(this, 0, sizeof(HdrGenState)); }
 };
-
-

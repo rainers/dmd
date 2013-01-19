@@ -2042,6 +2042,10 @@ Expression *VarDeclaration::getConstInitializer()
         ExpInitializer *ei = getExpInitializer();
         if (ei)
             return ei->exp;
+        else if (init)
+        {
+            return init->toExpression();
+        }
     }
 
     return NULL;
