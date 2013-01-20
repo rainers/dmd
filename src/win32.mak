@@ -531,6 +531,12 @@ glue.obj : $(CH) $(TOTALH) $C\rtlsym.h mars.h module.h glue.c
 imphint.obj : imphint.c
 	$(CC) -c $(CFLAGS) $*
 
+link.obj : $(TOTALH) link.c
+	$(CC) -c $(CFLAGS) -I$C $*
+
+libomf.obj : $(TOTALH) libomf.c
+	$(CC) -c $(CFLAGS) -I$C $*
+
 mars.obj : $(TOTALH) module.h mars.h mars.c verstr.h
 	$(CC) -c $(CFLAGS) -I$C $(PREC) $* -Ae
 

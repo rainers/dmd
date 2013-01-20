@@ -44,7 +44,9 @@
 
 #include        "arraytypes.h"
 
+#if _WIN32
 #include        "cdef.h"
+#endif
 
 int executecmd(char *cmd, char *args, int useenv);
 int executearg0(char *cmd, char *args);

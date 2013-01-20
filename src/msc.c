@@ -69,23 +69,8 @@ void backend_init()
     Param *params = &global.params;
 
     bool exe;
-    config.objfmt = params->objfmt;
 #if TARGET_WINDOS
     exe = false;
-    if (params->is64bit)
-    {   config.exe = EX_WIN64;
-
-        config.fpxmmregs = TRUE;
-
-        // Not sure we really need these two lines, try removing them later
-        config.flags |= CFGnoebp;
-        config.flags |= CFGalwaysframe;
-    }
-    else
-    {   config.exe = EX_NT;
-        config.flags2 |= CFG2seh;       // Win32 eh
-    }
-
     if (params->run)
         exe = true;         // EXE file only optimizations
     else if (params->link && !global.params.deffile)
@@ -101,7 +86,7 @@ void backend_init()
 #endif
 
     out_config_init(
-        params->is64bit ? 64 : 32,
+        (params->is64bit ? 64 : 32) | params->objfmt,
         exe,
         params->trace,
         params->nofloat,

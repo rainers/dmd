@@ -646,10 +646,6 @@
 				>
 			</File>
 			<File
-				RelativePath=".\ph.c"
-				>
-			</File>
-			<File
 				RelativePath=".\s2ir.c"
 				>
 			</File>
@@ -790,10 +786,6 @@
 				>
 			</File>
 			<File
-				RelativePath=".\util.c"
-				>
-			</File>
-			<File
 				RelativePath=".\version.c"
 				>
 			</File>
@@ -810,6 +802,10 @@
 				</File>
 				<File
 					RelativePath=".\backend\aa.h"
+					>
+				</File>
+				<File
+					RelativePath=".\backend\backconfig.c"
 					>
 				</File>
 				<File
@@ -1085,6 +1081,10 @@
 					>
 				</File>
 				<File
+					RelativePath=".\backend\ph2.c"
+					>
+				</File>
+				<File
 					RelativePath=".\backend\ptrntab.c"
 					>
 				</File>
@@ -1134,6 +1134,10 @@
 				</File>
 				<File
 					RelativePath=".\backend\type.h"
+					>
+				</File>
+				<File
+					RelativePath=".\backend\util2.c"
 					>
 				</File>
 				<File
@@ -1980,6 +1984,10 @@
 						/>
 					</FileConfiguration>
 				</File>
+				<File
+					RelativePath=".\verstr.h"
+					>
+				</File>
 			</Filter>
 			<Filter
 				Name="no_win"
@@ -2146,6 +2154,32 @@
 				</File>
 			</Filter>
 		</Filter>
+		<File
+			RelativePath="..\VERSION"
+			>
+			<FileConfiguration
+				Name="Debug|Win32"
+				>
+				<Tool
+					Name="VCCustomBuildTool"
+					Description="Generating verstr.h"
+					CommandLine="cl /Fe&quot;$(IntDir)\vergen.exe&quot; vergen.c&#x0D;&#x0A;if errorlevel 1 goto VCReportError&#x0D;&#x0A;&quot;$(IntDir)\vergen.exe&quot; &lt;&quot;$(InputPath)&quot; &gt;verstr.h&#x0D;&#x0A;"
+					AdditionalDependencies="vergen.c"
+					Outputs="verstr.h"
+				/>
+			</FileConfiguration>
+			<FileConfiguration
+				Name="Release|Win32"
+				>
+				<Tool
+					Name="VCCustomBuildTool"
+					Description="Generating verstr.h"
+					CommandLine="cl /Fe&quot;$(IntDir)\vergen.exe&quot; vergen.c&#x0D;&#x0A;if errorlevel 1 goto VCReportError&#x0D;&#x0A;&quot;$(IntDir)\vergen.exe&quot; &lt;&quot;$(InputPath)&quot; &gt;verstr.h&#x0D;&#x0A;"
+					AdditionalDependencies="vergen.c"
+					Outputs="verstr.h"
+				/>
+			</FileConfiguration>
+		</File>
 		<File
 			RelativePath=".\win32.mak"
 			>
