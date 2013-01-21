@@ -592,7 +592,7 @@ void LibMSCoff::addObject(const char *module_name, void *buf, size_t buflen)
     om->base = (unsigned char *)buf;
     om->length = buflen;
     om->offset = 0;
-	om->name = global.params.preservePaths ? module_name : FileName::name(module_name);     // remove path, but not extension
+    om->name = global.params.preservePaths ? module_name : FileName::name(module_name);     // remove path, but not extension
     om->scan = 1;
     if (fromfile)
     {   struct stat statbuf;
