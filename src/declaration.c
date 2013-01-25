@@ -1096,6 +1096,7 @@ Lnomatch:
             (*exps)[i] = e;
         }
         TupleDeclaration *v2 = new TupleDeclaration(loc, ident, exps);
+        v2->parent = this->parent;
         v2->isexp = 1;
         aliassym = v2;
         return;

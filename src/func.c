@@ -1197,7 +1197,7 @@ void FuncDeclaration::semantic3(Scope *sc)
             {   // If no return type inferred yet, then infer a void
                 if (!type->nextOf())
                 {
-                    ((TypeFunction *)type)->next = Type::tvoid;
+                    f->next = Type::tvoid;
                     //type = type->semantic(loc, sc);   // Removed with 6902
                 }
                 else if (returns && f->next->ty != Tvoid)
@@ -1301,6 +1301,20 @@ void FuncDeclaration::semantic3(Scope *sc)
                         fbody = new CompoundStatement(0, s, fbody);
                     }
                 }
+
+                /* Append:
+                 *  return this;
+                 * to function body
+                 */
+                if (blockexit & BEfallthru)
+                {
+                    Expression *e = new ThisExp(loc);
+                    if (cd)
+                        e->type = cd->type;
+                    Statement *s = new ReturnStatement(loc, e);
+                    s = s->semantic(sc2);
+                    fbody = new CompoundStatement(loc, fbody, s);
+                }
             }
             else if (fes)
             {   // For foreach(){} body, append a return 0;
@@ -1324,7 +1338,10 @@ void FuncDeclaration::semantic3(Scope *sc)
                 if (f->isnothrow && (global.errors != nothrowErrors) )
                     error("'%s' is nothrow yet may throw", toChars());
                 if (flags & FUNCFLAGnothrowInprocess)
+                {
+                    if (type == f) f = f->copy();
                     f->isnothrow = !(blockexit & BEthrow);
+                }
 
                 int offend = blockexit & BEfallthru;
 #endif
@@ -1669,19 +1686,28 @@ void FuncDeclaration::semantic3(Scope *sc)
     if (flags & FUNCFLAGpurityInprocess)
     {
         flags &= ~FUNCFLAGpurityInprocess;
+        if (type == f) f = f->copy();
         f->purity = PUREfwdref;
     }
 
     if (flags & FUNCFLAGsafetyInprocess)
     {
         flags &= ~FUNCFLAGsafetyInprocess;
+        if (type == f) f = f->copy();
         f->trust = TRUSTsafe;
     }
 
+    // reset deco to apply inference result to mangled name
+    if (f != type)
+        f->deco = NULL;
+
     // Do semantic type AFTER pure/nothrow inference.
-    if (inferRetType)
+    if (!f->deco)
     {
-        type = type->semantic(loc, sc);
+        sc = sc->push();
+        sc->linkage = linkage;  // Bugzilla 8496
+        type = f->semantic(loc, sc);
+        sc = sc->pop();
     }
 
     if (global.gag && global.errors != nerrors)
@@ -1702,6 +1728,60 @@ void FuncDeclaration::semantic3(Scope *sc)
     }
     //printf("-FuncDeclaration::semantic3('%s.%s', sc = %p, loc = %s)\n", parent->toChars(), toChars(), sc, loc.toChars());
     //fflush(stdout);
+}
+
+bool FuncDeclaration::functionSemantic()
+{
+    if (scope && !originalType)     // semantic not yet run
+    {
+        TemplateInstance *spec = isSpeculative();
+        unsigned olderrs = global.errors;
+        unsigned oldgag = global.gag;
+        if (global.gag && !spec)
+            global.gag = 0;
+        semantic(scope);
+        global.gag = oldgag;
+        if (spec && global.errors != olderrs)
+            spec->errors = global.errors - olderrs;
+        if (olderrs != global.errors)   // if errors compiling this function
+            return false;
+    }
+
+    // if inferring return type, sematic3 needs to be run
+    if (scope && (inferRetType && type && !type->nextOf() ||
+                  getFuncTemplateDecl(this)))
+    {
+        return functionSemantic3();
+    }
+
+    return true;
+}
+
+bool FuncDeclaration::functionSemantic3()
+{
+    if (semanticRun < PASSsemantic3 && scope)
+    {
+        /* Forward reference - we need to run semantic3 on this function.
+         * If errors are gagged, and it's not part of a speculative
+         * template instance, we need to temporarily ungag errors.
+         */
+        TemplateInstance *spec = isSpeculative();
+        unsigned olderrs = global.errors;
+        unsigned oldgag = global.gag;
+        if (global.gag && !spec)
+            global.gag = 0;
+        semantic3(scope);
+        global.gag = oldgag;
+
+        // If it is a speculatively-instantiated template, and errors occur,
+        // we need to mark the template as having errors.
+        if (spec && global.errors != olderrs)
+            spec->errors = global.errors - olderrs;
+        if (olderrs != global.errors)   // if errors compiling this function
+            return false;
+    }
+
+    return true;
 }
 
 void FuncDeclaration::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
@@ -3560,18 +3640,6 @@ void CtorDeclaration::semantic(Scope *sc)
     if (ad && ad->isStructDeclaration())
         ((TypeFunction *)type)->isref = 1;
 #endif
-
-    // Append:
-    //  return this;
-    // to the function body
-    if (fbody && semanticRun < PASSsemantic)
-    {
-        Expression *e = new ThisExp(loc);
-        if (parent->isClassDeclaration())
-            e->type = tret;
-        Statement *s = new ReturnStatement(loc, e);
-        fbody = new CompoundStatement(loc, fbody, s);
-    }
 
     FuncDeclaration::semantic(sc);
 

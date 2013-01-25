@@ -787,11 +787,7 @@ void ClassDeclaration::toObjFile(int multiobj)
         if (fd && (fd->fbody || !isAbstract()))
         {
             // Ensure function has a return value (Bugzilla 4869)
-            if (fd->type->ty == Tfunction && !((TypeFunction *)fd->type)->next)
-            {
-                assert(fd->scope);
-                fd->semantic3(fd->scope);
-            }
+            fd->functionSemantic();
 
             Symbol *s = fd->toSymbol();
 
@@ -1320,6 +1316,8 @@ void TypedefDeclaration::toObjFile(int multiobj)
 
 void EnumDeclaration::toObjFile(int multiobj)
 {
+    if (objFileDone)  // already written
+        return;
     //printf("EnumDeclaration::toObjFile('%s')\n", toChars());
 
     if (type->ty == Terror)
@@ -1359,6 +1357,7 @@ void EnumDeclaration::toObjFile(int multiobj)
 #endif
         outdata(sinit);
     }
+    objFileDone = true;
 }
 
 

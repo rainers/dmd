@@ -928,18 +928,15 @@ Type *functionParameters(Loc loc, Scope *sc, TypeFunction *tf,
     // If inferring return type, and semantic3() needs to be run if not already run
     if (!tf->next && fd->inferRetType)
     {
-        TemplateInstance *spec = fd->isSpeculative();
-        int olderrs = global.errors;
-        // If it isn't speculative, we need to show errors
-        unsigned oldgag = global.gag;
-        if (global.gag && !spec)
-            global.gag = 0;
-        fd->semantic3(fd->scope);
-        global.gag = oldgag;
-        // Update the template instantiation with the number
-        // of errors which occured.
-        if (spec && global.errors != olderrs)
-            spec->errors = global.errors - olderrs;
+        fd->functionSemantic();
+    }
+    else if (fd && fd->parent)
+    {
+        TemplateInstance *ti = fd->parent->isTemplateInstance();
+        if (ti && ti->tempdecl)
+        {
+            fd->functionSemantic3();
+        }
     }
 
     size_t n = (nargs > nparams) ? nargs : nparams;   // n = max(nargs, nparams)
@@ -3061,34 +3058,10 @@ Lagain:
     }
     f = s->isFuncDeclaration();
     if (f)
-    {   f = f->toAliasFunc();
-
-        if (!f->originalType && f->scope)       // semantic not yet run
-        {
-            unsigned oldgag = global.gag;
-            if (global.isSpeculativeGagging() && !f->isSpeculative())
-                global.gag = 0;
-            f->semantic(f->scope);
-            global.gag = oldgag;
-        }
-
-        // if inferring return type, sematic3 needs to be run
-        if (f->scope && (f->inferRetType && f->type && !f->type->nextOf() ||
-                         getFuncTemplateDecl(f)))
-        {
-            TemplateInstance *spec = f->isSpeculative();
-            int olderrs = global.errors;
-            // If it isn't speculative, we need to show errors
-            unsigned oldgag = global.gag;
-            if (global.gag && !spec)
-                global.gag = 0;
-            f->semantic3(f->scope);
-            global.gag = oldgag;
-            // Update the template instantiation with the number
-            // of errors which occured.
-            if (spec && global.errors != olderrs)
-                spec->errors = global.errors - olderrs;
-        }
+    {
+        f = f->toAliasFunc();
+        if (!f->functionSemantic())
+            return new ErrorExp();
 
         if (f->isUnitTestDeclaration())
         {
@@ -3386,6 +3359,8 @@ Expression *SuperExp::semantic(Scope *sc)
 
     s = fd->toParent();
     while (s && s->isTemplateInstance())
+        s = s->toParent();
+    if (s->isTemplateDeclaration()) // allow inside template constraint
         s = s->toParent();
     assert(s);
     cd = s->isClassDeclaration();
@@ -5108,8 +5083,13 @@ Expression *VarExp::semantic(Scope *sc)
 #if LOGSEMANTIC
     printf("VarExp::semantic(%s)\n", toChars());
 #endif
-//    if (var->sem == SemanticStart && var->scope)      // if forward referenced
-//      var->semantic(sc);
+    if (FuncDeclaration *f = var->isFuncDeclaration())
+    {
+        //printf("L%d fd = %s\n", __LINE__, f->toChars());
+        if (!f->functionSemantic())
+            return new ErrorExp();
+    }
+
     if (!type)
     {   type = var->type;
 #if 0
@@ -7217,16 +7197,27 @@ Expression *DotVarExp::semantic(Scope *sc)
 
         e1 = e1->semantic(sc);
         e1 = e1->addDtorHook(sc);
-        type = var->type;
-        if (!type && global.errors)
-        {   // var is goofed up, just return 0
-            return new ErrorExp();
-        }
-        assert(type);
 
         Type *t1 = e1->type;
-        if (!var->isFuncDeclaration())  // for functions, do checks after overload resolution
+        FuncDeclaration *f = var->isFuncDeclaration();
+        if (f)  // for functions, do checks after overload resolution
         {
+            //printf("L%d fd = %s\n", __LINE__, f->toChars());
+            if (!f->functionSemantic())
+                return new ErrorExp();
+
+            type = f->type;
+            assert(type);
+        }
+        else
+        {
+            type = var->type;
+            if (!type && global.errors)
+            {   // var is goofed up, just return 0
+                goto Lerr;
+            }
+            assert(type);
+
             if (t1->ty == Tpointer)
                 t1 = t1->nextOf();
 
@@ -9472,6 +9463,16 @@ Expression *SliceExp::semantic(Scope *sc)
 Lagain:
     UnaExp::semantic(sc);
     e1 = resolveProperties(sc, e1);
+    if (e1->op == TOKtype && e1->type->ty != Ttuple)
+    {
+        if (lwr || upr)
+        {
+            error("cannot slice type '%s'", e1->toChars());
+            return new ErrorExp();
+        }
+        e = new TypeExp(loc, e1->type->arrayOf());
+        return e->semantic(sc);
+    }
 
     e = this;
 
@@ -10004,6 +10005,18 @@ Expression *IndexExp::semantic(Scope *sc)
     if (!e1->type)
         e1 = e1->semantic(sc);
     assert(e1->type);           // semantic() should already be run on it
+    if (e1->op == TOKtype)
+    {
+        e2 = e2->semantic(sc);
+        e2 = resolveProperties(sc, e2);
+        Type *nt;
+        if (e2->op == TOKtype)
+            nt = new TypeAArray(e1->type, e2->type);
+        else
+            nt = new TypeSArray(e1->type, e2);
+        e = new TypeExp(loc, nt);
+        return e->semantic(sc);
+    }
     if (e1->op == TOKerror)
         goto Lerr;
     e = this;
@@ -11447,7 +11460,8 @@ Expression *CatExp::semantic(Scope *sc)
              */
         }
         else if ((tb1->ty == Tsarray || tb1->ty == Tarray) &&
-            e2->implicitConvTo(tb1next) >= MATCHconvert)
+            e2->implicitConvTo(tb1next) >= MATCHconvert &&
+            tb2->ty != Tvoid)
         {
             checkPostblit(e2->loc, tb2);
             e2 = e2->implicitCastTo(sc, tb1next);
@@ -11460,7 +11474,8 @@ Expression *CatExp::semantic(Scope *sc)
             return this;
         }
         else if ((tb2->ty == Tsarray || tb2->ty == Tarray) &&
-            e1->implicitConvTo(tb2next) >= MATCHconvert)
+            e1->implicitConvTo(tb2next) >= MATCHconvert &&
+            tb1->ty != Tvoid)
         {
             checkPostblit(e1->loc, tb1);
             e1 = e1->implicitCastTo(sc, tb2next);
