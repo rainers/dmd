@@ -1915,9 +1915,7 @@ void Expression::checkModifiable(Scope *sc)
             }
             else
             {
-                OutBuffer buf;
-                MODtoBuffer(&buf, type->mod);
-                error("cannot modify %s expression %s", buf.toChars(), toChars());
+                error("cannot modify %s expression %s", MODtoChars(type->mod), toChars());
             }
         }
     }
@@ -4126,12 +4124,16 @@ Expression *StructLiteralExp::semantic(Scope *sc)
         Type *telem = v->type;
         if (stype)
             telem = telem->addMod(stype->mod);
+        Type *origType = telem;
         while (!e->implicitConvTo(telem) && telem->toBasetype()->ty == Tsarray)
         {   /* Static array initialization, as in:
              *  T[3][5] = e;
              */
             telem = telem->toBasetype()->nextOf();
         }
+
+        if (!e->implicitConvTo(telem))
+            telem = origType;  // restore type for better diagnostic
 
         e = e->implicitCastTo(sc, telem);
         if (e->op == TOKerror)
@@ -6369,15 +6371,17 @@ Expression *BinExp::incompatibleTypes()
         e2->type->toBasetype() != Type::terror
        )
     {
+        // CondExp uses 'a ? b : c' but we're comparing 'b : c'
+        TOK thisOp = (op == TOKquestion) ? TOKcolon : op;
         if (e1->op == TOKtype || e2->op == TOKtype)
         {
             error("incompatible types for ((%s) %s (%s)): cannot use '%s' with types",
-                e1->toChars(), Token::toChars(op), e2->toChars(), Token::toChars(op));
+                e1->toChars(), Token::toChars(thisOp), e2->toChars(), Token::toChars(op));
         }
         else
         {
             error("incompatible types for ((%s) %s (%s)): '%s' and '%s'",
-             e1->toChars(), Token::toChars(op), e2->toChars(),
+             e1->toChars(), Token::toChars(thisOp), e2->toChars(),
              e1->type->toChars(), e2->type->toChars());
         }
         return new ErrorExp();
@@ -7690,9 +7694,7 @@ Expression *CallExp::resolveUFCS(Scope *sc)
                 return new ErrorExp();
             }
             if (!e->type->isMutable())
-            {   OutBuffer buf;
-                MODtoBuffer(&buf, e->type->mod);
-                error("cannot remove key from %s associative array %s", buf.toChars(), e->toChars());
+            {   error("cannot remove key from %s associative array %s", MODtoChars(e->type->mod), e->toChars());
                 return new ErrorExp();
             }
             Expression *key = (*arguments)[0];
@@ -10005,7 +10007,7 @@ Expression *IndexExp::semantic(Scope *sc)
     if (!e1->type)
         e1 = e1->semantic(sc);
     assert(e1->type);           // semantic() should already be run on it
-    if (e1->op == TOKtype)
+    if (e1->op == TOKtype && e1->type->ty != Ttuple)
     {
         e2 = e2->semantic(sc);
         e2 = resolveProperties(sc, e2);

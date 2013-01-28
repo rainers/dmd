@@ -1343,8 +1343,7 @@ STATIC void cpp_this_type(type *tfunc,Classsym *stag)
     type_debug(tfunc);
     symbol_debug(stag);
 #if MARS
-    t = type_allocn(TYnptr, stag->Stype);
-    t->Tcount++;
+    t = type_pointer(stag->Stype);
 #else
     t = cpp_thistype(tfunc,stag);
 #endif
