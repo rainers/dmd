@@ -113,6 +113,11 @@
     <ClCompile Include="argtypes.c" />
     <ClCompile Include="arrayop.c" />
     <ClCompile Include="attrib.c" />
+    <ClCompile Include="backend\backconfig.c" />
+    <ClCompile Include="backend\cv8.c" />
+    <ClCompile Include="backend\pdata.c" />
+    <ClCompile Include="backend\ph2.c" />
+    <ClCompile Include="backend\util2.c" />
     <ClCompile Include="builtin.c" />
     <ClCompile Include="canthrow.c" />
     <ClCompile Include="cast.c" />
@@ -121,6 +126,7 @@
     <ClCompile Include="cond.c" />
     <ClCompile Include="constfold.c" />
     <ClCompile Include="cppmangle.c" />
+    <ClCompile Include="ctfeexpr.c" />
     <ClCompile Include="declaration.c" />
     <ClCompile Include="delegatize.c" />
     <ClCompile Include="doc.c" />
@@ -158,7 +164,6 @@
     <ClCompile Include="opover.c" />
     <ClCompile Include="optimize.c" />
     <ClCompile Include="parse.c" />
-    <ClCompile Include="ph.c" />
     <ClCompile Include="s2ir.c" />
     <ClCompile Include="scanmscoff.c" />
     <ClCompile Include="scope.c" />
@@ -190,7 +195,6 @@
     </ClCompile>
     <ClCompile Include="unittests.c" />
     <ClCompile Include="utf.c" />
-    <ClCompile Include="util.c" />
     <ClCompile Include="version.c" />
     <ClCompile Include="backend\aa.c" />
     <ClCompile Include="backend\bcomplex.c" />
@@ -505,6 +509,35 @@ if errorlevel 1 goto VCReportError
       <FileType>Document</FileType>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
     </CustomBuildStep>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="..\VERSION">
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">cl /Fe"$(IntDir)\vergen.exe" vergen.c
+if errorlevel 1 goto VCReportError
+"$(IntDir)\vergen.exe" &lt;"$(InputPath)" &gt;verstr.h</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Generating verstr.h</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">verstr.h</Outputs>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">vergen.c</AdditionalInputs>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">cl /Fe"$(IntDir)\vergen.exe" vergen.c
+if errorlevel 1 goto VCReportError
+"$(IntDir)\vergen.exe" &lt;"$(InputPath)" &gt;verstr.h</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Generating verstr.h</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">verstr.h</Outputs>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">vergen.c</AdditionalInputs>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">cl /Fe"$(IntDir)\vergen.exe" vergen.c
+if errorlevel 1 goto VCReportError
+"$(IntDir)\vergen.exe" &lt;"$(InputPath)" &gt;verstr.h</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Generating verstr.h</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">verstr.h</Outputs>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">vergen.c</AdditionalInputs>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">cl /Fe"$(IntDir)\vergen.exe" vergen.c
+if errorlevel 1 goto VCReportError
+"$(IntDir)\vergen.exe" &lt;"$(InputPath)" &gt;verstr.h</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Generating verstr.h</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">verstr.h</Outputs>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">vergen.c</AdditionalInputs>
+    </CustomBuild>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
