@@ -1640,6 +1640,7 @@ char *Type::modToChars()
 {
     OutBuffer buf;
     modToBuffer(&buf);
+    buf.writebyte(0);
     return buf.extractData();
 }
 
@@ -6081,25 +6082,6 @@ MATCH TypeFunction::callMatch(Expression *ethis, Expressions *args, int flag)
                         targ = new TypeSArray(targ->nextOf(),
                                 new IntegerExp(0, ((StringExp *)arg)->len,
                                 Type::tindex));
-                }
-                else if (ta && ta->implicitConvTo(tprm))
-                {
-                    goto Nomatch;
-                }
-                else if (arg->op == TOKstructliteral)
-                {
-                    match = MATCHconvert;
-                }
-                else if (arg->op == TOKcall)
-                {
-                    CallExp *ce = (CallExp *)arg;
-                    if (ce->e1->op == TOKdotvar &&
-                        ((DotVarExp *)ce->e1)->var->isCtorDeclaration())
-                    {
-                        match = MATCHconvert;
-                    }
-                    else
-                        goto Nomatch;
                 }
                 else
                     goto Nomatch;
