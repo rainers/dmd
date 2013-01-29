@@ -139,7 +139,10 @@ type *TypeFunction::toCtype()
     if (varargs != 1)
         t->Tflags |= TFfixed;
     assert(next);           // function return type should exist
-    t->Tnext = next->toCtype();
+    if(!next) // auto return type in impoted class
+        t->Tnext = tsvoid;
+    else
+        t->Tnext = next->toCtype();
     t->Tnext->Tcount++;
     t->Tparamtypes = paramtypes;
     t->Tcount++;
