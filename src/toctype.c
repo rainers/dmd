@@ -118,12 +118,6 @@ type *TypeFunction::toCtype()
     {
         size_t nparams = Parameter::dim(parameters);
 
-    if (ctype)
-    {
-        if (!ctype->Tnext)
-            ctype->Tnext = next->toCtype(); // assume recursion checked elsewhere
-        return ctype;
-    }
         type *tmp[10];
         type **ptypes = tmp;
         if (nparams > 10)
@@ -137,7 +131,8 @@ type *TypeFunction::toCtype()
             ptypes[i] = tp;
         }
 
-        ctype = type_function(totym(), ptypes, nparams, varargs == 1, next->toCtype());
+        type* tnext = next ? next->toCtype() : tsvoid;
+        ctype = type_function(totym(), ptypes, nparams, varargs == 1, tnext);
 
         if (nparams > 10)
             free(ptypes);
@@ -161,8 +156,6 @@ type *TypeStruct::toCtype()
         return ctype;
 
     //printf("TypeStruct::toCtype() '%s'\n", sym->toChars());
-    if(sym->members && hasPointers()) // do not try on incomplete declaration
-        t->Tflags |= TFhasPointers;
     Type *tm = mutableOf();
     if (tm->ctype)
     {
@@ -239,8 +232,6 @@ type *TypeEnum::toCtype()
         t = type_alloc(TYenum);
         t->Ttag = (Classsym *)s;            // enum tag name
         t->Tcount++;
-        if(hasPointers())
-            t->Tflags |= TFhasPointers;
         t->Tnext = tm->ctype->Tnext;
         t->Tnext->Tcount++;
         // Add modifiers
