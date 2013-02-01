@@ -5022,8 +5022,8 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
             a = scx->scopesym->members;
         }
         else
-        {   //Module *m = sc->module->importedFrom;
-            Module *m = tempdecl->scope->module->importedFrom;
+        {
+            Module *m = (isnested ? sc : tempdecl->scope)->module->importedFrom;
             //printf("\t2: adding to module %s instead of module %s\n", m->toChars(), sc->module->toChars());
             a = m->members;
             if (m->semanticRun >= 3)
@@ -6458,30 +6458,25 @@ void TemplateMixin::semantic(Scope *sc)
     {
         if (!td->semanticRun)
         {
-            if (td->scope)
-                td->semantic(td->scope);
+            /* Cannot handle forward references if mixin is a struct member,
+             * because addField must happen during struct's semantic, not
+             * during the mixin semantic.
+             * runDeferred will re-run mixin's semantic outside of the struct's
+             * semantic.
+             */
+            semanticRun = PASSinit;
+            AggregateDeclaration *ad = toParent()->isAggregateDeclaration();
+            if (ad)
+                ad->sizeok = SIZEOKfwd;
             else
             {
-                /* Cannot handle forward references if mixin is a struct member,
-                 * because addField must happen during struct's semantic, not
-                 * during the mixin semantic.
-                 * runDeferred will re-run mixin's semantic outside of the struct's
-                 * semantic.
-                 */
-                semanticRun = PASSinit;
-                AggregateDeclaration *ad = toParent()->isAggregateDeclaration();
-                if (ad)
-                    ad->sizeok = SIZEOKfwd;
-                else
-                {
-                    // Forward reference
-                    //printf("forward reference - deferring\n");
-                    scope = scx ? scx : new Scope(*sc);
-                    scope->setNoFree();
-                    scope->module->addDeferredSemantic(this);
-                }
-                return;
+                // Forward reference
+                //printf("forward reference - deferring\n");
+                scope = scx ? scx : new Scope(*sc);
+                scope->setNoFree();
+                scope->module->addDeferredSemantic(this);
             }
+            return;
         }
     }
 
@@ -6600,6 +6595,8 @@ void TemplateMixin::semantic(Scope *sc)
     sc2 = argscope->push(this);
     sc2->offset = sc->offset;
 
+    size_t deferred_dim = Module::deferred.dim;
+
     static int nest;
     //printf("%d\n", nest);
     if (++nest > 500)
@@ -6618,6 +6615,36 @@ void TemplateMixin::semantic(Scope *sc)
     nest--;
 
     sc->offset = sc2->offset;
+
+    if (!sc->func && Module::deferred.dim > deferred_dim)
+    {
+        sc2->pop();
+        argscope->pop();
+        scy->pop();
+        //printf("deferring mixin %s, deferred.dim += %d\n", toChars(), Module::deferred.dim - deferred_dim);
+        //printf("\t[");
+        //for (size_t u = 0; u < Module::deferred.dim; u++) printf("%s%s", Module::deferred[u]->toChars(), u == Module::deferred.dim-1?"":", ");
+        //printf("]\n");
+
+        semanticRun = PASSinit;
+        AggregateDeclaration *ad = toParent()->isAggregateDeclaration();
+        if (ad)
+        {
+            /* Forward reference of base class should not make derived class SIZEfwd.
+             */
+            //printf("\tad = %s, sizeok = %d\n", ad->toChars(), ad->sizeok);
+            //ad->sizeok = SIZEOKfwd;
+        }
+        else
+        {
+            // Forward reference
+            //printf("forward reference - deferring\n");
+            scope = scx ? scx : new Scope(*sc);
+            scope->setNoFree();
+            scope->module->addDeferredSemantic(this);
+        }
+        return;
+    }
 
     /* The problem is when to parse the initializer for a variable.
      * Perhaps VarDeclaration::semantic() should do it like it does

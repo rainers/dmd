@@ -1156,7 +1156,7 @@ Type *functionParameters(Loc loc, Scope *sc, TypeFunction *tf,
             else if (p->storageClass & STCout)
             {
                 Type *t = arg->type;
-                if (!t->isMutable() || !t->isAssignable(1))  // check blit assignable
+                if (!t->isMutable() || !t->isAssignable())  // check blit assignable
                     arg->error("cannot modify struct %s with immutable members", arg->toChars());
                 arg = arg->toLvalue(sc, arg);
             }
@@ -4204,13 +4204,16 @@ Expression *StructLiteralExp::semantic(Scope *sc)
 Expression *StructLiteralExp::getField(Type *type, unsigned offset)
 {
     //printf("StructLiteralExp::getField(this = %s, type = %s, offset = %u)\n",
-//      /*toChars()*/"", type->toChars(), offset);
+    //  /*toChars()*/"", type->toChars(), offset);
     Expression *e = NULL;
     int i = getFieldIndex(type, offset);
 
     if (i != -1)
     {
         //printf("\ti = %d\n", i);
+        if (i == sd->fields.dim - 1 && sd->isNested())
+            return NULL;
+
         assert(i < elements->dim);
         e = (*elements)[i];
         if (e)
@@ -4265,7 +4268,11 @@ int StructLiteralExp::getFieldIndex(Type *type, unsigned offset)
 
             if (offset == v->offset &&
                 type->size() == v->type->size())
-            {   Expression *e = (*elements)[i];
+            {
+                /* context field might not be filled. */
+                if (i == sd->fields.dim - 1 && sd->isNested())
+                    return (int)i;
+                Expression *e = (*elements)[i];
                 if (e)
                 {
                     return (int)i;
