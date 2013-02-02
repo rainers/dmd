@@ -2162,9 +2162,19 @@
 				>
 				<Tool
 					Name="VCCustomBuildTool"
-					Description="Generating verstr.h"
-					CommandLine="cl /Fe&quot;$(IntDir)\vergen.exe&quot; vergen.c&#x0D;&#x0A;if errorlevel 1 goto VCReportError&#x0D;&#x0A;&quot;$(IntDir)\vergen.exe&quot; &lt;&quot;$(InputPath)&quot; &gt;verstr.h&#x0D;&#x0A;"
-					AdditionalDependencies="vergen.c"
+					Description="Generatin verstr.h"
+					CommandLine="set /P X= &lt; $(InputPath) &amp;&amp; echo &quot;%X%&quot; &gt;verstr.h"
+					AdditionalDependencies=""
+					Outputs="verstr.h"
+				/>
+			</FileConfiguration>
+			<FileConfiguration
+				Name="Debug|x64"
+				>
+				<Tool
+					Name="VCCustomBuildTool"
+					Description="Generatin verstr.h"
+					CommandLine="set /P X= &lt; $(InputPath) &amp;&amp; echo &quot;%X%&quot; &gt;verstr.h"
 					Outputs="verstr.h"
 				/>
 			</FileConfiguration>
@@ -2173,9 +2183,19 @@
 				>
 				<Tool
 					Name="VCCustomBuildTool"
-					Description="Generating verstr.h"
-					CommandLine="cl /Fe&quot;$(IntDir)\vergen.exe&quot; vergen.c&#x0D;&#x0A;if errorlevel 1 goto VCReportError&#x0D;&#x0A;&quot;$(IntDir)\vergen.exe&quot; &lt;&quot;$(InputPath)&quot; &gt;verstr.h&#x0D;&#x0A;"
+					Description="Generatin verstr.h"
+					CommandLine="set /P X= &lt; $(InputPath) &amp;&amp; echo &quot;%X%&quot; &gt;verstr.h"
 					AdditionalDependencies="vergen.c"
+					Outputs="verstr.h"
+				/>
+			</FileConfiguration>
+			<FileConfiguration
+				Name="Release|x64"
+				>
+				<Tool
+					Name="VCCustomBuildTool"
+					Description="Generatin verstr.h"
+					CommandLine="set /P X= &lt; $(InputPath) &amp;&amp; echo &quot;%X%&quot; &gt;verstr.h"
 					Outputs="verstr.h"
 				/>
 			</FileConfiguration>
