@@ -111,8 +111,10 @@ struct FileName : String
 
     static const char *combine(const char *path, const char *name);
     static Strings *splitPath(const char *path);
-    static FileName *defaultExt(const char *name, const char *ext);
-    static FileName *forceExt(const char *name, const char *ext);
+    static const char *defaultExt(const char *name, const char *ext);
+    static const char *forceExt(const char *name, const char *ext);
+    static int equalsExt(const char *name, const char *ext);
+
     int equalsExt(const char *ext);
 
     void CopyTo(FileName *to);
@@ -274,7 +276,7 @@ struct OutBuffer : Object
     char *extractString();
 };
 
-struct Array : Object
+struct Array
 {
     size_t dim;
     void **data;

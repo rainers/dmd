@@ -1,6 +1,6 @@
 
 // Compiler implementation of the D programming language
-// Copyright (c) 1999-2012 by Digital Mars
+// Copyright (c) 1999-2013 by Digital Mars
 // All Rights Reserved
 // written by Walter Bright
 // http://www.digitalmars.com
@@ -18,10 +18,7 @@
 
 #include "rmem.h"
 #include "root.h"
-
-#if linux || __APPLE__ || __FreeBSD__ || __OpenBSD__ || __sun
-#include "gnuc.h"
-#endif
+#include "port.h"
 
 #include "mars.h"
 #include "dsymbol.h"
@@ -1672,7 +1669,7 @@ int icmp(const char *stringz, void *s, size_t slen)
 
     if (len1 != slen)
         return len1 - slen;
-    return memicmp(stringz, (char *)s, slen);
+    return Port::memicmp(stringz, (char *)s, slen);
 }
 
 /*****************************************
@@ -1685,7 +1682,7 @@ int isDitto(unsigned char *comment)
     {
         unsigned char *p = skipwhitespace(comment);
 
-        if (memicmp((char *)p, "ditto", 5) == 0 && *skipwhitespace(p + 5) == 0)
+        if (Port::memicmp((char *)p, "ditto", 5) == 0 && *skipwhitespace(p + 5) == 0)
             return 1;
     }
     return 0;
@@ -1783,11 +1780,11 @@ size_t skippastURL(OutBuffer *buf, size_t i)
     size_t j;
     unsigned sawdot = 0;
 
-    if (length > 7 && memicmp((char *)p, "http://", 7) == 0)
+    if (length > 7 && Port::memicmp((char *)p, "http://", 7) == 0)
     {
         j = 7;
     }
-    else if (length > 8 && memicmp((char *)p, "https://", 8) == 0)
+    else if (length > 8 && Port::memicmp((char *)p, "https://", 8) == 0)
     {
         j = 8;
     }
@@ -1913,48 +1910,53 @@ void highlightText(Scope *sc, Dsymbol *s, OutBuffer *buf, size_t offset)
                 if (inCode)
                     break;
                 p = &buf->data[i];
+                se = sc->module->escapetable->escapeChar('<');
 
-                // Skip over comments
-                if (p[1] == '!' && p[2] == '-' && p[3] == '-')
-                {   size_t j = i + 4;
-                    p += 4;
-                    while (1)
+                if (se && strcmp(se, "&lt;") == 0)
+                {
+                    // Generating HTML
+                    // Skip over comments
+                    if (p[1] == '!' && p[2] == '-' && p[3] == '-')
                     {
-                        if (j == buf->offset)
-                            goto L1;
-                        if (p[0] == '-' && p[1] == '-' && p[2] == '>')
+                        size_t j = i + 4;
+                        p += 4;
+                        while (1)
                         {
-                            i = j + 2;  // place on closing '>'
-                            break;
+                            if (j == buf->offset)
+                                goto L1;
+                            if (p[0] == '-' && p[1] == '-' && p[2] == '>')
+                            {
+                                i = j + 2;  // place on closing '>'
+                                break;
+                            }
+                            j++;
+                            p++;
                         }
-                        j++;
-                        p++;
+                        break;
                     }
-                    break;
-                }
 
-                // Skip over HTML tag
-                if (isalpha(p[1]) || (p[1] == '/' && isalpha(p[2])))
-                {   size_t j = i + 2;
-                    p += 2;
-                    while (1)
+                    // Skip over HTML tag
+                    if (isalpha(p[1]) || (p[1] == '/' && isalpha(p[2])))
                     {
-                        if (j == buf->offset)
-                            goto L1;
-                        if (p[0] == '>')
+                        size_t j = i + 2;
+                        p += 2;
+                        while (1)
                         {
-                            i = j;      // place on closing '>'
-                            break;
+                            if (j == buf->offset)
+                                break;
+                            if (p[0] == '>')
+                            {
+                                i = j;      // place on closing '>'
+                                break;
+                            }
+                            j++;
+                            p++;
                         }
-                        j++;
-                        p++;
+                        break;
                     }
-                    break;
                 }
-
             L1:
                 // Replace '<' with '&lt;' character entity
-                se = sc->module->escapetable->escapeChar('<');
                 if (se)
                 {   size_t len = strlen(se);
                     buf->remove(i, 1);
