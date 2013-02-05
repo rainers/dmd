@@ -423,9 +423,6 @@
     <ClCompile Include="root\dmgcmem.c">
       <Filter>src\root</Filter>
     </ClCompile>
-    <ClCompile Include="root\gnuc.c">
-      <Filter>src\root</Filter>
-    </ClCompile>
     <ClCompile Include="root\longdouble.c">
       <Filter>src\root</Filter>
     </ClCompile>
@@ -720,9 +717,6 @@
       <Filter>src\root</Filter>
     </ClInclude>
     <ClInclude Include="root\async.h">
-      <Filter>src\root</Filter>
-    </ClInclude>
-    <ClInclude Include="root\gnuc.h">
       <Filter>src\root</Filter>
     </ClInclude>
     <ClInclude Include="root\longdouble.h">

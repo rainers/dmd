@@ -1373,14 +1373,6 @@
 					</FileConfiguration>
 				</File>
 				<File
-					RelativePath=".\root\gnuc.c"
-					>
-				</File>
-				<File
-					RelativePath=".\root\gnuc.h"
-					>
-				</File>
-				<File
 					RelativePath=".\root\longdouble.c"
 					>
 				</File>
@@ -2163,7 +2155,7 @@
 				<Tool
 					Name="VCCustomBuildTool"
 					Description="Generatin verstr.h"
-					CommandLine="set /P X= &lt; $(InputPath) &amp;&amp; echo &quot;%X%&quot; &gt;verstr.h"
+					CommandLine="set /P X= &lt; $(InputPath) &amp;&amp; echo &quot;%X%&quot; &gt;verstr.h&#x0D;&#x0A;"
 					AdditionalDependencies=""
 					Outputs="verstr.h"
 				/>
@@ -2174,7 +2166,7 @@
 				<Tool
 					Name="VCCustomBuildTool"
 					Description="Generatin verstr.h"
-					CommandLine="set /P X= &lt; $(InputPath) &amp;&amp; echo &quot;%X%&quot; &gt;verstr.h"
+					CommandLine="set /P X= &lt; $(InputPath) &amp;&amp; echo &quot;%X%&quot; &gt;verstr.h&#x0D;&#x0A;"
 					Outputs="verstr.h"
 				/>
 			</FileConfiguration>
@@ -2184,7 +2176,7 @@
 				<Tool
 					Name="VCCustomBuildTool"
 					Description="Generatin verstr.h"
-					CommandLine="set /P X= &lt; $(InputPath) &amp;&amp; echo &quot;%X%&quot; &gt;verstr.h"
+					CommandLine="set /P X= &lt; $(InputPath) &amp;&amp; echo &quot;%X%&quot; &gt;verstr.h&#x0D;&#x0A;"
 					AdditionalDependencies="vergen.c"
 					Outputs="verstr.h"
 				/>
@@ -2195,7 +2187,7 @@
 				<Tool
 					Name="VCCustomBuildTool"
 					Description="Generatin verstr.h"
-					CommandLine="set /P X= &lt; $(InputPath) &amp;&amp; echo &quot;%X%&quot; &gt;verstr.h"
+					CommandLine="set /P X= &lt; $(InputPath) &amp;&amp; echo &quot;%X%&quot; &gt;verstr.h&#x0D;&#x0A;"
 					Outputs="verstr.h"
 				/>
 			</FileConfiguration>
