@@ -25,10 +25,6 @@
 #include "template.h"
 #include "hdrgen.h"
 
-#ifdef IN_GCC
-#include "d-dmd-gcc.h"
-#endif
-
 /********************************* FuncDeclaration ****************************/
 
 FuncDeclaration::FuncDeclaration(Loc loc, Loc endloc, Identifier *id, StorageClass storage_class, Type *type)
@@ -968,11 +964,7 @@ void FuncDeclaration::semantic3(Scope *sc)
             }
             if (f->linkage == LINKd || (f->parameters && Parameter::dim(f->parameters)))
             {   // Declare _argptr
-#ifdef IN_GCC
-                t = d_gcc_builtin_va_list_d_type;
-#else
-                t = Type::tvoid->pointerTo();
-#endif
+                t = Type::tvalist;
                 argptr = new VarDeclaration(0, t, Id::_argptr, NULL);
                 argptr->semantic(sc2);
                 sc2->insert(argptr);
@@ -1103,10 +1095,8 @@ void FuncDeclaration::semantic3(Scope *sc)
             {   // Call invariant virtually
                 Expression *v = new ThisExp(0);
                 v->type = vthis->type;
-#if STRUCTTHISREF
                 if (ad->isStructDeclaration())
                     v = v->addressOf(sc);
-#endif
                 Expression *se = new StringExp(0, (char *)"null this");
                 se = se->semantic(sc);
                 se->type = Type::tchar->arrayOf();
@@ -1145,10 +1135,8 @@ void FuncDeclaration::semantic3(Scope *sc)
             {   // Call invariant virtually
                 Expression *v = new ThisExp(0);
                 v->type = vthis->type;
-#if STRUCTTHISREF
                 if (ad->isStructDeclaration())
                     v = v->addressOf(sc);
-#endif
                 e = new AssertExp(0, v);
             }
             if (e)
@@ -1597,15 +1585,6 @@ void FuncDeclaration::semantic3(Scope *sc)
                     if (v->storage_class & (STCref | STCout | STClazy))
                         continue;
 
-#if !SARRAYVALUE
-                    /* Don't do this for static arrays, since static
-                     * arrays are called by reference. Remove this
-                     * when we change them to call by value.
-                     */
-                    if (v->type->toBasetype()->ty == Tsarray)
-                        continue;
-#endif
-
                     if (v->noscope)
                         continue;
 
@@ -1809,43 +1788,15 @@ VarDeclaration *FuncDeclaration::declareThis(Scope *sc, AggregateDeclaration *ad
         {
             assert(ad->handle);
             Type *thandle = ad->handle;
-#if STRUCTTHISREF
             thandle = thandle->addMod(type->mod);
             thandle = thandle->addStorageClass(storage_class);
             //if (isPure())
                 //thandle = thandle->addMod(MODconst);
-#else
-            if (storage_class & STCconst || type->isConst())
-            {
-                assert(0); // BUG: shared not handled
-                if (thandle->ty == Tclass)
-                    thandle = thandle->constOf();
-                else
-                {   assert(thandle->ty == Tpointer);
-                    thandle = thandle->nextOf()->constOf()->pointerTo();
-                }
-            }
-            else if (storage_class & STCimmutable || type->isImmutable())
-            {
-                if (thandle->ty == Tclass)
-                    thandle = thandle->invariantOf();
-                else
-                {   assert(thandle->ty == Tpointer);
-                    thandle = thandle->nextOf()->invariantOf()->pointerTo();
-                }
-            }
-            else if (storage_class & STCshared || type->isShared())
-            {
-                assert(0);  // not implemented
-            }
-#endif
             v = new ThisDeclaration(loc, thandle);
             //v = new ThisDeclaration(loc, isCtorDeclaration() ? ad->handle : thandle);
             v->storage_class |= STCparameter;
-#if STRUCTTHISREF
             if (thandle->ty == Tstruct)
                 v->storage_class |= STCref;
-#endif
             v->semantic(sc);
             if (!sc->insert(v))
                 assert(0);
@@ -3706,10 +3657,8 @@ void CtorDeclaration::semantic(Scope *sc)
         originalType = type->syntaxCopy();
     type = type->semantic(loc, sc);
 
-#if STRUCTTHISREF
     if (ad && ad->isStructDeclaration())
         ((TypeFunction *)type)->isref = 1;
-#endif
 
     FuncDeclaration::semantic(sc);
 
@@ -3996,9 +3945,6 @@ void StaticCtorDeclaration::semantic(Scope *sc)
     if (m)
     {   m->needmoduleinfo = 1;
         //printf("module1 %s needs moduleinfo\n", m->toChars());
-#ifdef IN_GCC
-        m->strictlyneedmoduleinfo = 1;
-#endif
     }
 }
 
@@ -4134,9 +4080,6 @@ void StaticDtorDeclaration::semantic(Scope *sc)
     if (m)
     {   m->needmoduleinfo = 1;
         //printf("module2 %s needs moduleinfo\n", m->toChars());
-#ifdef IN_GCC
-        m->strictlyneedmoduleinfo = 1;
-#endif
     }
 }
 

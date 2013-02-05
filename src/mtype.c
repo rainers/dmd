@@ -114,6 +114,7 @@ TemplateDeclaration *Type::rdinfo;
 
 Type *Type::tvoidptr;
 Type *Type::tstring;
+Type *Type::tvalist;
 Type *Type::basic[TMAX];
 unsigned char Type::mangleChar[TMAX];
 unsigned char Type::sizeTy[TMAX];
@@ -282,6 +283,7 @@ void Type::init()
 
     tvoidptr = tvoid->pointerTo();
     tstring = tchar->invariantOf()->arrayOf();
+    tvalist = tvoid->pointerTo();
 
     if (global.params.is64bit)
     {
@@ -5605,12 +5607,6 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
         sc->stc &= ~(STC_TYPECTOR | STC_FUNCATTR);
         tf->next = tf->next->semantic(loc,sc);
         sc = sc->pop();
-#if !SARRAYVALUE
-        if (tf->next->toBasetype()->ty == Tsarray)
-        {   error(loc, "functions cannot return static array %s", tf->next->toChars());
-            tf->next = Type::terror;
-        }
-#endif
         if (tf->next->toBasetype()->ty == Tfunction)
         {   error(loc, "functions cannot return a function");
             tf->next = Type::terror;
