@@ -850,7 +850,7 @@ idx_t cv8_darray(type *t, idx_t etypidx)
             sprintf(idstr, "dArray_%x_%x", unique.tsc, etypidx);
             id = idstr;
 #else
-            id = cpp_typetostring(t->Tnext, "dArray_");
+            id = t->Tident ? t->Tident : "dArray";
 #endif
             break;
     }
