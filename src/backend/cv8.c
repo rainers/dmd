@@ -836,22 +836,7 @@ idx_t cv8_darray(type *t, idx_t etypidx)
             break;
 
         default:
-#if 0
-            static struct rdtsc { 
-                rdtsc()
-                {
-                    long _tsc;
-                    __asm rdtsc; 
-                    __asm mov _tsc, EAX;
-                    tsc = _tsc;
-                }
-                long tsc; 
-            } unique;
-            sprintf(idstr, "dArray_%x_%x", unique.tsc, etypidx);
-            id = idstr;
-#else
             id = t->Tident ? t->Tident : "dArray";
-#endif
             break;
     }
 
