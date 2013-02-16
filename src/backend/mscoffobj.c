@@ -1899,7 +1899,7 @@ char *obj_mangle2(Symbol *s,char *dest)
  * Export a function name.
  */
 
-void MsCoffObj::export_symbol(Symbol *s,unsigned argsize)
+void MsCoffObj::export_symbol(Symbol *s,unsigned argsize, unsigned datasize)
 {
     char dest[DEST_LEN+1];
     char *destr = obj_mangle2(s, dest);

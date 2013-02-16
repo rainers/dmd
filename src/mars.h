@@ -183,6 +183,7 @@ struct Param
     char ignoreUnsupportedPragmas;      // rather than error on them
     char enforcePropertySyntax;
     char betterC;       // be a "better C" compiler; no dependency on D runtime
+    char exportall;     // export any suitable symbol
 
     char *argv0;        // program name
     Strings *imppath;     // array of char*'s of where to look for import modules

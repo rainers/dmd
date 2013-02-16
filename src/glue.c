@@ -680,7 +680,8 @@ void FuncDeclaration::toObjFile(int multiobj)
             else
             {
                 objmod->external_def("__acrtused_con");        // bring in C startup code
-                objmod->includelib("snn.lib");          // bring in C runtime library
+                // do not force a specific C lib, let the druntime decide
+                //objmod->includelib("snn.lib");          // bring in C runtime library
             }
 #endif
             s->Sclass = SCglobal;

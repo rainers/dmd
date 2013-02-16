@@ -335,7 +335,8 @@ Usage:\n\
   -debuglib=name    set symbolic debug library to name\n\
   -defaultlib=name  set default library to name\n\
   -deps=filename write module dependencies to filename\n%s"
-"  -g             add symbolic debug info\n\
+"  -exportall     export any suitable public symbol\n\
+  -g             add symbolic debug info\n\
   -gc            add symbolic debug info, pretend to be C\n\
   -gs            always emit stack frame\n\
   -gx            add stack stomp code\n\
@@ -837,6 +838,18 @@ int tryMain(size_t argc, char *argv[])
                     goto Lnoarg;
                 global.params.moduleDeps = new OutBuffer;
             }
+            else if (strcmp(p + 1, "exportall") == 0)
+            {
+                global.params.exportall = true;
+            }
+#if _WIN32
+            else if (strncmp(p + 1, "exportall=", 10) == 0)
+            {
+                extern const char* exportall_datafile; // cgobj.c
+                global.params.exportall = true;
+                exportall_datafile = p + 11;
+            }
+#endif
             else if (memcmp(p + 1, "man", 3) == 0)
             {
 #if _WIN32

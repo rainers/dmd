@@ -58,7 +58,7 @@ struct Obj
     VIRTUAL seg_data *tlsseg();
     VIRTUAL seg_data *tlsseg_bss();
     static int  fardata(char *name, targ_size_t size, targ_size_t *poffset);
-    VIRTUAL void export_symbol(Symbol *s, unsigned argsize);
+    VIRTUAL void export_symbol(Symbol *s, unsigned argsize, unsigned datasize = 0);
     VIRTUAL void pubdef(int seg, Symbol *s, targ_size_t offset);
     VIRTUAL void pubdefsize(int seg, Symbol *s, targ_size_t offset, targ_size_t symsize);
     VIRTUAL int external_def(const char *);
@@ -156,7 +156,7 @@ struct MsCoffObj : Obj
     VIRTUAL void setcodeseg(int seg);
     VIRTUAL seg_data *tlsseg();
     VIRTUAL seg_data *tlsseg_bss();
-    VIRTUAL void export_symbol(Symbol *s, unsigned argsize);
+    VIRTUAL void export_symbol(Symbol *s, unsigned argsize, unsigned datasize = 0);
     VIRTUAL void pubdef(int seg, Symbol *s, targ_size_t offset);
     VIRTUAL void pubdefsize(int seg, Symbol *s, targ_size_t offset, targ_size_t symsize);
 //    VIRTUAL int external(const char *);

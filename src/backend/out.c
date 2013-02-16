@@ -112,8 +112,7 @@ void outdata(symbol *s)
 #endif
     datasize = 0;
     ty = s->ty();
-    if (ty & mTYexport && config.wflags & WFexpdef && s->Sclass != SCstatic)
-        objmod->export_symbol(s,0);        // export data definition
+
     for (dt_t *dt = dtstart; dt; dt = dt->DTnext)
     {
         //printf("\tdt = %p, dt = %d\n",dt,dt->dt);
@@ -428,6 +427,11 @@ void outdata(symbol *s)
 #endif
 Lret:
     dt_free(dtstart);
+
+    if (ty & mTYexport && config.wflags & WFexpdef && s->Sclass != SCstatic)
+        objmod->export_symbol(s,0,datasize);        // export data definition
+    else if(config.wflags & WFexpall && type_mangle(s->Stype) && !(s->ty() & mTYthread))
+        objmod->export_symbol(s,0,datasize);        // export all non-TLS data definitions
 }
 
 
@@ -1314,6 +1318,9 @@ STATIC void writefunc2(symbol *sfunc)
         !(sfunc->Sclass == SCinline && !(config.flags2 & CFG2comdat)) &&
         sfunc->ty() & mTYexport)
         objmod->export_symbol(sfunc,Para.offset);      // export function definition
+
+    else if(config.wflags & WFexpall && type_mangle(sfunc->Stype))
+        objmod->export_symbol(sfunc,0);                // export all function definitions
 
     if (config.fulltypes && config.fulltypes != CV8)
         cv_func(sfunc);                 // debug info for function

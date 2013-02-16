@@ -48,7 +48,8 @@ void out_config_init(
                         // 1: D
                         // 2: fake it with C symbolic debug info
         bool alwaysframe,       // always create standard function frame
-        bool stackstomp // add stack stomping code
+        bool stackstomp,// add stack stomping code
+        bool exportall  // export all public symbols
         )
 {
 #if MARS
@@ -82,6 +83,9 @@ void out_config_init(
 
     if (exe)
         config.wflags |= WFexe;         // EXE file only optimizations
+    if (exportall)
+        config.wflags |= WFexpall;
+
     config.flags4 |= CFG4underscore;
 #endif
 #if TARGET_LINUX
