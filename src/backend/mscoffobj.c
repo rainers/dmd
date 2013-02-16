@@ -1174,6 +1174,13 @@ void MsCoffObj::startaddress(Symbol *s)
 
 bool MsCoffObj::includelib(const char *name)
 {
+    for(const char* p; (p = strchr(name, ',')) != 0; name = p + 1)
+    {
+        char *q = strdup(name);
+        q[p - name] = 0;
+        includelib(q); // recurse without ','
+        free(q);
+    }
     //dbg_printf("MsCoffObj::includelib(name *%s)\n",name);
     SegData[segidx_drectve]->SDbuf->write(" /DEFAULTLIB:\"", 14);
     SegData[segidx_drectve]->SDbuf->write(name, strlen(name));

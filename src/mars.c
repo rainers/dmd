@@ -366,11 +366,9 @@ Usage:\n\
   -property      enforce property syntax\n\
   -quiet         suppress unnecessary messages\n\
   -release       compile release version\n\
-  -run srcfile args...   run resulting program, passing args\n"
-#if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
-"  -shared        generate shared library\n"
-#endif
-"  -unittest      compile in unit tests\n\
+  -run srcfile args...   run resulting program, passing args\n\
+  -shared        generate shared library\n\
+  -unittest      compile in unit tests\n\
   -v             verbose\n\
   -version=level compile in version code >= level\n\
   -version=ident compile in version code identified by ident\n\
@@ -460,7 +458,7 @@ int tryMain(size_t argc, char *argv[])
 #if TARGET_WINDOS
 	global.params.objfmt = OBJ_OMF;
     global.params.is64bit = 0;
-    global.params.defaultlibname = "phobos";
+    global.params.defaultlibname = "phobos,druntime";
 #elif TARGET_LINUX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
 	global.params.objfmt = OBJ_ELF;
     global.params.defaultlibname = "phobos2";
@@ -555,7 +553,6 @@ int tryMain(size_t argc, char *argv[])
                 global.params.link = 0;
             else if (strcmp(p + 1, "cov") == 0)
                 global.params.cov = 1;
-#if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
             else if (strcmp(p + 1, "shared") == 0
 #if TARGET_OSX
                 // backwards compatibility with old switch
@@ -563,6 +560,7 @@ int tryMain(size_t argc, char *argv[])
 #endif
                 )
                 global.params.dll = 1;
+#if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
             else if (strcmp(p + 1, "fPIC") == 0)
                 global.params.pic = 1;
 #endif

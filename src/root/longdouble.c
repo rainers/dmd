@@ -519,7 +519,11 @@ size_t ld_sprint(char* str, int fmt, longdouble x)
     // fmt is 'a','A','f' or 'g'
     if(fmt != 'a' && fmt != 'A')
     {
-        char format[] = { '%', fmt, 0 };
+        char format[4] = { '%' };
+        int pos = 1;
+        if (ldouble((long long)x) == x)
+            format[pos++] = '#';
+        format[pos] = fmt;
         return sprintf(str, format, ld_read(&x));
     }
 

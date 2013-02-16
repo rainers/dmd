@@ -1196,6 +1196,13 @@ STATIC void obj_comment(unsigned char x, const char *string, size_t len)
 
 bool Obj::includelib(const char *name)
 {   const char *p;
+    for(; (p = strchr(name, ',')) != 0; name = p + 1)
+    {
+        char *q = strdup(name);
+        q[p - name] = 0;
+        includelib(q); // recurse without ','
+        free(q);
+    }
     size_t len = strlen(name);
 
     p = filespecdotext(name);
