@@ -692,6 +692,7 @@ struct Config
 #       define WFsaveds  0x2000 // use push/pop DS for far functions
 #       define WFdsnedgroup 0x4000      // DS != DGROUP
 #       define WFexe     0x8000 // generating code for Windows EXE
+#       define WFexpall  0x10000// generate export definition for all symbols
 
     bool fpxmmregs;             // use XMM registers for floating point
     char inline8087;            /* 0:   emulator

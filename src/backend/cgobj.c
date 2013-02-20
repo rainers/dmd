@@ -1133,6 +1133,13 @@ STATIC void obj_comment(unsigned char x, const char *string, size_t len)
 
 bool Obj::includelib(const char *name)
 {   const char *p;
+    for(; (p = strchr(name, ',')) != 0; name = p + 1)
+    {
+        char *q = strdup(name);
+        q[p - name] = 0;
+        includelib(q); // recurse without ','
+        free(q);
+    }
     size_t len = strlen(name);
 
     p = filespecdotext(name);
@@ -2334,20 +2341,58 @@ size_t Obj::mangle(Symbol *s,char *dest)
  * Export a function name.
  */
 
-void Obj::export_symbol(Symbol *s,unsigned argsize)
+const char* exportall_datafile = 0;
+
+void Obj::export_symbol(Symbol *s,unsigned argsize, unsigned datasize)
 {   char *coment;
     size_t len;
 
-    coment = (char *) alloca(4 + 1 + (IDMAX + IDOHD) + 1); // allow extra byte for mangling
-    len = Obj::mangle(s,&coment[4]);
-    assert(len <= IDMAX + IDOHD);
+    coment = (char *) alloca(4 + 1 + (2*IDMAX + IDOHD) + 1); // allow extra byte for mangling
+    coment[0] = 0x80;                           // comment type (no purge bit set)
     coment[1] = 0xA0;                           // comment class
     coment[2] = 2;                              // why??? who knows
     if (argsize >= 64)                          // we only have a 5 bit field
         argsize = 0;                            // hope we don't need callgate
     coment[3] = (argsize + 1) >> 1;             // # words on stack
-    coment[4 + len] = 0;                        // no internal name
-    objrecord(COMENT,coment,4 + len + 1);       // module name record
+
+    if(config.wflags & WFexpall)
+    {
+        size_t idlen = Obj::mangle(s,&coment[4]);
+
+        bool isdata = tyfunc(s->ty()) == 0;
+        if(isdata && exportall_datafile)
+        {
+            // this is a preliminary hack, an import library with special data support
+            // should be written instead
+            static FILE* fh = fopen(exportall_datafile, "wb"); // use binary file in case of compressed symbols
+            if (!fh)
+            {
+                error(NULL, 0, "cannot create exportall file %s", exportall_datafile);
+                fatal();
+            }
+
+            int postfix_len = 2;
+            fprintf(fh, "%.*s %u\n", idlen - 1, coment + 5, datasize);
+            memcpy(coment+4+idlen+postfix_len, coment+4, idlen);
+            // bad things happen if idlen is just below 256
+            memcpy(coment+4+idlen, "_E", postfix_len); // append "_E" to exported symbol
+            coment[4] += postfix_len;
+            len = idlen + idlen + postfix_len;
+        }
+        else
+        {
+            // writing both internal and external name is a workaround for the linker inconsistently removing first char
+            memcpy(coment+4+idlen, coment+4, idlen);
+            len = idlen + idlen;
+        }
+    }
+    else
+    {
+        len = Obj::mangle(s,&coment[4]);
+        coment[4 + len++] = 0;                  // no internal name
+    }
+    assert(len <= IDMAX + IDOHD);
+    objrecord(COMENT,coment,4 + len);           // module name record
 }
 
 /*******************************

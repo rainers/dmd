@@ -456,7 +456,7 @@ int tryMain(size_t argc, char *argv[])
 
 #if TARGET_WINDOS
     global.params.is64bit = 0;
-    global.params.defaultlibname = "phobos";
+    global.params.defaultlibname = "phobos,druntime";
 #elif TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
     global.params.defaultlibname = "phobos2";
 #else
@@ -818,6 +818,18 @@ int tryMain(size_t argc, char *argv[])
                     goto Lnoarg;
                 global.params.moduleDeps = new OutBuffer;
             }
+            else if (strcmp(p + 1, "exportall") == 0)
+            {
+                global.params.exportall = true;
+            }
+#if TARGET_WINDOS
+            else if (strncmp(p + 1, "exportall=", 10) == 0)
+            {
+                extern const char* exportall_datafile; // cgobj.c
+                global.params.exportall = true;
+                exportall_datafile = p + 11;
+            }
+#endif
             else if (memcmp(p + 1, "man", 3) == 0)
             {
 #if _WIN32

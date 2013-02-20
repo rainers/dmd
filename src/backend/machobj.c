@@ -2043,7 +2043,7 @@ char *obj_mangle2(Symbol *s,char *dest)
  * Export a function name.
  */
 
-void Obj::export_symbol(Symbol *s,unsigned argsize)
+void Obj::export_symbol(Symbol *s,unsigned argsize, unsigned datasize)
 {
     //dbg_printf("Obj::export_symbol(%s,%d)\n",s->Sident,argsize);
 }

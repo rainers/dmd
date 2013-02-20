@@ -767,8 +767,8 @@ void ClassDeclaration::toObjFile(int multiobj)
     csym->Sdt = dt;
     // ClassInfo cannot be const data, because we use the monitor on it
     outdata(csym);
-    if (isExport())
-        objmod->export_symbol(csym,0);
+    if (isExport() && !global.params.exportall) // do not export it twice if "exportall" has already done it in outdata
+        objmod->export_symbol(csym,0,0);
 
     //////////////////////////////////////////////
 
@@ -823,8 +823,8 @@ void ClassDeclaration::toObjFile(int multiobj)
     vtblsym->Sfl = FLdata;
     out_readonly(vtblsym);
     outdata(vtblsym);
-    if (isExport())
-        objmod->export_symbol(vtblsym,0);
+    if (isExport() && !global.params.exportall) // do not export it twice if "exportall" has already done it in outdata
+        objmod->export_symbol(vtblsym,0,0);
 }
 
 /******************************************
@@ -1064,8 +1064,8 @@ void InterfaceDeclaration::toObjFile(int multiobj)
     csym->Sdt = dt;
     out_readonly(csym);
     outdata(csym);
-    if (isExport())
-        objmod->export_symbol(csym,0);
+    if (isExport() && !global.params.exportall) // do not export it twice if "exportall" has already done it in outdata
+        objmod->export_symbol(csym,0,0);
 }
 
 /* ================================================================== */
@@ -1256,8 +1256,8 @@ void VarDeclaration::toObjFile(int multiobj)
         if (sz || objmod->allowZeroSize())
         {
             outdata(s);
-            if (isExport())
-            objmod->export_symbol(s,0);
+            if (isExport() && !global.params.exportall) // do not export it twice if "exportall" has already done it in outdata
+                objmod->export_symbol(s,0,0);
         }
     }
 }
@@ -1375,8 +1375,8 @@ void TypeInfoDeclaration::toObjFile(int multiobj)
     }
 
     outdata(s);
-    if (isExport())
-        objmod->export_symbol(s,0);
+    if (isExport() && !global.params.exportall) // do not export it twice if "exportall" has already done it in outdata
+        objmod->export_symbol(s,0,0);
 }
 
 
