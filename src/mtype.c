@@ -40,6 +40,7 @@
 #include "template.h"
 #include "id.h"
 #include "enum.h"
+#include "module.h"
 #include "import.h"
 #include "aggregate.h"
 #include "hdrgen.h"
@@ -4567,9 +4568,12 @@ StructDeclaration *TypeAArray::getImpl()
         dti->semantic(sc);
         TemplateInstance *ti = dti->ti;
 #endif
+        // Instantiate on the root module of import dependency graph.
+        sc = sc->push(sc->module->importedFrom);
         ti->semantic(sc);
         ti->semantic2(sc);
         ti->semantic3(sc);
+        sc = sc->pop();
         impl = ti->toAlias()->isStructDeclaration();
 #ifdef DEBUG
         if (!impl)
@@ -6641,6 +6645,11 @@ void TypeQualified::resolveHelper(Loc loc, Scope *sc,
         v = s->isVarDeclaration();
         if (v)
         {
+            if (v && v->inuse && (!v->type || !v->type->deco))  // Bugzilla 9494
+            {   error(loc, "circular reference to '%s'", v->toPrettyChars());
+                *pe = new ErrorExp();
+                return;
+            }
             *pe = new VarExp(loc, v);
             return;
         }
@@ -8088,6 +8097,10 @@ L1:
     s = s->toAlias();
 
     v = s->isVarDeclaration();
+    if (v && v->inuse && (!v->type || !v->type->deco))  // Bugzilla 9494
+    {   e->error("circular reference to '%s'", v->toPrettyChars());
+        return new ErrorExp();
+    }
     if (v && !v->isDataseg())
     {
         Expression *ei = v->getConstInitializer();
@@ -8688,10 +8701,15 @@ L1:
     if (!s->isFuncDeclaration())        // because of overloading
         s->checkDeprecated(e->loc, sc);
     s = s->toAlias();
-    v = s->isVarDeclaration();
-    if (v && !v->isDataseg())
-    {   Expression *ei = v->getConstInitializer();
 
+    v = s->isVarDeclaration();
+    if (v && v->inuse && (!v->type || !v->type->deco))  // Bugzilla 9494
+    {   e->error("circular reference to '%s'", v->toPrettyChars());
+        return new ErrorExp();
+    }
+    if (v && !v->isDataseg())
+    {
+        Expression *ei = v->getConstInitializer();
         if (ei)
         {   e = ei->copy();     // need to copy it if it's a StringExp
             e = e->semantic(sc);
@@ -8956,7 +8974,7 @@ MATCH TypeClass::constConv(Type *to)
     /* Conversion derived to const(base)
      */
     int offset = 0;
-    if (to->isBaseOf(this, &offset) && offset == 0 && !to->isMutable())
+    if (to->isBaseOf(this, &offset) && offset == 0 && !to->isMutable() && !to->isWild())
         return MATCHconvert;
 
     return MATCHnomatch;

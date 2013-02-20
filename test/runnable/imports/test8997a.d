@@ -1,6 +1,6 @@
 module imports.test8997a;
 
-class A {
-	A[string] foobar;
+class A
+{
+    A[string] foobar;
 }
-

@@ -287,6 +287,7 @@ void cv8_func_term(Symbol *sfunc)
     func_t* fn = sfunc->Sfunc;
     if(fn->Fclass)
     {
+        // generate member function type info
         // it would be nicer if this could be in cv4_typidx, but the function info is not available there
         unsigned nparam;
         unsigned char call = cv4_callconv(sfunc->Stype);

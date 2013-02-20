@@ -297,8 +297,12 @@ void FuncDeclaration::semantic(Scope *sc)
     if (isOverride() && !isVirtual())
         error("cannot override a non-virtual function");
 
-    if ((f->isConst() || f->isImmutable()) && !isThis())
-        error("without 'this' cannot be const/immutable");
+    if (!f->isNaked() && !(isThis() || isNested()))
+    {
+        OutBuffer buf;
+        MODtoBuffer(&buf, f->mod);
+        error("without 'this' cannot be %s", buf.toChars());
+    }
 
     if (isAbstract() && isFinal())
         error("cannot be both final and abstract");
@@ -3274,7 +3278,7 @@ void FuncDeclaration::checkNestedReference(Scope *sc, Loc loc)
  */
 void markAsNeedingClosure(Dsymbol *f, FuncDeclaration *outerFunc)
 {
-    for (Dsymbol *sx = f; sx != outerFunc; sx = sx->parent)
+    for (Dsymbol *sx = f; sx && sx != outerFunc; sx = sx->parent)
     {
         FuncDeclaration *fy = sx->isFuncDeclaration();
         if (fy && fy->closureVars.dim)

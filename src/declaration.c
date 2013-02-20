@@ -887,7 +887,9 @@ void VarDeclaration::semantic(Scope *sc)
     else
     {   if (!originalType)
             originalType = type->syntaxCopy();
+        inuse++;
         type = type->semantic(loc, sc);
+        inuse--;
     }
     //printf(" semantic type = %s\n", type ? type->toChars() : "null");
 
@@ -977,7 +979,7 @@ void VarDeclaration::semantic(Scope *sc)
         size_t nelems = Parameter::dim(tt->arguments);
         Objects *exps = new Objects();
         exps->setDim(nelems);
-        Expression *ie = init ? init->toExpression() : NULL;
+        Expression *ie = (init && !init->isVoidInitializer()) ? init->toExpression() : NULL;
         if (ie) ie = ie->semantic(sc);
 
         if (nelems > 0 && ie)

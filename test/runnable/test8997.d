@@ -5,10 +5,11 @@ module test8997;
 
 import imports.test8997a;
 
-void main() {
+void main()
+{
     auto a = new A();
 
-    foreach(key; a.foobar.byKey()) {
-
+    foreach(key; a.foobar.byKey())
+    {
     }
 }

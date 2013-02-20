@@ -7096,6 +7096,16 @@ Expression *DotVarExp::semantic(Scope *sc)
             Expression *e = expandVar(WANTvalue, v);
             if (e)
                 return e;
+
+            if (v->isDataseg())     // fix bugzilla 8238
+            {
+                // (e1, v)
+                accessCheck(loc, sc, e1, v);
+                VarExp *ve = new VarExp(loc, v);
+                e = new CommaExp(loc, e1, ve);
+                e = e->semantic(sc);
+                return e;
+            }
         }
         Dsymbol *s;
         if (sc->func && !sc->intypeof && t1->hasPointers() &&
@@ -7845,14 +7855,18 @@ Lagain:
             ad = ((TypeStruct *)t1)->sym;
 #if DMDV2
 
-            if (ad->sizeok == SIZEOKnone && !ad->ctor &&
-                ad->search(0, Id::ctor, 0))
+            if (ad->sizeok == SIZEOKnone)
             {
-                // The constructor hasn't been found yet, see bug 8741
-                // This can happen if we are inferring type from
-                // from VarDeclaration::semantic() in declaration.c
-                error("cannot create a struct until its size is determined");
-                return new ErrorExp();
+                if (ad->scope)
+                    ad->semantic(ad->scope);
+                else if (!ad->ctor && ad->search(0, Id::ctor, 0))
+                {
+                    // The constructor hasn't been found yet, see bug 8741
+                    // This can happen if we are inferring type from
+                    // from VarDeclaration::semantic() in declaration.c
+                    error("cannot create a struct until its size is determined");
+                    return new ErrorExp();
+                }
             }
 
             // First look for constructor
@@ -11249,7 +11263,7 @@ Expression *CatExp::semantic(Scope *sc)
             checkPostblit(e2->loc, tb2);
             e2 = e2->implicitCastTo(sc, tb1next);
             type = tb1next->arrayOf();
-            if (tb2->ty == Tarray)
+            if (tb2->ty == Tarray || tb2->ty == Tsarray)
             {   // Make e2 into [e2]
                 e2 = new ArrayLiteralExp(e2->loc, e2);
                 e2->type = type;
@@ -11263,7 +11277,7 @@ Expression *CatExp::semantic(Scope *sc)
             checkPostblit(e1->loc, tb1);
             e1 = e1->implicitCastTo(sc, tb2next);
             type = tb2next->arrayOf();
-            if (tb1->ty == Tarray)
+            if (tb1->ty == Tarray || tb1->ty == Tsarray)
             {   // Make e1 into [e1]
                 e1 = new ArrayLiteralExp(e1->loc, e1);
                 e1->type = type;
