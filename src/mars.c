@@ -23,6 +23,7 @@
 #include "rmem.h"
 #include "root.h"
 #include "async.h"
+#include "target.h"
 
 #include "mars.h"
 #include "module.h"
@@ -311,8 +312,8 @@ void usage()
 #else
     const char fpic[] = "";
 #endif
-    printf("DMD%d D Compiler %s\n%s %s\n",
-        sizeof(size_t) * 8,
+    printf("DMD%llu D Compiler %s\n%s %s\n",
+           (unsigned long long) sizeof(size_t) * 8,
         global.version, global.copyright, global.written);
     printf("\
 Documentation: http://dlang.org/\n\
@@ -1089,6 +1090,7 @@ int tryMain(size_t argc, char *argv[])
     Type::init();
     Id::initialize();
     Module::init();
+    Target::init();
     initPrecedence();
 
     if (global.params.verbose)

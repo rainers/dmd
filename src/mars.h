@@ -146,7 +146,6 @@ struct Param
     bool alwaysframe;   // always emit standard stack frame
     bool optimize;      // run optimizer
     char map;           // generate linker .map file
-    char cpu;           // target CPU
     char is64bit;       // generate 64 bit code
     char objfmt;        // object file format as defined in cdef.h
     char isLinux;       // generate code for linux

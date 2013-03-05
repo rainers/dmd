@@ -23,6 +23,7 @@
 #include "template.h"
 
 #include "rmem.h"
+#include "target.h"
 #include "cc.h"
 #include "global.h"
 #include "oper.h"
@@ -910,7 +911,7 @@ int FuncDeclaration::cvMember(unsigned char *p)
             TOIDX(q, cv4_memfunctypidx(this));
             q += cgcv.sz_idx;
             if (introducing)
-            {   TOLONG(q, vtblIndex * PTRSIZE);
+            {   TOLONG(q, vtblIndex * Target::ptrsize);
                 q += 4;
             }
         }
@@ -959,7 +960,7 @@ int VarDeclaration::cvMember(unsigned char *p)
 
     if (!p)
     {
-        if (storage_class & STCfield)
+        if (isField())
         {
             if (config.fulltypes == CV8)
                 nwritten += 2;
@@ -982,7 +983,7 @@ int VarDeclaration::cvMember(unsigned char *p)
         switch (config.fulltypes)
         {
             case CV8:
-                if (storage_class & STCfield)
+                if (isField())
                 {
                     TOWORD(p,LF_MEMBER_V3);
                     TOWORD(p + 2,attribute);
@@ -1002,7 +1003,7 @@ int VarDeclaration::cvMember(unsigned char *p)
                 break;
 
             case CV4:
-                if (storage_class & STCfield)
+                if (isField())
                 {
                     TOWORD(p,LF_MEMBER);
                     TOWORD(p + 2,typidx);

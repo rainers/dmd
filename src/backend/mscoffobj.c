@@ -1341,17 +1341,9 @@ void MsCoffObj::ehtables(Symbol *sfunc,targ_size_t size,Symbol *ehsym)
 
     int align = I64 ? IMAGE_SCN_ALIGN_8BYTES : IMAGE_SCN_ALIGN_4BYTES;  // align to NPTRSIZE
 
-    MsCoffObj::getsegment("._deh_bg", IMAGE_SCN_CNT_INITIALIZED_DATA |
-                                      align |
-                                      IMAGE_SCN_MEM_READ);
-
-   // The size is sizeof(struct FuncTable) in deh2.d
-    int seg =
-    MsCoffObj::getsegment("._deh_eh", IMAGE_SCN_CNT_INITIALIZED_DATA |
-                                      align |
-                                      IMAGE_SCN_MEM_READ);
-
-    MsCoffObj::getsegment("._deh_en", IMAGE_SCN_CNT_INITIALIZED_DATA |
+    // The size is sizeof(struct FuncTable) in deh2.d
+    const int seg =
+    MsCoffObj::getsegment("._deh$B", IMAGE_SCN_CNT_INITIALIZED_DATA |
                                       align |
                                       IMAGE_SCN_MEM_READ);
 
@@ -1380,22 +1372,17 @@ void MsCoffObj::ehsections()
   {
     int align = I64 ? IMAGE_SCN_ALIGN_8BYTES : IMAGE_SCN_ALIGN_4BYTES;
 
-    int segdeh_bg =
-    MsCoffObj::getsegment("._deh_bg", IMAGE_SCN_CNT_INITIALIZED_DATA |
-                                      align |
-                                      IMAGE_SCN_MEM_READ);
+    const int segdeh_bg =
+    MsCoffObj::getsegment("._deh$A", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                     align |
+                                     IMAGE_SCN_MEM_READ);
 
-   // The size is sizeof(struct FuncTable) in deh2.d
-    MsCoffObj::getsegment("._deh_eh", IMAGE_SCN_CNT_INITIALIZED_DATA |
-                                      align |
-                                      IMAGE_SCN_MEM_READ);
+    const int segdeh_en =
+    MsCoffObj::getsegment("._deh$C", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                     align |
+                                     IMAGE_SCN_MEM_READ);
 
-    int segdeh_en =
-    MsCoffObj::getsegment("._deh_en", IMAGE_SCN_CNT_INITIALIZED_DATA |
-                                      align |
-                                      IMAGE_SCN_MEM_READ);
-
-    /* Create symbol _eh_beg that sits just before the .minfodt segment
+    /* Create symbol _eh_beg that sits just before the ._deh$B section
      */
     symbol *eh_beg = symbol_name("_deh_beg", SCglobal, tspvoid);
     eh_beg->Sseg = segdeh_bg;
@@ -1403,7 +1390,7 @@ void MsCoffObj::ehsections()
     symbuf->write(&eh_beg, sizeof(eh_beg));
     MsCoffObj::bytes(segdeh_bg, 0, I64 ? 8 * 3 : 4 * 3, NULL);
 
-    /* Create symbol _eh_end that sits just after the ._deh_eh segment
+    /* Create symbol _eh_end that sits just after the ._deh$B section
      */
     symbol *eh_end = symbol_name("_deh_end", SCglobal, tspvoid);
     eh_end->Sseg = segdeh_en;
@@ -1419,19 +1406,16 @@ void MsCoffObj::ehsections()
      */
     int align = I64 ? IMAGE_SCN_ALIGN_8BYTES : IMAGE_SCN_ALIGN_4BYTES;
 
-    int segbg =
-    MsCoffObj::getsegment(".minfobg", IMAGE_SCN_CNT_INITIALIZED_DATA |
+    const int segbg =
+    MsCoffObj::getsegment(".minfo$A", IMAGE_SCN_CNT_INITIALIZED_DATA |
                                       align |
                                       IMAGE_SCN_MEM_READ);
-    MsCoffObj::getsegment(".minfodt", IMAGE_SCN_CNT_INITIALIZED_DATA |
-                                      align |
-                                      IMAGE_SCN_MEM_READ);
-    int segen =
-    MsCoffObj::getsegment(".minfoen", IMAGE_SCN_CNT_INITIALIZED_DATA |
+    const int segen =
+    MsCoffObj::getsegment(".minfo$C", IMAGE_SCN_CNT_INITIALIZED_DATA |
                                       align |
                                       IMAGE_SCN_MEM_READ);
 
-    /* Create symbol _minfo_beg that sits just before the .minfodt segment
+    /* Create symbol _minfo_beg that sits just before the .minfo$B section
      */
     symbol *minfo_beg = symbol_name("_minfo_beg", SCglobal, tspvoid);
     minfo_beg->Sseg = segbg;
@@ -1439,7 +1423,7 @@ void MsCoffObj::ehsections()
     symbuf->write(&minfo_beg, sizeof(minfo_beg));
     MsCoffObj::bytes(segbg, 0, I64 ? 8 : 4, NULL);
 
-    /* Create symbol _minfo_end that sits just after the .minfodt segment
+    /* Create symbol _minfo_end that sits just after the .minfo$B section
      */
     symbol *minfo_end = symbol_name("_minfo_end", SCglobal, tspvoid);
     minfo_end->Sseg = segen;
@@ -1457,21 +1441,17 @@ void MsCoffObj::ehsections()
     int align = I64 ? IMAGE_SCN_ALIGN_16BYTES : IMAGE_SCN_ALIGN_4BYTES;
 
     int segbg =
-    MsCoffObj::getsegment(".tls$A",   IMAGE_SCN_CNT_INITIALIZED_DATA |
-                                      align |
-                                      IMAGE_SCN_MEM_READ |
-                                      IMAGE_SCN_MEM_WRITE);
-    MsCoffObj::getsegment(".tls$",    IMAGE_SCN_CNT_INITIALIZED_DATA |
+    MsCoffObj::getsegment(".tls$AAA", IMAGE_SCN_CNT_INITIALIZED_DATA |
                                       align |
                                       IMAGE_SCN_MEM_READ |
                                       IMAGE_SCN_MEM_WRITE);
     int segen =
-    MsCoffObj::getsegment(".tls$ZZZ", IMAGE_SCN_CNT_INITIALIZED_DATA |
+    MsCoffObj::getsegment(".tls$AAC", IMAGE_SCN_CNT_INITIALIZED_DATA |
                                       align |
                                       IMAGE_SCN_MEM_READ |
                                       IMAGE_SCN_MEM_WRITE);
 
-    /* Create symbol _minfo_beg that sits just before the .minfodt segment
+    /* Create symbol _minfo_beg that sits just before the .tls$AAB section
      */
     symbol *minfo_beg = symbol_name("_tlsstart", SCglobal, tspvoid);
     minfo_beg->Sseg = segbg;
@@ -1479,7 +1459,7 @@ void MsCoffObj::ehsections()
     symbuf->write(&minfo_beg, sizeof(minfo_beg));
     MsCoffObj::bytes(segbg, 0, I64 ? 8 : 4, NULL);
 
-    /* Create symbol _minfo_end that sits just after the .minfodt segment
+    /* Create symbol _minfo_end that sits just after the .tls$AAB section
      */
     symbol *minfo_end = symbol_name("_tlsend", SCglobal, tspvoid);
     minfo_end->Sseg = segen;
@@ -1525,7 +1505,7 @@ int MsCoffObj::comdat(Symbol *s)
     {
         s->Sfl = FLtlsdata;
         align = 16;
-        s->Sseg = MsCoffObj::getsegment(".tls$",  IMAGE_SCN_CNT_INITIALIZED_DATA |
+        s->Sseg = MsCoffObj::getsegment(".tls$AAB", IMAGE_SCN_CNT_INITIALIZED_DATA |
                                             IMAGE_SCN_LNK_COMDAT |
                                             IMAGE_SCN_ALIGN_16BYTES |
                                             IMAGE_SCN_MEM_READ |
@@ -1694,7 +1674,7 @@ seg_data *MsCoffObj::tlsseg()
     if (seg_tlsseg == UNKNOWN)
     {
         int align = I64 ? IMAGE_SCN_ALIGN_16BYTES : IMAGE_SCN_ALIGN_8BYTES;
-        seg_tlsseg = MsCoffObj::getsegment(".tls$", IMAGE_SCN_CNT_INITIALIZED_DATA |
+        seg_tlsseg = MsCoffObj::getsegment(".tls$AAB", IMAGE_SCN_CNT_INITIALIZED_DATA |
                                               align |
                                               IMAGE_SCN_MEM_READ |
                                               IMAGE_SCN_MEM_WRITE);
@@ -2634,14 +2614,8 @@ void MsCoffObj::moduleinfo(Symbol *scc)
 
     /* Module info sections
      */
-    MsCoffObj::getsegment(".minfobg", IMAGE_SCN_CNT_INITIALIZED_DATA |
-                                      align |
-                                      IMAGE_SCN_MEM_READ);
-    int seg =
-    MsCoffObj::getsegment(".minfodt", IMAGE_SCN_CNT_INITIALIZED_DATA |
-                                      align |
-                                      IMAGE_SCN_MEM_READ);
-    MsCoffObj::getsegment(".minfoen", IMAGE_SCN_CNT_INITIALIZED_DATA |
+    const int seg =
+    MsCoffObj::getsegment(".minfo$B", IMAGE_SCN_CNT_INITIALIZED_DATA |
                                       align |
                                       IMAGE_SCN_MEM_READ);
     //printf("MsCoffObj::moduleinfo(%s) seg = %d:x%x\n", scc->Sident, seg, Offset(seg));

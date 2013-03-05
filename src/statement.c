@@ -13,6 +13,7 @@
 #include <assert.h>
 
 #include "rmem.h"
+#include "target.h"
 
 #include "statement.h"
 #include "expression.h"
@@ -2200,7 +2201,7 @@ Lagain:
                 Expressions *exps = new Expressions();
                 exps->push(aggr);
                 size_t keysize = taa->index->size();
-                keysize = (keysize + ((size_t)PTRSIZE-1)) & ~((size_t)PTRSIZE-1);
+                keysize = (keysize + ((size_t)Target::ptrsize-1)) & ~((size_t)Target::ptrsize-1);
                 exps->push(new IntegerExp(0, keysize, Type::tsize_t));
                 exps->push(flde);
                 e = new CallExp(loc, ec, exps);
@@ -3922,14 +3923,13 @@ Statement *ReturnStatement::semantic(Scope *sc)
         }
         else if (tbret->ty != Tvoid)
         {
-            assert(fd->type->ty == Tfunction);
-            TypeFunction *tf = (TypeFunction *)fd->type;
-            if (fd->isPureBypassingInference() != PUREimpure &&
-                !tf->hasMutableIndirectionParams() &&
-                !exp->type->implicitConvTo(tret) &&
-                exp->type->invariantOf()->implicitConvTo(tret))
+            if (!exp->type->implicitConvTo(tret) &&
+                fd->parametersIntersect(exp->type))
             {
-                exp = exp->castTo(sc, exp->type->invariantOf());
+                if (exp->type->invariantOf()->implicitConvTo(tret))
+                    exp = exp->castTo(sc, exp->type->invariantOf());
+                else if (exp->type->wildOf()->implicitConvTo(tret))
+                    exp = exp->castTo(sc, exp->type->wildOf());
             }
             if (fd->tintro)
                 exp = exp->implicitCastTo(sc, fd->type->nextOf());
@@ -4400,7 +4400,7 @@ Statement *SynchronizedStatement::semantic(Scope *sc)
          *  try { body } finally { _d_criticalexit(critsec.ptr); }
          */
         Identifier *id = Lexer::uniqueId("__critsec");
-        Type *t = new TypeSArray(Type::tint8, new IntegerExp(PTRSIZE + (global.params.is64bit ? os_critsecsize64() : os_critsecsize32())));
+        Type *t = new TypeSArray(Type::tint8, new IntegerExp(Target::ptrsize + (global.params.is64bit ? os_critsecsize64() : os_critsecsize32())));
         VarDeclaration *tmp = new VarDeclaration(loc, t, id, NULL);
         tmp->storage_class |= STCgshared | STCstatic;
 

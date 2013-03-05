@@ -148,7 +148,7 @@ struct Declaration : Dsymbol
 
     void emitComment(Scope *sc);
     void toJson(JsonOut *json);
-    void jsonProperties(JsonOut *json);
+    virtual void jsonProperties(JsonOut *json);
     void toDocBuffer(OutBuffer *buf, Scope *sc);
 
     char *mangle(bool isv = false);
@@ -169,7 +169,8 @@ struct Declaration : Dsymbol
     int isParameter()    { return storage_class & STCparameter; }
     int isDeprecated()   { return storage_class & STCdeprecated; }
     int isOverride()     { return storage_class & STCoverride; }
-    StorageClass isResult()       { return storage_class & STCresult; }
+    int isResult()       { return storage_class & STCresult; }
+    int isField()        { return storage_class & STCfield; }
 
     int isIn()    { return storage_class & STCin; }
     int isOut()   { return storage_class & STCout; }
@@ -688,6 +689,8 @@ struct FuncDeclaration : Declaration
     bool isSafeBypassingInference();
     int isTrusted();
     bool setUnsafe();
+    bool isolateReturn();
+    bool parametersIntersect(Type *t);
     virtual int isNested();
     int needThis();
     int isVirtualMethod();
@@ -725,11 +728,11 @@ struct FuncDeclaration : Declaration
 };
 
 #if DMDV2
-FuncDeclaration *resolveFuncCall(Scope *sc, Loc loc, Dsymbol *s,
+FuncDeclaration *resolveFuncCall(Loc loc, Scope *sc, Dsymbol *s,
         Objects *tiargs,
         Expression *ethis,
         Expressions *arguments,
-        int flags);
+        int flags = 0);
 #endif
 
 struct FuncAliasDeclaration : FuncDeclaration

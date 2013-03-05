@@ -20,6 +20,7 @@
 #include "aggregate.h"
 #include "template.h"
 #include "scope.h"
+#include "id.h"
 
 //#define DUMP .dump(__PRETTY_FUNCTION__, this)
 #define DUMP
@@ -280,7 +281,11 @@ MATCH IntegerExp::implicitConvTo(Type *t)
             goto Lyes;
 
         case Tint8:
-            if ((signed char)value != value)
+            if (ty == Tuns64 && value & ~0x7FUL)
+                goto Lno;
+            //else if (ty == Tint64 && 0x7FUL < value && value < ~0x7FUL)
+            //    goto Lno;
+            else if ((signed char)value != value)
                 goto Lno;
             goto Lyes;
 
@@ -294,7 +299,11 @@ MATCH IntegerExp::implicitConvTo(Type *t)
             goto Lyes;
 
         case Tint16:
-            if ((short)value != value)
+            if (ty == Tuns64 && value & ~0x7FFFUL)
+                goto Lno;
+            //else if (ty == Tint64 && 0x7FFFUL < value && value < ~0x7FFFUL)
+            //    goto Lno;
+            else if ((short)value != value)
                 goto Lno;
             goto Lyes;
 
@@ -310,6 +319,10 @@ MATCH IntegerExp::implicitConvTo(Type *t)
             if (ty == Tuns32)
             {
             }
+            else if (ty == Tuns64 && value & ~0x7FFFFFFFUL)
+                goto Lno;
+            //else if (ty == Tint64 && 0x7FFFFFFFUL < value && value < ~0x7FFFFFFFUL)
+            //    goto Lno;
             else if ((int)value != value)
                 goto Lno;
             goto Lyes;
@@ -638,7 +651,7 @@ MATCH CallExp::implicitConvTo(Type *t)
     /* Allow the result of strongly pure functions to
      * convert to immutable
      */
-    if (f && f->isPure() == PUREstrong && !f->type->hasWild())
+    if (f && f->isolateReturn())
         return type->invariantOf()->implicitConvTo(t);
 
     return MATCHnomatch;
@@ -967,6 +980,42 @@ MATCH NewExp::implicitConvTo(Type *t)
 
   Lnomatch:
     return MATCHnomatch;
+}
+
+Type *SliceExp::toStaticArrayType()
+{
+    if (lwr && upr)
+    {
+        Expression *lwr = this->lwr->optimize(WANTvalue);
+        Expression *upr = this->upr->optimize(WANTvalue);
+        if (lwr->isConst() && upr->isConst())
+        {
+            size_t len = upr->toUInteger() - lwr->toUInteger();
+            return new TypeSArray(type->toBasetype()->nextOf(),
+                        new IntegerExp(0, len, Type::tindex));
+        }
+    }
+    return NULL;
+}
+
+MATCH SliceExp::implicitConvTo(Type *t)
+{
+    MATCH result = Expression::implicitConvTo(t);
+
+    Type *tb = t->toBasetype();
+    Type *typeb = type->toBasetype();
+    if (result == MATCHnomatch &&
+        tb->ty == Tsarray && typeb->ty == Tarray &&
+        lwr && upr)
+    {
+        if (typeb->nextOf()->constConv(tb->nextOf()))
+        {
+            typeb = toStaticArrayType();
+            if (typeb)
+                result = typeb->implicitConvTo(t);
+        }
+    }
+    return result;
 }
 
 /* ==================== castTo ====================== */
@@ -1741,19 +1790,53 @@ Expression *CommaExp::castTo(Scope *sc, Type *t)
     return e;
 }
 
+Expression *SliceExp::castTo(Scope *sc, Type *t)
+{
+    Type *typeb = type->toBasetype();
+    Type *tb = t->toBasetype();
+    Expression *e;
+    if (typeb->ty == Tarray && tb->ty == Tsarray)
+    {
+        e = copy();
+
+        /* Rewrite:
+         *      arr[lwr .. upr]
+         * as:
+         *      *(cast(T[dim]*)(arr[lwr .. upr].ptr))
+         *
+         * Note that:
+         *      static assert(dim == upr - lwr);
+         */
+        e = new DotIdExp(e->loc, e, Id::ptr);
+        e = e->semantic(sc);
+        e = e->castTo(sc, t->pointerTo());
+        e = new PtrExp(e->loc, e);
+        e = e->semantic(sc);
+        //printf("e = %s, %s => %s %s\n", toChars(), type->toChars(), e->toChars(), e->type->toChars());
+    }
+    else
+    {
+        e = Expression::castTo(sc, t);
+    }
+    return e;
+}
+
 /* ==================== inferType ====================== */
 
 /****************************************
  * Set type inference target
+ *      t       Target type
  *      flag    1: don't put an error when inference fails
+ *      sc      it is used for the semantic of t, when != NULL
+ *      tparams template parameters should be inferred
  */
 
-Expression *Expression::inferType(Type *t, int flag, TemplateParameters *tparams)
+Expression *Expression::inferType(Type *t, int flag, Scope *sc, TemplateParameters *tparams)
 {
     return this;
 }
 
-Expression *ArrayLiteralExp::inferType(Type *t, int flag, TemplateParameters *tparams)
+Expression *ArrayLiteralExp::inferType(Type *t, int flag, Scope *sc, TemplateParameters *tparams)
 {
     if (t)
     {
@@ -1764,7 +1847,7 @@ Expression *ArrayLiteralExp::inferType(Type *t, int flag, TemplateParameters *tp
             for (size_t i = 0; i < elements->dim; i++)
             {   Expression *e = (*elements)[i];
                 if (e)
-                {   e = e->inferType(tn, flag, tparams);
+                {   e = e->inferType(tn, flag, sc, tparams);
                     (*elements)[i] = e;
                 }
             }
@@ -1773,7 +1856,7 @@ Expression *ArrayLiteralExp::inferType(Type *t, int flag, TemplateParameters *tp
     return this;
 }
 
-Expression *AssocArrayLiteralExp::inferType(Type *t, int flag, TemplateParameters *tparams)
+Expression *AssocArrayLiteralExp::inferType(Type *t, int flag, Scope *sc, TemplateParameters *tparams)
 {
     if (t)
     {
@@ -1785,14 +1868,14 @@ Expression *AssocArrayLiteralExp::inferType(Type *t, int flag, TemplateParameter
             for (size_t i = 0; i < keys->dim; i++)
             {   Expression *e = (*keys)[i];
                 if (e)
-                {   e = e->inferType(ti, flag, tparams);
+                {   e = e->inferType(ti, flag, sc, tparams);
                     (*keys)[i] = e;
                 }
             }
             for (size_t i = 0; i < values->dim; i++)
             {   Expression *e = (*values)[i];
                 if (e)
-                {   e = e->inferType(tv, flag, tparams);
+                {   e = e->inferType(tv, flag, sc, tparams);
                     (*values)[i] = e;
                 }
             }
@@ -1801,7 +1884,7 @@ Expression *AssocArrayLiteralExp::inferType(Type *t, int flag, TemplateParameter
     return this;
 }
 
-Expression *FuncExp::inferType(Type *to, int flag, TemplateParameters *tparams)
+Expression *FuncExp::inferType(Type *to, int flag, Scope *sc, TemplateParameters *tparams)
 {
     if (!to)
         return this;
@@ -1859,7 +1942,10 @@ Expression *FuncExp::inferType(Type *to, int flag, TemplateParameters *tparams)
                             Type *tprm = p->type;
                             if (tprm->reliesOnTident(tparams))
                                 goto L1;
-                            tprm = tprm->semantic(loc, td->scope);
+                            if (sc)
+                                tprm = tprm->semantic(loc, sc);
+                            if (tprm->ty == Terror)
+                                goto L1;
                             tiargs->push(tprm);
                             u = dim;    // break inner loop
                         }
@@ -1915,13 +2001,13 @@ L1:
     return e;
 }
 
-Expression *CondExp::inferType(Type *t, int flag, TemplateParameters *tparams)
+Expression *CondExp::inferType(Type *t, int flag, Scope *sc, TemplateParameters *tparams)
 {
     if (t)
     {
         t = t->toBasetype();
-        e1 = e1->inferType(t, flag, tparams);
-        e2 = e2->inferType(t, flag, tparams);
+        e1 = e1->inferType(t, flag, sc, tparams);
+        e2 = e2->inferType(t, flag, sc, tparams);
     }
     return this;
 }

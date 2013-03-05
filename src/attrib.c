@@ -495,7 +495,7 @@ const char *StorageClassDeclaration::stcToChars(char tmp[], StorageClass& stc)
         { STCnothrow,      TOKnothrow },
         { STCpure,         TOKpure },
         { STCref,          TOKref },
-        { STCtls,          TOKtls },
+        { STCtls },
         { STCgshared,      TOKgshared },
         { STCproperty,     TOKat,       Id::property },
         { STCsafe,         TOKat,       Id::safe },
@@ -512,6 +512,9 @@ const char *StorageClassDeclaration::stcToChars(char tmp[], StorageClass& stc)
         if (stc & tbl)
         {
             stc &= ~tbl;
+            if (tbl == STCtls)  // TOKtls was removed
+                return "__thread";
+
             enum TOK tok = table[i].tok;
 #if DMDV2
             if (tok == TOKat)
@@ -1016,44 +1019,6 @@ void PragmaDeclaration::semantic(Scope *sc)
         }
         goto Lnodecl;
     }
-#ifdef IN_GCC
-    else if (ident == Id::GNU_asm)
-    {
-        if (! args || args->dim != 2)
-            error("identifier and string expected for asm name");
-        else
-        {
-            Expression *e;
-            Declaration *d = NULL;
-            StringExp *s = NULL;
-
-            e = (*args)[0];
-            e = e->semantic(sc);
-            if (e->op == TOKvar)
-            {
-                d = ((VarExp *)e)->var;
-                if (! d->isFuncDeclaration() && ! d->isVarDeclaration())
-                    d = NULL;
-            }
-            if (!d)
-                error("first argument of GNU_asm must be a function or variable declaration");
-
-            e = (*args)[1];
-            e = e->semantic(sc);
-            e = resolveProperties(sc, e);
-            e = e->ctfeInterpret();
-            e = e->toString();
-            if (e && ((StringExp *)e)->sz == 1)
-                s = ((StringExp *)e);
-            else
-                error("second argument of GNU_asm must be a character string");
-
-            if (d && s)
-                d->c_ident = Lexer::idPool((char*) s->string);
-        }
-        goto Lnodecl;
-    }
-#endif
 #if DMDV2
     else if (ident == Id::startaddress)
     {

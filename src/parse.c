@@ -386,7 +386,6 @@ Dsymbols *Parser::parseDeclDefs(int once)
             case TOKnothrow:      stc = STCnothrow;      goto Lstc;
             case TOKpure:         stc = STCpure;         goto Lstc;
             case TOKref:          stc = STCref;          goto Lstc;
-            case TOKtls:          stc = STCtls;          goto Lstc;
             case TOKgshared:      stc = STCgshared;      goto Lstc;
             //case TOKmanifest:   stc = STCmanifest;     goto Lstc;
             case TOKat:
@@ -451,7 +450,6 @@ Dsymbols *Parser::parseDeclDefs(int once)
                     case TOKnothrow:      stc = STCnothrow;      goto Lstc;
                     case TOKpure:         stc = STCpure;         goto Lstc;
                     case TOKref:          stc = STCref;          goto Lstc;
-                    case TOKtls:          stc = STCtls;          goto Lstc;
                     case TOKgshared:      stc = STCgshared;      goto Lstc;
                     //case TOKmanifest:   stc = STCmanifest;     goto Lstc;
                     case TOKat:
@@ -2062,9 +2060,8 @@ Dsymbol *Parser::parseMixin()
 {
     TemplateMixin *tm;
     Identifier *id;
-    Type *tqual;
+    TypeQualified *tqual;
     Objects *tiargs;
-    Identifiers *idents;
 
     //printf("parseMixin()\n");
     nextToken();
@@ -2080,11 +2077,6 @@ Dsymbol *Parser::parseMixin()
             tqual = parseTypeof();
             check(TOKdot);
         }
-        else if (token.value == TOKvector)
-        {
-            tqual = parseVector();
-            check(TOKdot);
-        }
         if (token.value != TOKidentifier)
         {
             error("identifier expected, not %s", token.toChars());
@@ -2095,7 +2087,6 @@ Dsymbol *Parser::parseMixin()
         nextToken();
     }
 
-    idents = new Identifiers();
     while (1)
     {
         tiargs = NULL;
@@ -2108,16 +2099,25 @@ Dsymbol *Parser::parseMixin()
                 tiargs = parseTemplateArgument();
         }
 
-        if (token.value != TOKdot)
-            break;
-
-        if (tiargs)
+        if (tiargs && token.value == TOKdot)
         {   TemplateInstance *tempinst = new TemplateInstance(loc, id);
             tempinst->tiargs = tiargs;
-            id = (Identifier *)tempinst;
+            if (!tqual)
+                tqual = new TypeInstance(loc, tempinst);
+            else
+                tqual->addIdent((Identifier *)tempinst);
             tiargs = NULL;
         }
-        idents->push(id);
+        else
+        {
+            if (!tqual)
+                tqual = new TypeIdentifier(loc, id);
+            else
+                tqual->addIdent(id);
+        }
+
+        if (token.value != TOKdot)
+            break;
 
         nextToken();
         if (token.value != TOKidentifier)
@@ -2127,7 +2127,6 @@ Dsymbol *Parser::parseMixin()
         id = token.ident;
         nextToken();
     }
-    idents->push(id);
 
     if (token.value == TOKidentifier)
     {
@@ -2137,7 +2136,7 @@ Dsymbol *Parser::parseMixin()
     else
         id = NULL;
 
-    tm = new TemplateMixin(loc, id, tqual, idents, tiargs);
+    tm = new TemplateMixin(loc, id, tqual, tiargs);
     if (token.value != TOKsemicolon)
         error("';' expected after mixin");
     nextToken();
@@ -2970,7 +2969,6 @@ Dsymbols *Parser::parseDeclarations(StorageClass storage_class, unsigned char *c
             case TOKnothrow:    stc = STCnothrow;        goto L1;
             case TOKpure:       stc = STCpure;           goto L1;
             case TOKref:        stc = STCref;            goto L1;
-            case TOKtls:        stc = STCtls;            goto L1;
             case TOKgshared:    stc = STCgshared;        goto L1;
             case TOKenum:       stc = STCmanifest;       goto L1;
             case TOKat:
@@ -3827,7 +3825,6 @@ Statement *Parser::parseStatement(int flags)
         case TOKnothrow:
         case TOKpure:
         case TOKref:
-        case TOKtls:
         case TOKgshared:
         case TOKat:
 #endif
@@ -5340,7 +5337,6 @@ int Parser::skipAttributes(Token *t, Token **pt)
             case TOKnothrow:
             case TOKpure:
             case TOKref:
-            case TOKtls:
             case TOKgshared:
             //case TOKmanifest:
                 break;
@@ -6188,13 +6184,25 @@ Expression *Parser::parseUnaryExp()
         case TOKshared:
         case TOKconst:
         case TOKinvariant:
-        case TOKimmutable:      // immutable(type)(arguments)
+        case TOKimmutable:      // immutable(type)(arguments) / immutable(type).init
         {
             StorageClass stc = parseTypeCtor();
             Type *t = parseBasicType();
             t = t->addSTC(stc);
             e = new TypeExp(loc, t);
-            if (token.value != TOKlparen)
+            if (stc == 0 && token.value == TOKdot)
+            {
+                nextToken();
+                if (token.value != TOKidentifier)
+                {   error("Identifier expected following (type).");
+                    return NULL;
+                }
+                e = typeDotIdExp(loc, t, token.ident);
+                nextToken();
+                e = parsePostExp(e);
+                break;
+            }
+            else if (token.value != TOKlparen)
             {
                 error("(arguments) expected following %s", t->toChars());
                 return e;
@@ -6269,15 +6277,14 @@ Expression *Parser::parseUnaryExp()
                         check(TOKrparen);
 
                         // if .identifier
+                        // or .identifier!( ... )
                         if (token.value == TOKdot)
                         {
-                            nextToken();
-                            if (token.value != TOKidentifier)
+                            if (peekNext() != TOKidentifier)
                             {   error("Identifier expected following (type).");
                                 return NULL;
                             }
-                            e = typeDotIdExp(loc, t, token.ident);
-                            nextToken();
+                            e = new TypeExp(loc, t);
                             e = parsePostExp(e);
                         }
                         else

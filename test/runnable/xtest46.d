@@ -5038,6 +5038,11 @@ class B158 : A158
     override void foo4() { }
 }
 
+/***************************************************/
+// 9231
+
+class B9231 { void foo() inout pure {} }
+class D9231 : B9231 { override void foo() inout {} }
 
 /***************************************************/
 // 3282
@@ -5869,6 +5874,33 @@ Bar9504 test9504()
 }
 
 /***************************************************/
+// 9538
+
+void test9538()
+{
+    void*[1] x;
+    auto ti = typeid(x.ptr);
+}
+
+/***************************************************/
+// 9539
+
+void test9539()
+{
+    void f(int** ptr)
+    {
+        assert(**ptr == 10);
+    }
+    int* p = new int;
+    *p = 10;
+    int*[1] x = [p];
+    f(&x[0]);
+
+    int*[] arr = [null];
+    static assert(!__traits(compiles, p = arr));    // bad!
+}
+
+/***************************************************/
 
 int main()
 {
@@ -6125,6 +6157,7 @@ int main()
     test8917();
     test163();
     test9428();
+    test9538();
 
     printf("Success\n");
     return 0;

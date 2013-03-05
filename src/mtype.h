@@ -249,7 +249,6 @@ struct Type : Object
     void toCBuffer3(OutBuffer *buf, HdrGenState *hgs, int mod);
     void modToBuffer(OutBuffer *buf);
     char *modToChars();
-    void toJsonProperty(JsonOut *json, const char *);
     virtual void toJson(JsonOut *json);
 #if CPP_MANGLE
     virtual void toCppMangle(OutBuffer *buf, CppMangleState *cms);
@@ -659,7 +658,6 @@ struct TypeFunction : TypeNext
     Type *syntaxCopy();
     Type *semantic(Loc loc, Scope *sc);
     void purityLevel();
-    bool hasMutableIndirectionParams();
     void toDecoBuffer(OutBuffer *buf, int flag);
     void toCBuffer(OutBuffer *buf, Identifier *ident, HdrGenState *hgs);
     void toCBufferWithAttributes(OutBuffer *buf, Identifier *ident, HdrGenState* hgs, TypeFunction *attrs, TemplateDeclaration *td);
@@ -1042,7 +1040,6 @@ struct Parameter : Object
     Type *isLazyArray();
     void toDecoBuffer(OutBuffer *buf);
     int dyncast() { return DYNCAST_PARAMETER; } // kludge for template.isType()
-    void toJson(JsonOut *json);
     static Parameters *arraySyntaxCopy(Parameters *args);
     static char *argsTypesToChars(Parameters *args, int varargs);
     static void argsCppMangle(OutBuffer *buf, CppMangleState *cms, Parameters *arguments, int varargs);
@@ -1056,10 +1053,6 @@ struct Parameter : Object
     static int foreach(Parameters *args, ForeachDg dg, void *ctx, size_t *pn=NULL);
 };
 
-extern int PTRSIZE;
-extern int REALSIZE;
-extern int REALPAD;
-extern int REALALIGNSIZE;
 extern int Tsize_t;
 extern int Tptrdiff_t;
 
