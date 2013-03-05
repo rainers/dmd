@@ -39,6 +39,8 @@
 #include "outbuf.h"
 #include "irstate.h"
 
+#if ELFOBJ
+
 /****************************
  * Emit symbolic debug info in Dwarf2 format.
  */
@@ -100,4 +102,6 @@ int VarDeclaration::cvMember(unsigned char *p)
 {
     return 0;
 }
+
+#endif // ELFOBJ
 

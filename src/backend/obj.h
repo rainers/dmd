@@ -58,7 +58,7 @@ struct Obj
     VIRTUAL seg_data *tlsseg();
     VIRTUAL seg_data *tlsseg_bss();
     static int  fardata(char *name, targ_size_t size, targ_size_t *poffset);
-    VIRTUAL void export_symbol(Symbol *s, unsigned argsize, unsigned datasize = 0);
+    VIRTUAL void export_symbol(Symbol *s, unsigned argsize, unsigned datasize);
     VIRTUAL void pubdef(int seg, Symbol *s, targ_size_t offset);
     VIRTUAL void pubdefsize(int seg, Symbol *s, targ_size_t offset, targ_size_t symsize);
     VIRTUAL int external_def(const char *);
@@ -88,11 +88,14 @@ struct Obj
     VIRTUAL void func_start(Symbol *sfunc);
     VIRTUAL void func_term(Symbol *sfunc);
 
-    VIRTUAL int write_pointerInfo(Symbol *s, Symbol *ti);
-
 #if TARGET_WINDOS
+    VIRTUAL int write_pointerInfo(Symbol *s, Symbol *ti);
+    VIRTUAL int write_relDataInfo(int seg,targ_size_t offset,targ_size_t data,
+                                  unsigned lcfd,unsigned idx1,unsigned idx2);
+
     int hpseg(bool tls);
     int tlshpseg();
+    int reldataseg();
 #endif
 #if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
     static unsigned addstr(Outbuffer *strtab, const char *);
@@ -156,7 +159,7 @@ struct MsCoffObj : Obj
     VIRTUAL void setcodeseg(int seg);
     VIRTUAL seg_data *tlsseg();
     VIRTUAL seg_data *tlsseg_bss();
-    VIRTUAL void export_symbol(Symbol *s, unsigned argsize, unsigned datasize = 0);
+    VIRTUAL void export_symbol(Symbol *s, unsigned argsize, unsigned datasize);
     VIRTUAL void pubdef(int seg, Symbol *s, targ_size_t offset);
     VIRTUAL void pubdefsize(int seg, Symbol *s, targ_size_t offset, targ_size_t symsize);
 //    VIRTUAL int external(const char *);
@@ -199,8 +202,10 @@ struct MsCoffObj : Obj
 
     static int seg_pdata();
     static int seg_xdata();
+    static int seg_reldata();
     static int seg_pdata_comdat(Symbol *sfunc);
     static int seg_xdata_comdat(Symbol *sfunc);
+    static int seg_reldata_comdat(Symbol *sfunc);
 
     static int seg_debugS();
     VIRTUAL int seg_debugT();

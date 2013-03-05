@@ -44,6 +44,7 @@ void  except_reset();
 
 /* pdata.c */
 void win64_pdata(Symbol *sf);
+void win64_reldata(int seg, int offset, Symbol *s, int relocOffset);
 
 #endif
 

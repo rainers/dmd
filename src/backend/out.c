@@ -1317,10 +1317,10 @@ STATIC void writefunc2(symbol *sfunc)
         sfunc->Sclass != SCsinline &&
         !(sfunc->Sclass == SCinline && !(config.flags2 & CFG2comdat)) &&
         sfunc->ty() & mTYexport)
-        objmod->export_symbol(sfunc,Para.offset);      // export function definition
+        objmod->export_symbol(sfunc,Para.offset,0);      // export function definition
 
     else if(config.wflags & WFexpall && type_mangle(sfunc->Stype))
-        objmod->export_symbol(sfunc,0);                // export all function definitions
+        objmod->export_symbol(sfunc,0,0);                // export all function definitions
 
     if (config.fulltypes && config.fulltypes != CV8)
         cv_func(sfunc);                 // debug info for function

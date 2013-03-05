@@ -770,7 +770,7 @@ void ClassDeclaration::toObjFile(int multiobj)
     // ClassInfo cannot be const data, because we use the monitor on it
     outdata(csym);
     if (isExport() && !global.params.exportall) // do not export it twice if "exportall" has already done it in outdata
-        objmod->export_symbol(csym,0);
+        objmod->export_symbol(csym,0,0);
 
     //////////////////////////////////////////////
 
@@ -826,7 +826,7 @@ void ClassDeclaration::toObjFile(int multiobj)
     out_readonly(vtblsym);
     outdata(vtblsym);
     if (isExport() && !global.params.exportall) // do not export it twice if "exportall" has already done it in outdata
-        objmod->export_symbol(vtblsym,0);
+        objmod->export_symbol(vtblsym,0,0);
 }
 
 /******************************************
@@ -1067,7 +1067,7 @@ void InterfaceDeclaration::toObjFile(int multiobj)
     out_readonly(csym);
     outdata(csym);
     if (isExport() && !global.params.exportall) // do not export it twice if "exportall" has already done it in outdata
-        objmod->export_symbol(csym,0);
+        objmod->export_symbol(csym,0,0);
 }
 
 /* ================================================================== */
@@ -1259,12 +1259,12 @@ void VarDeclaration::toObjFile(int multiobj)
         {
             outdata(s);
             if (isExport() && !global.params.exportall) // do not export it twice if "exportall" has already done it in outdata
-                objmod->export_symbol(s,0);
+                objmod->export_symbol(s,0,0);
             
 #if 0
             if(rdinfo)
                 rdinfo->toObjFile(multiobj);
-#elif 1
+#elif TARGET_WINDOS
             if(hasPointers())
             {
                 if(!type->vtinfo)
@@ -1390,7 +1390,7 @@ void TypeInfoDeclaration::toObjFile(int multiobj)
 
     outdata(s);
     if (isExport() && !global.params.exportall) // do not export it twice if "exportall" has already done it in outdata
-        objmod->export_symbol(s,0);
+        objmod->export_symbol(s,0,0);
 }
 
 /* ================================================================== */

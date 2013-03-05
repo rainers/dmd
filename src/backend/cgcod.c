@@ -172,7 +172,7 @@ tryagain:
 #if (MARS) && TARGET_WINDOS
     if (funcsym_p->Sfunc->Fflags3 & Fjmonitor)
         usednteh |= NTEHjmonitor;
-#else
+#elif !MARS
     if (CPP)
     {
         if (config.flags2 & CFG2seh &&

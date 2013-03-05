@@ -42,8 +42,6 @@ static char __file__[] = __FILE__;      /* for tassert.h                */
 
 #include        <direct.h>
 
-char *cpp_typetostring(type *t,char *prefix); // from newman.c
-
 // The "F1" section, which is the symbols
 static Outbuffer *F1_buf;
 
@@ -185,7 +183,7 @@ void cv8_termfile(const char *objfilename)
 
         unsigned offset = SegData[f2seg]->SDoffset + 8;
         cv8_writesection(f2seg, 0xF2, F2_buf);
-        objmod->reftoident(f2seg, offset, fd->sfunc, 0, CFseg | CFoff);
+        objmod->reftoident(f2seg, offset, fd->sfunc, 0, CFseg | CFoff | CFdebug);
 
         if (f2seg != seg && fd->f1buf->size())
         {
@@ -199,7 +197,7 @@ void cv8_termfile(const char *objfilename)
             for (unsigned u = 0; u < length; u += sizeof(F1_Fixups))
             {   F1_Fixups *f = (F1_Fixups *)(p + u);
 
-                objmod->reftoident(f2seg, f1offset + 8 + f->offset, f->s, 0, CFseg | CFoff);
+                objmod->reftoident(f2seg, f1offset + 8 + f->offset, f->s, 0, CFseg | CFoff | CFdebug);
             }
         }
     }
@@ -222,7 +220,7 @@ void cv8_termfile(const char *objfilename)
         for (unsigned u = 0; u < length; u += sizeof(F1_Fixups))
         {   F1_Fixups *f = (F1_Fixups *)(p + u);
 
-            objmod->reftoident(seg, f1offset + 8 + f->offset, f->s, 0, CFseg | CFoff);
+            objmod->reftoident(seg, f1offset + 8 + f->offset, f->s, 0, CFseg | CFoff | CFdebug);
         }
     }
 

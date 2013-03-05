@@ -674,13 +674,14 @@ void FuncDeclaration::toObjFile(int multiobj)
 #if TARGET_WINDOS
             if (global.params.objfmt == OBJ_COFF)
             {
-                objmod->includelib("LIBCMT");
-                objmod->includelib("OLDNAMES");
+// do not dictate the necessary libraires, let the runtime decide for itself
+//                objmod->includelib("LIBCMT");
+//                objmod->includelib("OLDNAMES");
             }
             else
             {
                 objmod->external_def("__acrtused_con");        // bring in C startup code
-                objmod->includelib(global.params.dll ? "snd.lib" : "snn.lib"); // bring in C runtime library
+//                objmod->includelib("snn.lib");          // bring in C runtime library
             }
 #endif
             s->Sclass = SCglobal;
@@ -690,9 +691,9 @@ void FuncDeclaration::toObjFile(int multiobj)
         {
             if (global.params.objfmt == OBJ_COFF)
             {
-                objmod->includelib("uuid");
-                objmod->includelib("LIBCMT");
-                objmod->includelib("OLDNAMES");
+//                objmod->includelib("uuid");
+//                objmod->includelib("LIBCMT");
+//                objmod->includelib("OLDNAMES");
                 objmod->ehsections();   // initialize exception handling sections
             }
             else
@@ -708,9 +709,9 @@ void FuncDeclaration::toObjFile(int multiobj)
         {
             if (global.params.objfmt == OBJ_COFF)
             {
-                objmod->includelib("uuid");
-                objmod->includelib("LIBCMT");
-                objmod->includelib("OLDNAMES");
+//                objmod->includelib("uuid");
+//                objmod->includelib("LIBCMT");
+//                objmod->includelib("OLDNAMES");
                 objmod->ehsections();   // initialize exception handling sections
             }
             else
@@ -1025,7 +1026,7 @@ void FuncDeclaration::toObjFile(int multiobj)
 
     writefunc(s);
     if (isExport())
-        objmod->export_symbol(s, Para.offset);
+        objmod->export_symbol(s, Para.offset, 0);
 
     for (size_t i = 0; i < irs.deferToObj->dim; i++)
     {

@@ -34,6 +34,8 @@
 #include "outbuf.h"
 #include "irstate.h"
 
+#if OMFOBJ
+
 /* The CV4 debug format is defined in:
  *      "CV4 Symbolic Debug Information Specification"
  *      rev 3.1 March 5, 1993
@@ -1030,4 +1032,6 @@ int VarDeclaration::cvMember(unsigned char *p)
     }
     return nwritten;
 }
+
+#endif // OMFOBJ
 

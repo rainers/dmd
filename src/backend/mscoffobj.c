@@ -32,6 +32,7 @@
 #include        "cv4.h"
 #include        "cgcv.h"
 #include        "dt.h"
+#include        "exh.h"
 
 #include        "aa.h"
 #include        "tinfo.h"
@@ -88,6 +89,7 @@ static segidx_t segidx_debugS = UNKNOWN;
 static segidx_t segidx_debugT = UNKNOWN;
 static segidx_t segidx_xdata = UNKNOWN;
 static segidx_t segidx_pdata = UNKNOWN;
+static segidx_t segidx_reldata = UNKNOWN;
 
 static int jumpTableSeg;                // segment index for __jump_table
 
@@ -375,6 +377,7 @@ MsCoffObj *MsCoffObj::init(Outbuffer *objbuf, const char *filename, const char *
 
     segidx_pdata = UNKNOWN;
     segidx_xdata = UNKNOWN;
+    segidx_reldata = UNKNOWN;
 
     // Initialize buffers
 
@@ -1544,6 +1547,7 @@ int MsCoffObj::comdat(Symbol *s)
     {   SegData[s->Sseg]->SDalignment = s->Salignment;
         assert(s->Salignment >= -1);
     }
+    SegData[s->Sseg]->SDsym = s;
     s->Soffset = SegData[s->Sseg]->SDoffset;
     if (s->Sfl == FLdata || s->Sfl == FLtlsdata)
     {   // Code symbols are 'published' by MsCoffObj::func_start()
@@ -1740,6 +1744,17 @@ segidx_t MsCoffObj::seg_xdata()
     return segidx_xdata;
 }
 
+segidx_t MsCoffObj::seg_reldata()
+{
+    if (segidx_reldata == UNKNOWN)
+    {
+        segidx_reldata = MsCoffObj::getsegment(".reldata", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                          IMAGE_SCN_ALIGN_4BYTES |
+                                          IMAGE_SCN_MEM_READ);
+    }
+    return segidx_reldata;
+}
+
 segidx_t MsCoffObj::seg_pdata_comdat(symbol *sfunc)
 {
     segidx_t seg = MsCoffObj::getsegment(".pdata", IMAGE_SCN_CNT_INITIALIZED_DATA |
@@ -1753,6 +1768,16 @@ segidx_t MsCoffObj::seg_pdata_comdat(symbol *sfunc)
 segidx_t MsCoffObj::seg_xdata_comdat(symbol *sfunc)
 {
     segidx_t seg = MsCoffObj::getsegment(".xdata", IMAGE_SCN_CNT_INITIALIZED_DATA |
+                                          IMAGE_SCN_ALIGN_4BYTES |
+                                          IMAGE_SCN_MEM_READ |
+                                          IMAGE_SCN_LNK_COMDAT);
+    SegData[seg]->SDassocseg = sfunc->Sseg;
+    return seg;
+}
+
+segidx_t MsCoffObj::seg_reldata_comdat(symbol *sfunc)
+{
+    segidx_t seg = MsCoffObj::getsegment(".reldata", IMAGE_SCN_CNT_INITIALIZED_DATA |
                                           IMAGE_SCN_ALIGN_4BYTES |
                                           IMAGE_SCN_MEM_READ |
                                           IMAGE_SCN_LNK_COMDAT);
@@ -1908,6 +1933,8 @@ char *obj_mangle2(Symbol *s,char *dest)
 
 void MsCoffObj::export_symbol(Symbol *s,unsigned argsize, unsigned datasize)
 {
+    if (s->Sclass == SCstatic) // s->Sident[0] == '$')
+        return;
     char dest[DEST_LEN+1];
     char *destr = obj_mangle2(s, dest);
 
@@ -2417,6 +2444,8 @@ int MsCoffObj::reftoident(segidx_t seg, targ_size_t offset, Symbol *s, targ_size
     }
     else
     {
+        if (s->Sclass != SCstatic && !tyfunc(s->ty()) && !(flags & CFdebug))
+            win64_reldata(seg, offset, s, val);
         if (I64 || I32)
         {
             //if (s->Sclass != SCcomdat)

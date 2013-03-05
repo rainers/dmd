@@ -90,10 +90,12 @@ void Declaration::semantic(Scope *sc)
 
 void Declaration::semantic3(Scope *sc)
 {
+#if 0
     if (type && type->ty == Taarray)
     {
         ((TypeAArray *)type)->getImpl(); // ensure AssociativeArray!(index,next) is instantiated
     }
+#endif
 }
 
 const char *Declaration::kind()

@@ -114,6 +114,36 @@ Symbol *win64_unwind(Symbol *sf)
     return sunwind;
 }
 
+void win64_reldata(int seg, int offset, Symbol *s, int relocOffset)
+{
+    //printf("win64_reldata(seg=%d,off=%d,rel=%s+%d)\n", seg, offset, s->Sident, relocOffset);
+    //assert(config.exe == EX_WIN64);
+
+    // Generate a unique pdata name
+    char reldata_name[50];
+    sprintf(reldata_name, "$reloc$%d@%d", seg, offset);
+
+    symbol *spdata = symbol_name(reldata_name,SCstatic,tsint);
+    symbol_keep(spdata);
+    symbol_debug(spdata);
+
+    /* 2 pointers are emitted:
+     *  1. pointer to apply the relocation to
+     *  2. offset of symbol
+     */
+
+    dt_t **pdt = &spdata->Sdt;
+    pdt = dtsize_t(pdt,offset);
+    pdt = dtsize_t(pdt,relocOffset);
+
+    spdata->Sseg = SegData[seg]->SDsym ? MsCoffObj::seg_reldata_comdat(SegData[seg]->SDsym) : MsCoffObj::seg_reldata();
+    spdata->Salignment = 4;
+
+    int dataOffset = SegData[spdata->Sseg]->SDoffset;
+    MsCoffObj::addrel(spdata->Sseg, dataOffset, SegData[seg]->SDsym, seg, 0 /*RELaddr*/, 0);
+    outdata(spdata);
+}
+
 /************************* Win64 Unwind Data ******************************************/
 
 /************************************************************************

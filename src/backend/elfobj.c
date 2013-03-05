@@ -16,7 +16,7 @@
 #include        <string.h>
 #include        <stdlib.h>
 
-#if __sun
+#if __sun || _MSC_VER
 #include        <alloca.h>
 #endif
 

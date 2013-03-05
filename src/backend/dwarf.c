@@ -17,6 +17,7 @@
 #include        <sys/stat.h>
 #include        <fcntl.h>
 #include        <ctype.h>
+#include        <direct.h>
 
 #if __DMC__ || linux
 #include        <malloc.h>
@@ -1634,6 +1635,28 @@ unsigned dwarf_typidx(type *t)
             return idx;
     }
 
+#ifndef USE_DWARF_D_EXTENSIONS
+    static unsigned char abbrevTypeStruct[] =
+    {
+        DW_TAG_structure_type,
+        1,                      // children
+        DW_AT_sibling,          DW_FORM_ref4,
+        DW_AT_name,             DW_FORM_string,
+        DW_AT_byte_size,        DW_FORM_data1,
+        0,                      0,
+    };
+
+    static unsigned char abbrevTypeMember[] =
+    {
+        DW_TAG_member,
+        0,                      // no children
+        DW_AT_name,             DW_FORM_string,
+        DW_AT_type,             DW_FORM_ref4,
+        DW_AT_data_member_location, DW_FORM_block1,
+        0,                      0,
+    };
+#endif
+
     unsigned char ate;
     ate = tyuns(t->Tty) ? DW_ATE_unsigned : DW_ATE_signed;
     switch (tybasic(t->Tty))
@@ -1652,32 +1675,11 @@ unsigned dwarf_typidx(type *t)
 
         case TYullong:
         case TYucent:
+        {
             if (!t->Tnext)
             {   p = (tybasic(t->Tty) == TYullong) ? "unsigned long long" : "ucent";
                 goto Lsigned;
             }
-
-#ifndef USE_DWARF_D_EXTENSIONS
-            static unsigned char abbrevTypeStruct[] =
-            {
-                DW_TAG_structure_type,
-                1,                      // children
-                DW_AT_sibling,          DW_FORM_ref4,
-                DW_AT_name,             DW_FORM_string,
-                DW_AT_byte_size,        DW_FORM_data1,
-                0,                      0,
-            };
-
-            static unsigned char abbrevTypeMember[] =
-            {
-                DW_TAG_member,
-                0,                      // no children
-                DW_AT_name,             DW_FORM_string,
-                DW_AT_type,             DW_FORM_ref4,
-                DW_AT_data_member_location, DW_FORM_block1,
-                0,                      0,
-            };
-#endif
 
             /* It's really TYdarray, and Tnext is the
              * element type
@@ -1743,7 +1745,7 @@ unsigned dwarf_typidx(type *t)
             }
 #endif
             break;
-
+        }
         case TYllong:
         case TYcent:
             if (!t->Tnext)

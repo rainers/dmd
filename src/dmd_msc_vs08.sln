@@ -7,6 +7,8 @@ Project("{002A2DE9-8BB6-484D-9802-7E4AD4084715}") = "druntime", "..\..\druntime\
 EndProject
 Project("{002A2DE9-8BB6-484D-9802-7E4AD4084715}") = "phobos", "..\..\phobos\phobos.visualdproj", "{A67AF41B-8085-45AF-8F1E-EEB5B40F06F4}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "optlink", "..\..\optlink\optlink.vcproj", "{241EBFB0-25D1-45CF-9AAC-48E13A1E98EB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -35,6 +37,12 @@ Global
 		{A67AF41B-8085-45AF-8F1E-EEB5B40F06F4}.Release|Win32.ActiveCfg = Release|Win32
 		{A67AF41B-8085-45AF-8F1E-EEB5B40F06F4}.Release|Win32.Build.0 = Release|Win32
 		{A67AF41B-8085-45AF-8F1E-EEB5B40F06F4}.Release|x64.ActiveCfg = Release|Win32
+		{241EBFB0-25D1-45CF-9AAC-48E13A1E98EB}.Debug|Win32.ActiveCfg = Debug|Win32
+		{241EBFB0-25D1-45CF-9AAC-48E13A1E98EB}.Debug|Win32.Build.0 = Debug|Win32
+		{241EBFB0-25D1-45CF-9AAC-48E13A1E98EB}.Debug|x64.ActiveCfg = Debug|Win32
+		{241EBFB0-25D1-45CF-9AAC-48E13A1E98EB}.Release|Win32.ActiveCfg = Release|Win32
+		{241EBFB0-25D1-45CF-9AAC-48E13A1E98EB}.Release|Win32.Build.0 = Release|Win32
+		{241EBFB0-25D1-45CF-9AAC-48E13A1E98EB}.Release|x64.ActiveCfg = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

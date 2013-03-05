@@ -36,6 +36,8 @@
 #include        "cpp.h"
 #endif
 
+#if OMFOBJ
+
 static char __file__[] = __FILE__;      /* for tassert.h                */
 #include        "tassert.h"
 
@@ -2328,7 +2330,7 @@ STATIC void cv4_outsym(symbol *s)
         objmod->write_bytes(SegData[DEBSYM],length,debsym);
 
         // Put out fixup for function start offset
-        objmod->reftoident(DEBSYM,soffset + u,s,0,CFseg | CFoff);
+        objmod->reftoident(DEBSYM,soffset + u,s,0,CFseg | CFoff | CFdebug);
     }
     else
     {   targ_size_t base;
@@ -2919,6 +2921,8 @@ unsigned cv_typidx(type *t)
     }
     return ti;
 }
+
+#endif // OMFOBJ
 
 #endif // !SPP
 

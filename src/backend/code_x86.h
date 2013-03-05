@@ -392,6 +392,7 @@ struct code
 #define CFvex3      0x200000    // 3 byte vex prefix
 
 #define CFjmp5      0x400000    // always a 5 byte jmp
+#define CFdebug     0x800000    // fixup generated for debug info
 
 /* These are for CFpc32 fixups, they're the negative of the offset of the fixup
  * from the program counter

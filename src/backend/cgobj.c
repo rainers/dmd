@@ -290,6 +290,7 @@ struct Objstate
     int fisegi;                 // SegData[] index of FI segment
     int hpsegi;                 // SegData[] of "has pointer" segment
     int tlshpsegi;              // SegData[] of "TLS has pointer" segment
+    int reldatasegi;            // SegData[] of relocation data segment
 
 #if MARS
     int fmsegi;                 // SegData[] of FM segment
@@ -583,6 +584,68 @@ int Obj::write_pointerInfo(Symbol *s, Symbol *ti)
     offset += objmod->reftoident(seg, offset, ti, 0, flags);
     Offset(seg) = offset;
     return 1;
+}
+
+int Obj::reldataseg()
+{
+    //return DATA;
+#define DATACLASS       6                       // data class lname index
+    if (obj.reldatasegi == 0)
+    {
+        static char lnames[] =
+        {   "\05RELDB\04RELD\05RELDE"
+        };
+
+        // Put out LNAMES record
+        objrecord(LNAMES,lnames,sizeof(lnames) - 1);
+
+        int dsegattr = I32
+            ? SEG_ATTR(SEG_ALIGN4,SEG_C_PUBLIC,0,USE32)
+            : SEG_ATTR(SEG_ALIGN2,SEG_C_PUBLIC,0,USE16);
+
+        // Put out beginning segment
+        objsegdef(dsegattr,0,obj.lnameidx,DATACLASS);
+        obj.lnameidx++;
+        obj.segidx++;
+
+        // Put out segment definition record
+        obj.reldatasegi = obj_newfarseg(0,DATACLASS);
+        objsegdef(dsegattr,0,obj.lnameidx,DATACLASS);
+        SegData[obj.reldatasegi]->attr = dsegattr;
+        assert(SegData[obj.reldatasegi]->segidx == obj.segidx);
+
+        // Put out ending segment
+        objsegdef(dsegattr,0,obj.lnameidx + 1,DATACLASS);
+
+        obj.lnameidx += 2;              // for next time
+        obj.segidx += 2;
+
+//        dbg_printf("NOSCAN seg is %d\n", obj.noscansegi);
+    }
+
+    return obj.reldatasegi;
+}
+
+int Obj::write_relDataInfo(int seg,targ_size_t offset,targ_size_t data,
+                           unsigned lcfd,unsigned idx1,unsigned idx2)
+{
+    int rdseg = reldataseg();
+    targ_size_t rdoffset = Offset(rdseg);
+
+    unsigned frame = SegData[rdseg]->segidx;
+    int target = SegData[seg]->segidx;
+    if(seg_is_comdat(target)) // COMDEF/COMDAT
+    {
+
+    }
+    else
+    {
+        objmod->ledata(rdseg, rdoffset, offset, LOCATsegrel | LOC32offset | FD_F1 | FD_T4, DGROUPIDX, target);
+        rdoffset += tysize[TYnptr];
+        rdoffset += objmod->bytes(rdseg, rdoffset, tysize[TYnptr], &data);
+        Offset(rdseg) = rdoffset;
+    }
+    return 0;
 }
 
 /**************************
@@ -3628,6 +3691,14 @@ int Obj::reftoident(int seg,targ_size_t offset,Symbol *s,targ_size_t val,
                 break;
         }
     }
+
+#if DEBUG
+    if(external && tyfunc(ty) == 0)
+    {
+        printf("reftoident(%s,seg=%d,offset=%lld,val=%lld,frame=%d,target=%d)\n", s->Sident, seg, offset, val, framedatum, targetdatum);
+        Obj::write_relDataInfo(seg,offset,val,lc,framedatum,targetdatum);
+    }
+#endif
 
     Obj::ledata(seg,offset,val,lc,framedatum,targetdatum);
     return numbytes;
