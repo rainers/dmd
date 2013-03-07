@@ -686,6 +686,14 @@
 				>
 			</File>
 			<File
+				RelativePath=".\target.c"
+				>
+			</File>
+			<File
+				RelativePath=".\target.h"
+				>
+			</File>
+			<File
 				RelativePath=".\template.c"
 				>
 			</File>
@@ -716,13 +724,6 @@
 			<File
 				RelativePath=".\toelfdebug.c"
 				>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="VCCLCompilerTool"
-					/>
-				</FileConfiguration>
 				<FileConfiguration
 					Name="Debug|x64"
 					ExcludedFromBuild="true"
