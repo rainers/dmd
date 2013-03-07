@@ -98,7 +98,7 @@ Global::Global()
 #include "verstr.h"
     ;
 
-    global.structalign = STRUCTALIGN_DEFAULT;
+    structalign = STRUCTALIGN_DEFAULT;
 
     memset(&params, 0, sizeof(Param));
 }

@@ -1289,6 +1289,27 @@ Type *Type::aliasthisOf()
     return NULL;
 }
 
+int Type::checkAliasThisRec()
+{
+    Type *tb = toBasetype();
+    enum AliasThisRec* pflag;
+    if (tb->ty == Tstruct)
+        pflag = &((TypeStruct *)tb)->att;
+    else if (tb->ty == Tclass)
+        pflag = &((TypeClass *)tb)->att;
+    else
+        return 0;
+
+    enum AliasThisRec flag = (enum AliasThisRec)(*pflag & ~RECtracing);
+    if (flag == RECfwdref)
+    {
+        Type *att = aliasthisOf();
+        flag = att && att->implicitConvTo(this) ? RECyes : RECno;
+    }
+    *pflag = (AliasThisRec)(flag | (*pflag & RECtracing));
+    return flag == RECyes;
+}
+
 Dsymbol *Type::toDsymbol(Scope *sc)
 {
     return NULL;
@@ -4093,7 +4114,11 @@ Expression *TypeSArray::defaultInitLiteral(Loc loc)
     printf("TypeSArray::defaultInitLiteral() '%s'\n", toChars());
 #endif
     size_t d = dim->toInteger();
-    Expression *elementinit = next->defaultInitLiteral(loc);
+    Expression *elementinit;
+    if (next->ty == Tvoid)
+        elementinit = tuns8->defaultInitLiteral(loc);
+    else
+        elementinit = next->defaultInitLiteral(loc);
     Expressions *elements = new Expressions();
     elements->setDim(d);
     for (size_t i = 0; i < d; i++)
@@ -5213,7 +5238,8 @@ int Type::covariant(Type *t, StorageClass *pstc)
     }
     else if (t1n->ty == t2n->ty && t1n->implicitConvTo(t2n))
         goto Lcovariant;
-    else if (t1n->ty == Tnull && t1n->implicitConvTo(t2n))
+    else if (t1n->ty == Tnull && t1n->implicitConvTo(t2n) &&
+             t1n->size() == t2n->size())
         goto Lcovariant;
   }
     goto Lnotcovariant;
@@ -5226,11 +5252,15 @@ Lcovariant:
      */
     if (!MODimplicitConv(t2->mod, t1->mod))
     {
+#if 0//stop attribute inference with const
         // If adding 'const' will make it covariant
         if (MODimplicitConv(t2->mod, MODmerge(t1->mod, MODconst)))
             stc |= STCconst;
         else
             goto Lnotcovariant;
+#else
+        goto Ldistinct;
+#endif
     }
 
     /* Can convert pure to impure, and nothrow to throw
@@ -5942,27 +5972,26 @@ MATCH TypeFunction::callMatch(Expression *ethis, Expressions *args, int flag)
 
         // Non-lvalues do not match ref or out parameters
         if (p->storageClass & STCref)
-        {   if (m && !arg->isLvalue())
-            {
-                Type *ta = targ->aliasthisOf();
-                if (arg->op == TOKstring && tprm->ty == Tsarray)
-                {   if (targ->ty != Tsarray)
-                        targ = new TypeSArray(targ->nextOf(),
-                                new IntegerExp(0, ((StringExp *)arg)->len,
-                                Type::tindex));
-                }
-                else
-                    goto Nomatch;
-            }
-
+        {
             Type *targb = targ->toBasetype();
             Type *tprmb = tprm->toBasetype();
             //printf("%s\n", targb->toChars());
             //printf("%s\n", tprmb->toChars());
 
-            if (arg->op == TOKslice && tprmb->ty == Tsarray)
-            {   // Allow conversion from T[lwr .. upr] to ref T[upr-lwr]
-                targb = tprmb;
+            if (m && !arg->isLvalue())
+            {
+                if (arg->op == TOKstring && tprmb->ty == Tsarray)
+                {   if (targb->ty != Tsarray)
+                        targb = new TypeSArray(targb->nextOf(),
+                                new IntegerExp(0, ((StringExp *)arg)->len,
+                                Type::tindex));
+                }
+                else if (arg->op == TOKslice && tprmb->ty == Tsarray)
+                {   // Allow conversion from T[lwr .. upr] to ref T[upr-lwr]
+                    targb = tprmb;
+                }
+                else
+                    goto Nomatch;
             }
 
             /* find most derived alias this type being matched.
@@ -7775,6 +7804,7 @@ TypeStruct::TypeStruct(StructDeclaration *sym)
         : Type(Tstruct)
 {
     this->sym = sym;
+    this->att = RECfwdref;
 }
 
 const char *TypeStruct::kind()
@@ -8117,11 +8147,14 @@ Expression *TypeStruct::defaultInitLiteral(Loc loc)
     //    return defaultInit(loc);
     Expressions *structelems = new Expressions();
     structelems->setDim(sym->fields.dim - sym->isnested);
+    unsigned offset = 0;
     for (size_t j = 0; j < structelems->dim; j++)
     {
         VarDeclaration *vd = sym->fields[j];
         Expression *e;
-        if (vd->init)
+        if (vd->offset < offset)
+            e = NULL;
+        else if (vd->init)
         {   if (vd->init->isVoidInitializer())
                 e = NULL;
             else
@@ -8146,6 +8179,7 @@ Expression *TypeStruct::defaultInitLiteral(Loc loc)
 
             e = e->implicitCastTo(vd->scope, telem);
         }
+        offset = vd->offset + vd->type->size();
         (*structelems)[j] = e;
     }
     StructLiteralExp *structinit = new StructLiteralExp(loc, (StructDeclaration *)sym, structelems);
@@ -8293,8 +8327,12 @@ MATCH TypeStruct::implicitConvTo(Type *to)
             }
         }
     }
-    else if (sym->aliasthis)
+    else if (sym->aliasthis && !(att & RECtracing))
+    {
+        att = (AliasThisRec)(att | RECtracing);
         m = aliasthisOf()->implicitConvTo(to);
+        att = (AliasThisRec)(att & ~RECtracing);
+    }
     else
         m = MATCHnomatch;       // no match
     return m;
@@ -8315,13 +8353,16 @@ unsigned TypeStruct::wildConvTo(Type *tprm)
     if (ty == tprm->ty && sym == ((TypeStruct *)tprm)->sym)
         return Type::wildConvTo(tprm);
 
-    if (sym->aliasthis)
-    {   Type *t = aliasthisOf();
-        assert(t);
-        return t->wildConvTo(tprm);
+    unsigned mod = 0;
+
+    if (sym->aliasthis && !(att & RECtracing))
+    {
+        att = (AliasThisRec)(att | RECtracing);
+        mod = aliasthisOf()->wildConvTo(tprm);
+        att = (AliasThisRec)(att & ~RECtracing);
     }
 
-    return 0;
+    return mod;
 }
 
 Type *TypeStruct::toHeadMutable()
@@ -8336,6 +8377,7 @@ TypeClass::TypeClass(ClassDeclaration *sym)
         : Type(Tclass)
 {
     this->sym = sym;
+    this->att = RECfwdref;
 }
 
 const char *TypeClass::kind()
@@ -8803,8 +8845,12 @@ MATCH TypeClass::implicitConvTo(Type *to)
     }
 
     m = MATCHnomatch;
-    if (sym->aliasthis)
+    if (sym->aliasthis && !(att & RECtracing))
+    {
+        att = (AliasThisRec)(att | RECtracing);
         m = aliasthisOf()->implicitConvTo(to);
+        att = (AliasThisRec)(att & ~RECtracing);
+    }
 
     return m;
 }
@@ -8837,10 +8883,16 @@ unsigned TypeClass::wildConvTo(Type *tprm)
     if (cdprm && cdprm->isBaseOf(sym, NULL))
         return Type::wildConvTo(tprm);
 
-    if (sym->aliasthis)
-        return aliasthisOf()->wildConvTo(tprm);
+    unsigned mod = 0;
 
-    return 0;
+    if (sym->aliasthis && !(att & RECtracing))
+    {
+        att = (AliasThisRec)(att | RECtracing);
+        mod = aliasthisOf()->wildConvTo(tprm);
+        att = (AliasThisRec)(att & ~RECtracing);
+    }
+
+    return mod;
 }
 
 Type *TypeClass::toHeadMutable()

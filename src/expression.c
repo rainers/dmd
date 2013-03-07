@@ -49,6 +49,7 @@ extern "C" char * __cdecl __locale_decpoint;
 
 Expression *createTypeInfoArray(Scope *sc, Expression *args[], size_t dim);
 Expression *expandVar(int result, VarDeclaration *v);
+void functionToCBuffer2(TypeFunction *t, OutBuffer *buf, HdrGenState *hgs, int mod, const char *kind);
 
 #define LOGSEMANTIC     0
 
@@ -357,7 +358,7 @@ Expression *checkRightThis(Scope *sc, Expression *e)
         {
             //printf("checkRightThis sc->intypeof = %d, ad = %p, func = %p, fdthis = %p\n",
             //        sc->intypeof, sc->getStructClassScope(), func, fdthis);
-            e->error("need 'this' for %s type %s", ve->var->toChars(), ve->var->type->toChars());
+            e->error("need 'this' for '%s' of type '%s'", ve->var->toChars(), ve->var->type->toChars());
             e = new ErrorExp();
         }
     }
@@ -835,6 +836,9 @@ void preFunctionParameters(Loc loc, Scope *sc, Expressions *exps)
             arg = resolveProperties(sc, arg);
             (*exps)[i] =  arg;
 
+            if (arg->op == TOKtype)
+                arg->error("%s is not an expression", arg->toChars());
+
             //arg->rvalue();
         }
     }
@@ -1026,7 +1030,8 @@ Type *functionParameters(Loc loc, Scope *sc, TypeFunction *tf,
                 arg = p->defaultArg;
                 arg = arg->inlineCopy(sc);
 #if DMDV2
-                arg = arg->resolveLoc(loc, sc);         // __FILE__ and __LINE__
+                // __FILE__, __LINE__, __MODULE__, __FUNCTION__, and __PRETTY_FUNCTION__
+                arg = arg->resolveLoc(loc, sc);
 #endif
                 arguments->push(arg);
                 nargs++;
@@ -1980,8 +1985,12 @@ Expression *Expression::checkToBoolean(Scope *sc)
     assert(type);
 #endif
 
-    // Structs can be converted to bool using opCast(bool)()
+    Expression *e = this;
+    Type *t = type;
     Type *tb = type->toBasetype();
+    Type *att = NULL;
+Lagain:
+    // Structs can be converted to bool using opCast(bool)()
     if (tb->ty == Tstruct)
     {   AggregateDeclaration *ad = ((TypeStruct *)tb)->sym;
         /* Don't really need to check for opCast first, but by doing so we
@@ -1990,26 +1999,29 @@ Expression *Expression::checkToBoolean(Scope *sc)
         Dsymbol *fd = search_function(ad, Id::cast);
         if (fd)
         {
-            Expression *e = new CastExp(loc, this, Type::tbool);
+            e = new CastExp(loc, e, Type::tbool);
             e = e->semantic(sc);
             return e;
         }
 
         // Forward to aliasthis.
-        if (ad->aliasthis)
+        if (ad->aliasthis && tb != att)
         {
-            Expression *e = resolveAliasThis(sc, this);
-            e = e->checkToBoolean(sc);
-            return e;
+            if (!att && tb->checkAliasThisRec())
+                att = tb;
+            e = resolveAliasThis(sc, e);
+            t = e->type;
+            tb = e->type->toBasetype();
+            goto Lagain;
         }
     }
 
-    if (!type->checkBoolean())
-    {   if (type->toBasetype() != Type::terror)
-            error("expression %s of type %s does not have a boolean value", toChars(), type->toChars());
+    if (!t->checkBoolean())
+    {   if (tb != Type::terror)
+            error("expression %s of type %s does not have a boolean value", toChars(), t->toChars());
         return new ErrorExp();
     }
-    return this;
+    return e;
 }
 
 /****************************
@@ -2075,7 +2087,7 @@ int Expression::isBit()
 }
 
 /****************************************
- * Resolve __LINE__ and __FILE__ to loc.
+ * Resolve __FILE__, __LINE__, __MODULE__, __FUNCTION__, __PRETTY_FUNCTION__ to loc.
  */
 
 Expression *Expression::resolveLoc(Loc loc, Scope *sc)
@@ -4795,7 +4807,7 @@ Lagain:
             sd->accessCheck(loc, sc, member);
 
             TypeFunction *tf = (TypeFunction *)f->type;
-            type = tf->next;
+            type = type->addMod(tf->nextOf()->mod);
 
             if (!arguments)
                 arguments = new Expressions();
@@ -5167,16 +5179,6 @@ Expression *VarExp::modifiableLvalue(Scope *sc, Expression *e)
     //printf("VarExp::modifiableLvalue('%s')\n", var->toChars());
     //if (type && type->toBasetype()->ty == Tsarray)
         //error("cannot change reference to static array '%s'", var->toChars());
-
-#if (BUG6652 == 1)
-    VarDeclaration *v = var->isVarDeclaration();
-    if (v && (v->storage_class & STCbug6652) && v->type->isMutable())
-        warning("variable modified in foreach body requires ref storage class");
-#elif (BUG6652 == 2)
-    VarDeclaration *v = var->isVarDeclaration();
-    if (v && (v->storage_class & STCbug6652) && v->type->isMutable())
-        deprecation("variable modified in foreach body requires ref storage class");
-#endif
 
     // See if this expression is a modifiable lvalue (i.e. not const)
     return Expression::modifiableLvalue(sc, e);
@@ -5975,21 +5977,51 @@ Expression *IsExp::semantic(Scope *sc)
         }
         goto Lyes;
     }
-    else if (id && tspec)
+    else if (tspec && !id && !(parameters && parameters->dim))
+    {
+        /* Evaluate to TRUE if targ matches tspec
+         * is(targ == tspec)
+         * is(targ : tspec)
+         */
+        tspec = tspec->semantic(loc, sc);
+        //printf("targ  = %s, %s\n", targ->toChars(), targ->deco);
+        //printf("tspec = %s, %s\n", tspec->toChars(), tspec->deco);
+        if (tok == TOKcolon)
+        {   if (targ->implicitConvTo(tspec))
+                goto Lyes;
+            else
+                goto Lno;
+        }
+        else /* == */
+        {   if (targ->equals(tspec))
+                goto Lyes;
+            else
+                goto Lno;
+        }
+    }
+    else if (tspec)
     {
         /* Evaluate to TRUE if targ matches tspec.
          * If TRUE, declare id as an alias for the specialized type.
+         * is(targ == tspec, tpl)
+         * is(targ : tspec, tpl)
+         * is(targ id == tspec)
+         * is(targ id : tspec)
+         * is(targ id == tspec, tpl)
+         * is(targ id : tspec, tpl)
          */
 
-        assert(parameters && parameters->dim);
+        Identifier *tid = id ? id : Lexer::uniqueId("__isexp_id");
+        TemplateParameter *tp = new TemplateTypeParameter(loc, tid, NULL, NULL);
+        parameters->insert(0, tp);
 
         Objects dedtypes;
         dedtypes.setDim(parameters->dim);
         dedtypes.zero();
 
         MATCH m = targ->deduceType(sc, tspec, parameters, &dedtypes);
-//printf("targ: %s\n", targ->toChars());
-//printf("tspec: %s\n", tspec->toChars());
+        //printf("targ: %s\n", targ->toChars());
+        //printf("tspec: %s\n", tspec->toChars());
         if (m == MATCHnomatch ||
             (m != MATCHexact && tok == TOKequal))
         {
@@ -6027,31 +6059,10 @@ Expression *IsExp::semantic(Scope *sc)
     else if (id)
     {
         /* Declare id as an alias for type targ. Evaluate to TRUE
+         * is(targ id)
          */
         tded = targ;
         goto Lyes;
-    }
-    else if (tspec)
-    {
-        /* Evaluate to TRUE if targ matches tspec
-         * is(targ == tspec)
-         * is(targ : tspec)
-         */
-        tspec = tspec->semantic(loc, sc);
-        //printf("targ  = %s, %s\n", targ->toChars(), targ->deco);
-        //printf("tspec = %s, %s\n", tspec->toChars(), tspec->deco);
-        if (tok == TOKcolon)
-        {   if (targ->implicitConvTo(tspec))
-                goto Lyes;
-            else
-                goto Lno;
-        }
-        else /* == */
-        {   if (targ->equals(tspec))
-                goto Lyes;
-            else
-                goto Lno;
-        }
     }
 
 Lyes:
@@ -6117,6 +6128,7 @@ UnaExp::UnaExp(Loc loc, enum TOK op, int size, Expression *e1)
         : Expression(loc, op, size)
 {
     this->e1 = e1;
+    this->att1 = NULL;
 }
 
 Expression *UnaExp::syntaxCopy()
@@ -6157,6 +6169,9 @@ BinExp::BinExp(Loc loc, enum TOK op, int size, Expression *e1, Expression *e2)
 {
     this->e1 = e1;
     this->e2 = e2;
+
+    this->att1 = NULL;
+    this->att2 = NULL;
 }
 
 Expression *BinExp::syntaxCopy()
@@ -7413,6 +7428,12 @@ L1:
             e = e->semantic(sc);
             return e;
         }
+        if (eleft->op == TOKtype)
+        {
+            e = new DsymbolExp(loc, s);
+            e = e->semantic(sc);
+            return e;
+        }
         e = new ScopeExp(loc, ti);
         e = new DotExp(loc, eleft, e);
         e = e->semantic(sc);
@@ -7967,6 +7988,7 @@ Lagain:
                 }
                 e = new CallExp(loc, e, arguments);
                 e = e->semantic(sc);
+                e->type = e->type->addMod(t1->mod);
                 return e;
             }
 #endif
@@ -7976,8 +7998,10 @@ Lagain:
 
             if (e1->op != TOKtype)
             {
-                if (ad->aliasthis)
+                if (ad->aliasthis && e1->type != att1)
                 {
+                    if (!att1 && e1->type->checkAliasThisRec())
+                        att1 = e1->type;
                     e1 = resolveAliasThis(sc, e1);
                     goto Lagain;
                 }
@@ -8305,7 +8329,7 @@ Lagain:
                 }
                 else if (sc->intypeof != 1 && sc->parent->isFuncDeclaration())
                 {
-                    error("need 'this' for %s type %s", f->toChars(), f->type->toChars());
+                    error("need 'this' for '%s' of type '%s'", f->toChars(), f->type->toChars());
                     return new ErrorExp();
                 }
             }
@@ -8411,7 +8435,7 @@ Lagain:
             }
             else if (sc->intypeof != 1 && sc->parent->isFuncDeclaration())
             {
-                error("need 'this' for %s type %s", f->toChars(), f->type->toChars());
+                error("need 'this' for '%s' of type '%s'", f->toChars(), f->type->toChars());
                 return new ErrorExp();
             }
         }
@@ -9405,8 +9429,10 @@ Lagain:
             e = e->semantic(sc);
             return e;
         }
-        if (ad->aliasthis)
+        if (ad->aliasthis && e1->type != att1)
         {
+            if (!att1 && e1->type->checkAliasThisRec())
+                att1 = e1->type;
             e1 = resolveAliasThis(sc, e1);
             goto Lagain;
         }
@@ -9544,16 +9570,6 @@ void SliceExp::checkEscape()
 void SliceExp::checkEscapeRef()
 {
     e1->checkEscapeRef();
-}
-
-int SliceExp::isLvalue()
-{
-    return 1;
-}
-
-Expression *SliceExp::toLvalue(Scope *sc, Expression *e)
-{
-    return this;
 }
 
 int SliceExp::checkModifiable(Scope *sc, int flag)
@@ -10243,6 +10259,7 @@ Expression *AssignExp::semantic(Scope *sc)
 
         ae->e1 = ae->e1->semantic(sc);
         ae->e1 = resolveProperties(sc, ae->e1);
+        Expression *e1 = ae->e1;
         Type *t1 = ae->e1->type->toBasetype();
         if (t1->ty == Tstruct)
         {
@@ -10261,7 +10278,7 @@ Expression *AssignExp::semantic(Scope *sc)
                 Expressions *a = (Expressions *)ae->arguments->copy();
                 a->insert(0, e2);
 
-                Expression *e = new DotIdExp(loc, ae->e1, Id::indexass);
+                Expression *e = new DotIdExp(loc, e1, Id::indexass);
                 e = new CallExp(loc, e, a);
                 e = e->semantic(sc);
                 return e;
@@ -10269,18 +10286,20 @@ Expression *AssignExp::semantic(Scope *sc)
         }
 
         // No opIndexAssign found yet, but there might be an alias this to try.
-        if (ad && ad->aliasthis)
-        {   Expression *e = resolveAliasThis(sc, ae->e1);
-            Type *t = e->type->toBasetype();
-
-            if (t->ty == Tstruct)
+        if (ad && ad->aliasthis && t1 != att1)
+        {
+            if (!att1 && t1->checkAliasThisRec())
+                att1 = t1;
+            e1 = resolveAliasThis(sc, e1);
+            t1 = e1->type->toBasetype();
+            if (t1->ty == Tstruct)
             {
-                ad = ((TypeStruct *)t)->sym;
+                ad = ((TypeStruct *)t1)->sym;
                 goto L1;
             }
-            else if (t->ty == Tclass)
+            else if (t1->ty == Tclass)
             {
-                ad = ((TypeClass *)t)->sym;
+                ad = ((TypeClass *)t1)->sym;
                 goto L1;
             }
         }
@@ -10290,14 +10309,15 @@ Expression *AssignExp::semantic(Scope *sc)
      * converted to a.opSlice() already.
      */
     if (e1->op == TOKslice)
-    {   Type *t1;
+    {
         SliceExp *ae = (SliceExp *)e1;
         AggregateDeclaration *ad = NULL;
         Identifier *id = Id::index;
 
         ae->e1 = ae->e1->semantic(sc);
         ae->e1 = resolveProperties(sc, ae->e1);
-        t1 = ae->e1->type->toBasetype();
+        Expression *e1 = ae->e1;
+        Type *t1 = ae->e1->type->toBasetype();
         if (t1->ty == Tstruct)
         {
             ad = ((TypeStruct *)t1)->sym;
@@ -10318,7 +10338,7 @@ Expression *AssignExp::semantic(Scope *sc)
                 {   a->push(ae->lwr);
                     a->push(ae->upr);
                 }
-                Expression *e = new DotIdExp(loc, ae->e1, Id::sliceass);
+                Expression *e = new DotIdExp(loc, e1, Id::sliceass);
                 e = new CallExp(loc, e, a);
                 e = e->semantic(sc);
                 return e;
@@ -10326,18 +10346,20 @@ Expression *AssignExp::semantic(Scope *sc)
         }
 
         // No opSliceAssign found yet, but there might be an alias this to try.
-        if (ad && ad->aliasthis)
-        {   Expression *e = resolveAliasThis(sc, ae->e1);
-            Type *t = e->type->toBasetype();
-
-            if (t->ty == Tstruct)
+        if (ad && ad->aliasthis && t1 != att1)
+        {
+            if (!att1 && t1->checkAliasThisRec())
+                att1 = t1;
+            e1 = resolveAliasThis(sc, e1);
+            t1 = e1->type->toBasetype();
+            if (t1->ty == Tstruct)
             {
-                ad = ((TypeStruct *)t)->sym;
+                ad = ((TypeStruct *)t1)->sym;
                 goto L2;
             }
-            else if (t->ty == Tclass)
+            else if (t1->ty == Tclass)
             {
-                ad = ((TypeClass *)t)->sym;
+                ad = ((TypeClass *)t1)->sym;
                 goto L2;
             }
         }
@@ -12554,7 +12576,7 @@ FileInitExp::FileInitExp(Loc loc)
 Expression *FileInitExp::semantic(Scope *sc)
 {
     //printf("FileInitExp::semantic()\n");
-    type = Type::tchar->invariantOf()->arrayOf();
+    type = Type::tstring;
     return this;
 }
 
@@ -12584,6 +12606,107 @@ Expression *LineInitExp::semantic(Scope *sc)
 Expression *LineInitExp::resolveLoc(Loc loc, Scope *sc)
 {
     Expression *e = new IntegerExp(loc, loc.linnum, Type::tint32);
+    e = e->castTo(sc, type);
+    return e;
+}
+
+/****************************************************************/
+
+ModuleInitExp::ModuleInitExp(Loc loc)
+    : DefaultInitExp(loc, TOKmodulestring, sizeof(ModuleInitExp))
+{
+}
+
+Expression *ModuleInitExp::semantic(Scope *sc)
+{
+    //printf("ModuleInitExp::semantic()\n");
+    type = Type::tstring;
+    return this;
+}
+
+Expression *ModuleInitExp::resolveLoc(Loc loc, Scope *sc)
+{
+    const char *s;
+    if (sc->callsc)
+        s = sc->callsc->module->toPrettyChars();
+    else
+        s = sc->module->toPrettyChars();
+    Expression *e = new StringExp(loc, (char *)s);
+    e = e->semantic(sc);
+    e = e->castTo(sc, type);
+    return e;
+}
+
+/****************************************************************/
+
+FuncInitExp::FuncInitExp(Loc loc)
+    : DefaultInitExp(loc, TOKfuncstring, sizeof(FuncInitExp))
+{
+}
+
+Expression *FuncInitExp::semantic(Scope *sc)
+{
+    //printf("FuncInitExp::semantic()\n");
+    type = Type::tstring;
+    if (sc->func) return this->resolveLoc(0, sc);
+    return this;
+}
+
+Expression *FuncInitExp::resolveLoc(Loc loc, Scope *sc)
+{
+    const char *s;
+    if (sc->callsc && sc->callsc->func)
+        s = sc->callsc->func->Dsymbol::toPrettyChars();
+    else if (sc->func)
+        s = sc->func->Dsymbol::toPrettyChars();
+    else
+        s = "";
+    Expression *e = new StringExp(loc, (char *)s);
+    e = e->semantic(sc);
+    e = e->castTo(sc, type);
+    return e;
+}
+
+/****************************************************************/
+
+PrettyFuncInitExp::PrettyFuncInitExp(Loc loc)
+    : DefaultInitExp(loc, TOKprettyfunc, sizeof(PrettyFuncInitExp))
+{
+}
+
+Expression *PrettyFuncInitExp::semantic(Scope *sc)
+{
+    //printf("PrettyFuncInitExp::semantic()\n");
+    type = Type::tstring;
+    if (sc->func) return this->resolveLoc(0, sc);
+    return this;
+}
+
+Expression *PrettyFuncInitExp::resolveLoc(Loc loc, Scope *sc)
+{
+    FuncDeclaration *fd;
+    if (sc->callsc && sc->callsc->func)
+        fd = sc->callsc->func;
+    else
+        fd = sc->func;
+
+    const char *s;
+    if (fd)
+    {
+        const char *funcStr = fd->Dsymbol::toPrettyChars();
+        HdrGenState hgs;
+        OutBuffer buf;
+        functionToCBuffer2((TypeFunction *)fd->type, &buf, &hgs, 0, funcStr);
+        buf.writebyte(0);
+        s = (const char *)buf.extractData();
+    }
+    else
+    {
+        s = "";
+    }
+
+    Expression *e = new StringExp(loc, (char *)s);
+    e = e->semantic(sc);
     e = e->castTo(sc, type);
     return e;
 }

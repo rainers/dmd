@@ -109,6 +109,9 @@ Msgtable msgtable[] =
 
     { "LINE", "__LINE__" },
     { "FILE", "__FILE__" },
+    { "MODULE", "__MODULE__" },
+    { "FUNCTION", "__FUNCTION__" },
+    { "PRETTY_FUNCTION", "__PRETTY_FUNCTION__" },
     { "DATE", "__DATE__" },
     { "TIME", "__TIME__" },
     { "TIMESTAMP", "__TIMESTAMP__" },
@@ -308,6 +311,7 @@ Msgtable msgtable[] =
     { "isAssociativeArray" },
     { "isFinalClass" },
     { "isPOD" },
+    { "isNested" },
     { "isFloating" },
     { "isIntegral" },
     { "isScalar" },
