@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="Windows-1252"?>
 <VisualStudioProject
 	ProjectType="Visual C++"
-	Version="9,00"
+	Version="9.00"
 	Name="dmd_msc"
 	ProjectGUID="{BAE0389D-7D3F-4D5E-AE0E-C871776E8432}"
 	RootNamespace="dmd"
@@ -724,6 +724,14 @@
 			<File
 				RelativePath=".\toelfdebug.c"
 				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+					/>
+				</FileConfiguration>
 				<FileConfiguration
 					Name="Debug|x64"
 					ExcludedFromBuild="true"
