@@ -7972,8 +7972,10 @@ L1:
     {   e->error("circular reference to '%s'", v->toPrettyChars());
         return new ErrorExp();
     }
-    if (v && !v->isDataseg())
+    if (v && !v->isDataseg() && (v->storage_class & STCmanifest))
     {
+        // Defer constant folding for the statically initialized
+        // const/immutable field until optimize-phase.
         Expression *ei = v->getConstInitializer();
         if (ei)
         {   e = ei->copy();     // need to copy it if it's a StringExp
@@ -8611,8 +8613,10 @@ L1:
     {   e->error("circular reference to '%s'", v->toPrettyChars());
         return new ErrorExp();
     }
-    if (v && !v->isDataseg())
+    if (v && !v->isDataseg() && (v->storage_class & STCmanifest))
     {
+        // Defer constant folding for the statically initialized
+        // const/immutable field until optimize-phase.
         Expression *ei = v->getConstInitializer();
         if (ei)
         {   e = ei->copy();     // need to copy it if it's a StringExp
