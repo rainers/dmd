@@ -805,7 +805,7 @@ int tryMain(size_t argc, char *argv[])
             else if (strcmp(p + 1, "-b") == 0)
                 global.params.debugb = 1;
             else if (strcmp(p + 1, "-c") == 0)
-                global.params.debugc = 1;
+                global.params.debugc = global.params.debugw = 1;
             else if (strcmp(p + 1, "-f") == 0)
                 global.params.debugf = 1;
             else if (strcmp(p + 1, "-help") == 0)

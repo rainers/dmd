@@ -437,6 +437,7 @@ void FuncDeclaration::semantic(Scope *sc)
         if (type->nextOf() == Type::terror)
             goto Ldone;
 
+#if 0
         if (cd->baseClass)
         {
             Dsymbol *cbd = cd->baseClass;
@@ -450,6 +451,7 @@ void FuncDeclaration::semantic(Scope *sc)
                 }
             }
         }
+#endif
 
         /* Find index of existing function in base class's vtbl[] to override
          * (the index will be the same as in cd's current vtbl[])
