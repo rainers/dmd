@@ -24,5 +24,15 @@ src/verstr.h
 .DS_Store
 trace.def
 trace.log
-/src/vcbuild/x64
-/src/vcbuild/Win32
+
+# Visual Studio files
+*.exe
+*.pdb
+src/vcbuild/Win32
+src/vcbuild/x64
+*.ncb
+*.suo
+*.sdf
+*.opensdf
+*.user
+ipch

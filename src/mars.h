@@ -180,6 +180,7 @@ struct Param
     char enforcePropertySyntax;
     char betterC;       // be a "better C" compiler; no dependency on D runtime
     char exportall;     // export any suitable symbol
+    bool addMain;       // add a default main() function
 
     char *argv0;        // program name
     Strings *imppath;     // array of char*'s of where to look for import modules
@@ -256,6 +257,7 @@ struct Global
     const char *map_ext;        // for .map files
     const char *copyright;
     const char *written;
+    const char *main_d;         // dummy filename for dummy main()
     Strings *path;        // Array of char*'s which form the import lookup path
     Strings *filePath;    // Array of char*'s which form the file import lookup path
 

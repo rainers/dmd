@@ -617,9 +617,6 @@
     <ClInclude Include="backend\code.h">
       <Filter>src\backend</Filter>
     </ClInclude>
-    <ClInclude Include="backend\cpp.h">
-      <Filter>src\backend</Filter>
-    </ClInclude>
     <ClInclude Include="backend\cv4.h">
       <Filter>src\backend</Filter>
     </ClInclude>
