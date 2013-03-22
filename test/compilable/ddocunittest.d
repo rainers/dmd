@@ -1,8 +1,10 @@
-// PERMUTE_ARGS:
+// PERMUTE_ARGS: -unittest
 // REQUIRED_ARGS: -D -w -o- -c -Ddtest_results/compilable -o-
-// POST_SCRIPT: compilable/extra-files/ddocAny-postscript.sh 2630
+// POST_SCRIPT: compilable/extra-files/ddocAny-postscript.sh unittest
 
-module ddoc2630;
+module ddocunittest;
+
+/* Insert test-cases for documented unittests feature here. */
 
 /// foo function - 1 example
 int foo(int a, int b) { return a + b; }
@@ -23,7 +25,7 @@ unittest
     assert(bar());
 }
 
-/// no code
+/// placeholder
 unittest
 {
 }
@@ -47,7 +49,7 @@ unittest
 /**
 add function - 3 examples
 
-Example:
+Examples:
 
 ----
 assert(add(1, 1) == 2);
@@ -102,7 +104,7 @@ pure
     {
         immutable
         {
-            /// some class
+            /// some class - 1 example
             class SomeClass {}
         }
     }
@@ -144,5 +146,89 @@ unittest
 {
     foobar();
 }
+
+/**
+func - 4 examples
+Examples:
+---
+foo(1);
+---
+
+Examples:
+---
+foo(2);
+---
+*/
+void foo(int x) {  }
+
+///
+unittest
+{
+    foo(2);
+}
+
+///
+unittest
+{
+    foo(4);
+}
+
+// ------------------------------------
+// 9713
+
+///
+void fooNoDescription() {}
+///
+unittest { fooNoDescription(); }
+///
+unittest { if (true) {fooNoDescription(); } /* comment */ }
+
+// ------------------------------------
+
+/// test for bugzilla 9757
+void foo9757() {}
+/// ditto
+void bar9757() {}
+/// ditto
+void baz9757() {}
+///
+unittest { foo9757(); bar9757(); }
+///
+unittest { bar9757(); foo9757(); }
+
+/// with template functions
+auto redBlackTree(E)(E[] elems...)
+{
+    return 1;
+}
+/// ditto
+auto redBlackTree(bool allowDuplicates, E)(E[] elems...)
+{
+    return 2;
+}
+/// ditto
+auto redBlackTree(alias less, E)(E[] elems...)
+{
+    return 3;
+}
+///
+unittest
+{
+    auto rbt1 = redBlackTree(0, 1, 5, 7);
+    auto rbt2 = redBlackTree!string("hello", "world");
+    auto rbt3 = redBlackTree!true(0, 1, 5, 7, 5);
+    auto rbt4 = redBlackTree!"a > b"(0, 1, 5, 7);
+}
+
+// ------------------------------------
+
+// Issue 9758
+
+/// test
+void foo(){}
+
+///
+unittest {  }
+
 
 void main() { }
