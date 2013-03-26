@@ -2669,7 +2669,7 @@ void realToMangleBuffer(OutBuffer *buf, real_t value)
         buf->writestring("NAN");        // no -NAN bugs
     else
     {
-        char buffer[32];
+        char buffer[36];
         int n = ld_sprint(buffer, 'A', value);
         assert(n > 0 && n < sizeof(buffer));
         for (int i = 0; i < n; i++)
@@ -6539,7 +6539,10 @@ Expression *CompileExp::semantic(Scope *sc)
     p.loc = loc;
     p.nextToken();
     //printf("p.loc.linnum = %d\n", p.loc.linnum);
+    unsigned errors = global.errors;
     Expression *e = p.parseExpression();
+    if (global.errors != errors)
+        return new ErrorExp();
     if (p.token.value != TOKeof)
     {   error("incomplete mixin expression (%s)", se->toChars());
         return new ErrorExp();
@@ -9195,7 +9198,10 @@ Expression *CastExp::semantic(Scope *sc)
         }
 
         if (tob->isintegral() && t1b->ty == Tarray)
-            deprecation("casting %s to %s is deprecated", e1->type->toChars(), to->toChars());
+        {
+            error("cannot cast %s to integral type %s", e1->toChars(), to->toChars());
+            return new ErrorExp();
+        }
 
         if (tob->ty == Tpointer && t1b->ty == Tdelegate)
             deprecation("casting from %s to %s is deprecated", e1->type->toChars(), to->toChars());

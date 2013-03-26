@@ -937,7 +937,7 @@ void AliasDeclaration::toDocBuffer(OutBuffer *buf, Scope *sc)
             buf->writestring("deprecated ");
 
         emitProtection(buf, protection);
-        buf->writestring("alias ");
+        buf->printf("alias %s = ", toChars());
 
         if (Dsymbol *s = aliassym)  // ident alias
         {
@@ -959,8 +959,6 @@ void AliasDeclaration::toDocBuffer(OutBuffer *buf, Scope *sc)
             }
         }
 
-        buf->writestring(" ");
-        buf->writestring(toChars());
         buf->writestring(";\n");
     }
 }
@@ -2305,6 +2303,9 @@ void highlightCode2(Scope *sc, Dsymbol *s, OutBuffer *buf, size_t offset)
     OutBuffer res;
     unsigned char *lastp = buf->data;
     const char *highlight;
+
+    if (s->isModule() && ((Module *)s)->isDocFile)
+        sid = "";
 
     //printf("highlightCode2('%.*s')\n", buf->offset - 1, buf->data);
     res.reserve(buf->offset);
