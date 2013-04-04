@@ -5,6 +5,7 @@ module test42;
 import std.stdio;
 import std.c.stdio;
 import std.string;
+import core.memory;
 
 /***************************************************/
 
@@ -50,7 +51,7 @@ void test3()
 {
     auto i = mixin("__LINE__");
     writefln("%d", i);
-    assert(i == 51);
+    assert(i == 52);
 }
 
 /***************************************************/
@@ -4557,51 +4558,19 @@ void test242()
 /***************************************************/
 // 7290
 
-version (D_InlineAsm_X86)
-{
-    enum GP_BP = "EBP";
-    version = ASM_X86;
-}
-else version (D_InlineAsm_X86_64)
-{
-    enum GP_BP = "RBP";
-    version = ASM_X86;
-}
-
-int foo7290a(alias dg)()
+void foo7290a(alias dg)()
 {
     assert(dg(5) == 7);
-
-    version (ASM_X86)
-    {
-        void* p;
-        mixin(`asm { mov p, ` ~ GP_BP ~ `; }`);
-        assert(p < dg.ptr);
-    }
 }
 
-int foo7290b(scope int delegate(int a) dg)
+void foo7290b(scope int delegate(int a) dg)
 {
     assert(dg(5) == 7);
-
-    version (ASM_X86)
-    {
-        void* p;
-        mixin(`asm { mov p, ` ~ GP_BP ~ `; }`);
-        assert(p < dg.ptr);
-    }
 }
 
-int foo7290c(int delegate(int a) dg)
+void foo7290c(int delegate(int a) dg)
 {
     assert(dg(5) == 7);
-
-    version (ASM_X86)
-    {
-        void* p;
-        mixin(`asm { mov p, ` ~ GP_BP ~ `; }`);
-        assert(p < dg.ptr);
-    }
 }
 
 void test7290()
@@ -4609,12 +4578,7 @@ void test7290()
     int add = 2;
     scope dg = (int a) => a + add;
 
-    version (ASM_X86)
-    {
-        void* p;
-        mixin(`asm { mov p, ` ~ GP_BP ~ `; }`);
-        assert(dg.ptr <= p);
-    }
+    assert(GC.addrOf(dg.ptr) == null);
 
     foo7290a!dg();
     foo7290b(dg);
@@ -5453,6 +5417,23 @@ void test9248()
 }
 
 /***************************************************/
+// 9739
+
+class Foo9739
+{
+    int val = 1;
+    this(int arg = 2) { val = arg; }
+}
+
+class Bar9739 : Foo9739 { }
+
+void test9739()
+{
+    Bar9739 bar = new Bar9739;
+    assert(bar.val == 2);
+}
+
+/***************************************************/
 // 6057
 void test6057()
 {
@@ -5974,6 +5955,7 @@ int main()
     test8796();
     test9171();
     test9248();
+    test9739();
     testdbl_to_ulong();
     testdbl_to_uint();
     testreal_to_ulong();

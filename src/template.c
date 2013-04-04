@@ -178,9 +178,15 @@ Expression *getValue(Expression *e)
     {
         VarDeclaration *v = ((VarExp *)e)->var->isVarDeclaration();
         if (v && v->storage_class & STCmanifest)
-        {   ExpInitializer *ei = v->init->isExpInitializer();
-            if (ei)
-                e = ei->exp;
+        {
+            if (v->scope)
+            {
+                v->inuse++;
+                v->init->semantic(v->scope, v->type, INITinterpret);
+                v->scope = NULL;
+                v->inuse--;
+            }
+            e = v->init->toExpression(v->type);
         }
     }
     return e;
@@ -192,9 +198,15 @@ Expression *getValue(Dsymbol *&s)
     {
         VarDeclaration *v = s->isVarDeclaration();
         if (v && v->storage_class & STCmanifest)
-        {   ExpInitializer *ei = v->init->isExpInitializer();
-            if (ei)
-                e = ei->exp, s = NULL;
+        {
+            if (v->scope)
+            {
+                v->inuse++;
+                v->init->semantic(v->scope, v->type, INITinterpret);
+                v->scope = NULL;
+                v->inuse--;
+            }
+            e = v->init->toExpression(v->type);
         }
     }
     return e;
@@ -812,7 +824,7 @@ MATCH TemplateDeclaration::matchWithInstance(TemplateInstance *ti,
         Scope *sc = paramscope->push();
 
         /* There's a chicken-and-egg problem here. We don't know yet if this template
-         * instantiation will be a local one (isnested is set), and we won't know until
+         * instantiation will be a local one (enclosing is set), and we won't know until
          * after selecting the correct template. Thus, function we're nesting inside
          * is not on the sc scope chain, and this can cause errors in FuncDeclaration::getLevel().
          * Workaround the problem by setting a flag to relax the checking on frame errors.
@@ -1663,7 +1675,7 @@ Lretry:
                         taa->index->resolve(loc, sc, &e, &t, &s);
                         if (!e)
                             goto Lnomatch;
-                        e = e->optimize(WANTvalue | WANTinterpret);
+                        e = e->ctfeInterpret();
                         e = e->implicitCastTo(sc, Type::tsize_t);
                         e = e->optimize(WANTvalue);
                         if (!dim->equals(e))
@@ -2364,7 +2376,7 @@ FuncDeclaration *TemplateDeclaration::doHeaderInstantiation(Scope *sc,
 
     Scope *sc2;
     sc2 = scope->push(ti);
-    sc2->parent = /*isnested ? sc->parent :*/ ti;
+    sc2->parent = /*enclosing ? sc->parent :*/ ti;
     sc2->tinst = ti;
 
     {
@@ -3429,6 +3441,12 @@ MATCH TypeEnum::deduceType(Scope *sc, Type *tparam, TemplateParameters *paramete
 
         if (sym != tp->sym)
             return MATCHnomatch;
+    }
+    Type *tb = toBasetype();
+    if (tb->ty == tparam->ty ||
+        tb->ty == Tsarray && tparam->ty == Taarray)
+    {
+        return tb->deduceType(sc, tparam, parameters, dedtypes, wildmatch);
     }
     return Type::deduceType(sc, tparam, parameters, dedtypes, wildmatch);
 }
@@ -4659,7 +4677,7 @@ TemplateInstance::TemplateInstance(Loc loc, Identifier *ident)
     this->withsym = NULL;
     this->nest = 0;
     this->havetempdecl = 0;
-    this->isnested = NULL;
+    this->enclosing = NULL;
     this->speculative = 0;
 }
 
@@ -4687,7 +4705,7 @@ TemplateInstance::TemplateInstance(Loc loc, TemplateDeclaration *td, Objects *ti
     this->withsym = NULL;
     this->nest = 0;
     this->havetempdecl = 1;
-    this->isnested = NULL;
+    this->enclosing = NULL;
     this->speculative = 0;
 
     assert(tempdecl->scope);
@@ -4742,12 +4760,12 @@ void TemplateInstance::expandMembers(Scope *sc2)
     {
         Dsymbol *s = (*members)[i];
         //printf("\t[%d] semantic on '%s' %p kind %s in '%s'\n", i, s->toChars(), s, s->kind(), this->toChars());
-        //printf("test: isnested = %d, sc2->parent = %s\n", isnested, sc2->parent->toChars());
-//      if (isnested)
+        //printf("test: enclosing = %d, sc2->parent = %s\n", enclosing, sc2->parent->toChars());
+//      if (enclosing)
 //          s->parent = sc->parent;
-        //printf("test3: isnested = %d, s->parent = %s\n", isnested, s->parent->toChars());
+        //printf("test3: enclosing = %d, s->parent = %s\n", enclosing, s->parent->toChars());
         s->semantic(sc2);
-        //printf("test4: isnested = %d, s->parent = %s\n", isnested, s->parent->toChars());
+        //printf("test4: enclosing = %d, s->parent = %s\n", enclosing, s->parent->toChars());
         sc2->module->runDeferredSemantic();
     }
 }
@@ -4900,9 +4918,9 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
         assert(tdtypes.dim == ti->tdtypes.dim);
 
         // Nesting must match
-        if (isnested != ti->isnested)
+        if (enclosing != ti->enclosing)
         {
-            //printf("test2 isnested %s ti->isnested %s\n", isnested ? isnested->toChars() : "", ti->isnested ? ti->isnested->toChars() : "");
+            //printf("test2 enclosing %s ti->enclosing %s\n", enclosing ? enclosing->toChars() : "", ti->enclosing ? ti->enclosing->toChars() : "");
             continue;
         }
         //printf("parent = %s, ti->parent = %s\n", tempdecl->parent->toPrettyChars(), ti->parent->toPrettyChars());
@@ -4991,8 +5009,8 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
     ident = genIdent(tiargs);         // need an identifier for name mangling purposes.
 
 #if 1
-    if (isnested)
-        parent = isnested;
+    if (enclosing)
+        parent = enclosing;
 #endif
     //printf("parent = '%s'\n", parent->kind());
 
@@ -5034,7 +5052,7 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
         }
         else
         {
-            Module *m = (isnested ? sc : tempdecl->scope)->module->importedFrom;
+            Module *m = (enclosing ? sc : tempdecl->scope)->module->importedFrom;
             //printf("\t2: adding to module %s instead of module %s\n", m->toChars(), sc->module->toChars());
             a = m->members;
             if (m->semanticRun >= 3)
@@ -5172,8 +5190,8 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
 #endif
     Scope *sc2;
     sc2 = scope->push(this);
-    //printf("isnested = %d, sc->parent = %s\n", isnested, sc->parent->toChars());
-    sc2->parent = /*isnested ? sc->parent :*/ this;
+    //printf("enclosing = %d, sc->parent = %s\n", enclosing, sc->parent->toChars());
+    sc2->parent = /*enclosing ? sc->parent :*/ this;
     sc2->tinst = this;
     sc2->speculative = speculative;
 
@@ -5701,7 +5719,9 @@ bool TemplateInstance::findBestMatch(Scope *sc, Expressions *fargs)
 
     if (!td_best)
     {
-        if (tempdecl && !tempdecl->overnext)
+        if (errs != global.errors)
+            errorSupplemental(loc, "while looking for match for %s", toChars());
+        else if (tempdecl && !tempdecl->overnext)
             // Only one template, so we can give better error message
             error("%s does not match template declaration %s", toChars(), tempdecl->toChars());
         else
@@ -5750,7 +5770,7 @@ bool TemplateInstance::findBestMatch(Scope *sc, Expressions *fargs)
 /*****************************************
  * Determines if a TemplateInstance will need a nested
  * generation of the TemplateDeclaration.
- * Sets isnested property if so, and returns != 0;
+ * Sets enclosing property if so, and returns != 0;
  */
 
 int TemplateInstance::hasNestedArgs(Objects *args)
@@ -5825,30 +5845,30 @@ int TemplateInstance::hasNestedArgs(Objects *args)
                 // if module level template
                 if (tempdecl->toParent()->isModule())
                 {   Dsymbol *dparent = sa->toParent();
-                    if (!isnested)
-                        isnested = dparent;
-                    else if (isnested != dparent)
+                    if (!enclosing)
+                        enclosing = dparent;
+                    else if (enclosing != dparent)
                     {
                         /* Select the more deeply nested of the two.
                          * Error if one is not nested inside the other.
                          */
-                        for (Dsymbol *p = isnested; p; p = p->parent)
+                        for (Dsymbol *p = enclosing; p; p = p->parent)
                         {
                             if (p == dparent)
-                                goto L1;        // isnested is most nested
+                                goto L1;        // enclosing is most nested
                         }
                         for (Dsymbol *p = dparent; p; p = p->parent)
                         {
-                            if (p == isnested)
-                            {   isnested = dparent;
+                            if (p == enclosing)
+                            {   enclosing = dparent;
                                 goto L1;        // dparent is most nested
                             }
                         }
                         error("%s is nested in both %s and %s",
-                                toChars(), isnested->toChars(), dparent->toChars());
+                                toChars(), enclosing->toChars(), dparent->toChars());
                     }
                   L1:
-                    //printf("\tnested inside %s\n", isnested->toChars());
+                    //printf("\tnested inside %s\n", enclosing->toChars());
                     nested |= 1;
                 }
                 else

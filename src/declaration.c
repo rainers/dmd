@@ -29,7 +29,7 @@ AggregateDeclaration *isAggregate(Type *t); // from opover.c
 
 void checkFrameAccess(Loc loc, Scope *sc, AggregateDeclaration *ad)
 {
-    if (!ad->isnested)
+    if (!ad->isNested())
         return;
 
     Dsymbol *s = sc->func;
@@ -147,15 +147,17 @@ int Declaration::checkModify(Loc loc, Scope *sc, Type *t, Expression *e1, int fl
     if (v && v->canassign)
         return 2;
 
-    if ((sc->flags & SCOPEcontract) && isParameter())
+    if (isParameter() || isResult())
     {
-        if (!flag) error(loc, "cannot modify parameter '%s' in contract", toChars());
-        return 0;
-    }
-    if ((sc->flags & SCOPEcontract) && isResult())
-    {
-        if (!flag) error(loc, "cannot modify result '%s' in contract", toChars());
-        return 0;
+        for (Scope *scx = sc; scx; scx = scx->enclosing)
+        {
+            if (scx->func == parent && (scx->flags & SCOPEcontract))
+            {
+                const char *s = isParameter() && parent->ident != Id::ensure ? "parameter" : "result";
+                if (!flag) error(loc, "cannot modify %s '%s' in contract", s, toChars());
+                return 0;
+            }
+        }
     }
 
     if (v && (isCtorinit() || isField()))
@@ -523,6 +525,12 @@ void AliasDeclaration::semantic(Scope *sc)
      * try to alias y to 3.
      */
     s = type->toDsymbol(sc);
+    if (s && s == this)
+    {
+        error("cannot resolve");
+        s = NULL;
+        type = Type::terror;
+    }
     if (s
 #if DMDV2
         && ((s->getType() && type->equals(s->getType())) || s->isEnumMember())
@@ -691,7 +699,9 @@ Dsymbol *AliasDeclaration::toAlias()
         /* If this is an internal alias for selective import,
          * resolve it under the correct scope.
          */
-        import->semantic(NULL);
+        if (import->scope)
+            import->semantic(NULL);
+        import = NULL;
     }
     else if (scope)
         semantic(scope);
@@ -826,8 +836,10 @@ void VarDeclaration::semantic(Scope *sc)
 //      return;
 //    sem = SemanticIn;
 
+    Scope *scx = NULL;
     if (scope)
     {   sc = scope;
+        scx = sc;
         scope = NULL;
     }
 
@@ -1017,6 +1029,7 @@ void VarDeclaration::semantic(Scope *sc)
 
                     iexps->remove(pos);
                     iexps->insert(pos, te->exps);
+                    (*iexps)[pos] = Expression::combine(te->e0, (*iexps)[pos]);
                     goto Lexpand1;
                 }
                 else if (isAliasThisTuple(e))
@@ -1072,11 +1085,13 @@ void VarDeclaration::semantic(Scope *sc)
 Lnomatch:
 
         if (ie && ie->op == TOKtuple)
-        {   size_t tedim = ((TupleExp *)ie)->exps->dim;
+        {
+            TupleExp *te = (TupleExp *)ie;
+            size_t tedim = te->exps->dim;
             if (tedim != nelems)
             {   ::error(loc, "tuple of %d elements cannot be assigned to tuple of %d elements", (int)tedim, (int)nelems);
                 for (size_t u = tedim; u < nelems; u++) // fill dummy expression
-                    ((TupleExp *)ie)->exps->push(new ErrorExp());
+                    te->exps->push(new ErrorExp());
             }
         }
 
@@ -1091,7 +1106,11 @@ Lnomatch:
 
             Expression *einit = ie;
             if (ie && ie->op == TOKtuple)
-            {   einit = (*((TupleExp *)ie)->exps)[i];
+            {
+                TupleExp *te = (TupleExp *)ie;
+                einit = (*te->exps)[i];
+                if (i == 0)
+                    einit = Expression::combine(te->e0, einit);
             }
             Initializer *ti = init;
             if (einit)
@@ -1553,6 +1572,11 @@ Lnomatch:
                 init = init->semantic(sc, type, INITinterpret);
             }
         }
+        else if (parent->isAggregateDeclaration())
+        {
+            scope = scx ? scx : new Scope(*sc);
+            scope->setNoFree();
+        }
         else if (storage_class & (STCconst | STCimmutable | STCmanifest) ||
                  type->isConst() || type->isImmutable())
         {
@@ -1564,16 +1588,15 @@ Lnomatch:
 
             if (!global.errors && !inferred)
             {
-                unsigned errors = global.startGagging();
-                Expression *exp;
-                Initializer *i2 = init;
+                unsigned errors = global.errors;
                 inuse++;
+#if DMDV2
                 if (ei)
                 {
+                    Expression *exp;
                     exp = ei->exp->syntaxCopy();
                     exp = exp->semantic(sc);
                     exp = resolveProperties(sc, exp);
-#if DMDV2
                     Type *tb = type->toBasetype();
                     Type *ti = exp->type->toBasetype();
 
@@ -1615,77 +1638,22 @@ Lnomatch:
                             ;
                         }
                     }
-
-                    // Look for implicit constructor call
-                    if (tb->ty == Tstruct &&
-                        !(ti->ty == Tstruct && tb->toDsymbol(sc) == ti->toDsymbol(sc)) &&
-                        !exp->implicitConvTo(type))
-                    {
-                        StructDeclaration *sd = ((TypeStruct *)tb)->sym;
-                        if (sd->ctor)
-                        {   // Look for constructor first
-                            // Rewrite as e1.ctor(arguments)
-                            Expression *e;
-                            e = new StructLiteralExp(loc, sd, NULL, NULL);
-                            e = new DotIdExp(loc, e, Id::ctor);
-                            e = new CallExp(loc, e, exp);
-                            e = e->semantic(sc);
-                            exp = e->ctfeInterpret();
-                        }
-                    }
+                    ei->exp = exp;
+                }
 #endif
-                    exp = exp->implicitCastTo(sc, type);
-                }
-                else if (si || ai)
-                {   i2 = init->syntaxCopy();
-                    i2 = i2->semantic(sc, type, INITinterpret);
-                }
+                init = init->semantic(sc, type, INITinterpret);
                 inuse--;
-                if (global.endGagging(errors))    // if errors happened
+                if (global.errors > errors)
                 {
-#if DMDV2
-                    /* Save scope for later use, to try again
-                     */
-                    scope = new Scope(*sc);
-                    scope->setNoFree();
-#endif
+                    init = new ErrorInitializer();
+                    type = Type::terror;
                 }
-                else if (ei)
-                {
-                    if (isDataseg() || (storage_class & STCmanifest))
-                        exp = exp->ctfeInterpret();
-                    else
-                        exp = exp->optimize(WANTvalue);
-                    switch (exp->op)
-                    {
-                        case TOKint64:
-                        case TOKfloat64:
-                        case TOKstring:
-                        case TOKarrayliteral:
-                        case TOKassocarrayliteral:
-                        case TOKstructliteral:
-                        case TOKnull:
-                            ei->exp = exp;          // no errors, keep result
-                            break;
-
-                        default:
-#if DMDV2
-                            /* Save scope for later use, to try again
-                             */
-                            scope = new Scope(*sc);
-                            scope->setNoFree();
-#endif
-                            break;
-                    }
-                }
-                else
-                    init = i2;          // no errors, keep result
             }
-        }
-        else if (parent->isAggregateDeclaration())
-        {
-            scope = new Scope(*sc);
-            scope->setNoFree();
+            else
+            {
+                scope = scx ? scx : new Scope(*sc);
+                scope->setNoFree();
+            }
         }
         sc = sc->pop();
     }
