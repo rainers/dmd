@@ -378,7 +378,7 @@ void TypedefDeclaration::semantic2(Scope *sc)
             Initializer *savedinit = init;
             int errors = global.errors;
             init = init->semantic(sc, basetype, INITinterpret);
-            if (errors != global.errors)
+            if (errors != global.errors || init->isErrorInitializer())
             {
                 init = savedinit;
                 return;
@@ -1673,6 +1673,9 @@ Ldtor:
     }
 
     sem = SemanticDone;
+
+    if (type->toBasetype()->ty == Terror)
+        errors = true;
 }
 
 void VarDeclaration::semantic2(Scope *sc)
@@ -1779,32 +1782,9 @@ void VarDeclaration::setFieldOffset(AggregateDeclaration *ad, unsigned *poffset,
     {   // References are the size of a pointer
         t = Type::tvoidptr;
     }
-    if (t->ty == Tstruct)
-    {   TypeStruct *ts = (TypeStruct *)t;
-#if DMDV2
-        if (ts->sym == ad)
-        {
-            ad->error("cannot have field %s with same struct type", toChars());
-        }
-#endif
-
-        if (ts->sym->sizeok != SIZEOKdone && ts->sym->scope)
-            ts->sym->semantic(NULL);
-        if (ts->sym->sizeok != SIZEOKdone)
-        {
-            ad->sizeok = SIZEOKfwd;         // cannot finish; flag as forward referenced
-            return;
-        }
-    }
-    if (t->ty == Tident)
+    if (t->ty == Tstruct || t->ty == Tsarray)
     {
-        ad->sizeok = SIZEOKfwd;             // cannot finish; flag as forward referenced
-        return;
-    }
-#if DMDV2
-    else if (t->ty == Tsarray)
-    {
-        Type *tv = t->toBasetype();
+        Type *tv = t;
         while (tv->ty == Tsarray)
         {
             tv = tv->nextOf()->toBasetype();
@@ -1812,14 +1792,26 @@ void VarDeclaration::setFieldOffset(AggregateDeclaration *ad, unsigned *poffset,
         if (tv->ty == Tstruct)
         {
             TypeStruct *ts = (TypeStruct *)tv;
-            if (ad == ts->sym)
+            if (ts->sym == ad)
             {
-                ad->error("cannot have field %s with same struct type", toChars());
+                const char *s = (t->ty == Tsarray) ? "static array of " : "";
+                ad->error("cannot have field %s with %ssame struct type", toChars(), s);
+            }
+            if (ts->sym->sizeok != SIZEOKdone && ts->sym->scope)
+                ts->sym->semantic(NULL);
+            if (ts->sym->sizeok != SIZEOKdone)
+            {
+                ad->sizeok = SIZEOKfwd;         // cannot finish; flag as forward referenced
                 return;
             }
         }
     }
-#endif
+    if (t->ty == Tident)
+    {
+        ad->sizeok = SIZEOKfwd;             // cannot finish; flag as forward referenced
+        return;
+    }
+
 
     unsigned memsize      = t->size(loc);            // size of member
     unsigned memalignsize = t->alignsize();          // size of member for alignment purposes

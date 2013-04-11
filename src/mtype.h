@@ -236,6 +236,8 @@ struct Type : Object
     char *toChars();
     static char needThisPrefix();
     static void init();
+
+    #define SIZE_INVALID (~(d_uns64)0)
     d_uns64 size();
     virtual d_uns64 size(Loc loc);
     virtual unsigned alignsize();
@@ -273,6 +275,7 @@ struct Type : Object
     int isWild()        { return mod & MODwild; }
     int isSharedWild()  { return mod == (MODshared | MODwild); }
     int isNaked()       { return mod == 0; }
+    Type *nullAttributes();
     Type *constOf();
     Type *invariantOf();
     Type *mutableOf();

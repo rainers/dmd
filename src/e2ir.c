@@ -471,7 +471,8 @@ elem *array_toPtr(Type *t, elem *e)
             break;
 
         case Tsarray:
-            e = el_una(OPaddr, TYnptr, e);
+            //e = el_una(OPaddr, TYnptr, e);
+            e = addressElem(e, t);
             break;
 
         default:
@@ -2146,6 +2147,7 @@ elem *AssertExp::toElem(IRState *irs)
 
 elem *PostExp::toElem(IRState *irs)
 {
+    //printf("PostExp::toElem() '%s'\n", toChars());
     elem *e = e1->toElem(irs);
     elem *einc = e2->toElem(irs);
     e = el_bin((op == TOKplusplus) ? OPpostinc : OPpostdec,
@@ -4633,6 +4635,8 @@ elem *ArrayLengthExp::toElem(IRState *irs)
 elem *SliceExp::toElem(IRState *irs)
 {
     //printf("SliceExp::toElem()\n");
+    Type *tb = type->toBasetype();
+    assert(tb->ty == Tarray || tb->ty == Tsarray && lwr);
     Type *t1 = e1->type->toBasetype();
     elem *e = e1->toElem(irs);
     if (lwr)
@@ -4717,7 +4721,14 @@ elem *SliceExp::toElem(IRState *irs)
         elem *elength = el_bin(OPmin, TYsize_t, eupr, elwr2);
         eptr = el_bin(OPadd, TYnptr, eptr, el_bin(OPmul, TYsize_t, el_copytree(elwr2), el_long(TYsize_t, sz)));
 
-        e = el_pair(TYdarray, elength, eptr);
+        if (tb->ty == Tarray)
+            e = el_pair(TYdarray, elength, eptr);
+        else
+        {   assert(tb->ty == Tsarray);
+            e = el_una(OPind, type->totym(), eptr);
+            if (tybasic(e->Ety) == TYstruct)
+                e->ET = type->toCtype();
+        }
         e = el_combine(elwr, e);
         e = el_combine(einit, e);
     }
@@ -5203,7 +5214,7 @@ elem *StructLiteralExp::toElem(IRState *irs)
             {
                 if (t2b->implicitConvTo(t1b))
                 {
-#if DMDV2
+#if 0
                     // Determine if postblit is needed
                     int postblit = 0;
                     if (needsPostblit(t1b))
@@ -5252,7 +5263,7 @@ elem *StructLiteralExp::toElem(IRState *irs)
                 {   e1->Eoper = OPstreq;
                     e1->ET = v->type->toCtype();
                 }
-#if DMDV2
+#if 0
                 /* Call postblit() on e1
                  */
                 StructDeclaration *sd = needsPostblit(v->type);

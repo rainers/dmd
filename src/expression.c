@@ -750,15 +750,40 @@ Expressions *arrayExpressionToCommonType(Scope *sc, Expressions *exps, Type **pt
     Expression *e0;
     size_t j0;
     for (size_t i = 0; i < exps->dim; i++)
-    {   Expression *e = (*exps)[i];
-
+    {
+        Expression *e = (*exps)[i];
         e = resolveProperties(sc, e);
         if (!e->type)
         {   e->error("%s has no value", e->toChars());
             e = new ErrorExp();
         }
 
-        e = callCpCtor(e->loc, sc, e, 1);
+        if (Expression *ex = e->isTemp())
+            e = ex;
+        if (e->isLvalue())
+        {
+            e = callCpCtor(e->loc, sc, e, 1);
+        }
+        else
+        {
+            Type *tb = e->type->toBasetype();
+            if (tb->ty == Tsarray)
+            {
+                e = callCpCtor(e->loc, sc, e, 1);
+            }
+            else if (tb->ty == Tstruct)
+            {
+                if (e->op == TOKcall && !e->isLvalue())
+                {
+                    valueNoDtor(e);
+                }
+                else
+                {   /* Not transferring it, so call the copy constructor
+                     */
+                    e = callCpCtor(e->loc, sc, e, 1);
+                }
+            }
+        }
 
         if (t0)
         {   if (t0 != e->type)
@@ -1208,14 +1233,7 @@ Type *functionParameters(Loc loc, Scope *sc, TypeFunction *tf,
             }
             if (p->storageClass & STCref)
             {
-                if (arg->op == TOKslice
-                    && p->type->toBasetype()->ty == Tsarray)    // Workaround for bug 2486
-                {
-                    arg = arg->castTo(sc, p->type);
-                    arg = arg->toLvalue(sc, arg);
-                }
-                else
-                    arg = arg->toLvalue(sc, arg);
+                arg = arg->toLvalue(sc, arg);
             }
             else if (p->storageClass & STCout)
             {
@@ -2846,11 +2864,13 @@ Expression *IdentifierExp::semantic(Scope *sc)
     s = sc->search(loc, ident, &scopesym);
     if (s)
     {   Expression *e;
-        WithScopeSymbol *withsym;
+
+        if (s->errors)
+            return new ErrorExp();
 
         /* See if the symbol was a member of an enclosing 'with'
          */
-        withsym = scopesym->isWithScopeSymbol();
+        WithScopeSymbol *withsym = scopesym->isWithScopeSymbol();
         if (withsym)
         {
 #if DMDV2
@@ -3044,6 +3064,12 @@ Lagain:
     if (em)
     {
         e = em->value;
+        if (!e)
+        {
+            em->errors = true;
+            error("forward reference of %s %s", s->kind(), s->toChars());
+            return new ErrorExp();
+        }
         e->loc = loc;
         e = e->semantic(sc);
         return e;
@@ -3057,7 +3083,7 @@ Lagain:
                 v->semantic(v->scope);
             type = v->type;
             if (!v->type)
-            {   error("forward reference of %s %s", v->kind(), v->toChars());
+            {   error("forward reference of %s %s", s->kind(), s->toChars());
                 return new ErrorExp();
             }
         }
@@ -3744,13 +3770,14 @@ int StringExp::isLvalue()
     /* string literal is rvalue in default, but
      * conversion to reference of static array is only allowed.
      */
-    return 0;
+    return (type && type->toBasetype()->ty == Tsarray);
 }
 
 Expression *StringExp::toLvalue(Scope *sc, Expression *e)
 {
-    //printf("StringExp::toLvalue(%s)\n", toChars());
-    return this;
+    //printf("StringExp::toLvalue(%s) type = %s\n", toChars(), type ? type->toChars() : NULL);
+    return (type && type->toBasetype()->ty == Tsarray)
+            ? this : Expression::toLvalue(sc, e);
 }
 
 Expression *StringExp::modifiableLvalue(Scope *sc, Expression *e)
@@ -4161,7 +4188,7 @@ Expression *StructLiteralExp::semantic(Scope *sc)
         if (e->op == TOKerror)
             return e;
 
-        (*elements)[i] = e;
+        (*elements)[i] = callCpCtor(e->loc, sc, e, 1);
     }
 
     /* Fill out remainder of elements[] with default initializers for fields[]
@@ -4739,6 +4766,8 @@ Lagain:
             newargs->shift(e);
 
             f = resolveFuncCall(loc, sc, cd->aggNew, NULL, NULL, newargs);
+            if (!f)
+                goto Lerr;
             allocator = f->isNewDeclaration();
             assert(allocator);
 
@@ -4777,6 +4806,8 @@ Lagain:
             newargs->shift(e);
 
             FuncDeclaration *f = resolveFuncCall(loc, sc, sd->aggNew, NULL, NULL, newargs);
+            if (!f)
+                goto Lerr;
             allocator = f->isNewDeclaration();
             assert(allocator);
 
@@ -5914,6 +5945,8 @@ Expression *IsExp::semantic(Scope *sc)
                 {   ClassDeclaration *cd = ((TypeClass *)targ)->sym;
                     Parameters *args = new Parameters;
                     args->reserve(cd->baseclasses->dim);
+                    if (cd->scope && !cd->symtab)
+                        cd->semantic(cd->scope);
                     for (size_t i = 0; i < cd->baseclasses->dim; i++)
                     {   BaseClass *b = (*cd->baseclasses)[i];
                         args->push(new Parameter(STCin, b->type, NULL, NULL));
@@ -6411,8 +6444,9 @@ Expression *BinAssignExp::semantic(Scope *sc)
         return arrayOp(sc);
     }
 
-    e1 = e1->modifiableLvalue(sc, e1);
     e1 = e1->semantic(sc);
+    e1 = e1->optimize(WANTvalue);
+    e1 = e1->modifiableLvalue(sc, e1);
     type = e1->type;
     checkScalar();
 
@@ -9621,6 +9655,21 @@ int SliceExp::checkModifiable(Scope *sc, int flag)
     return 1;
 }
 
+int SliceExp::isLvalue()
+{
+    /* slice expression is rvalue in default, but
+     * conversion to reference of static array is only allowed.
+     */
+    return (type && type->toBasetype()->ty == Tsarray);
+}
+
+Expression *SliceExp::toLvalue(Scope *sc, Expression *e)
+{
+    //printf("SliceExp::toLvalue(%s) type = %s\n", toChars(), type ? type->toChars() : NULL);
+    return (type && type->toBasetype()->ty == Tsarray)
+            ? this : Expression::toLvalue(sc, e);
+}
+
 Expression *SliceExp::modifiableLvalue(Scope *sc, Expression *e)
 {
     error("slice expression %s is not a modifiable lvalue", toChars());
@@ -10139,6 +10188,9 @@ PostExp::PostExp(enum TOK op, Loc loc, Expression *e)
 Expression *PostExp::semantic(Scope *sc)
 {   Expression *e = this;
 
+#if LOGSEMANTIC
+    printf("PostExp::semantic('%s')\n", toChars());
+#endif
     if (!type)
     {
         BinExp::semantic(sc);
@@ -10155,6 +10207,7 @@ Expression *PostExp::semantic(Scope *sc)
             return new ErrorExp();
         }
 
+        e1 = e1->optimize(WANTvalue);
         if (e1->op != TOKarraylength)
             e1 = e1->modifiableLvalue(sc, e1);
 
@@ -12419,6 +12472,40 @@ Expression *EqualExp::semantic(Scope *sc)
     {
         incompatibleTypes();
         return new ErrorExp();
+    }
+
+    if (e1->op == TOKtuple && e2->op == TOKtuple)
+    {
+        TupleExp *tup1 = (TupleExp *)e1;
+        TupleExp *tup2 = (TupleExp *)e2;
+        size_t dim = tup1->exps->dim;
+        if (dim != tup2->exps->dim)
+        {
+            error("mismatched tuple lengths, %d and %d", (int)dim, (int)tup2->exps->dim);
+            return new ErrorExp();
+        }
+        else
+        {
+            Expressions *exps = new Expressions;
+            exps->setDim(dim);
+
+            Expression *e = combine(tup1->e0, tup2->e0);
+            for (size_t i = 0; i < dim; i++)
+            {
+                Expression *ex1 = (*tup1->exps)[i];
+                Expression *ex2 = (*tup2->exps)[i];
+                Expression *eeq = new EqualExp(op, loc, ex1, ex2);
+                if (!e)
+                    e = eeq;
+                else if (op == TOKequal)
+                    e = new AndAndExp(loc, e, eeq);
+                else
+                    e = new OrOrExp(loc, e, eeq);
+            }
+            e = e->semantic(sc);
+            //printf("e = %s\n", e->toChars());
+            return e;
+        }
     }
 
     e = typeCombine(sc);

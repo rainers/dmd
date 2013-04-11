@@ -366,15 +366,13 @@ Usage:\n\
   -o-            do not write object file\n\
   -odobjdir      write object & library files to directory objdir\n\
   -offilename    name output file to filename\n\
-  -op            do not strip paths from source file\n\
+  -op            preserve source path for output files\n\
   -profile       profile runtime performance of generated code\n\
   -property      enforce property syntax\n\
   -quiet         suppress unnecessary messages\n\
   -release       compile release version\n\
   -run srcfile args...   run resulting program, passing args\n"
-#if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
-"  -shared        generate shared library\n"
-#endif
+"  -shared        generate shared library (DLL)\n"
 "  -unittest      compile in unit tests\n\
   -v             verbose\n\
   -version=level compile in version code >= level\n\
@@ -581,7 +579,6 @@ int tryMain(size_t argc, char *argv[])
                 else if (p[4])
                     goto Lerror;
             }
-#if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
             else if (strcmp(p + 1, "shared") == 0
 #if TARGET_OSX
                 // backwards compatibility with old switch
@@ -589,6 +586,7 @@ int tryMain(size_t argc, char *argv[])
 #endif
                 )
                 global.params.dll = 1;
+#if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
             else if (strcmp(p + 1, "fPIC") == 0)
                 global.params.pic = 1;
 #endif

@@ -277,7 +277,7 @@ d_uns64 Type::size()
 d_uns64 Type::size(Loc loc)
 {
     error(loc, "no size for type %s", toChars());
-    return 1;
+    return SIZE_INVALID;
 }
 
 unsigned Type::alignsize()
@@ -306,6 +306,34 @@ Type *Type::trySemantic(Loc loc, Scope *sc)
         t = NULL;
     }
     //printf("-trySemantic(%s) %d\n", toChars(), global.errors);
+    return t;
+}
+
+/********************************
+ * Return a copy of this type with all attributes null-initialized.
+ * Useful for creating a type with different modifiers.
+ */
+
+Type *Type::nullAttributes()
+{
+    unsigned sz = sizeTy[ty];
+    Type *t = (Type *)mem.malloc(sz);
+    memcpy(t, this, sz);
+    // t->mod = NULL;  // leave mod unchanged
+    t->deco = NULL;
+    t->arrayof = NULL;
+    t->pto = NULL;
+    t->rto = NULL;
+    t->cto = NULL;
+    t->ito = NULL;
+    t->sto = NULL;
+    t->scto = NULL;
+    t->wto = NULL;
+    t->swto = NULL;
+    t->vtinfo = NULL;
+    t->ctype = NULL;
+    if (t->ty == Tstruct) ((TypeStruct *)t)->att = RECfwdref;
+    if (t->ty == Tclass) ((TypeClass *)t)->att = RECfwdref;
     return t;
 }
 
@@ -459,21 +487,9 @@ Type *Type::unSharedOf()
 
     if (!t)
     {
-        unsigned sz = sizeTy[ty];
-        t = (Type *)mem.malloc(sz);
-        memcpy(t, this, sz);
+        t = this->nullAttributes();
         t->mod = mod & ~MODshared;
-        t->deco = NULL;
-        t->arrayof = NULL;
-        t->pto = NULL;
-        t->rto = NULL;
-        t->cto = NULL;
-        t->ito = NULL;
-        t->sto = NULL;
-        t->scto = NULL;
-        t->wto = NULL;
-        t->swto = NULL;
-        t->vtinfo = NULL;
+        t->ctype = ctype;
         t = t->merge();
 
         t->fixTo(this);
@@ -867,161 +883,57 @@ void Type::check()
 Type *Type::makeConst()
 {
     //printf("Type::makeConst() %p, %s\n", this, toChars());
-    if (cto)
-        return cto;
-    unsigned sz = sizeTy[ty];
-    Type *t = (Type *)mem.malloc(sz);
-    memcpy(t, this, sz);
+    if (cto) return cto;
+    Type *t = this->nullAttributes();
     t->mod = MODconst;
-    t->deco = NULL;
-    t->arrayof = NULL;
-    t->pto = NULL;
-    t->rto = NULL;
-    t->cto = NULL;
-    t->ito = NULL;
-    t->sto = NULL;
-    t->scto = NULL;
-    t->wto = NULL;
-    t->swto = NULL;
-    t->vtinfo = NULL;
-    t->ctype = NULL;
     //printf("-Type::makeConst() %p, %s\n", t, toChars());
     return t;
 }
 
 Type *Type::makeInvariant()
 {
-    if (ito)
-        return ito;
-    unsigned sz = sizeTy[ty];
-    Type *t = (Type *)mem.malloc(sz);
-    memcpy(t, this, sz);
+    if (ito) return ito;
+    Type *t = this->nullAttributes();
     t->mod = MODimmutable;
-    t->deco = NULL;
-    t->arrayof = NULL;
-    t->pto = NULL;
-    t->rto = NULL;
-    t->cto = NULL;
-    t->ito = NULL;
-    t->sto = NULL;
-    t->scto = NULL;
-    t->wto = NULL;
-    t->swto = NULL;
-    t->vtinfo = NULL;
-    t->ctype = NULL;
     return t;
 }
 
 Type *Type::makeShared()
 {
-    if (sto)
-        return sto;
-    unsigned sz = sizeTy[ty];
-    Type *t = (Type *)mem.malloc(sz);
-    memcpy(t, this, sz);
+    if (sto) return sto;
+    Type *t = this->nullAttributes();
     t->mod = MODshared;
-    t->deco = NULL;
-    t->arrayof = NULL;
-    t->pto = NULL;
-    t->rto = NULL;
-    t->cto = NULL;
-    t->ito = NULL;
-    t->sto = NULL;
-    t->scto = NULL;
-    t->wto = NULL;
-    t->swto = NULL;
-    t->vtinfo = NULL;
-    t->ctype = NULL;
     return t;
 }
 
 Type *Type::makeSharedConst()
 {
-    if (scto)
-        return scto;
-    unsigned sz = sizeTy[ty];
-    Type *t = (Type *)mem.malloc(sz);
-    memcpy(t, this, sz);
+    if (scto) return scto;
+    Type *t = this->nullAttributes();
     t->mod = MODshared | MODconst;
-    t->deco = NULL;
-    t->arrayof = NULL;
-    t->pto = NULL;
-    t->rto = NULL;
-    t->cto = NULL;
-    t->ito = NULL;
-    t->sto = NULL;
-    t->scto = NULL;
-    t->wto = NULL;
-    t->swto = NULL;
-    t->vtinfo = NULL;
-    t->ctype = NULL;
     return t;
 }
 
 Type *Type::makeWild()
 {
-    if (wto)
-        return wto;
-    unsigned sz = sizeTy[ty];
-    Type *t = (Type *)mem.malloc(sz);
-    memcpy(t, this, sz);
+    if (wto) return wto;
+    Type *t = this->nullAttributes();
     t->mod = MODwild;
-    t->deco = NULL;
-    t->arrayof = NULL;
-    t->pto = NULL;
-    t->rto = NULL;
-    t->cto = NULL;
-    t->ito = NULL;
-    t->sto = NULL;
-    t->scto = NULL;
-    t->wto = NULL;
-    t->swto = NULL;
-    t->vtinfo = NULL;
-    t->ctype = NULL;
     return t;
 }
 
 Type *Type::makeSharedWild()
 {
-    if (swto)
-        return swto;
-    unsigned sz = sizeTy[ty];
-    Type *t = (Type *)mem.malloc(sz);
-    memcpy(t, this, sz);
+    if (swto) return swto;
+    Type *t = this->nullAttributes();
     t->mod = MODshared | MODwild;
-    t->deco = NULL;
-    t->arrayof = NULL;
-    t->pto = NULL;
-    t->rto = NULL;
-    t->cto = NULL;
-    t->ito = NULL;
-    t->sto = NULL;
-    t->scto = NULL;
-    t->wto = NULL;
-    t->swto = NULL;
-    t->vtinfo = NULL;
-    t->ctype = NULL;
     return t;
 }
 
 Type *Type::makeMutable()
 {
-    unsigned sz = sizeTy[ty];
-    Type *t = (Type *)mem.malloc(sz);
-    memcpy(t, this, sz);
-    t->mod =  mod & MODshared;
-    t->deco = NULL;
-    t->arrayof = NULL;
-    t->pto = NULL;
-    t->rto = NULL;
-    t->cto = NULL;
-    t->ito = NULL;
-    t->sto = NULL;
-    t->scto = NULL;
-    t->wto = NULL;
-    t->swto = NULL;
-    t->vtinfo = NULL;
-    t->ctype = NULL;
+    Type *t = this->nullAttributes();
+    t->mod = mod & MODshared;
     return t;
 }
 
@@ -1934,7 +1846,10 @@ Expression *Type::getProperty(Loc loc, Identifier *ident)
 #endif
     if (ident == Id::__sizeof)
     {
-        e = new IntegerExp(loc, size(loc), Type::tsize_t);
+        d_uns64 sz = size(loc);
+        if (sz == SIZE_INVALID)
+            return new ErrorExp();
+        e = new IntegerExp(loc, sz, Type::tsize_t);
     }
     else if (ident == Id::__xalignof)
     {
@@ -1956,16 +1871,18 @@ Expression *Type::getProperty(Loc loc, Identifier *ident)
         }
     }
     else if (ident == Id::mangleof)
-    {   const char *s;
+    {
         if (!deco)
-        {   s = toChars();
-            error(loc, "forward reference of type %s.mangleof", s);
+        {
+            error(loc, "forward reference of type %s.mangleof", toChars());
+            e = new ErrorExp();
         }
         else
-            s = deco;
-        e = new StringExp(loc, (char *)s, strlen(s), 'c');
-        Scope sc;
-        e = e->semantic(&sc);
+        {
+            e = new StringExp(loc, (char *)deco, strlen(deco), 'c');
+            Scope sc;
+            e = e->semantic(&sc);
+        }
     }
     else if (ident == Id::stringof)
     {   char *s = toChars();
@@ -2299,7 +2216,7 @@ void TypeError::toCBuffer(OutBuffer *buf, Identifier *ident, HdrGenState *hgs)
     buf->writestring("_error_");
 }
 
-d_uns64 TypeError::size(Loc loc) { return 1; }
+d_uns64 TypeError::size(Loc loc) { return SIZE_INVALID; }
 Expression *TypeError::getProperty(Loc loc, Identifier *ident) { return new ErrorExp(); }
 Expression *TypeError::dotExp(Scope *sc, Expression *e, Identifier *ident) { return new ErrorExp(); }
 Expression *TypeError::defaultInit(Loc loc) { return new ErrorExp(); }
@@ -3501,21 +3418,19 @@ Expression *TypeArray::dotExp(Scope *sc, Expression *e, Identifier *ident)
 
     if (!n->isMutable())
         if (ident == Id::sort || ident == Id::reverse)
-            error(e->loc, "can only %s a mutable array", ident->toChars());
+        {   error(e->loc, "can only %s a mutable array", ident->toChars());
+            goto Lerror;
+        }
 
     if (ident == Id::reverse && (n->ty == Tchar || n->ty == Twchar))
     {
-        Expression *ec;
-        FuncDeclaration *fd;
-        Expressions *arguments;
-        const char *nm;
         static const char *name[2] = { "_adReverseChar", "_adReverseWchar" };
 
-        nm = name[n->ty == Twchar];
-        fd = FuncDeclaration::genCfunc(Type::tindex, nm);
-        ec = new VarExp(0, fd);
+        const char *nm = name[n->ty == Twchar];
+        FuncDeclaration *fd = FuncDeclaration::genCfunc(Type::tindex, nm);
+        Expression *ec = new VarExp(0, fd);
         e = e->castTo(sc, n->arrayOf());        // convert to dynamic array
-        arguments = new Expressions();
+        Expressions *arguments = new Expressions();
         arguments->push(e);
         e = new CallExp(e->loc, ec, arguments);
         e->type = next->arrayOf();
@@ -3561,16 +3476,20 @@ Expression *TypeArray::dotExp(Scope *sc, Expression *e, Identifier *ident)
         if (ident == Id::idup)
         {   Type *einv = next->invariantOf();
             if (next->implicitConvTo(einv) < MATCHconst)
-                error(e->loc, "cannot implicitly convert element type %s to immutable in %s.idup",
+            {   error(e->loc, "cannot implicitly convert element type %s to immutable in %s.idup",
                     next->toChars(), olde->toChars());
+                goto Lerror;
+            }
             e->type = einv->arrayOf();
         }
         else if (ident == Id::dup)
         {
             Type *emut = next->mutableOf();
             if (next->implicitConvTo(emut) < MATCHconst)
-                error(e->loc, "cannot implicitly convert element type %s to mutable in %s.dup",
+            {   error(e->loc, "cannot implicitly convert element type %s to mutable in %s.dup",
                     next->toChars(), olde->toChars());
+                goto Lerror;
+            }
             e->type = emut->arrayOf();
         }
         else
@@ -3599,6 +3518,9 @@ Expression *TypeArray::dotExp(Scope *sc, Expression *e, Identifier *ident)
     }
     e = e->semantic(sc);
     return e;
+
+Lerror:
+    return new ErrorExp();
 }
 
 
@@ -3643,8 +3565,8 @@ d_uns64 TypeSArray::size(Loc loc)
     return sz;
 
 Loverflow:
-    error(loc, "index %lld overflow for static array", sz);
-    return 1;
+    error(loc, "index %lld overflow for static array", (long long)sz);
+    return SIZE_INVALID;
 }
 
 unsigned TypeSArray::alignsize()
@@ -4166,8 +4088,9 @@ Type *TypeDArray::semantic(Loc loc, Scope *sc)
             return Type::terror;
     }
     if (tn->isscope())
-        error(loc, "cannot have array of scope %s", tn->toChars());
-
+    {   error(loc, "cannot have array of scope %s", tn->toChars());
+        return Type::terror;
+    }
     next = tn;
     transitive();
     return merge();
@@ -5934,7 +5857,7 @@ MATCH TypeFunction::callMatch(Expression *ethis, Expressions *args, int flag)
             {
                 if (arg->op == TOKstring && tprmb->ty == Tsarray)
                 {   if (targb->ty != Tsarray)
-                	{
+                        {
                         targb = new TypeSArray(tprmb->nextOf()->castMod(targb->nextOf()->mod),
                                 new IntegerExp(0, ((StringExp *)arg)->len,
                                 Type::tindex));
@@ -6370,7 +6293,7 @@ void TypeQualified::toCBuffer2Helper(OutBuffer *buf, HdrGenState *hgs)
 d_uns64 TypeQualified::size(Loc loc)
 {
     error(this->loc, "size of type %s is not known", toChars());
-    return 1;
+    return SIZE_INVALID;
 }
 
 /*************************************
@@ -6701,7 +6624,9 @@ Type *TypeIdentifier::semantic(Loc loc, Scope *sc)
         {   TypeTypedef *tt = (TypeTypedef *)t;
 
             if (tt->sym->sem == SemanticIn)
-                error(loc, "circular reference of typedef %s", tt->toChars());
+            {   error(loc, "circular reference of typedef %s", tt->toChars());
+                return terror;
+            }
         }
         t = t->addMod(mod);
     }
@@ -7245,7 +7170,7 @@ d_uns64 TypeEnum::size(Loc loc)
     if (!sym->memtype)
     {
         error(loc, "enum %s is forward referenced", sym->toChars());
-        return 4;
+        return SIZE_INVALID;
     }
     return sym->memtype->size(loc);
 }
@@ -7281,7 +7206,7 @@ Type *TypeEnum::toBasetype()
     if (!sym->memtype)
     {
         error(sym->loc, "enum %s is forward referenced", sym->toChars());
-        return tint32;
+        return Type::terror;
     }
     return sym->memtype->toBasetype();
 }
@@ -7511,7 +7436,7 @@ Type *TypeTypedef::semantic(Loc loc, Scope *sc)
     //printf("TypeTypedef::semantic(%s), sem = %d\n", toChars(), sym->sem);
     int errors = global.errors;
     sym->semantic(sc);
-    if (errors != global.errors)
+    if (errors != global.errors || sym->errors || sym->basetype->ty == Terror)
         return terror;
     return merge();
 }
@@ -8475,7 +8400,7 @@ L1:
                 e = new DotTypeExp(0, e, sym);
                 return e;
             }
-            
+
             ClassDeclaration *cbase = sym->searchBase(e->loc, ident);
             if (cbase)
             {

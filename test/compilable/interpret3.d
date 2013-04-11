@@ -859,6 +859,13 @@ bool bug7185() {
 
 static assert(bug7185());
 
+bool bug9908()
+{
+    static const int[3] sa = 1;
+    return sa == [1,1,1];
+}
+static assert(bug9908());
+
 /*******************************************
     6934
 *******************************************/
@@ -4638,6 +4645,18 @@ void bug7419() {
         return p.x;
     }();
     static assert(x == 3);
+}
+
+/**************************************************
+    9445 ice
+**************************************************/
+
+template c9445(T...) { }
+
+void ice9445(void delegate() expr, void function() f2)
+{
+    static assert(!is(typeof(c9445!(f2()))));
+    static assert(!is(typeof(c9445!(expr()))));
 }
 
 /**************************************************

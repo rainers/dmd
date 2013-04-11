@@ -830,6 +830,21 @@ Ldone:
      */
     scope = new Scope(*sc);
     scope->setNoFree();
+
+    static bool printedMain = false;  // semantic might run more than once
+    if (global.params.verbose && !printedMain)
+    {
+        const char *type = isMain() ? "main" : isWinMain() ? "winmain" : isDllMain() ? "dllmain" : NULL;
+        Module *mod = sc->module;
+
+        if (type && mod)
+        {
+            printedMain = true;
+            const char *name = FileName::searchPath(global.path, mod->srcfile->toChars(), 1);
+            printf("%-10s%-10s\t%s\n", "entry", type, name);
+        }
+    }
+
     return;
 }
 
@@ -2594,13 +2609,17 @@ FuncDeclaration *FuncDeclaration::overloadResolve(Loc loc, Expression *ethis, Ex
             m.lastf->functionSemantic();
         return m.lastf;
     }
-    else if (m.last != MATCHnomatch && (flags & 2) && !ethis && m.lastf->needThis())
+
+    if (m.last != MATCHnomatch && (flags & 2) && !ethis && m.lastf->needThis())
     {
         return m.lastf;
     }
-    else if (m.last == MATCHnomatch && (flags & 1))
+
+    /* Failed to find a best match.
+     * Do nothing or print error.
+     */
+    if (m.last == MATCHnomatch && (flags & 1))
     {                   // if do not print error messages
-        return NULL;    // no match
     }
     else
     {
@@ -2635,8 +2654,6 @@ FuncDeclaration *FuncDeclaration::overloadResolve(Loc loc, Expression *ethis, Ex
                     tf->modToChars(),
                     buf.toChars());
             }
-
-            return m.anyf;              // as long as it's not a FuncAliasDeclaration
         }
         else
         {
@@ -2647,9 +2664,9 @@ FuncDeclaration *FuncDeclaration::overloadResolve(Loc loc, Expression *ethis, Ex
                     buf.toChars(),
                     m.lastf->loc.filename, m.lastf->loc.linnum, m.lastf->toPrettyChars(), Parameter::argsTypesToChars(t1->parameters, t1->varargs),
                     m.nextf->loc.filename, m.nextf->loc.linnum, m.nextf->toPrettyChars(), Parameter::argsTypesToChars(t2->parameters, t2->varargs));
-            return m.lastf;
         }
     }
+    return NULL;
 }
 
 /*************************************
@@ -2754,6 +2771,11 @@ FuncDeclaration *resolveFuncCall(Loc loc, Scope *sc, Dsymbol *s,
 {
     if (!s)
         return NULL;                    // no match
+    if (tiargs    && arrayObjectIsError(tiargs) ||
+        arguments && arrayObjectIsError((Objects *)arguments))
+    {
+        return NULL;
+    }
     FuncDeclaration *f = s->isFuncDeclaration();
     if (f)
         f = f->overloadResolve(loc, ethis, arguments, flags);
@@ -3989,15 +4011,15 @@ DtorDeclaration::DtorDeclaration(Loc loc, Loc endloc)
 {
 }
 
-DtorDeclaration::DtorDeclaration(Loc loc, Loc endloc, Identifier *id)
-    : FuncDeclaration(loc, endloc, id, STCundefined, NULL)
+DtorDeclaration::DtorDeclaration(Loc loc, Loc endloc, StorageClass stc, Identifier *id)
+    : FuncDeclaration(loc, endloc, id, stc, NULL)
 {
 }
 
 Dsymbol *DtorDeclaration::syntaxCopy(Dsymbol *s)
 {
     assert(!s);
-    DtorDeclaration *dd = new DtorDeclaration(loc, endloc, ident);
+    DtorDeclaration *dd = new DtorDeclaration(loc, endloc, storage_class, ident);
     return FuncDeclaration::syntaxCopy(dd);
 }
 
@@ -4021,7 +4043,7 @@ void DtorDeclaration::semantic(Scope *sc)
         ad->dtors.push(this);
 
     if (!type)
-        type = new TypeFunction(NULL, Type::tvoid, FALSE, LINKd);
+        type = new TypeFunction(NULL, Type::tvoid, FALSE, LINKd, storage_class);
 
     sc = sc->push();
     sc->stc &= ~STCstatic;              // not a static destructor

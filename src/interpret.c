@@ -1639,7 +1639,7 @@ Expression *getVarExp(Loc loc, InterState *istate, Declaration *d, CtfeGoal goal
 #else
         if (v->isConst() && v->init && !v->isCTFE())
 #endif
-        {   e = v->init->toExpression();
+        {   e = v->init->toExpression(v->type);
             if (e && (e->op == TOKconstruct || e->op == TOKblit))
             {   AssignExp *ae = (AssignExp *)e;
                 e = ae->e2;
@@ -3933,7 +3933,7 @@ Expression *CallExp::interpret(InterState *istate, CtfeGoal goal)
         Expression * pe = ((PtrExp*)ecall)->e1;
         if (pe->op == TOKvar) {
             VarDeclaration *vd = ((VarExp *)((PtrExp*)ecall)->e1)->var->isVarDeclaration();
-            if (vd && vd->getValue() && vd->getValue()->op == TOKsymoff)
+            if (vd && vd->hasValue() && vd->getValue()->op == TOKsymoff)
                 fd = ((SymOffExp *)vd->getValue())->var->isFuncDeclaration();
             else
             {
@@ -3974,7 +3974,7 @@ Expression *CallExp::interpret(InterState *istate, CtfeGoal goal)
     else if (ecall->op == TOKvar)
     {
         VarDeclaration *vd = ((VarExp *)ecall)->var->isVarDeclaration();
-        if (vd && vd->getValue())
+        if (vd && vd->hasValue())
             ecall = vd->getValue();
         else // Calling a function
             fd = ((VarExp *)e1)->var->isFuncDeclaration();
