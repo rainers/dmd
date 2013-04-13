@@ -1038,6 +1038,7 @@ void InterfaceDeclaration::toObjFile(int multiobj)
     //dtsize_t(&dt, 0);
 
     // xgetRTInfo
+    // xgetRTInfo
     if (getRTInfo)
         getRTInfo->toDt(&dt);
     else

@@ -4121,12 +4121,17 @@ StructLiteralExp::StructLiteralExp(Loc loc, StructDeclaration *sd, Expressions *
     this->fillHoles = 1;
     this->ownedByCtfe = false;
     this->ctorinit = 0;
+    this->origin = this;
+    this->stageflags = 0;
+    this->inlinecopy = NULL;
     //printf("StructLiteralExp::StructLiteralExp(%s)\n", toChars());
 }
 
 Expression *StructLiteralExp::syntaxCopy()
 {
-    return new StructLiteralExp(loc, sd, arraySyntaxCopy(elements), stype);
+    StructLiteralExp *exp = new StructLiteralExp(loc, sd, arraySyntaxCopy(elements), stype);
+    exp->origin = this;
+    return exp;
 }
 
 Expression *StructLiteralExp::semantic(Scope *sc)
@@ -8782,6 +8787,7 @@ Expression *AddrExp::semantic(Scope *sc)
             ce->e2->type = NULL;
             ce->e2 = ce->e2->semantic(sc);
         }
+        
         return optimize(WANTvalue);
     }
     return this;
@@ -9463,6 +9469,26 @@ Lagain:
         }
         e = new TypeExp(loc, e1->type->arrayOf());
         return e->semantic(sc);
+    }
+    if (!lwr && !upr)
+    {
+        if (e1->op == TOKarrayliteral)
+        {   // Convert [a,b,c][] to [a,b,c]
+            Type *t1b = e1->type->toBasetype();
+            Expression *e = e1;
+            if (t1b->ty == Tsarray)
+            {
+                e = e->copy();
+                e->type = t1b->nextOf()->arrayOf();
+            }
+            return e;
+        }
+        if (e1->op == TOKslice)
+        {   // Convert e[][] to e[]
+            SliceExp *se = (SliceExp *)e1;
+            if (!se->lwr && !se->upr)
+                return se;
+        }
     }
 
     e = this;
@@ -10796,7 +10822,7 @@ Ltupleassign:
         else
         {
             // Convert e2 to e2[], unless e2-> e1[0]
-            if (t2->ty == Tsarray && !t2->implicitConvTo(t1->nextOf()))
+            if (e2->op != TOKarrayliteral && t2->ty == Tsarray && !t2->implicitConvTo(t1->nextOf()))
             {
                 e2 = new SliceExp(e2->loc, e2, NULL, NULL);
                 e2 = e2->semantic(sc);
@@ -10889,19 +10915,25 @@ Ltupleassign:
         (t2->ty == Tarray || t2->ty == Tsarray) &&
         t2->nextOf()->implicitConvTo(t1->nextOf()))
     {
-        if (((SliceExp *)e1)->lwr == NULL)
+        SliceExp *se1 = (SliceExp *)e1;
+        Type *tx1 = se1->e1->type->toBasetype();
+        if (se1->lwr == NULL && tx1->ty == Tsarray)
         {
-            Type *tx1 = ((SliceExp *)e1)->e1->type->toBasetype();
             Type *tx2 = t2;
             if (e2->op == TOKslice && ((SliceExp *)e2)->lwr == NULL)
                 tx2 = ((SliceExp *)e2)->e1->type->toBasetype();
-            if (tx1->ty == Tsarray && tx2->ty == Tsarray)
+            uinteger_t dim1, dim2;
+            if (e2->op == TOKarrayliteral)
+            {   dim2 = ((ArrayLiteralExp *)e2)->elements->dim;
+                goto Lsa;
+            }
+            if (tx2->ty == Tsarray)
             {   // sa1[] = sa2[];
                 // sa1[] = sa2;
-                TypeSArray *tsa1 = (TypeSArray *)tx1;
-                TypeSArray *tsa2 = (TypeSArray *)tx2;
-                uinteger_t dim1 = tsa1->dim->toInteger();
-                uinteger_t dim2 = tsa2->dim->toInteger();
+                // sa1[] = [ ... ];
+                dim2 = ((TypeSArray *)tx2)->dim->toInteger();
+            Lsa:
+                dim1 = ((TypeSArray *)tx1)->dim->toInteger();
                 if (dim1 != dim2)
                 {
                     error("mismatched array lengths, %d and %d", (int)dim1, (int)dim2);
