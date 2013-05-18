@@ -3692,14 +3692,6 @@ int Obj::reftoident(int seg,targ_size_t offset,Symbol *s,targ_size_t val,
         }
     }
 
-#if DEBUG
-    if(external && tyfunc(ty) == 0)
-    {
-        printf("reftoident(%s,seg=%d,offset=%lld,val=%lld,frame=%d,target=%d)\n", s->Sident, seg, offset, val, framedatum, targetdatum);
-        Obj::write_relDataInfo(seg,offset,val,lc,framedatum,targetdatum);
-    }
-#endif
-
     Obj::ledata(seg,offset,val,lc,framedatum,targetdatum);
     return numbytes;
 }

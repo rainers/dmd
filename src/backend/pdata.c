@@ -116,6 +116,7 @@ Symbol *win64_unwind(Symbol *sf)
 
 void win64_reldata(int seg, int offset, Symbol *s, int relocOffset)
 {
+#if 0
     //printf("win64_reldata(seg=%d,off=%d,rel=%s+%d)\n", seg, offset, s->Sident, relocOffset);
     //assert(config.exe == EX_WIN64);
 
@@ -142,6 +143,7 @@ void win64_reldata(int seg, int offset, Symbol *s, int relocOffset)
     int dataOffset = SegData[spdata->Sseg]->SDoffset;
     MsCoffObj::addrel(spdata->Sseg, dataOffset, SegData[seg]->SDsym, seg, 0 /*RELaddr*/, 0);
     outdata(spdata);
+#endif
 }
 
 /************************* Win64 Unwind Data ******************************************/
