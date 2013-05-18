@@ -2831,6 +2831,7 @@ void test104()
 }
 
 /************************************************/
+
 interface ITest105a
 {
     string test105a() const;
@@ -2854,7 +2855,7 @@ class Test105b: Test105a, ITest105b
 {
     char e;
     int f;
-    this(char _e, int _f, char _a, int _b)
+    this(char _e, int _f, char _a, int _b) pure
     {
         e = _e;
         f = _f;
@@ -2922,6 +2923,16 @@ void test105()
     assert(t105bi.test105b() == "test105b");   
     
 }
+
+int bug9938()
+{
+    assert(t105ia.test105a() == "test105a");
+    return 1;
+}
+
+static assert(t105ia.test105a() == "test105a");
+static assert(bug9938());
+
 
 /************************************************/
 
@@ -3048,6 +3059,43 @@ auto test110 = [Test110f(1, Test110s(1, 2, 3))];
 
 /************************************************/
 
+interface IBug9954 
+{
+    string foo() const;
+}
+
+class Bug9954: IBug9954 
+{
+    string foo() const {return "hello";}
+}
+
+IBug9954 makeIBug9954() 
+{
+    return new Bug9954;
+}
+
+const IBug9954 b9954 = makeIBug9954();
+
+void test9954()
+{
+    assert(b9954.foo() == "hello");
+}
+
+/************************************************/
+
+TypeInfo getTi()
+{
+    return typeid(int);
+}
+
+auto t112 = getTi();
+
+void test112()
+{
+    assert(t112.toString() == "int");
+}
+
+/************************************************/
 int main()
 {
     test1();
@@ -3159,9 +3207,10 @@ int main()
     test107();
     //test108(); 
     test109();
+    test112();
     test6504();
     test8818();
-    
+    test9954();    
     writefln("Success");
     return 0;
 }

@@ -119,11 +119,11 @@ void unittests();
 #endif
 
 
-struct OutBuffer;
+class OutBuffer;
 
 // Can't include arraytypes.h here, need to declare these directly.
 template <typename TYPE> struct ArrayBase;
-typedef ArrayBase<struct Identifier> Identifiers;
+typedef ArrayBase<class Identifier> Identifiers;
 typedef ArrayBase<char> Strings;
 
 // Put command line switches in here
@@ -139,6 +139,7 @@ struct Param
     char quiet;         // suppress non-error messages
     char verbose;       // verbose compile
     char vtls;          // identify thread local variables
+    char vfield;        // identify non-mutable field variables
     char symdebug;      // insert debug symbolic information
     bool alwaysframe;   // always emit standard stack frame
     bool optimize;      // run optimizer
@@ -176,7 +177,6 @@ struct Param
     bool cov;           // generate code coverage data
     unsigned char covPercent;   // 0..100 code coverage percentage required
     bool nofloat;       // code should not pull in floating point support
-    char Dversion;      // D version number
     char ignoreUnsupportedPragmas;      // rather than error on them
     char enforcePropertySyntax;
     char betterC;       // be a "better C" compiler; no dependency on D runtime
@@ -240,6 +240,11 @@ struct Param
     char *mapfile;
 };
 
+struct Compiler
+{
+    const char *vendor;     // Compiler backend name
+};
+
 typedef unsigned structalign_t;
 #define STRUCTALIGN_DEFAULT ~0  // magic value means "match whatever the underlying C compiler does"
 // other values are all powers of 2
@@ -262,10 +267,9 @@ struct Global
     Strings *path;        // Array of char*'s which form the import lookup path
     Strings *filePath;    // Array of char*'s which form the file import lookup path
 
-    structalign_t structalign;       // default alignment for struct fields
-
     const char *version;
 
+    Compiler compiler;
     Param params;
     unsigned errors;       // number of errors reported so far
     unsigned warnings;     // number of warnings reported so far
@@ -286,7 +290,7 @@ struct Global
      */
     bool endGagging(unsigned oldGagged);
 
-    Global();
+    void init();
 };
 
 extern Global global;
@@ -342,19 +346,11 @@ typedef d_uns32                 d_dchar;
 typedef longdouble real_t;
 #endif
 
-// Modify OutBuffer::writewchar to write the correct size of wchar
-#if _WIN32
-#define writewchar writeword
-#else
-// This needs a configuration test...
-#define writewchar write4
-#endif
-
 #ifdef IN_GCC
 #include "d-gcc-complex_t.h"
 #endif
 
-struct Module;
+class Module;
 
 //typedef unsigned Loc;         // file location
 struct Loc
@@ -365,12 +361,6 @@ struct Loc
     Loc()
     {
         linnum = 0;
-        filename = NULL;
-    }
-
-    Loc(int x)
-    {
-        linnum = x;
         filename = NULL;
     }
 
@@ -449,15 +439,9 @@ void halt();
 void util_progress();
 
 /*** Where to send error messages ***/
-#ifdef IN_GCC
-#define stdmsg stderr
-#else
-#define stdmsg stderr
-#endif
-
-struct Dsymbol;
+class Dsymbol;
 class Library;
-struct File;
+class File;
 void obj_start(char *srcfile);
 void obj_end(Library *library, File *objfile);
 void obj_append(Dsymbol *s);

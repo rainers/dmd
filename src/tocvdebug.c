@@ -49,7 +49,7 @@
  * Convert D protection attribute to cv attribute.
  */
 
-unsigned PROTtoATTR(enum PROT prot)
+unsigned PROTtoATTR(PROT prot)
 {
     unsigned attribute;
 

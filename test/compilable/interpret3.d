@@ -3794,6 +3794,27 @@ int classtest3()
 static assert(classtest3());
 
 /**************************************************
+    7147 typeid()
+**************************************************/
+
+static assert({
+    TypeInfo xxx = typeid(Object);
+    TypeInfo yyy = typeid(new Error("xxx"));
+    return true;
+    }());
+
+int bug7147(int n)
+{
+    Error err = n ? new Error("xxx") : null;
+    TypeInfo qqq = typeid(err);
+    return 1;
+}
+
+// Must not segfault if class is null
+static assert(!is(typeof(compiles!(bug7147(0)))));
+static assert( is(typeof(compiles!(bug7147(1)))));
+
+/**************************************************
     6885 wrong code with new array
 **************************************************/
 
@@ -5062,13 +5083,13 @@ bool bug7987()
     t.p = &q[1];
     assert(s!=t);
     s.p = &q[1];
-    assert(s == t);
+    /*assert(s == t);*/     assert(s.p == t.p);
     s.c = c1;
     t.c = c2;
-    assert(s != t);
+    /*assert(s != t);*/     assert(s.c !is t.c);
     assert(s !is t);
     s.c = c2;
-    assert(s == t);
+    /*assert(s == t);*/     assert(s.p == t.p && s.c is t.c);
     assert(s is t);
     return true;
 }
@@ -5142,7 +5163,7 @@ static assert(bug8865());
 
 struct Test75
 {
-    this(int){}
+    this(int) pure {}
 }
 
 static assert(__traits(compiles, {static shared Test75* t75 = new shared(Test75)(0); return t75;}));
@@ -5166,7 +5187,7 @@ static assert(!__traits(compiles, {static Test75* t75 = new Test75(0); return t7
 
 class Test76
 {
-    this(int){}
+    this(int) pure {}
 }
 
 //static assert(!__traits(compiles, {enum t76 = new shared(Test76)(0); return t76;}));

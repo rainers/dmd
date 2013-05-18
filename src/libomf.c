@@ -88,7 +88,7 @@ Library *Library::factory()
 LibOMF::LibOMF()
 {
     libfile = NULL;
-    tab.init();
+    tab._init();
 }
 
 /***********************************
