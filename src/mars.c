@@ -465,7 +465,7 @@ int tryMain(size_t argc, char *argv[])
 #if TARGET_WINDOS
 	global.params.objfmt = OBJ_OMF;
     global.params.is64bit = 0;
-    global.params.defaultlibname = "phobos";
+    global.params.defaultlibname = "phobos,druntime";
 #elif TARGET_LINUX
     global.params.defaultlibname = "libphobos2.a";
 #elif TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
