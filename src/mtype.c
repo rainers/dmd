@@ -325,7 +325,7 @@ void Type::init()
     tstring = tchar->invariantOf()->arrayOf();
     tvalist = tvoid->pointerTo();
 
-    if (global.params.is64bit)
+    if (global.params.isLP64)
     {
         Tsize_t = Tuns64;
         Tptrdiff_t = Tint64;
@@ -5480,7 +5480,7 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
         tf->isproperty = TRUE;
 
     tf->linkage = sc->linkage;
-
+#if 0
     /* If the parent is @safe, then this function defaults to safe
      * too.
      * If the parent's @safe-ty is inferred, then this function's @safe-ty needs
@@ -5496,7 +5496,7 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
                 break;
             }
         }
-
+#endif
     bool wildreturn = FALSE;
     if (tf->next)
     {

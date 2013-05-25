@@ -1060,6 +1060,15 @@ Expression *Expression::castTo(Scope *sc, Type *t)
 #endif
     if (type == t)
         return this;
+    if (op == TOKvar)
+    {
+        VarDeclaration *v = ((VarExp *)this)->var->isVarDeclaration();
+        if (v && v->storage_class & STCmanifest)
+        {
+            Expression *e = optimize(WANTvalue | WANTinterpret);
+            return e->castTo(sc, t);
+        }
+    }
     Expression *e = this;
     Type *tb = t->toBasetype();
     Type *typeb = type->toBasetype();
@@ -2221,6 +2230,9 @@ Lagain:
 
     if (t1 == t2)
     {
+        // merging can not result in new enum type
+        if (t->ty == Tenum)
+            t = t1b;
     }
     else if ((t1->ty == Tpointer && t2->ty == Tpointer) ||
              (t1->ty == Tdelegate && t2->ty == Tdelegate))

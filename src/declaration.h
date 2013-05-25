@@ -361,21 +361,6 @@ public:
     Symbol *toSymbol();
 };
 
-class ModuleInfoDeclaration : public VarDeclaration
-{
-public:
-    Module *mod;
-
-    ModuleInfoDeclaration(Module *mod);
-    Dsymbol *syntaxCopy(Dsymbol *);
-    void semantic(Scope *sc);
-
-    void emitComment(Scope *sc);
-    void toJson(JsonOut *json);
-
-    Symbol *toSymbol();
-};
-
 class TypeInfoDeclaration : public VarDeclaration
 {
 public:

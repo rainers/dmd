@@ -122,9 +122,9 @@ void unittests();
 class OutBuffer;
 
 // Can't include arraytypes.h here, need to declare these directly.
-template <typename TYPE> struct ArrayBase;
-typedef ArrayBase<class Identifier> Identifiers;
-typedef ArrayBase<char> Strings;
+template <typename TYPE> struct Array;
+typedef Array<class Identifier> Identifiers;
+typedef Array<char> Strings;
 
 // Put command line switches in here
 struct Param
@@ -146,6 +146,7 @@ struct Param
     char map;           // generate linker .map file
     char is64bit;       // generate 64 bit code
     char objfmt;        // object file format as defined in cdef.h
+    char isLP64;        // generate code for LP64
     char isLinux;       // generate code for linux
     char isOSX;         // generate code for Mac OSX
     char isWindows;     // generate code for Windows
@@ -207,8 +208,6 @@ struct Param
 
     unsigned versionlevel;      // version level
     Strings *versionids;   // version identifiers
-
-    bool dump_source;
 
     const char *defaultlibname; // default library for non-debug builds
     const char *debuglibname;   // default library for debug builds
@@ -371,7 +370,9 @@ struct Loc
 };
 
 #ifndef GCC_SAFE_DMD
+#undef TRUE
 #define TRUE    1
+#undef FALSE
 #define FALSE   0
 #endif
 

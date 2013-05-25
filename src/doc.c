@@ -70,7 +70,7 @@ public:
     void write(DocComment *dc, Scope *sc, Dsymbol *s, OutBuffer *buf);
 };
 
-typedef ArrayBase<Section> Sections;
+typedef Array<Section> Sections;
 
 struct DocComment
 {
@@ -661,7 +661,6 @@ void DtorDeclaration::emitComment(Scope *sc)       { }
 void StaticCtorDeclaration::emitComment(Scope *sc) { }
 void StaticDtorDeclaration::emitComment(Scope *sc) { }
 void ClassInfoDeclaration::emitComment(Scope *sc)  { }
-void ModuleInfoDeclaration::emitComment(Scope *sc) { }
 void TypeInfoDeclaration::emitComment(Scope *sc)   { }
 
 

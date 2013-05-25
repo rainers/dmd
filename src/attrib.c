@@ -1097,6 +1097,12 @@ void PragmaDeclaration::semantic(Scope *sc)
             if (se->sz != 1)
                 error("mangled name characters can only be of type char");
 
+#if 1
+            /* Note: D language specification should not have any assumption about backend
+             * implementation. Ideally pragma(mangle) can accept a string of any content.
+             *
+             * Therefore, this validation is compiler implementation specific.
+             */
             for (size_t i = 0; i < se->len; )
             {
                 unsigned char *p = (unsigned char *)se->string;
@@ -1130,6 +1136,7 @@ void PragmaDeclaration::semantic(Scope *sc)
                     break;
                 }
             }
+#endif
         }
     }
     else if (global.params.ignoreUnsupportedPragmas)
@@ -1413,7 +1420,13 @@ Dsymbols *StaticIfDeclaration::include(Scope *sc, ScopeDsymbol *sd)
 
     if (condition->inc == 0)
     {
+        /* Bugzilla 10101: Condition evaluation may cause self-recursive
+         * condition evaluation. To resolve it, temporarily save sc into scope.
+         */
+        bool x = !scope && sc;
+        if (x) scope = sc;
         Dsymbols *d = ConditionalDeclaration::include(sc, sd);
+        if (x) scope = NULL;
 
         // Set the scopes lazily.
         if (scope && d)

@@ -18,7 +18,6 @@
 #include "root.h"
 #include "dsymbol.h"
 
-class ModuleInfoDeclaration;
 class ClassDeclaration;
 struct ModuleDeclaration;
 struct Macro;
@@ -43,7 +42,7 @@ public:
 
     Package *isPackage() { return this; }
 
-    virtual void semantic(Scope *sc) { }
+    virtual void semantic(Scope *) { }
 };
 
 class Module : public Package
@@ -91,8 +90,6 @@ public:
     Dsymbols *decldefs;         // top level declarations for this Module
 
     Modules aimports;             // all imported modules
-
-    ModuleInfoDeclaration *vmoduleinfo;
 
     unsigned debuglevel;        // debug level
     Strings *debugids;      // debug identifiers
@@ -165,7 +162,6 @@ public:
     Symbol *toModuleArray();    // get module array bounds function
 
 
-    static Symbol *gencritsec();
     elem *toEfilename();
 
     Symbol *toSymbol();

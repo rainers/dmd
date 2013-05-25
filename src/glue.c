@@ -44,7 +44,7 @@ elem *addressElem(elem *e, Type *t, bool alwaysCopy = false);
 
 #define STATICCTOR      0
 
-typedef ArrayBase<symbol> symbols;
+typedef Array<symbol> symbols;
 
 elem *eictor;
 symbol *ictorlocalgot;
@@ -542,6 +542,9 @@ void FuncDeclaration::toObjFile(int multiobj)
 
     // If errors occurred compiling it, such as bugzilla 6118
     if (type && type->ty == Tfunction && ((TypeFunction *)type)->next->ty == Terror)
+        return;
+
+    if (global.errors)
         return;
 
     if (!func->fbody)
@@ -1295,25 +1298,6 @@ Symbol *Type::toSymbol()
 Symbol *TypeClass::toSymbol()
 {
     return sym->toSymbol();
-}
-
-/*************************************
- * Generate symbol in data segment for critical section.
- */
-
-Symbol *Module::gencritsec()
-{
-    Symbol *s;
-    type *t;
-
-    t = Type::tint32->toCtype();
-    s = symbol_name("critsec", SCstatic, t);
-    s->Sfl = FLdata;
-    /* Must match D_CRITICAL_SECTION in phobos/internal/critical.c
-     */
-    dtnzeros(&s->Sdt, Target::ptrsize + (I64 ? os_critsecsize64() : os_critsecsize32()));
-    outdata(s);
-    return s;
 }
 
 /**************************************

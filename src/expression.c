@@ -267,115 +267,234 @@ Expression *checkRightThis(Scope *sc, Expression *e)
  * Pull out any properties.
  */
 
-Expression *resolvePropertiesX(Scope *sc, Expression *e)
+Expression *resolvePropertiesX(Scope *sc, Expression *e1, Expression *e2 = NULL)
 {
-    TemplateDeclaration *td;
+    Loc loc = e1->loc;
+
+    OverloadSet *os;
+    Dsymbol *s;
     Objects *tiargs;
     Type *tthis;
-    if (e->op == TOKdotti)
+    if (e1->op == TOKdotexp)
     {
-        DotTemplateInstanceExp* dti = (DotTemplateInstanceExp *)e;
-        td     = dti->getTempdecl(sc);
+        DotExp *de = (DotExp *)e1;
+        if (de->e2->op == TOKoverloadset)
+        {
+            tiargs = NULL;
+            tthis  = de->e1->type;
+            os = ((OverExp *)de->e2)->vars;
+            goto Los;
+        }
+    }
+    else if (e1->op == TOKoverloadset)
+    {
+        tiargs = NULL;
+        tthis  = NULL;
+        os = ((OverExp *)e1)->vars;
+    Los:
+        assert(os);
+        FuncDeclaration *fd = NULL;
+        if (e2)
+        {
+            e2 = e2->semantic(sc);
+            if (e2->op == TOKerror)
+                return new ErrorExp();
+            e2 = resolveProperties(sc, e2);
+
+            Expressions a;
+            a.push(e2);
+
+            for (size_t i = 0; i < os->a.dim; i++)
+            {
+                Dsymbol *s = os->a[i];
+                FuncDeclaration *f = resolveFuncCall(loc, sc, s, tiargs, tthis, &a, 1);
+                if (f)
+                {
+                    fd = f;
+                    assert(fd->type->ty == Tfunction);
+                    TypeFunction *tf = (TypeFunction *)fd->type;
+                    if (!tf->isproperty && global.params.enforcePropertySyntax)
+                        goto Leprop;
+                }
+            }
+            if (fd)
+            {
+                Expression *e = new CallExp(loc, e1, e2);
+                return e->semantic(sc);
+            }
+        }
+        {
+            for (size_t i = 0; i < os->a.dim; i++)
+            {
+                Dsymbol *s = os->a[i];
+                FuncDeclaration *f = resolveFuncCall(loc, sc, s, tiargs, tthis, NULL, 1);
+                if (f)
+                {
+                    fd = f;
+                    assert(fd->type->ty == Tfunction);
+                    TypeFunction *tf = (TypeFunction *)fd->type;
+                    if (!tf->isref && e2)
+                        goto Leprop;
+                    if (!tf->isproperty && global.params.enforcePropertySyntax)
+                        goto Leprop;
+                }
+            }
+            if (fd)
+            {
+                Expression *e = new CallExp(loc, e1);
+                if (e2)
+                    e = new AssignExp(loc, e, e2);
+                return e->semantic(sc);
+            }
+        }
+        if (e2)
+            goto Leprop;
+    }
+    else if (e1->op == TOKdotti)
+    {
+        DotTemplateInstanceExp* dti = (DotTemplateInstanceExp *)e1;
+        s      = dti->getTempdecl(sc);
                  dti->ti->semanticTiargs(sc);
         tiargs = dti->ti->tiargs;
         tthis  = dti->e1->type;
-        goto L1;
+        goto Lfd;
     }
-    else if (e->op == TOKdottd)
+    else if (e1->op == TOKdottd)
     {
-        DotTemplateExp *dte = (DotTemplateExp *)e;
-        td     = dte->td;
+        DotTemplateExp *dte = (DotTemplateExp *)e1;
+        s      = dte->td;
         tiargs = NULL;
         tthis  = dte->e1->type;
-        goto L1;
+        goto Lfd;
     }
-    else if (e->op == TOKimport)
+    else if (e1->op == TOKimport)
     {
-        Dsymbol *s = ((ScopeExp *)e)->sds;
-        td = s->isTemplateDeclaration();
-        if (td)
+        s = ((ScopeExp *)e1)->sds;
+        if (s->isTemplateDeclaration())
         {
             tiargs = NULL;
             tthis  = NULL;
-            goto L1;
+            goto Lfd;
         }
         TemplateInstance *ti = s->isTemplateInstance();
         if (ti && !ti->semanticRun)
         {
             //assert(ti->needsTypeInference(sc));
-            td     = ti->tempdecl;
+            s      = ti->tempdecl;
                      ti->semanticTiargs(sc);
             tiargs = ti->tiargs;
             tthis  = NULL;
-            goto L1;
+            goto Lfd;
         }
     }
-    else if (e->op == TOKtemplate)
+    else if (e1->op == TOKtemplate)
     {
-        td     = ((TemplateExp *)e)->td;
+        s      = ((TemplateExp *)e1)->td;
         tiargs = NULL;
         tthis  = NULL;
-    L1:
-        assert(td);
-        FuncDeclaration *fd = resolveFuncCall(e->loc, sc, td, tiargs, tthis, NULL, 1);
-        if (fd && fd->type)
-        {   assert(fd->type->ty == Tfunction);
+        goto Lfd;
+    }
+    else if (e1->op == TOKdotvar && e1->type->toBasetype()->ty == Tfunction)
+    {
+        DotVarExp *dve = (DotVarExp *)e1;
+        s      = dve->var->isFuncDeclaration();
+        tiargs = NULL;
+        tthis  = dve->e1->type;
+        goto Lfd;
+    }
+    else if (e1->op == TOKvar && e1->type->toBasetype()->ty == Tfunction)
+    {
+        s      = ((VarExp *)e1)->var->isFuncDeclaration();
+        tiargs = NULL;
+        tthis  = NULL;
+    Lfd:
+        assert(s);
+        FuncDeclaration *fd;
+        if (e2)
+        {
+            e2 = e2->semantic(sc);
+            if (e2->op == TOKerror)
+                return new ErrorExp();
+            e2 = resolveProperties(sc, e2);
+
+            Expressions a;
+            a.push(e2);
+
+            fd = resolveFuncCall(loc, sc, s, tiargs, tthis, &a, 1);
+            if (fd && fd->type)
+            {
+                assert(fd->type->ty == Tfunction);
+                TypeFunction *tf = (TypeFunction *)fd->type;
+                if (!tf->isproperty && global.params.enforcePropertySyntax)
+                    goto Leprop;
+                Expression *e = new CallExp(loc, e1, e2);
+                return e->semantic(sc);
+            }
+        }
+        {
+            fd = resolveFuncCall(loc, sc, s, tiargs, tthis, NULL, 1);
+            if (fd && fd->type)
+            {
+                assert(fd->type->ty == Tfunction);
+                TypeFunction *tf = (TypeFunction *)fd->type;
+                if (!tf->isref && e2)
+                    goto Leprop;
+                if (!tf->isproperty && global.params.enforcePropertySyntax)
+                    goto Leprop;
+                Expression *e = new CallExp(loc, e1);
+                if (e2)
+                    e = new AssignExp(loc, e, e2);
+                return e->semantic(sc);
+            }
+        }
+        if (FuncDeclaration *fd = s->isFuncDeclaration())
+        {   // Keep better diagnostic message for invalid property usage of functions
+            assert(fd->type->ty == Tfunction);
             TypeFunction *tf = (TypeFunction *)fd->type;
             if (!tf->isproperty && global.params.enforcePropertySyntax)
-            {   error(e->loc, "not a property %s", e->toChars());
-                return new ErrorExp();
-            }
-            e = new CallExp(e->loc, e);
-            e = e->semantic(sc);
+                error(loc, "not a property %s", e1->toChars());
+            Expression *e = new CallExp(loc, e1, e2);
+            return e->semantic(sc);
         }
-        goto return_expr;
+        if (e2)
+            goto Leprop;
     }
+    if (e2)
+        return NULL;
 
-    if (e->type &&
-        e->op != TOKtype)       // function type is not a property
+    if (e1->type &&
+        e1->op != TOKtype)      // function type is not a property
     {
-        Type *t = e->type->toBasetype();
-
-        if (t->ty == Tfunction || e->op == TOKoverloadset)
-        {
-            if (t->ty == Tfunction && !((TypeFunction *)t)->isproperty &&
-                global.params.enforcePropertySyntax)
-            {
-                error(e->loc, "not a property %s", e->toChars());
-                return new ErrorExp();
-            }
-            e = new CallExp(e->loc, e);
-            e = e->semantic(sc);
-        }
-
-        /* Look for e being a lazy parameter; rewrite as delegate call
+        /* Look for e1 being a lazy parameter; rewrite as delegate call
          */
-        else if (e->op == TOKvar)
+        if (e1->op == TOKvar)
         {
-            VarExp *ve = (VarExp *)e;
+            VarExp *ve = (VarExp *)e1;
 
             if (ve->var->storage_class & STClazy)
             {
-                e = new CallExp(e->loc, e);
-                e = e->semantic(sc);
+                Expression *e = new CallExp(loc, e1);
+                return e->semantic(sc);
             }
         }
-
-        else if (e->op == TOKdotexp)
+        else if (e1->op == TOKdotexp)
         {
-            e->error("expression has no value");
+            e1->error("expression has no value");
             return new ErrorExp();
         }
-
     }
 
 return_expr:
-    if (!e->type)
+    if (!e1->type)
     {
-        error(e->loc, "cannot resolve type for %s", e->toChars());
-        e->type = new TypeError();
+        error(loc, "cannot resolve type for %s", e1->toChars());
+        e1->type = new TypeError();
     }
-    return e;
+    return e1;
+
+Leprop:
+    error(loc, "not a property %s", e1->toChars());
+    return new ErrorExp();
 }
 
 Expression *resolveProperties(Scope *sc, Expression *e)
@@ -1033,23 +1152,47 @@ void valueNoDtor(Expression *e)
 }
 
 /********************************************
- * Determine if t is an array of structs that need a postblit.
+ * Determine if t is an array of structs that need a default construction.
  */
 #if DMDV2
-int checkPostblit(Loc loc, Type *t)
+bool checkDefCtor(Loc loc, Type *t)
 {
     t = t->toBasetype();
     while (t->ty == Tsarray)
         t = t->nextOf()->toBasetype();
     if (t->ty == Tstruct)
-    {   FuncDeclaration *fd = ((TypeStruct *)t)->sym->postblit;
-        if (fd)
-        {   if (fd->storage_class & STCdisable)
-                fd->toParent()->error(loc, "is not copyable because it is annotated with @disable");
-            return 1;
+    {
+        StructDeclaration *sd = ((TypeStruct *)t)->sym;
+        if (sd->noDefaultCtor)
+        {
+            sd->error(loc, "default construction is disabled");
+            return true;
         }
     }
-    return 0;
+    return false;
+}
+#endif
+
+/********************************************
+ * Determine if t is an array of structs that need a postblit.
+ */
+#if DMDV2
+bool checkPostblit(Loc loc, Type *t)
+{
+    t = t->toBasetype();
+    while (t->ty == Tsarray)
+        t = t->nextOf()->toBasetype();
+    if (t->ty == Tstruct)
+    {
+        StructDeclaration *sd = ((TypeStruct *)t)->sym;
+        if (sd->postblit)
+        {
+            if (sd->postblit->storage_class & STCdisable)
+                sd->error(loc, "is not copyable because it is annotated with @disable");
+            return true;
+        }
+    }
+    return false;
 }
 #endif
 
@@ -1362,6 +1505,8 @@ Type *functionParameters(Loc loc, Scope *sc, TypeFunction *tf,
                 Type *t = arg->type;
                 if (!t->isMutable() || !t->isAssignable())  // check blit assignable
                     arg->error("cannot modify struct %s with immutable members", arg->toChars());
+                else
+                    checkDefCtor(arg->loc, t);
                 arg = arg->toLvalue(sc, arg);
             }
             else if (p->storageClass & STClazy)
@@ -1907,7 +2052,9 @@ Expression *Expression::modifiableLvalue(Scope *sc, Expression *e)
         if (type->isMutable())
         {
             if (!type->isAssignable())
-                error("cannot modify struct %s %s with immutable members", toChars(), type->toChars());
+            {   error("cannot modify struct %s %s with immutable members", toChars(), type->toChars());
+                goto Lerror;
+            }
         }
         else
         {
@@ -1926,9 +2073,13 @@ Expression *Expression::modifiableLvalue(Scope *sc, Expression *e)
             {
                 error("cannot modify %s expression %s", MODtoChars(type->mod), toChars());
             }
+            goto Lerror;
         }
     }
     return toLvalue(sc, e);
+
+Lerror:
+    return new ErrorExp();
 }
 
 
@@ -3272,6 +3423,13 @@ Lagain:
 
         if ((v->storage_class & STCmanifest) && v->init)
         {
+            if (v->scope)
+            {
+                v->inuse++;
+                v->init->semantic(v->scope, v->type, INITinterpret);
+                v->scope = NULL;
+                v->inuse--;
+            }
             e = v->init->toExpression(v->type);
             if (!e)
             {   error("cannot make expression out of initializer for %s", v->toChars());
@@ -4403,10 +4561,18 @@ Expression *StructLiteralExp::semantic(Scope *sc)
                 else
                     e = v->getConstInitializer(false);
             }
-            else if (v->type->needsNested() && ctorinit)
-                e = v->type->defaultInit(loc);
             else
-                e = v->type->defaultInitLiteral(loc);
+            {
+                if (v->storage_class & STCnodefaultctor)
+                {
+                    error("field %s.%s must be initialized because it has no default constructor",
+                            sd->type->toChars(), v->toChars());
+                }
+                if (v->type->needsNested() && ctorinit)
+                    e = v->type->defaultInit(loc);
+                else
+                    e = v->type->defaultInitLiteral(loc);
+            }
             offset = v->offset + v->type->size();
         }
         elements->push(e);
@@ -4871,7 +5037,7 @@ Lagain:
         }
 
         if (cd->noDefaultCtor && !nargs)
-        {   error("default construction is disabled for type %s", cd->toChars());
+        {   error("default construction is disabled for type %s", cd->type->toChars());
             goto Lerr;
         }
         checkDeprecated(sc, cd);
@@ -5006,7 +5172,7 @@ Lagain:
         if (sd->scope)
             sd->semantic(NULL);
         if (sd->noDefaultCtor && !nargs)
-        {   error("default construction is disabled for type %s", sd->toChars());
+        {   error("default construction is disabled for type %s", sd->type->toChars());
             goto Lerr;
         }
 
@@ -5089,6 +5255,15 @@ Lagain:
     }
     else if (tb->ty == Tarray && nargs)
     {
+        Type *tn = tb->nextOf()->toBasetype();
+        while (tn->ty == Tsarray)
+            tn = tn->nextOf()->toBasetype();
+        Dsymbol *s = tn->toDsymbol(sc);
+        AggregateDeclaration *ad = s ? s->isAggregateDeclaration() : NULL;
+        if (ad && ad->noDefaultCtor)
+        {   error("default construction is disabled for type %s", tb->nextOf()->toChars());
+            goto Lerr;
+        }
         for (size_t i = 0; i < nargs; i++)
         {
             if (tb->ty != Tarray)
@@ -10629,113 +10804,8 @@ Expression *AssignExp::semantic(Scope *sc)
      * or:
      *      f() = value
      */
-    TemplateDeclaration *td;
-    Objects *tiargs;
-    FuncDeclaration *fd;
-    Type *tthis;
-    if (e1->op == TOKdotti)
-    {
-        DotTemplateInstanceExp* dti = (DotTemplateInstanceExp *)e1;
-        td     = dti->getTempdecl(sc);
-                 dti->ti->semanticTiargs(sc);
-        tiargs = dti->ti->tiargs;
-        tthis  = dti->e1->type;
-        goto L3;
-    }
-    else if (e1->op == TOKdottd)
-    {
-        DotTemplateExp *dte = (DotTemplateExp *)e1;
-        td     = dte->td;
-        tiargs = NULL;
-        tthis  = dte->e1->type;
-        goto L3;
-    }
-    else if (e1->op == TOKtemplate)
-    {
-        td     = ((TemplateExp *)e1)->td;
-        tiargs = NULL;
-        tthis  = NULL;
-    L3:
-    {
-        e2 = e2->semantic(sc);
-        if (e2->op == TOKerror)
-            return new ErrorExp();
-        e2 = resolveProperties(sc, e2);
-
-        assert(td);
-        Expressions a;
-        a.push(e2);
-
-        fd = resolveFuncCall(loc, sc, td, tiargs, tthis, &a, 1);
-        if (fd && fd->type)
-            goto Lsetter;
-
-        fd = resolveFuncCall(loc, sc, td, tiargs, tthis, NULL, 1);
-        if (fd && fd->type)
-            goto Lgetter;
-    }
-        goto Leprop;
-    }
-    else if (e1->op == TOKdotvar && e1->type->toBasetype()->ty == Tfunction)
-    {
-        DotVarExp *dve = (DotVarExp *)e1;
-        fd    = dve->var->isFuncDeclaration();
-        tthis = dve->e1->type;
-        goto L4;
-    }
-    else if (e1->op == TOKvar && e1->type->toBasetype()->ty == Tfunction)
-    {
-        fd = ((VarExp *)e1)->var->isFuncDeclaration();
-        tthis = NULL;
-    L4:
-    {
-        e2 = e2->semantic(sc);
-        if (e2->op == TOKerror)
-            return new ErrorExp();
-        e2 = resolveProperties(sc, e2);
-
-        assert(fd);
-        FuncDeclaration *f = fd;
-        Expressions a;
-        a.push(e2);
-
-        fd = resolveFuncCall(loc, sc, f, NULL, tthis, &a, 1);
-        if (fd && fd->type)
-            goto Lsetter;
-
-        fd = resolveFuncCall(loc, sc, f, NULL, tthis, NULL, 1);
-        if (fd && fd->type)
-            goto Lgetter;
-
-        goto Leprop;
-    }
-
-        Expression *e;
-        TypeFunction *tf;
-
-    Lsetter:
-        assert(fd->type->ty == Tfunction);
-        tf = (TypeFunction *)fd->type;
-        if (!tf->isproperty && global.params.enforcePropertySyntax)
-            goto Leprop;
-        e = new CallExp(loc, e1, e2);
-        return e->semantic(sc);
-
-    Lgetter:
-        assert(fd->type->ty == Tfunction);
-        tf = (TypeFunction *)fd->type;
-        if (!tf->isref)
-            goto Leprop;
-        if (!tf->isproperty && global.params.enforcePropertySyntax)
-            goto Leprop;
-        e = new CallExp(loc, e1);
-        e = new AssignExp(loc, e, e2);
-        return e->semantic(sc);
-
-    Leprop:
-        ::error(e1->loc, "not a property %s", e1->toChars());
-        return new ErrorExp();
-    }
+    if (Expression *e = resolvePropertiesX(sc, e1, e2))
+        return e;
 
     e1 = checkRightThis(sc, e1);
 
@@ -10988,6 +11058,7 @@ Ltupleassign:
         ArrayLengthExp *ale = (ArrayLengthExp *)e1;
 
         ale->e1 = ale->e1->modifiableLvalue(sc, e1);
+        checkDefCtor(ale->loc, ale->e1->type->toBasetype()->nextOf());
     }
     else if (e1->op == TOKslice)
     {
@@ -11003,7 +11074,7 @@ Ltupleassign:
         if (e1->op != TOKvar)
             e1 = e1->optimize(WANTvalue);
 
-        if (op != TOKconstruct)
+        if (op == TOKassign)
             e1 = e1->modifiableLvalue(sc, e1old);
     }
 
