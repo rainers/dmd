@@ -163,20 +163,19 @@ Type *Type::syntaxCopy()
     return this;
 }
 
-int Type::equals(Object *o)
-{   Type *t;
-
-    t = (Type *)o;
+bool Type::equals(Object *o)
+{
+    Type *t = (Type *)o;
     //printf("Type::equals(%s, %s)\n", toChars(), t->toChars());
     if (this == o ||
         ((t && deco == t->deco) &&               // deco strings are unique
           deco != NULL))                         // and semantic() has been run
     {
         //printf("deco = '%s', t->deco = '%s'\n", deco, t->deco);
-        return 1;
+        return true;
     }
     //if (deco && t && t->deco) printf("deco = '%s', t->deco = '%s'\n", deco, t->deco);
-    return 0;
+    return false;
 }
 
 char Type::needThisPrefix()
@@ -322,7 +321,7 @@ void Type::init()
     tnull->deco = tnull->merge()->deco;
 
     tvoidptr = tvoid->pointerTo();
-    tstring = tchar->invariantOf()->arrayOf();
+    tstring = tchar->immutableOf()->arrayOf();
     tvalist = tvoid->pointerTo();
 
     if (global.params.isLP64)
@@ -434,9 +433,9 @@ Type *Type::constOf()
  * Convert to 'immutable'.
  */
 
-Type *Type::invariantOf()
+Type *Type::immutableOf()
 {
-    //printf("Type::invariantOf() %p %s\n", this, toChars());
+    //printf("Type::immutableOf() %p %s\n", this, toChars());
     if (isImmutable())
     {
         return this;
@@ -1059,7 +1058,7 @@ Type *Type::castMod(unsigned mod)
             break;
 
         case MODimmutable:
-            t = invariantOf();
+            t = immutableOf();
             break;
 
         case MODshared:
@@ -1111,7 +1110,7 @@ Type *Type::addMod(unsigned mod)
                 break;
 
             case MODimmutable:
-                t = invariantOf();
+                t = immutableOf();
                 break;
 
             case MODshared:
@@ -1888,7 +1887,7 @@ Type *Type::substWildTo(unsigned mod)
         if (mod & MODconst)
             t = isShared() ? t->sharedConstOf() : t->constOf();
         else if (mod & MODimmutable)
-            t = t->invariantOf();
+            t = t->immutableOf();
         else if (mod & MODwild)
             t = isShared() ? t->sharedWildOf() : t->wildOf();
         else
@@ -2000,14 +1999,17 @@ Expression *Type::dotExp(Scope *sc, Expression *e, Identifier *ident, int flag)
 #if LOGDOTEXP
     printf("Type::dotExp(e = '%s', ident = '%s')\n", e->toChars(), ident->toChars());
 #endif
-    if (e->op == TOKdotvar)
+    Expression *ex = e;
+    while (ex->op == TOKcomma)
+        ex = ((CommaExp *)ex)->e2;
+    if (ex->op == TOKdotvar)
     {
-        DotVarExp *dv = (DotVarExp *)e;
+        DotVarExp *dv = (DotVarExp *)ex;
         v = dv->var->isVarDeclaration();
     }
-    else if (e->op == TOKvar)
+    else if (ex->op == TOKvar)
     {
-        VarExp *ve = (VarExp *)e;
+        VarExp *ve = (VarExp *)ex;
         v = ve->var->isVarDeclaration();
     }
     if (v)
@@ -2396,7 +2398,7 @@ Type *TypeNext::makeInvariant()
     if (ty != Tfunction && next->ty != Tfunction &&
         //(next->deco || next->ty == Tfunction) &&
         !next->isImmutable())
-    {   t->next = next->invariantOf();
+    {   t->next = next->immutableOf();
     }
     if (ty == Taarray)
     {
@@ -3363,16 +3365,6 @@ Type *TypeVector::semantic(Loc loc, Scope *sc)
         return terror;
     }
     TypeSArray *t = (TypeSArray *)basetype;
-
-    if (sc && sc->parameterSpecialization && t->dim->op == TOKvar &&
-        ((VarExp *)t->dim)->var->storage_class & STCtemplateparameter)
-    {
-        /* It could be a template parameter N which has no value yet:
-         *   template Foo(T : __vector(T[N]), size_t N);
-         */
-        return this;
-    }
-
     d_uns64 sz = t->size(loc);
     if (sz != 16 && sz != 32)
     {   error(loc, "base type of __vector must be a 16 or 32 byte static array, not %s", t->toChars());
@@ -3496,6 +3488,11 @@ MATCH TypeVector::implicitConvTo(Type *to)
     return MATCHnomatch;
 }
 
+Type *TypeVector::reliesOnTident(TemplateParameters *tparams)
+{
+    return basetype->reliesOnTident(tparams);
+}
+
 /***************************** TypeArray *****************************/
 
 TypeArray::TypeArray(TY ty, Type *next)
@@ -3569,7 +3566,7 @@ Expression *TypeArray::dotExp(Scope *sc, Expression *e, Identifier *ident, int f
             arguments->push(new IntegerExp(Loc(), size, Type::tsize_t));
         e = new CallExp(e->loc, ec, arguments);
         if (ident == Id::idup)
-        {   Type *einv = next->invariantOf();
+        {   Type *einv = next->immutableOf();
             if (next->implicitConvTo(einv) < MATCHconst)
             {   error(e->loc, "cannot implicitly convert element type %s to immutable in %s.idup",
                     next->toChars(), olde->toChars());
@@ -3828,14 +3825,6 @@ Type *TypeSArray::semantic(Loc loc, Scope *sc)
             goto Lerror;
 
         dim = dim->optimize(WANTvalue);
-        if (sc && sc->parameterSpecialization && dim->op == TOKvar &&
-            ((VarExp *)dim)->var->storage_class & STCtemplateparameter)
-        {
-            /* It could be a template parameter N which has no value yet:
-             *   template Foo(T : T[N], size_t N);
-             */
-            return this;
-        }
         dim = dim->ctfeInterpret();
         errors = global.errors;
         dinteger_t d1 = dim->toInteger();
@@ -6805,18 +6794,6 @@ Type *TypeInstance::semantic(Loc loc, Scope *sc)
     Dsymbol *s;
 
     //printf("TypeInstance::semantic(%p, %s)\n", this, toChars());
-
-    if (sc->parameterSpecialization)
-    {
-        unsigned errors = global.startGagging();
-        resolve(loc, sc, &e, &t, &s);
-
-        if (global.endGagging(errors))
-        {
-            return this;
-        }
-    }
-    else
     {
         unsigned errors = global.errors;
         resolve(loc, sc, &e, &t, &s);
@@ -6846,18 +6823,7 @@ Dsymbol *TypeInstance::toDsymbol(Scope *sc)
     Dsymbol *s;
 
     //printf("TypeInstance::semantic(%s)\n", toChars());
-
-    if (sc->parameterSpecialization)
-    {
-        unsigned errors = global.startGagging();
-
-        resolve(loc, sc, &e, &t, &s);
-
-        if (global.endGagging(errors))
-            return NULL;
-    }
-    else
-        resolve(loc, sc, &e, &t, &s);
+    resolve(loc, sc, &e, &t, &s);
 
     return s;
 }
@@ -7863,7 +7829,7 @@ Expression *TypeStruct::dotExp(Scope *sc, Expression *e, Identifier *ident, int 
 
         Expression *e0 = NULL;
         Expression *ev = e;
-        if (sc->func && sym->fields.dim > 1 && e->hasSideEffect())
+        if (sc->func && e->hasSideEffect())
         {
             Identifier *id = Lexer::uniqueId("__tup");
             ExpInitializer *ei = new ExpInitializer(e->loc, e);
@@ -8406,7 +8372,7 @@ Expression *TypeClass::dotExp(Scope *sc, Expression *e, Identifier *ident, int f
 
         Expression *e0 = NULL;
         Expression *ev = e;
-        if (sc->func && sym->fields.dim > 1 && e->hasSideEffect())
+        if (sc->func && e->hasSideEffect())
         {
             Identifier *id = Lexer::uniqueId("__tup");
             ExpInitializer *ei = new ExpInitializer(e->loc, e);
@@ -8502,7 +8468,7 @@ L1:
         {   /* The pointer to the vtbl[]
              * *cast(invariant(void*)**)e
              */
-            e = e->castTo(sc, tvoidptr->invariantOf()->pointerTo()->pointerTo());
+            e = e->castTo(sc, tvoidptr->immutableOf()->pointerTo()->pointerTo());
             e = new PtrExp(e->loc, e);
             e = e->semantic(sc);
             return e;
@@ -8938,31 +8904,28 @@ Type *TypeTuple::semantic(Loc loc, Scope *sc)
     return this;
 }
 
-int TypeTuple::equals(Object *o)
-{   Type *t;
-
-    t = (Type *)o;
+bool TypeTuple::equals(Object *o)
+{
+    Type *t = (Type *)o;
     //printf("TypeTuple::equals(%s, %s)\n", toChars(), t->toChars());
     if (this == t)
-    {
-        return 1;
-    }
+        return true;
     if (t->ty == Ttuple)
-    {   TypeTuple *tt = (TypeTuple *)t;
-
+    {
+        TypeTuple *tt = (TypeTuple *)t;
         if (arguments->dim == tt->arguments->dim)
         {
             for (size_t i = 0; i < tt->arguments->dim; i++)
-            {   Parameter *arg1 = (*arguments)[i];
+            {
+                Parameter *arg1 = (*arguments)[i];
                 Parameter *arg2 = (*tt->arguments)[i];
-
                 if (!arg1->type->equals(arg2->type))
-                    return 0;
+                    return false;
             }
-            return 1;
+            return true;
         }
     }
-    return 0;
+    return false;
 }
 
 Type *TypeTuple::reliesOnTident(TemplateParameters *tparams)

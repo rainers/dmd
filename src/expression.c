@@ -578,6 +578,17 @@ Expression *searchUFCS(Scope *sc, UnaExp *ue, Identifier *ident)
     if (!s)
         return ue->e1->type->Type::getProperty(loc, ident, 0);
 
+    FuncDeclaration *f = s->isFuncDeclaration();
+    if (f)
+    {   TemplateDeclaration *tempdecl = getFuncTemplateDecl(f);
+        if (tempdecl)
+        {
+            if (tempdecl->overroot)
+                tempdecl = tempdecl->overroot;
+            s = tempdecl;
+        }
+    }
+
     if (ue->op == TOKdotti)
     {
         DotTemplateInstanceExp *dti = (DotTemplateInstanceExp *)ue;
@@ -592,16 +603,6 @@ Expression *searchUFCS(Scope *sc, UnaExp *ue, Identifier *ident)
     }
     else
     {
-        FuncDeclaration *f = s->isFuncDeclaration();
-        if (f)
-        {   TemplateDeclaration *tempdecl = getFuncTemplateDecl(f);
-            if (tempdecl)
-            {
-                if (tempdecl->overroot)
-                    tempdecl = tempdecl->overroot;
-                s = tempdecl;
-            }
-        }
         return new DsymbolExp(loc, s, 1);
     }
 }
@@ -1207,8 +1208,8 @@ Expression *callCpCtor(Loc loc, Scope *sc, Expression *e, int noscope)
         ArrayLiteralExp *ae = (ArrayLiteralExp *)e;
         for (size_t i = 0; i < ae->elements->dim; i++)
         {
-            ae->elements->tdata()[i] =
-                callCpCtor(loc, sc, ae->elements->tdata()[i], noscope);
+            (*ae->elements)[i] =
+                callCpCtor(loc, sc, (*ae->elements)[i], noscope);
         }
         e = ae->semantic(sc);
         return e;
@@ -2248,7 +2249,7 @@ void Expression::checkPurity(Scope *sc, VarDeclaration *v, Expression *ethis)
         v->ident != Id::ctfe &&      // magic variable never violates pure and safe
         !v->isImmutable() &&         // always safe and pure to access immutables...
         !(v->isConst() && !v->isRef() && (v->isDataseg() || v->isParameter()) &&
-          v->type->implicitConvTo(v->type->invariantOf())) &&
+          v->type->implicitConvTo(v->type->immutableOf())) &&
             // or const global/parameter values which have no mutable indirections
         !(v->storage_class & STCmanifest) // ...or manifest constants
        )
@@ -2548,15 +2549,20 @@ IntegerExp::IntegerExp(dinteger_t value)
     this->value = value;
 }
 
-int IntegerExp::equals(Object *o)
-{   IntegerExp *ne;
-
-    if (this == o ||
-        (((Expression *)o)->op == TOKint64 &&
-         ((ne = (IntegerExp *)o), type->toHeadMutable()->equals(ne->type->toHeadMutable())) &&
-         value == ne->value))
-        return 1;
-    return 0;
+bool IntegerExp::equals(Object *o)
+{
+    if (this == o)
+        return true;
+    if (((Expression *)o)->op == TOKint64)
+    {
+        IntegerExp *ne = (IntegerExp *)o;
+        if (type->toHeadMutable()->equals(ne->type->toHeadMutable()) &&
+            value == ne->value)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 char *IntegerExp::toChars()
@@ -2921,17 +2927,20 @@ int RealEquals(real_t x1, real_t x2)
         memcmp(&x1, &x2, Target::realsize - Target::realpad) == 0;
 }
 
-int RealExp::equals(Object *o)
-{   RealExp *ne;
-
-    if (this == o ||
-        (((Expression *)o)->op == TOKfloat64 &&
-         ((ne = (RealExp *)o), type->toHeadMutable()->equals(ne->type->toHeadMutable())) &&
-         RealEquals(value, ne->value)
-        )
-       )
-        return 1;
-    return 0;
+bool RealExp::equals(Object *o)
+{
+    if (this == o)
+        return true;
+    if (((Expression *)o)->op == TOKfloat64)
+    {
+        RealExp *ne = (RealExp *)o;
+        if (type->toHeadMutable()->equals(ne->type->toHeadMutable()) &&
+            RealEquals(value, ne->value))
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 Expression *RealExp::semantic(Scope *sc)
@@ -3121,18 +3130,21 @@ complex_t ComplexExp::toComplex()
     return value;
 }
 
-int ComplexExp::equals(Object *o)
-{   ComplexExp *ne;
-
-    if (this == o ||
-        (((Expression *)o)->op == TOKcomplex80 &&
-         ((ne = (ComplexExp *)o), type->toHeadMutable()->equals(ne->type->toHeadMutable())) &&
-         RealEquals(creall(value), creall(ne->value)) &&
-         RealEquals(cimagl(value), cimagl(ne->value))
-        )
-       )
-        return 1;
-    return 0;
+bool ComplexExp::equals(Object *o)
+{
+    if (this == o)
+        return true;
+    if (((Expression *)o)->op == TOKcomplex80)
+    {
+        ComplexExp *ne = (ComplexExp *)o;
+        if (type->toHeadMutable()->equals(ne->type->toHeadMutable()) &&
+            RealEquals(creall(value), creall(ne->value)) &&
+            RealEquals(cimagl(value), cimagl(ne->value)))
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 Expression *ComplexExp::semantic(Scope *sc)
@@ -3340,7 +3352,7 @@ DollarExp::DollarExp(Loc loc)
 
 /******************************** DsymbolExp **************************/
 
-DsymbolExp::DsymbolExp(Loc loc, Dsymbol *s, int hasOverloads)
+DsymbolExp::DsymbolExp(Loc loc, Dsymbol *s, bool hasOverloads)
         : Expression(loc, TOKdsymbol, sizeof(DsymbolExp))
 {
     this->s = s;
@@ -3774,15 +3786,15 @@ NullExp::NullExp(Loc loc, Type *type)
     this->type = type;
 }
 
-int NullExp::equals(Object *o)
+bool NullExp::equals(Object *o)
 {
     if (o && o->dyncast() == DYNCAST_EXPRESSION)
-    {   Expression *e = (Expression *)o;
-
+    {
+        Expression *e = (Expression *)o;
         if (e->op == TOKnull)
-            return TRUE;
+            return true;
     }
-    return FALSE;
+    return false;
 }
 
 Expression *NullExp::semantic(Scope *sc)
@@ -3865,18 +3877,18 @@ Expression *StringExp::syntaxCopy()
 }
 #endif
 
-int StringExp::equals(Object *o)
+bool StringExp::equals(Object *o)
 {
     //printf("StringExp::equals('%s') %s\n", o->toChars(), toChars());
     if (o && o->dyncast() == DYNCAST_EXPRESSION)
-    {   Expression *e = (Expression *)o;
-
+    {
+        Expression *e = (Expression *)o;
         if (e->op == TOKstring)
         {
             return compare(o) == 0;
         }
     }
-    return FALSE;
+    return false;
 }
 
 Expression *StringExp::semantic(Scope *sc)
@@ -3911,7 +3923,7 @@ Expression *StringExp::semantic(Scope *sc)
                 len = newlen;
                 sz = 4;
                 //type = new TypeSArray(Type::tdchar, new IntegerExp(loc, len, Type::tindex));
-                type = new TypeDArray(Type::tdchar->invariantOf());
+                type = new TypeDArray(Type::tdchar->immutableOf());
                 committed = 1;
                 break;
 
@@ -3935,7 +3947,7 @@ Expression *StringExp::semantic(Scope *sc)
                 len = newlen;
                 sz = 2;
                 //type = new TypeSArray(Type::twchar, new IntegerExp(loc, len, Type::tindex));
-                type = new TypeDArray(Type::twchar->invariantOf());
+                type = new TypeDArray(Type::twchar->immutableOf());
                 committed = 1;
                 break;
 
@@ -3943,11 +3955,11 @@ Expression *StringExp::semantic(Scope *sc)
                 committed = 1;
             default:
                 //type = new TypeSArray(Type::tchar, new IntegerExp(loc, len, Type::tindex));
-                type = new TypeDArray(Type::tchar->invariantOf());
+                type = new TypeDArray(Type::tchar->immutableOf());
                 break;
         }
         type = type->semantic(loc, sc);
-        //type = type->invariantOf();
+        //type = type->immutableOf();
         //printf("type = %s\n", type->toChars());
     }
     return this;
@@ -4449,26 +4461,26 @@ StructLiteralExp::StructLiteralExp(Loc loc, StructDeclaration *sd, Expressions *
     //printf("StructLiteralExp::StructLiteralExp(%s)\n", toChars());
 }
 
-int StructLiteralExp::equals(Object *o)
+bool StructLiteralExp::equals(Object *o)
 {
     if (this == o)
-        return 1;
+        return true;
     if (o && o->dyncast() == DYNCAST_EXPRESSION &&
         ((Expression *)o)->op == TOKstructliteral)
     {
         StructLiteralExp *se = (StructLiteralExp *)o;
         if (sd != se->sd)
-            return 0;
+            return false;
         if (elements->dim != se->elements->dim)
-            return 0;
+            return false;
         for (size_t i = 0; i < elements->dim; i++)
         {
             if (!(*elements)[i]->equals((*se->elements)[i]))
-                return 0;
+                return false;
         }
-        return 1;
+        return true;
     }
-    return 0;
+    return false;
 }
 
 Expression *StructLiteralExp::syntaxCopy()
@@ -5403,7 +5415,7 @@ void NewAnonClassExp::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 /********************** SymbolExp **************************************/
 
 #if DMDV2
-SymbolExp::SymbolExp(Loc loc, TOK op, int size, Declaration *var, int hasOverloads)
+SymbolExp::SymbolExp(Loc loc, TOK op, int size, Declaration *var, bool hasOverloads)
     : Expression(loc, op, size)
 {
     assert(var);
@@ -5414,7 +5426,7 @@ SymbolExp::SymbolExp(Loc loc, TOK op, int size, Declaration *var, int hasOverloa
 
 /********************** SymOffExp **************************************/
 
-SymOffExp::SymOffExp(Loc loc, Declaration *var, unsigned offset, int hasOverloads)
+SymOffExp::SymOffExp(Loc loc, Declaration *var, unsigned offset, bool hasOverloads)
     : SymbolExp(loc, TOKsymoff, sizeof(SymOffExp), var, hasOverloads)
 {
     this->offset = offset;
@@ -5472,7 +5484,7 @@ void SymOffExp::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 
 /******************************** VarExp **************************/
 
-VarExp::VarExp(Loc loc, Declaration *var, int hasOverloads)
+VarExp::VarExp(Loc loc, Declaration *var, bool hasOverloads)
     : SymbolExp(loc, TOKvar, sizeof(VarExp), var, hasOverloads)
 {
     //printf("VarExp(this = %p, '%s', loc = %s)\n", this, var->toChars(), loc.toChars());
@@ -5480,15 +5492,20 @@ VarExp::VarExp(Loc loc, Declaration *var, int hasOverloads)
     this->type = var->type;
 }
 
-int VarExp::equals(Object *o)
-{   VarExp *ne;
-
-    if (this == o ||
-        (((Expression *)o)->op == TOKvar &&
-         ((ne = (VarExp *)o), type->toHeadMutable()->equals(ne->type->toHeadMutable())) &&
-         var == ne->var))
-        return 1;
-    return 0;
+bool VarExp::equals(Object *o)
+{
+    if (this == o)
+        return true;
+    if (((Expression *)o)->op == TOKvar)
+    {
+        VarExp *ne = (VarExp *)o;
+        if (type->toHeadMutable()->equals(ne->type->toHeadMutable()) &&
+            var == ne->var)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 Expression *VarExp::semantic(Scope *sc)
@@ -5518,6 +5535,7 @@ Expression *VarExp::semantic(Scope *sc)
     VarDeclaration *v = var->isVarDeclaration();
     if (v)
     {
+        hasOverloads = 0;
         v->checkNestedReference(sc, loc);
 #if DMDV2
         checkPurity(sc, v, NULL);
@@ -5687,27 +5705,27 @@ TupleExp::TupleExp(Loc loc, TupleDeclaration *tup)
     }
 }
 
-int TupleExp::equals(Object *o)
+bool TupleExp::equals(Object *o)
 {
     if (this == o)
-        return 1;
+        return true;
     if (((Expression *)o)->op == TOKtuple)
     {
         TupleExp *te = (TupleExp *)o;
         if (exps->dim != te->exps->dim)
-            return 0;
+            return false;
         if (e0 && !e0->equals(te->e0) || !e0 && te->e0)
-            return 0;
+            return false;
         for (size_t i = 0; i < exps->dim; i++)
-        {   Expression *e1 = (*exps)[i];
+        {
+            Expression *e1 = (*exps)[i];
             Expression *e2 = (*te->exps)[i];
-
             if (!e1->equals(e2))
-                return 0;
+                return false;
         }
-        return 1;
+        return true;
     }
-    return 0;
+    return false;
 }
 
 Expression *TupleExp::syntaxCopy()
@@ -7511,7 +7529,7 @@ void DotTemplateExp::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 
 /************************************************************/
 
-DotVarExp::DotVarExp(Loc loc, Expression *e, Declaration *v, int hasOverloads)
+DotVarExp::DotVarExp(Loc loc, Expression *e, Declaration *v, bool hasOverloads)
         : UnaExp(loc, TOKdotvar, sizeof(DotVarExp), e)
 {
     //printf("DotVarExp()\n");
@@ -7539,7 +7557,7 @@ Expression *DotVarExp::semantic(Scope *sc)
             Expressions *exps = new Expressions;
             Expression *e0 = NULL;
             Expression *ev = e1;
-            if (sc->func && tup->objects->dim > 1 && e1->hasSideEffect())
+            if (sc->func && e1->hasSideEffect())
             {
                 Identifier *id = Lexer::uniqueId("__tup");
                 ExpInitializer *ei = new ExpInitializer(e1->loc, e1);
@@ -7619,7 +7637,9 @@ Expression *DotVarExp::semantic(Scope *sc)
                 accessCheck(loc, sc, e1, var);
 
             VarDeclaration *v = var->isVarDeclaration();
+#if PULL93
             if (v && (v->isDataseg() || (v->storage_class & STCmanifest)))
+#endif
             {
                 Expression *e = expandVar(WANTvalue, v);
                 if (e)
@@ -7933,7 +7953,7 @@ void DotTemplateInstanceExp::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 
 /************************************************************/
 
-DelegateExp::DelegateExp(Loc loc, Expression *e, FuncDeclaration *f, int hasOverloads)
+DelegateExp::DelegateExp(Loc loc, Expression *e, FuncDeclaration *f, bool hasOverloads)
         : UnaExp(loc, TOKdelegate, sizeof(DelegateExp), e)
 {
     this->func = f;
@@ -9466,10 +9486,10 @@ Expression *CastExp::semantic(Scope *sc)
     if (type)
         return this;
     UnaExp::semantic(sc);
+    e1 = resolveProperties(sc, e1);
+
     if (e1->type)               // if not a tuple
     {
-        e1 = resolveProperties(sc, e1);
-
         if (!to)
         {
             /* Handle cast(const) and cast(immutable), etc.
@@ -10825,29 +10845,36 @@ Expression *AssignExp::semantic(Scope *sc)
      */
 Ltupleassign:
     if (e1->op == TOKtuple && e2->op == TOKtuple)
-    {   TupleExp *tup1 = (TupleExp *)e1;
+    {
+        TupleExp *tup1 = (TupleExp *)e1;
         TupleExp *tup2 = (TupleExp *)e2;
         size_t dim = tup1->exps->dim;
+        Expression *e = NULL;
         if (dim != tup2->exps->dim)
         {
             error("mismatched tuple lengths, %d and %d", (int)dim, (int)tup2->exps->dim);
             return new ErrorExp();
         }
+        if (dim == 0)
+        {
+            e = new IntegerExp(loc, 0, Type::tint32);
+            e = new CastExp(loc, e, Type::tvoid);   // avoid "has no effect" error
+            e = combine(combine(tup1->e0, tup2->e0), e);
+        }
         else
         {
             Expressions *exps = new Expressions;
             exps->setDim(dim);
-
-            Expression *e0 = combine(tup1->e0, tup2->e0);
             for (size_t i = 0; i < dim; i++)
-            {   Expression *ex1 = (*tup1->exps)[i];
+            {
+                Expression *ex1 = (*tup1->exps)[i];
                 Expression *ex2 = (*tup2->exps)[i];
-                (*exps)[i] =  new AssignExp(loc, ex1, ex2);
+                (*exps)[i] = new AssignExp(loc, ex1, ex2);
             }
-            Expression *e = new TupleExp(loc, e0, exps);
-            e = e->semantic(sc);
-            return e;
+            e = new TupleExp(loc, combine(tup1->e0, tup2->e0), exps);
         }
+        assert(e);
+        return e->semantic(sc);
     }
 
     if (e1->op == TOKtuple)
@@ -12729,17 +12756,19 @@ Expression *EqualExp::semantic(Scope *sc)
         TupleExp *tup1 = (TupleExp *)e1;
         TupleExp *tup2 = (TupleExp *)e2;
         size_t dim = tup1->exps->dim;
+        Expression *e = NULL;
         if (dim != tup2->exps->dim)
         {
             error("mismatched tuple lengths, %d and %d", (int)dim, (int)tup2->exps->dim);
             return new ErrorExp();
         }
+        if (dim == 0)
+        {
+            // zero-length tuple comparison should always return true or false.
+            e = new IntegerExp(loc, (op == TOKequal), Type::tboolean);
+        }
         else
         {
-            Expressions *exps = new Expressions;
-            exps->setDim(dim);
-
-            Expression *e = NULL;
             for (size_t i = 0; i < dim; i++)
             {
                 Expression *ex1 = (*tup1->exps)[i];
@@ -12752,11 +12781,10 @@ Expression *EqualExp::semantic(Scope *sc)
                 else
                     e = new OrOrExp(loc, e, eeq);
             }
-            e = combine(combine(tup1->e0, tup2->e0), e);
-            e = e->semantic(sc);
-            //printf("e = %s\n", e->toChars());
-            return e;
         }
+        assert(e);
+        e = combine(combine(tup1->e0, tup2->e0), e);
+        return e->semantic(sc);
     }
 
     e = typeCombine(sc);
