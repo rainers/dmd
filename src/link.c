@@ -20,6 +20,10 @@
 #include        <windows.h>
 #endif
 
+#if __sun || _MSC_VER
+#include        <alloca.h>
+#endif
+
 #if linux || __APPLE__ || __FreeBSD__ || __OpenBSD__ || __sun
 #include        <sys/types.h>
 #include        <sys/wait.h>
