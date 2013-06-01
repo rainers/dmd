@@ -273,6 +273,57 @@ Expression *Expression::ctfeInterpret()
     return optimize(WANTvalue | WANTinterpret);
 }
 
+/* Run CTFE on the expression, but allow the expression to be a TypeExp
+ *  or a tuple containing a TypeExp. (This is required by pragma(msg)).
+ */
+Expression *ctfeInterpretForPragmaMsg(Expression *e)
+{
+    if (e->op == TOKerror || e->op == TOKtype)
+        return e;
+
+    // It's also OK for it to be a function declaration (happens only with
+    // __traits(getOverloads))
+    if (e->op == TOKvar && ((VarExp *)e)->var->isFuncDeclaration())
+    {
+        return e;
+    }
+
+    if (e->op != TOKtuple)
+        return e->ctfeInterpret();
+
+    // Tuples need to be treated seperately, since they are
+    // allowed to contain a TypeExp in this case.
+
+    TupleExp *tup = (TupleExp *)e;
+    Expressions *expsx = NULL;
+    for (size_t i = 0; i < tup->exps->dim; ++i)
+    {
+        Expression *g = (*tup->exps)[i];
+        Expression *h = g;
+        h = ctfeInterpretForPragmaMsg(g);
+        if (h != g)
+        {
+            if (!expsx)
+            {
+                expsx = new Expressions();
+                expsx->setDim(tup->exps->dim);
+                for (size_t j = 0; j < tup->exps->dim; j++)
+                    (*expsx)[j] = (*tup->exps)[j];
+            }
+            (*expsx)[i] = h;
+        }
+    }
+    if (expsx)
+    {
+        TupleExp *te = new TupleExp(e->loc, expsx);
+        expandTuples(te->exps);
+        te->type = new TypeTuple(te->exps);
+        return te;
+    }
+    return e;
+}
+
+
 /*************************************
  * Attempt to interpret a function given the arguments.
  * Input:
@@ -1682,7 +1733,8 @@ Expression *getVarExp(Loc loc, InterState *istate, Declaration *d, CtfeGoal goal
             if (e && e != EXP_CANT_INTERPRET && e->op != TOKthrownexception)
             {
                 e = copyLiteral(e);
-                ctfeStack.saveGlobalConstant(v, e);
+                if (v->isDataseg() || (v->storage_class & STCmanifest ))
+                    ctfeStack.saveGlobalConstant(v, e);
             }
         }
         else if (v->isCTFE() && !v->hasValue())
@@ -2293,6 +2345,11 @@ Expression *UnaExp::interpret(InterState *istate,  CtfeGoal goal)
 #if LOG
     printf("%s UnaExp::interpret() %s\n", loc.toChars(), toChars());
 #endif
+    if (op == TOKdottype)
+    {
+        error("Internal Compiler Error: CTFE DotType: %s", toChars());
+        return EXP_CANT_INTERPRET;
+    }
     e1 = this->e1->interpret(istate);
     if (exceptionOrCantInterpret(e1))
         return e1;
@@ -5064,7 +5121,10 @@ Expression *DotVarExp::interpret(InterState *istate, CtfeGoal goal)
             ex = ((AddrExp *)ex)->e1;
         VarDeclaration *v = var->isVarDeclaration();
         if (!v)
+        {
             error("CTFE internal error: %s", toChars());
+            return EXP_CANT_INTERPRET;
+        }
         if (ex->op == TOKnull && ex->type->toBasetype()->ty == Tclass)
         {   error("class '%s' is null and cannot be dereferenced", e1->toChars());
             return EXP_CANT_INTERPRET;
@@ -5109,7 +5169,7 @@ Expression *DotVarExp::interpret(InterState *istate, CtfeGoal goal)
             if (!e)
             {
                 error("couldn't find field %s in %s", v->toChars(), type->toChars());
-                e = EXP_CANT_INTERPRET;
+                return EXP_CANT_INTERPRET;
             }
             // If it is an rvalue literal, return it...
             if (e->op == TOKstructliteral || e->op == TOKarrayliteral ||
