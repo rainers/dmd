@@ -304,6 +304,35 @@ bool bug4837()
 static assert(bug4837());
 
 /**************************************************
+  10252 shift out of range
+**************************************************/
+int lshr10252(int shift)
+{
+     int a = 5;
+     return a << shift;
+}
+
+int rshr10252(int shift)
+{
+     int a = 5;
+     return a >> shift;
+}
+
+int ushr10252(int shift)
+{
+     int a = 5;
+     return a >>> shift;
+}
+
+static assert(is(typeof(compiles!(lshr10252(4)))));
+static assert(!is(typeof(compiles!(lshr10252(60)))));
+static assert(is(typeof(compiles!(rshr10252(4)))));
+static assert(!is(typeof(compiles!(rshr10252(80)))));
+static assert(is(typeof(compiles!(ushr10252(2)))));
+static assert(!is(typeof(compiles!(ushr10252(60)))));
+
+
+/**************************************************
   'this' parameter bug revealed during refactoring
 **************************************************/
 int thisbug1(int x) { return x; }
@@ -2410,6 +2439,19 @@ bool test9745b()
 }
 static assert(test9745b());
 
+/**************************************************
+    10251 Pointers to const globals
+**************************************************/
+
+static const int glob10251 = 7;
+
+const (int) * bug10251()
+{
+   return &glob10251;
+}
+
+static a10251 = &glob10251; //  OK
+static b10251 = bug10251();
 
 /**************************************************
     4065 [CTFE] AA "in" operator doesn't work
@@ -4952,6 +4994,23 @@ int bug9113(T)()
 
 static assert( !is( typeof( compiles!(bug9113!(int)())) ) );
 
+/**************************************************
+    Creation of unions
+**************************************************/
+
+union UnionTest1
+{
+    int x;
+    float y;
+}
+
+int uniontest1()
+{
+    UnionTest1 u = UnionTest1(1);
+    return 1;
+}
+
+static assert(uniontest1());
 
 /**************************************************
     6438 void
