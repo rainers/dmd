@@ -439,7 +439,6 @@ int runProgram();
 const char *inifile(const char *argv0, const char *inifile, const char* envsectionname);
 void halt();
 
-/*** Where to send error messages ***/
 class Dsymbol;
 class Library;
 class File;
@@ -449,5 +448,7 @@ void obj_append(Dsymbol *s);
 void obj_write_deferred(Library *library);
 
 const char *importHint(const char *s);
+/// Little helper function for writting out deps. 
+void escapePath(OutBuffer *buf, const char *fname);
 
 #endif /* DMD_MARS_H */

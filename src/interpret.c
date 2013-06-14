@@ -2043,6 +2043,13 @@ Expression *AddrExp::interpret(InterState *istate, CtfeGoal goal)
 #if LOG
     printf("%s AddrExp::interpret() %s\n", loc.toChars(), toChars());
 #endif
+    if (e1->op == TOKvar && ((VarExp *)e1)->var->isDataseg())
+    {   // Normally this is already done by optimize()
+        // Do it here in case optimize(0) wasn't run before CTFE
+        SymOffExp *se = new SymOffExp(loc, ((VarExp *)e1)->var, 0);
+        se->type = type;
+        return se;
+    }
     // For reference types, we need to return an lvalue ref.
     TY tb = e1->type->toBasetype()->ty;
     bool needRef = (tb == Tarray || tb == Taarray || tb == Tclass);
@@ -2129,6 +2136,12 @@ Expression *getVarExp(Loc loc, InterState *istate, Declaration *d, CtfeGoal goal
         if (v->isConst() && v->init && !v->isCTFE())
 #endif
         {   e = v->init->toExpression(v->type);
+            if (v->inuse)
+            {
+                error(loc, "circular initialization of %s", v->toChars());
+                return EXP_CANT_INTERPRET;
+            }
+
             if (e && (e->op == TOKconstruct || e->op == TOKblit))
             {   AssignExp *ae = (AssignExp *)e;
                 e = ae->e2;
@@ -2146,7 +2159,11 @@ Expression *getVarExp(Loc loc, InterState *istate, Declaration *d, CtfeGoal goal
                 if (e && !e->type)
                     e->type = v->type;
                 if (e)
+                {
+                    v->inuse++;
                     e = e->interpret(istate, ctfeNeedAnyValue);
+                    v->inuse--;
+                }
                 if (e == EXP_CANT_INTERPRET && !global.gag && !CtfeStatus::stackTraceCallsToSuppress)
                     errorSupplemental(loc, "while evaluating %s.init", v->toChars());
             }
@@ -2227,6 +2244,8 @@ Expression *getVarExp(Loc loc, InterState *istate, Declaration *d, CtfeGoal goal
     else if (s)
     {   // Struct static initializers, for example
         e = s->dsym->type->defaultInitLiteral(loc);
+        if (e->op == TOKerror)
+            error(loc, "CTFE failed because of previous errors in %s.init", s->toChars());
         e = e->semantic(NULL);
         if (e->op == TOKerror)
             e = EXP_CANT_INTERPRET;
@@ -5226,7 +5245,7 @@ Expression *CastExp::interpret(InterState *istate, CtfeGoal goal)
         }
         if (e1->op == TOKaddress)
         {
-            Type *origType = ((AddrExp *)e1)->type;
+            Type *origType = ((AddrExp *)e1)->e1->type;
             if (isSafePointerCast(origType, pointee))
             {
                 e = new AddrExp(loc, ((AddrExp *)e1)->e1);

@@ -897,6 +897,7 @@ public:
     int isscalar();
     int isunsigned();
     int checkBoolean();
+    int isString();
     int isAssignable();
     int needsDestruction();
     bool needsNested();
@@ -909,6 +910,7 @@ public:
     TypeInfoDeclaration *getTypeInfoDeclaration();
     int hasPointers();
     TypeTuple *toArgTypes();
+    Type *nextOf();
 #if CPP_MANGLE
     void toCppMangle(OutBuffer *buf, CppMangleState *cms);
 #endif

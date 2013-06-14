@@ -2174,13 +2174,13 @@ void Expression::checkPurity(Scope *sc, FuncDeclaration *f)
         }
 
         // Find the closest pure parent of the called function
-        if (getFuncTemplateDecl(f) &&
+        if (getFuncTemplateDecl(f) && !f->isNested() &&
             f->parent->isTemplateInstance()->enclosing == NULL)
         {   // The closest pure parent of instantiated non-nested template function is
             // always itself.
             if (!f->isPure() && outerfunc->setImpure())
                 error("pure function '%s' cannot call impure function '%s'",
-                    outerfunc->toChars(), f->toChars());
+                    outerfunc->toPrettyChars(), f->toPrettyChars());
             return;
         }
         FuncDeclaration *calledparent = f;
@@ -4588,6 +4588,8 @@ Expression *StructLiteralExp::semantic(Scope *sc)
             }
             offset = v->offset + v->type->size();
         }
+        if (e && e->op == TOKerror)
+            return e;
         elements->push(e);
     }
 
@@ -5801,10 +5803,24 @@ FuncExp::FuncExp(Loc loc, FuncLiteralDeclaration *fd, TemplateDeclaration *td)
     tok = fd->tok;  // save original kind of function/delegate/(infer)
 }
 
+FuncLiteralDeclaration *getFuncLit(Dsymbols *members);
+
 Expression *FuncExp::syntaxCopy()
 {
-    TemplateDeclaration *td2 = td ? (TemplateDeclaration *)td->syntaxCopy(NULL) : NULL;
-    return new FuncExp(loc, (FuncLiteralDeclaration *)fd->syntaxCopy(NULL), td2);
+    FuncExp *fe;
+    TemplateDeclaration *td2;
+    FuncLiteralDeclaration *fd2;
+    if (td)
+    {
+        td2 = (TemplateDeclaration *)td->syntaxCopy(NULL);
+        fd2 = getFuncLit(td2->members);
+    }
+    else
+    {
+        td2 = NULL;
+        fd2 = (FuncLiteralDeclaration *)fd->syntaxCopy(NULL);
+    }
+    return new FuncExp(loc, fd2, td2);
 }
 
 Expression *FuncExp::semantic(Scope *sc)
@@ -7072,6 +7088,20 @@ Expression *FileExp::semantic(Scope *sc)
 
     if (global.params.verbose)
         printf("file      %s\t(%s)\n", (char *)se->string, name);
+    if (global.params.moduleDeps != NULL && global.params.moduleDepsFile == NULL) 
+    {
+        OutBuffer *ob = global.params.moduleDeps;
+        ob->writestring("depsFile ");
+        ob->writestring(sc->module->toPrettyChars());
+        ob->writestring(" (");
+        escapePath(ob, sc->module->srcfile->toChars());
+        ob->writestring(") : ");
+        ob->writestring((char *) se->string);
+        ob->writestring(" (");
+        escapePath(ob, name);
+        ob->writestring(")");
+        ob->writenl();
+    }
 
     {   File f(name);
         if (f.read())
@@ -7430,7 +7460,7 @@ Expression *DotIdExp::semanticY(Scope *sc, int flag)
             ScopeDsymbol *sds = s->isScopeDsymbol();
             if (sds)
             {
-                //printf("it's a ScopeDsymbol\n");
+                //printf("it's a ScopeDsymbol %s\n", ident->toChars());
                 e = new ScopeExp(loc, sds);
                 e = e->semantic(sc);
                 if (eleft)
@@ -8477,6 +8507,8 @@ Lagain:
             {
                 e1 = new DotVarExp(loc, dte->e1, f);
                 e1 = e1->semantic(sc);
+                if (e1->op == TOKerror)
+                    return new ErrorExp();
                 ue = (UnaExp *)e1;
             }
 #if 0
@@ -8631,6 +8663,7 @@ Lagain:
     {
         TypeFunction *tf;
         const char *p;
+        f = NULL;
         if (e1->op == TOKfunction)
         {
             // function literal that direct called is always inferred.
@@ -8638,11 +8671,10 @@ Lagain:
             f = ((FuncExp *)e1)->fd;
             tf = (TypeFunction *)f->type;
             p = "function literal";
-
-            f->checkNestedReference(sc, loc);
         }
         else if (t1->ty == Tdelegate)
-        {   TypeDelegate *td = (TypeDelegate *)t1;
+        {
+            TypeDelegate *td = (TypeDelegate *)t1;
             assert(td->next->ty == Tfunction);
             tf = (TypeFunction *)(td->next);
             p = "delegate";
@@ -8682,19 +8714,9 @@ Lagain:
             goto Lagain;
         }
         else
-        {   error("function expected before (), not %s of type %s", e1->toChars(), e1->type->toChars());
+        {
+            error("function expected before (), not %s of type %s", e1->toChars(), e1->type->toChars());
             return new ErrorExp();
-        }
-
-        if (sc->func && !tf->purity && !(sc->flags & SCOPEdebug) && !sc->needctfe)
-        {
-            if (sc->func->setImpure())
-                error("pure function '%s' cannot call impure %s '%s'", sc->func->toPrettyChars(), p, e1->toChars());
-        }
-        if (sc->func && tf->trust <= TRUSTsystem && !sc->needctfe)
-        {
-            if (sc->func->setUnsafe())
-                error("safe function '%s' cannot call system %s '%s'", sc->func->toPrettyChars(), p, e1->toChars());
         }
 
         if (!tf->callMatch(NULL, arguments))
@@ -8720,6 +8742,29 @@ Lagain:
                 buf.toChars());
 
             return new ErrorExp();
+        }
+
+        // Purity and safety check should run after testing arguments matching
+        if (f)
+        {
+#if DMDV2
+            checkPurity(sc, f);
+            checkSafety(sc, f);
+#endif
+            f->checkNestedReference(sc, loc);
+        }
+        else if (sc->func && !sc->needctfe)
+        {
+            if (!tf->purity && !(sc->flags & SCOPEdebug) && sc->func->setImpure())
+            {
+                error("pure function '%s' cannot call impure %s '%s'", sc->func->toPrettyChars(), p, e1->toChars());
+                return new ErrorExp();
+            }
+            if (tf->trust <= TRUSTsystem && sc->func->setUnsafe())
+            {
+                error("safe function '%s' cannot call system %s '%s'", sc->func->toPrettyChars(), p, e1->toChars());
+                return new ErrorExp();
+            }
         }
 
         if (t1->ty == Tpointer)
@@ -8937,31 +8982,34 @@ Expression *AddrExp::semantic(Scope *sc)
         {
             DotTemplateInstanceExp* dti = (DotTemplateInstanceExp *)e1;
             TemplateInstance *ti = dti->ti;
-            assert(!ti->semanticRun);
-            //assert(ti->needsTypeInference(sc));
-            ti->semantic(sc);
-            if (!ti->inst)                  // if template failed to expand
-                return new ErrorExp;
-            Dsymbol *s = ti->inst->toAlias();
-            FuncDeclaration *f = s->isFuncDeclaration();
-            assert(f);
-            e1 = new DotVarExp(e1->loc, dti->e1, f);
-            e1 = e1->semantic(sc);
+            if (!ti->semanticRun)
+            {
+                //assert(ti->needsTypeInference(sc));
+                ti->semantic(sc);
+                if (!ti->inst)                  // if template failed to expand
+                    return new ErrorExp;
+                Dsymbol *s = ti->inst->toAlias();
+                FuncDeclaration *f = s->isFuncDeclaration();
+                assert(f);
+                e1 = new DotVarExp(e1->loc, dti->e1, f);
+                e1 = e1->semantic(sc);
+            }
         }
-        else if (e1->op == TOKimport &&
-                 ((ScopeExp *)e1)->sds->isTemplateInstance())
+        else if (e1->op == TOKimport)
         {
-            TemplateInstance *ti = (TemplateInstance *)((ScopeExp *)e1)->sds;
-            assert(!ti->semanticRun);
-            //assert(ti->needsTypeInference(sc));
-            ti->semantic(sc);
-            if (!ti->inst)                  // if template failed to expand
-                return new ErrorExp;
-            Dsymbol *s = ti->inst->toAlias();
-            FuncDeclaration *f = s->isFuncDeclaration();
-            assert(f);
-            e1 = new VarExp(e1->loc, f);
-            e1 = e1->semantic(sc);
+            TemplateInstance *ti = ((ScopeExp *)e1)->sds->isTemplateInstance();
+            if (ti && !ti->semanticRun)
+            {
+                //assert(ti->needsTypeInference(sc));
+                ti->semantic(sc);
+                if (!ti->inst)                  // if template failed to expand
+                    return new ErrorExp;
+                Dsymbol *s = ti->inst->toAlias();
+                FuncDeclaration *f = s->isFuncDeclaration();
+                assert(f);
+                e1 = new VarExp(e1->loc, f);
+                e1 = e1->semantic(sc);
+            }
         }
         e1 = e1->toLvalue(sc, NULL);
         if (e1->op == TOKerror)
@@ -9550,9 +9598,7 @@ Expression *CastExp::semantic(Scope *sc)
         if (tob->ty == Tstruct || t1b->ty == Tstruct ||
             (tob->ty == Tsarray && t1b->ty == Tsarray))
         {
-            size_t fromsize = t1b->size(loc);
-            size_t tosize = tob->size(loc);
-            if (fromsize != tosize)
+            if (t1b->ty == Tnull || tob->ty == Tnull || t1b->size(loc) != tob->size(loc))
             {
                 error("cannot cast from %s to %s", e1->type->toChars(), to->toChars());
                 return new ErrorExp();
