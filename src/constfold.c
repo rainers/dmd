@@ -486,8 +486,6 @@ Expression *Mod(Type *type, Expression *e1, Expression *e2)
 
 #ifdef __DMC__
             c = Port::fmodl(e1->toReal(), r2) + Port::fmodl(e1->toImaginary(), r2) * I;
-#elif defined(IN_GCC)
-            c = complex_t(e1->toReal() % r2, e1->toImaginary() % r2);
 #else
             c = complex_t(Port::fmodl(e1->toReal(), r2), Port::fmodl(e1->toImaginary(), r2));
 #endif
@@ -497,8 +495,6 @@ Expression *Mod(Type *type, Expression *e1, Expression *e2)
 
 #ifdef __DMC__
             c = Port::fmodl(e1->toReal(), i2) + Port::fmodl(e1->toImaginary(), i2) * I;
-#elif defined(IN_GCC)
-            c = complex_t(e1->toReal() % i2, e1->toImaginary() % i2);
 #else
             c = complex_t(Port::fmodl(e1->toReal(), i2), Port::fmodl(e1->toImaginary(), i2));
 #endif
@@ -1570,8 +1566,6 @@ int sliceCmpStringWithArray(StringExp *se1, ArrayLiteralExp *ae2, size_t lo1, si
 {
     unsigned char *s = (unsigned char *)se1->string;
     size_t sz = se1->sz;
-
-    int c = 0;
 
     for (size_t j = 0; j < len; j++)
     {

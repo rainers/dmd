@@ -70,7 +70,7 @@ Dsymbol::Dsymbol(Identifier *ident)
     this->unittest = NULL;
 }
 
-bool Dsymbol::equals(Object *o)
+bool Dsymbol::equals(RootObject *o)
 {
     if (this == o)
         return true;
@@ -174,6 +174,11 @@ bool Dsymbol::hasStaticCtorOrDtor()
 
 void Dsymbol::setFieldOffset(AggregateDeclaration *ad, unsigned *poffset, bool isunion)
 {
+}
+
+Identifier *Dsymbol::getIdent()
+{
+    return ident;
 }
 
 char *Dsymbol::toChars()
@@ -401,7 +406,7 @@ void *symbol_search_fp(void *arg, const char *seed)
 
     Dsymbol *s = (Dsymbol *)arg;
     Module::clearCache();
-    return s->search(Loc(), id, 4|2);
+    return (void *)s->search(Loc(), id, 4|2);
 }
 
 Dsymbol *Dsymbol::search_correct(Identifier *ident)
@@ -419,7 +424,7 @@ Dsymbol *Dsymbol::search_correct(Identifier *ident)
  *      symbol found, NULL if not
  */
 
-Dsymbol *Dsymbol::searchX(Loc loc, Scope *sc, Object *id)
+Dsymbol *Dsymbol::searchX(Loc loc, Scope *sc, RootObject *id)
 {
     //printf("Dsymbol::searchX(this=%p,%s, ident='%s')\n", this, toChars(), ident->toChars());
     Dsymbol *s = toAlias();

@@ -993,11 +993,7 @@ LINK Parser::parseLinkage()
         }
         else if (id == Id::System)
         {
-#if _WIN32
-            link = LINKwindows;
-#else
-            link = LINKc;
-#endif
+            link = global.params.isWindows ? LINKwindows : LINKc;
         }
         else
         {
@@ -1745,7 +1741,10 @@ Dsymbol *Parser::parseAggregate()
             }
 
             if (tok == TOKclass)
-                a = new ClassDeclaration(loc, id, baseclasses);
+            {
+                bool inObject = md && !md->packages && md->id == Id::object;
+                a = new ClassDeclaration(loc, id, baseclasses, inObject);
+            }
             else
                 a = new InterfaceDeclaration(loc, id, baseclasses);
             break;
@@ -1974,7 +1973,7 @@ TemplateParameters *Parser::parseTemplateParameterList(int flag)
                     tp_ident = token.ident;
                     nextToken();
                 }
-                Object *spec = NULL;
+                RootObject *spec = NULL;
                 if (token.value == TOKcolon)    // : Type
                 {
                     nextToken();
@@ -1983,7 +1982,7 @@ TemplateParameters *Parser::parseTemplateParameterList(int flag)
                     else
                         spec = parseCondExp();
                 }
-                Object *def = NULL;
+                RootObject *def = NULL;
                 if (token.value == TOKassign)   // = Type
                 {
                     nextToken();
@@ -5755,7 +5754,7 @@ Expression *Parser::parsePrimaryExp()
         {
             nextToken();
             check(TOKlparen, "typeid");
-            Object *o;
+            RootObject *o;
             if (isDeclaration(&token, 0, TOKreserved, NULL))
             {   // argument is a type
                 o = parseType();

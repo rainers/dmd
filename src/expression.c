@@ -18,10 +18,6 @@
 #include <complex.h>
 #endif
 
-#if _WIN32 && __DMC__
-extern "C" const char * __cdecl __locale_decpoint;
-#endif
-
 #include "rmem.h"
 #include "port.h"
 #include "root.h"
@@ -334,7 +330,7 @@ Expression *resolvePropertiesX(Scope *sc, Expression *e1, Expression *e2 = NULL)
                     assert(fd->type->ty == Tfunction);
                     TypeFunction *tf = (TypeFunction *)fd->type;
                     if (!tf->isref && e2)
-                        goto Leprop;
+                        goto Leproplvalue;
                     if (!tf->isproperty && global.params.enforcePropertySyntax)
                         goto Leprop;
                 }
@@ -438,7 +434,7 @@ Expression *resolvePropertiesX(Scope *sc, Expression *e1, Expression *e2 = NULL)
                 assert(fd->type->ty == Tfunction);
                 TypeFunction *tf = (TypeFunction *)fd->type;
                 if (!tf->isref && e2)
-                    goto Leprop;
+                    goto Leproplvalue;
                 if (!tf->isproperty && global.params.enforcePropertySyntax)
                     goto Leprop;
                 Expression *e = new CallExp(loc, e1);
@@ -494,6 +490,10 @@ return_expr:
 
 Leprop:
     error(loc, "not a property %s", e1->toChars());
+    return new ErrorExp();
+
+Leproplvalue:
+    error(loc, "%s is not an lvalue", e1->toChars());
     return new ErrorExp();
 }
 
@@ -637,7 +637,6 @@ Expression *resolveUFCS(Scope *sc, CallExp *ce)
              * It is necessary in: e.init()
              */
         }
-#if 1
         else if (t->ty == Taarray)
         {
             if (ident == Id::remove)
@@ -679,7 +678,6 @@ Expression *resolveUFCS(Scope *sc, CallExp *ce)
                     return NULL;
             }
         }
-#endif
         else
         {
             if (Expression *ey = die->semanticY(sc, 1))
@@ -2550,7 +2548,7 @@ IntegerExp::IntegerExp(dinteger_t value)
     this->value = value;
 }
 
-bool IntegerExp::equals(Object *o)
+bool IntegerExp::equals(RootObject *o)
 {
     if (this == o)
         return true;
@@ -2864,11 +2862,8 @@ char *RealExp::toChars()
     Plus one for rounding. */
     char buffer[sizeof(value) * 3 + 8 + 1 + 1];
 
-#ifdef IN_GCC
-    value.format(buffer, sizeof(buffer));
-#else
     ld_sprint(buffer, 'g', value);
-#endif
+
     if (type->isimaginary())
         strcat(buffer, "i");
 
@@ -2928,7 +2923,7 @@ int RealEquals(real_t x1, real_t x2)
         memcmp(&x1, &x2, Target::realsize - Target::realpad) == 0;
 }
 
-bool RealExp::equals(Object *o)
+bool RealExp::equals(RootObject *o)
 {
     if (this == o)
         return true;
@@ -2976,14 +2971,8 @@ void floatToBuffer(OutBuffer *buf, Type *type, real_t value)
     char buffer[32];
     ld_sprint(buffer, 'g', value);
     assert(strlen(buffer) < sizeof(buffer) / sizeof(buffer[0]));
-#if _WIN32 && __DMC__
-    const char *save = __locale_decpoint;
-    __locale_decpoint = ".";
-    real_t r = strtold(buffer, NULL);
-    __locale_decpoint = save;
-#else
-    real_t r = strtold(buffer, NULL);
-#endif
+
+    real_t r = Port::strtold(buffer, NULL);
     if (r != value)                     // if exact duplication
         ld_sprint(buffer, 'a', value);
     buf->writestring(buffer);
@@ -3086,13 +3075,9 @@ char *ComplexExp::toChars()
 
     char buf1[sizeof(value) * 3 + 8 + 1];
     char buf2[sizeof(value) * 3 + 8 + 1];
-#ifdef IN_GCC
-    creall(value).format(buf1, sizeof(buf1));
-    cimagl(value).format(buf2, sizeof(buf2));
-#else
+
     ld_sprint(buf1, 'g', creall(value));
     ld_sprint(buf2, 'g', cimagl(value));
-#endif
     sprintf(buffer, "(%s+%si)", buf1, buf2);
     assert(strlen(buffer) < sizeof(buffer) / sizeof(buffer[0]));
     return mem.strdup(buffer);
@@ -3131,7 +3116,7 @@ complex_t ComplexExp::toComplex()
     return value;
 }
 
-bool ComplexExp::equals(Object *o)
+bool ComplexExp::equals(RootObject *o)
 {
     if (this == o)
         return true;
@@ -3787,7 +3772,7 @@ NullExp::NullExp(Loc loc, Type *type)
     this->type = type;
 }
 
-bool NullExp::equals(Object *o)
+bool NullExp::equals(RootObject *o)
 {
     if (o && o->dyncast() == DYNCAST_EXPRESSION)
     {
@@ -3878,7 +3863,7 @@ Expression *StringExp::syntaxCopy()
 }
 #endif
 
-bool StringExp::equals(Object *o)
+bool StringExp::equals(RootObject *o)
 {
     //printf("StringExp::equals('%s') %s\n", o->toChars(), toChars());
     if (o && o->dyncast() == DYNCAST_EXPRESSION)
@@ -4038,7 +4023,7 @@ StringExp *StringExp::toUTF8(Scope *sc)
     return this;
 }
 
-int StringExp::compare(Object *obj)
+int StringExp::compare(RootObject *obj)
 {
     //printf("StringExp::compare()\n");
     // Used to sort case statement expressions so we can do an efficient lookup
@@ -4462,7 +4447,7 @@ StructLiteralExp::StructLiteralExp(Loc loc, StructDeclaration *sd, Expressions *
     //printf("StructLiteralExp::StructLiteralExp(%s)\n", toChars());
 }
 
-bool StructLiteralExp::equals(Object *o)
+bool StructLiteralExp::equals(RootObject *o)
 {
     if (this == o)
         return true;
@@ -4476,7 +4461,10 @@ bool StructLiteralExp::equals(Object *o)
             return false;
         for (size_t i = 0; i < elements->dim; i++)
         {
-            if (!(*elements)[i]->equals((*se->elements)[i]))
+            Expression *e1 = (*elements)[i];
+            Expression *e2 = (*se->elements)[i];
+            if (e1 != e2 &&
+                (!e1 || !e2 || !e1->equals(e2)))
                 return false;
         }
         return true;
@@ -4705,7 +4693,21 @@ void StructLiteralExp::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 {
     buf->writestring(sd->toChars());
     buf->writeByte('(');
-    argsToCBuffer(buf, elements, hgs);
+
+    // CTFE can generate struct literals that contain an AddrExp pointing
+    // to themselves, need to avoid infinite recursion:
+    // struct S { this(int){ this.s = &this; } S* s; }
+    // const foo = new S(0);
+    if (stageflags & stageToCBuffer)
+        buf->writestring("<recursion>");
+    else
+    {
+        int old = stageflags;
+        stageflags |= stageToCBuffer;
+        argsToCBuffer(buf, elements, hgs);
+        stageflags = old;
+    }
+
     buf->writeByte(')');
 }
 
@@ -5495,7 +5497,7 @@ VarExp::VarExp(Loc loc, Declaration *var, bool hasOverloads)
     this->type = var->type;
 }
 
-bool VarExp::equals(Object *o)
+bool VarExp::equals(RootObject *o)
 {
     if (this == o)
         return true;
@@ -5652,6 +5654,12 @@ Expression *OverExp::toLvalue(Scope *sc, Expression *e)
 {
     return this;
 }
+
+void OverExp::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
+{
+    buf->writestring(vars->ident->toChars());
+}
+
 #endif
 
 
@@ -5681,7 +5689,7 @@ TupleExp::TupleExp(Loc loc, TupleDeclaration *tup)
 
     this->exps->reserve(tup->objects->dim);
     for (size_t i = 0; i < tup->objects->dim; i++)
-    {   Object *o = (*tup->objects)[i];
+    {   RootObject *o = (*tup->objects)[i];
         if (Dsymbol *s = getDsymbol(o))
         {
             /* If tuple element represents a symbol, translate to DsymbolExp
@@ -5708,7 +5716,7 @@ TupleExp::TupleExp(Loc loc, TupleDeclaration *tup)
     }
 }
 
-bool TupleExp::equals(Object *o)
+bool TupleExp::equals(RootObject *o)
 {
     if (this == o)
         return true;
@@ -6114,7 +6122,7 @@ void DeclarationExp::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
  *      typeid(int)
  */
 
-TypeidExp::TypeidExp(Loc loc, Object *o)
+TypeidExp::TypeidExp(Loc loc, RootObject *o)
     : Expression(loc, TOKtypeid, sizeof(TypeidExp))
 {
     this->obj = o;
@@ -6220,7 +6228,7 @@ void TraitsExp::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
         for (size_t i = 0; i < args->dim; i++)
         {
             buf->writestring(", ");;
-            Object *oarg = (*args)[i];
+            RootObject *oarg = (*args)[i];
             ObjectToCBuffer(buf, hgs, oarg);
         }
     }
@@ -7086,7 +7094,7 @@ Expression *FileExp::semantic(Scope *sc)
 
     if (global.params.verbose)
         printf("file      %s\t(%s)\n", (char *)se->string, name);
-    if (global.params.moduleDeps != NULL && global.params.moduleDepsFile == NULL) 
+    if (global.params.moduleDeps != NULL && global.params.moduleDepsFile == NULL)
     {
         OutBuffer *ob = global.params.moduleDeps;
         ob->writestring("depsFile ");
@@ -7600,7 +7608,7 @@ Expression *DotVarExp::semantic(Scope *sc)
 
             exps->reserve(tup->objects->dim);
             for (size_t i = 0; i < tup->objects->dim; i++)
-            {   Object *o = (*tup->objects)[i];
+            {   RootObject *o = (*tup->objects)[i];
                 Expression *e;
                 if (o->dyncast() == DYNCAST_EXPRESSION)
                 {
@@ -8415,7 +8423,7 @@ Lagain:
     if (tiargs && tiargs->dim)
     {
         for (size_t k = 0; k < tiargs->dim; k++)
-        {   Object *o = (*tiargs)[k];
+        {   RootObject *o = (*tiargs)[k];
             if (isError(o))
                 return new ErrorExp();
         }
@@ -9850,6 +9858,8 @@ Lagain:
         {   error("need upper and lower bound to slice pointer");
             return new ErrorExp();
         }
+        if (sc->func && !sc->intypeof && sc->func->setUnsafe())
+            error("pointer slicing not allowed in safe functions");
     }
     else if (t->ty == Tarray)
     {
