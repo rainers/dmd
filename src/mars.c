@@ -351,7 +351,7 @@ Usage:\n\
   -debug=ident   compile in debug code identified by ident\n\
   -debuglib=name    set symbolic debug library to name\n\
   -defaultlib=name  set default library to name\n\
-  -deps write module import dependencies to stdout. (All dependencies including file/version/debug/lib)\n\
+  -deps          print module dependencies (imports/file/version/debug/lib)\n\
   -deps=filename write module dependencies to filename (only imports - deprecated)\n%s\
   -exportall     export any suitable public symbol\n\
   -g             add symbolic debug info\n\
