@@ -1493,6 +1493,7 @@ void MODtoBuffer(OutBuffer *buf, unsigned char mod)
 char *MODtoChars(unsigned char mod)
 {
     OutBuffer buf;
+    buf.reserve(16);
     MODtoBuffer(&buf, mod);
     buf.writebyte(0);
     return buf.extractData();
@@ -1518,12 +1519,13 @@ void Type::toDecoBuffer(OutBuffer *buf, int flag)
  */
 
 char *Type::toChars()
-{   OutBuffer *buf;
+{   OutBuffer buf;
+    buf.reserve(16);
     HdrGenState hgs;
 
-    buf = new OutBuffer();
-    toCBuffer(buf, NULL, &hgs);
-    return buf->toChars();
+    toCBuffer(&buf, NULL, &hgs);
+    buf.writebyte(0);
+    return buf.extractData();
 }
 
 void Type::toCBuffer(OutBuffer *buf, Identifier *ident, HdrGenState *hgs)
@@ -1589,6 +1591,7 @@ void Type::modToBuffer(OutBuffer *buf)
 char *Type::modToChars()
 {
     OutBuffer buf;
+    buf.reserve(16);
     modToBuffer(&buf);
     buf.writebyte(0);
     return buf.extractData();
@@ -1614,12 +1617,12 @@ Type *Type::merge()
     if (!deco)
     {
         OutBuffer buf;
-        StringValue *sv;
+        buf.reserve(32);
 
         //if (next)
             //next = next->merge();
         toDecoBuffer(&buf);
-        sv = stringtable.update((char *)buf.data, buf.offset);
+        StringValue *sv = stringtable.update((char *)buf.data, buf.offset);
         if (sv->ptrvalue)
         {   t = (Type *) sv->ptrvalue;
 #ifdef DEBUG
@@ -2165,6 +2168,7 @@ Identifier *Type::getTypeInfoIdent(int internal)
 {
     // _init_10TypeInfo_%s
     OutBuffer buf;
+    buf.reserve(32);
 
     if (internal)
     {   buf.writeByte(mangleChar[ty]);
@@ -2876,7 +2880,7 @@ Expression *TypeBasic::getProperty(Loc loc, Identifier *ident, int flag)
             case Tfloat64:
             case Tfloat80:
             {
-                fvalue = Port::nan;
+                fvalue = Port::ldbl_nan;
                 goto Lfvalue;
             }
         }
@@ -2894,7 +2898,7 @@ Expression *TypeBasic::getProperty(Loc loc, Identifier *ident, int flag)
             case Tfloat32:
             case Tfloat64:
             case Tfloat80:
-                fvalue = Port::infinity;
+                fvalue = Port::ldbl_infinity;
                 goto Lfvalue;
         }
     }
@@ -8969,6 +8973,7 @@ void TypeTuple::toDecoBuffer(OutBuffer *buf, int flag)
     //printf("TypeTuple::toDecoBuffer() this = %p, %s\n", this, toChars());
     Type::toDecoBuffer(buf, flag);
     OutBuffer buf2;
+    buf2.reserve(32);
     Parameter::argsToDecoBuffer(&buf2, arguments);
     int len = (int)buf2.offset;
     buf->printf("%d%.*s", len, len, (char *)buf2.extractData());
@@ -9251,12 +9256,14 @@ Parameters *Parameter::arraySyntaxCopy(Parameters *args)
 
 char *Parameter::argsTypesToChars(Parameters *args, int varargs)
 {
-    OutBuffer *buf = new OutBuffer();
+    OutBuffer buf;
+    buf.reserve(16);
 
     HdrGenState hgs;
-    argsToCBuffer(buf, &hgs, args, varargs);
+    argsToCBuffer(&buf, &hgs, args, varargs);
 
-    return buf->toChars();
+    buf.writebyte(0);
+    return buf.extractData();
 }
 
 void Parameter::argsToCBuffer(OutBuffer *buf, HdrGenState *hgs, Parameters *arguments, int varargs)
@@ -9265,6 +9272,7 @@ void Parameter::argsToCBuffer(OutBuffer *buf, HdrGenState *hgs, Parameters *argu
     if (arguments)
     {
         OutBuffer argbuf;
+        argbuf.reserve(32);
 
         size_t dim = Parameter::dim(arguments);
         for (size_t i = 0; i < dim; i++)
