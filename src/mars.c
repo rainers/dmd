@@ -1165,6 +1165,11 @@ Language changes listed by -transition=id:\n\
 #endif
 #if TARGET_WINDOS
         VersionCondition::addPredefinedGlobalIdent("Win32");
+        if (!setdefaultlib && global.params.objfmt == OBJ_COFF)
+        {   global.params.defaultlibname = "phobos32ms";
+            if (!setdebuglib)
+                global.params.debuglibname = global.params.defaultlibname;
+        }
 #endif
     }
 #if TARGET_WINDOS
