@@ -45,6 +45,7 @@ long __cdecl __ehfilter(LPEXCEPTION_POINTERS ep);
 
 size_t templateParameterLookup(Type *tparam, TemplateParameters *parameters);
 int arrayObjectMatch(Objects *oa1, Objects *oa2);
+hash_t arrayObjectHash(Objects *oa1);
 int arrayCheckRecursiveExpansion(Objects *oa1, TemplateDeclaration *tempdecl, Scope *sc);
 
 /********************************************
@@ -256,14 +257,14 @@ int match(RootObject *o1, RootObject *o2)
     {
         if (s2)
         {
-            FuncAliasDeclaration *fa1 = s1->isFuncAliasDeclaration();
-            if (fa1)
-                s1 = fa1->toAliasFunc();
-            FuncAliasDeclaration *fa2 = s2->isFuncAliasDeclaration();
-            if (fa2)
-                s2 = fa2->toAliasFunc();
-            if (!s1->equals(s2) || s1->parent != s2->parent)
+            if (!s1->equals(s2))
                 goto Lnomatch;
+            if (s1->parent != s2->parent &&
+                !s1->isFuncDeclaration() &&
+                !s2->isFuncDeclaration())
+            {
+                goto Lnomatch;
+            }
         }
         else
             goto Lnomatch;
@@ -302,6 +303,45 @@ int arrayObjectMatch(Objects *oa1, Objects *oa2)
         }
     }
     return 1;
+}
+
+
+/************************************
+ * Return hash of Objects.
+ */
+hash_t arrayObjectHash(Objects *oa1)
+{
+    hash_t hash = 0;
+    for (size_t j = 0; j < oa1->dim; j++)
+    {   /* Must follow the logic of match()
+         */
+        RootObject *o1 = (*oa1)[j];
+        if (Type *t1 = isType(o1))
+            hash += (size_t)t1->deco;
+        else
+        {
+            Dsymbol *s1 = isDsymbol(o1);
+            Expression *e1 = s1 ? getValue(s1) : getValue(isExpression(o1));
+            if (e1)
+            {
+                if (e1->op == TOKint64)
+                {
+                    IntegerExp *ne = (IntegerExp *)e1;
+                    hash += (size_t)ne->value;
+                }
+            }
+            else if (s1)
+            {
+                FuncAliasDeclaration *fa1 = s1->isFuncAliasDeclaration();
+                if (fa1)
+                    s1 = fa1->toAliasFunc();
+                hash += (size_t)s1->ident + (size_t)s1->parent;
+            }
+            else if (Tuple *u1 = isTuple(o1))
+                hash += arrayObjectHash(&u1->objects);
+        }
+    }
+    return hash;
 }
 
 
@@ -472,6 +512,7 @@ TemplateDeclaration::TemplateDeclaration(Loc loc, Identifier *id,
     this->ismixin = ismixin;
     this->previous = NULL;
     this->protection = PROTundefined;
+    this->numinstances = 0;
 
     // Compute in advance for Ddoc's use
     if (members)
@@ -2003,22 +2044,6 @@ RootObject *TemplateDeclaration::declareParameter(Scope *sc, TemplateParameter *
     Dsymbol *s;
     VarDeclaration *v = NULL;
 
-    // See if tp->ident already exists with a matching definition
-    Dsymbol *scopesym;
-    s = sc->search(loc, tp->ident, &scopesym);
-    if (s && scopesym == sc->scopesym)
-    {
-        TupleDeclaration *td = s->isTupleDeclaration();
-        if (va && td)
-        {   Tuple tup;
-            tup.objects = *td->objects;
-            checkRecursiveExpansion(va, this, sc);
-            if (match(va, &tup))
-            {
-                return o;
-            }
-        }
-    }
     if (ea && ea->op == TOKtype)
         targ = ea->type;
     else if (ea && ea->op == TOKimport)
@@ -2653,69 +2678,81 @@ PROT TemplateDeclaration::prot()
 
 TemplateInstance *TemplateDeclaration::findExistingInstance(TemplateInstance *tithis, Expressions *fargs)
 {
-    for (size_t i = 0; i < instances.dim; i++)
+    tithis->fargs = fargs;
+    hash_t hash = tithis->hashCode();
+
+    if (!buckets.dim)
     {
-        TemplateInstance *ti = instances[i];
+        buckets.setDim(7);
+        buckets.zero();
+    }
+    size_t bi = hash % buckets.dim;
+    TemplateInstances *instances = buckets[bi];
+    if (instances)
+    {
+        for (size_t i = 0; i < instances->dim; i++)
+        {
+            TemplateInstance *ti = (*instances)[i];
 #if LOG
-        printf("\t%s: checking for match with instance %d (%p): '%s'\n", tithis->toChars(), i, ti, ti->toChars());
+            printf("\t%s: checking for match with instance %d (%p): '%s'\n", tithis->toChars(), i, ti, ti->toChars());
 #endif
-        assert(tithis->tdtypes.dim == ti->tdtypes.dim);
-
-        // Nesting must match
-        if (tithis->enclosing != ti->enclosing)
-        {
-            //printf("test2 enclosing %s ti->enclosing %s\n", tithis->enclosing ? tithis->enclosing->toChars() : "", ti->enclosing ? ti->enclosing->toChars() : "");
-            continue;
-        }
-        //printf("parent = %s, ti->parent = %s\n", parent->toPrettyChars(), ti->parent->toPrettyChars());
-
-        if (!arrayObjectMatch(&tithis->tdtypes, &ti->tdtypes))
-            continue;
-
-        /* Template functions may have different instantiations based on
-         * "auto ref" parameters.
-         */
-        if (fargs)
-        {
-            FuncDeclaration *fd = ti->toAlias()->isFuncDeclaration();
-            if (fd)
+            if (hash == ti->hash &&
+                tithis->compare(ti) == 0)
             {
-                Parameters *fparameters = fd->getParameters(NULL);
-                size_t nfparams = Parameter::dim(fparameters); // Num function parameters
-                for (size_t j = 0; j < nfparams && j < fargs->dim; j++)
-                {   Parameter *fparam = Parameter::getNth(fparameters, j);
-                    Expression *farg = (*fargs)[j];
-                    if (fparam->storageClass & STCauto)         // if "auto ref"
-                    {
-                        if (farg->isLvalue())
-                        {   if (!(fparam->storageClass & STCref))
-                                goto L1;                        // auto ref's don't match
-                        }
-                        else
-                        {   if (fparam->storageClass & STCref)
-                                goto L1;                        // auto ref's don't match
-                        }
-                    }
-                }
+                //printf("hash = %p yes %d n = %d\n", hash, instances->dim, numinstances);
+                return ti;
             }
         }
-        return ti;
-
-    L1: ;
     }
+    //printf("hash = %p no\n", hash);
     return NULL;        // didn't find a match
 }
 
 /********************************************
  * Add instance ti to TemplateDeclaration's table of instances.
- * Return a handle we can use to later remove it.
+ * Return a handle we can use to later remove it if it fails instantiation.
  */
 
-size_t TemplateDeclaration::addInstance(TemplateInstance *ti)
+TemplateInstance *TemplateDeclaration::addInstance(TemplateInstance *ti)
 {
-    size_t i = instances.dim;
-    instances.push(ti);
-    return i;
+    /* See if we need to rehash
+     */
+    if (numinstances > buckets.dim * 4)
+    {   // rehash
+        //printf("rehash\n");
+        size_t newdim = buckets.dim * 2 + 1;
+        TemplateInstances **newp = (TemplateInstances **)::calloc(newdim, sizeof(TemplateInstances *));
+        assert(newp);
+        for (size_t bi = 0; bi < buckets.dim; ++bi)
+        {
+            TemplateInstances *instances = buckets[bi];
+            if (instances)
+            {
+                for (size_t i = 0; i < instances->dim; i++)
+                {
+                    TemplateInstance *ti1 = (*instances)[i];
+                    size_t newbi = ti1->hash % newdim;
+                    TemplateInstances *newinstances = newp[newbi];
+                    if (!newinstances)
+                        newp[newbi] = newinstances = new TemplateInstances();
+                    newinstances->push(ti1);
+                }
+                delete instances;
+            }
+        }
+        buckets.setDim(newdim);
+        memcpy(buckets.tdata(), newp, newdim * sizeof(TemplateInstance *));
+        ::free(newp);
+    }
+
+    // Insert ti into hash table
+    size_t bi = ti->hash % buckets.dim;
+    TemplateInstances *instances = buckets[bi];
+    if (!instances)
+        buckets[bi] = instances = new TemplateInstances();
+    instances->push(ti);
+    ++numinstances;
+    return ti;
 }
 
 /*******************************************
@@ -2724,9 +2761,19 @@ size_t TemplateDeclaration::addInstance(TemplateInstance *ti)
  *      handle returned by addInstance()
  */
 
-void TemplateDeclaration::removeInstance(size_t handle)
+void TemplateDeclaration::removeInstance(TemplateInstance *handle)
 {
-    instances.remove(handle);
+    size_t bi = handle->hash % buckets.dim;
+    TemplateInstances *instances = buckets[bi];
+    for (size_t i = 0; i < instances->dim; i++)
+    {
+        TemplateInstance *ti = (*instances)[i];
+        if (handle == ti)
+        {   instances->remove(i);
+            break;
+        }
+    }
+    --numinstances;
 }
 
 /* ======================== Type ============================================ */
@@ -4899,12 +4946,14 @@ TemplateInstance::TemplateInstance(Loc loc, Identifier *ident)
     this->argsym = NULL;
     this->aliasdecl = NULL;
     this->semanticRun = PASSinit;
-    this->semantictiargsdone = 0;
+    this->semantictiargsdone = false;
     this->withsym = NULL;
     this->nest = 0;
-    this->havetempdecl = 0;
+    this->havetempdecl = false;
     this->enclosing = NULL;
-    this->speculative = 0;
+    this->speculative = false;
+    this->hash = 0;
+    this->fargs = NULL;
 }
 
 /*****************
@@ -4927,12 +4976,14 @@ TemplateInstance::TemplateInstance(Loc loc, TemplateDeclaration *td, Objects *ti
     this->argsym = NULL;
     this->aliasdecl = NULL;
     this->semanticRun = PASSinit;
-    this->semantictiargsdone = 1;
+    this->semantictiargsdone = true;
     this->withsym = NULL;
     this->nest = 0;
-    this->havetempdecl = 1;
+    this->havetempdecl = true;
     this->enclosing = NULL;
-    this->speculative = 0;
+    this->speculative = false;
+    this->hash = 0;
+    this->fargs = NULL;
 
     assert(tempdecl->scope);
 }
@@ -5183,7 +5234,7 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
     if (global.gag && sc->speculative)
         speculative = 1;
 
-    size_t tempdecl_instance_idx = tempdecl->addInstance(this);
+    TemplateInstance *tempdecl_instance_idx = tempdecl->addInstance(this);
 
     parent = tempdecl->parent;
     //printf("parent = '%s'\n", parent->kind());
@@ -5721,6 +5772,16 @@ void TemplateInstance::semanticTiargs(Loc loc, Scope *sc, Objects *tiargs, int f
                 j--;
                 continue;
             }
+            if (FuncAliasDeclaration *fa = sa->isFuncAliasDeclaration())
+            {
+                FuncDeclaration *f = fa->toAliasFunc();
+                if (!fa->hasOverloads && f->isUnique())
+                {
+                    // Strip FuncAlias only when the aliased function
+                    // does not have any overloads.
+                    sa = f;
+                }
+            }
             (*tiargs)[j] = sa;
 
             TemplateDeclaration *td = sa->isTemplateDeclaration();
@@ -6235,11 +6296,6 @@ Identifier *TemplateInstance::genIdent(Objects *args)
           Lsa2:
             if (d && (!d->type || !d->type->deco))
             {
-                FuncAliasDeclaration *fad = d->isFuncAliasDeclaration();
-                if (fad)
-                {   d = fad->toAliasFunc();
-                    goto Lsa2;
-                }
                 error("forward reference of %s %s", d->kind(), d->toChars());
                 continue;
             }
@@ -6669,6 +6725,69 @@ char *TemplateInstance::toChars()
     buf.data = NULL;
     return s;
 }
+
+int TemplateInstance::compare(RootObject *o)
+{
+    TemplateInstance *ti = (TemplateInstance *)o;
+
+    //printf("this = %p, ti = %p\n", this, ti);
+    assert(tdtypes.dim == ti->tdtypes.dim);
+
+    // Nesting must match
+    if (enclosing != ti->enclosing)
+    {
+        //printf("test2 enclosing %s ti->enclosing %s\n", enclosing ? enclosing->toChars() : "", ti->enclosing ? ti->enclosing->toChars() : "");
+        goto Lnotequals;
+    }
+    //printf("parent = %s, ti->parent = %s\n", parent->toPrettyChars(), ti->parent->toPrettyChars());
+
+    if (!arrayObjectMatch(&tdtypes, &ti->tdtypes))
+        goto Lnotequals;
+
+    /* Template functions may have different instantiations based on
+     * "auto ref" parameters.
+     */
+    if (fargs)
+    {
+        FuncDeclaration *fd = ti->toAlias()->isFuncDeclaration();
+        if (fd)
+        {
+            Parameters *fparameters = fd->getParameters(NULL);
+            size_t nfparams = Parameter::dim(fparameters); // Num function parameters
+            for (size_t j = 0; j < nfparams && j < fargs->dim; j++)
+            {   Parameter *fparam = Parameter::getNth(fparameters, j);
+                Expression *farg = (*fargs)[j];
+                if (fparam->storageClass & STCauto)         // if "auto ref"
+                {
+                    if (farg->isLvalue())
+                    {   if (!(fparam->storageClass & STCref))
+                            goto Lnotequals;                // auto ref's don't match
+                    }
+                    else
+                    {   if (fparam->storageClass & STCref)
+                            goto Lnotequals;                // auto ref's don't match
+                    }
+                }
+            }
+        }
+    }
+    return 0;
+
+  Lnotequals:
+    return 1;
+}
+
+hash_t TemplateInstance::hashCode()
+{
+    if (!hash)
+    {
+        hash = (size_t)enclosing;
+        hash += arrayObjectHash(&tdtypes);
+    }
+    return hash;
+}
+
+
 
 /* ======================== TemplateMixin ================================ */
 

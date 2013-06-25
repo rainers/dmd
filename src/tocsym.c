@@ -356,7 +356,7 @@ Symbol *FuncDeclaration::toSymbol()
 #if 0
         id = ident->toChars();
 #else
-        id = mangle();
+        id = mangleExact();
 #endif
         //printf("FuncDeclaration::toSymbol(%s %s)\n", kind(), toChars());
         //printf("\tid = '%s'\n", id);
