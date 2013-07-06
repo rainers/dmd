@@ -75,6 +75,7 @@ void out_config_init(
         // Not sure we really need these two lines, try removing them later
         config.flags |= CFGnoebp;
         config.flags |= CFGalwaysframe;
+        config.flags |= CFGromable; // put switch tables in code segment
     }
     else
     {   config.exe = EX_NT;
@@ -94,7 +95,11 @@ void out_config_init(
         config.fpxmmregs = TRUE;
     }
     else
+    {
         config.exe = EX_LINUX;
+        if (!exe)
+            config.flags |= CFGromable; // put switch tables in code segment
+    }
     config.flags |= CFGnoebp;
     config.flags |= CFGalwaysframe;
     if (!exe)
@@ -112,6 +117,7 @@ void out_config_init(
     config.flags |= CFGalwaysframe;
     if (!exe)
         config.flags3 |= CFG3pic;
+    config.flags |= CFGromable; // put switch tables in code segment
 #endif
 #if TARGET_FREEBSD
     if (model == 64)
@@ -119,7 +125,11 @@ void out_config_init(
         config.fpxmmregs = TRUE;
     }
     else
+    {
         config.exe = EX_FREEBSD;
+        if (!exe)
+            config.flags |= CFGromable; // put switch tables in code segment
+    }
     config.flags |= CFGnoebp;
     config.flags |= CFGalwaysframe;
     if (!exe)
@@ -131,7 +141,11 @@ void out_config_init(
         config.fpxmmregs = TRUE;
     }
     else
+    {
         config.exe = EX_OPENBSD;
+        if (!exe)
+            config.flags |= CFGromable; // put switch tables in code segment
+    }
     config.flags |= CFGnoebp;
     config.flags |= CFGalwaysframe;
     if (!exe)
@@ -143,7 +157,11 @@ void out_config_init(
         config.fpxmmregs = TRUE;
     }
     else
+    {
         config.exe = EX_SOLARIS;
+        if (!exe)
+            config.flags |= CFGromable; // put switch tables in code segment
+    }
     config.flags |= CFGnoebp;
     config.flags |= CFGalwaysframe;
     if (!exe)

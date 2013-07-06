@@ -335,7 +335,7 @@ hash_t arrayObjectHash(Objects *oa1)
                 FuncAliasDeclaration *fa1 = s1->isFuncAliasDeclaration();
                 if (fa1)
                     s1 = fa1->toAliasFunc();
-                hash += (size_t)s1->ident + (size_t)s1->parent;
+                hash += (size_t)(void *)s1->ident + (size_t)(void *)s1->parent;
             }
             else if (Tuple *u1 = isTuple(o1))
                 hash += arrayObjectHash(&u1->objects);
@@ -506,6 +506,7 @@ TemplateDeclaration::TemplateDeclaration(Loc loc, Identifier *id,
     this->members = decldefs;
     this->overnext = NULL;
     this->overroot = NULL;
+    this->funcroot = NULL;
     this->semanticRun = PASSinit;
     this->onemember = NULL;
     this->literal = 0;
@@ -688,6 +689,15 @@ bool TemplateDeclaration::overloadInsert(Dsymbol *s)
 #if LOG
     printf("TemplateDeclaration::overloadInsert('%s')\n", s->toChars());
 #endif
+    FuncDeclaration *fd = s->isFuncDeclaration();
+    if (fd)
+    {
+        if (funcroot)
+            return funcroot->overloadInsert(fd);
+        funcroot = fd;
+        return funcroot->overloadInsert(this);
+    }
+
     TemplateDeclaration *td = s->isTemplateDeclaration();
     if (!td)
         return false;
@@ -1071,7 +1081,7 @@ MATCH TemplateDeclaration::leastAsSpecialized(TemplateDeclaration *td2, Expressi
  *          bit 4-7     Match template parameters by initial template arguments
  */
 
-MATCH TemplateDeclaration::deduceFunctionTemplateMatch(Loc loc, Scope *sc, Objects *tiargs,
+MATCH TemplateDeclaration::deduceFunctionTemplateMatch(FuncDeclaration *f, Loc loc, Scope *sc, Objects *tiargs,
         Type *tthis, Expressions *fargs,
         Objects *dedargs)
 {
@@ -1082,7 +1092,7 @@ MATCH TemplateDeclaration::deduceFunctionTemplateMatch(Loc loc, Scope *sc, Objec
     size_t tuple_dim = 0;
     MATCH match = MATCHexact;
     MATCH matchTiargs = MATCHexact;
-    FuncDeclaration *fd = onemember->toAlias()->isFuncDeclaration();
+    FuncDeclaration *fd = f;
     Parameters *fparameters;            // function parameter list
     int fvarargs;                       // function varargs
     Objects dedtypes;   // for T:T*, the dedargs is the T*, dedtypes is the T
@@ -1195,6 +1205,7 @@ MATCH TemplateDeclaration::deduceFunctionTemplateMatch(Loc loc, Scope *sc, Objec
         }
         else
             inferparams = NULL;
+        //printf("tiargs matchTiargs = %d\n", matchTiargs);
     }
 #if 0
     for (size_t i = 0; i < dedargs->dim; i++)
@@ -1218,6 +1229,9 @@ MATCH TemplateDeclaration::deduceFunctionTemplateMatch(Loc loc, Scope *sc, Objec
      */
     if (tp)                             // if variadic
     {
+        // TemplateTupleParameter always makes most lesser matching.
+        matchTiargs = MATCHconvert;
+
         if (nfparams == 0 && nfargs != 0)               // if no function parameters
         {
             if (!tp_is_declared)
@@ -1894,7 +1908,7 @@ Lmatch:
         {
             if (oded)
             {
-                if (tparam->specialization())
+                if (tparam->specialization() || !tparam->isTemplateTypeParameter())
                 {   /* The specialization can work as long as afterwards
                      * the oded == oarg
                      */
@@ -1903,10 +1917,15 @@ Lmatch:
                     //printf("m2 = %d\n", m2);
                     if (!m2)
                         goto Lnomatch;
-                    if (m2 < match)
-                        match = m2;             // pick worst match
+                    if (m2 < matchTiargs)
+                        matchTiargs = m2;             // pick worst match
                     if (dedtypes[i] != oded)
                         error("specialization not allowed for deduced parameter %s", tparam->ident->toChars());
+                }
+                else
+                {
+                    if (MATCHconvert < matchTiargs)
+                        matchTiargs = MATCHconvert;
                 }
             }
             else
@@ -1973,8 +1992,7 @@ Lmatch:
 
         int nerrors = global.errors;
 
-        FuncDeclaration *fd = onemember && onemember->toAlias() ?
-            onemember->toAlias()->isFuncDeclaration() : NULL;
+        FuncDeclaration *fd = f;
         Dsymbol *s = parent;
         while (s->isTemplateInstance() || s->isTemplateMixin())
             s = s->parent;
@@ -2132,31 +2150,29 @@ bool TemplateDeclaration::isOverloadable()
 
 /*************************************************
  * Given function arguments, figure out which template function
- * to expand, and return that function.
- * If no match, give error message and return NULL.
+ * to expand, and return matching result.
  * Input:
+ *      m               matching result
+ *      tdstart         the root of overloaded function templates
  *      loc             instantiation location
  *      sc              instantiation scope
  *      tiargs          initial list of template arguments
  *      tthis           if !NULL, the 'this' pointer argument
  *      fargs           arguments to function
- *      flags           1: do not issue error message on no match, just return NULL
  */
 
-FuncDeclaration *TemplateDeclaration::deduceFunctionTemplate(Loc loc, Scope *sc,
-        Objects *tiargs, Type *tthis, Expressions *fargs, int flags)
+void templateResolve(Match *m, TemplateDeclaration *tdstart, Loc loc, Scope *sc,
+        Objects *tiargs, Type *tthis, Expressions *fargs)
 {
-    MATCH m_best = MATCHnomatch;
-    MATCH m_best2 = MATCHnomatch;
+    size_t overload_index;
     TemplateDeclaration *td_ambig = NULL;
     TemplateDeclaration *td_best = NULL;
     Objects *tdargs = new Objects();
-    TemplateInstance *ti;
-    FuncDeclaration *fd_best;
+    MATCH ta_last = m->last ? MATCHexact : MATCHnomatch;
     Type *tthis_best = NULL;
 
 #if 0
-    printf("TemplateDeclaration::deduceFunctionTemplate() %s\n", toChars());
+    printf("templateResolve() tdstart = %s\n", tdstart->toChars());
     printf("    tiargs:\n");
     if (tiargs)
     {   for (size_t i = 0; i < tiargs->dim; i++)
@@ -2170,17 +2186,32 @@ FuncDeclaration *TemplateDeclaration::deduceFunctionTemplate(Loc loc, Scope *sc,
         printf("\t%s %s\n", arg->type->toChars(), arg->toChars());
         //printf("\tty = %d\n", arg->type->ty);
     }
-    printf("stc = %llx\n", scope->stc);
+    printf("stc = %llx\n", tdstart->scope->stc);
+    printf("match:t/f = %d/%d\n", ta_last, m->last);
 #endif
 
-    for (TemplateDeclaration *td = this; td; td = td->overnext)
+    for (TemplateDeclaration *td = tdstart; td; td = td->overnext)
     {
         if (!td->semanticRun)
         {
-            error("forward reference to template %s", td->toChars());
+            if (td->scope)
+            {
+                // Try to fix forward reference. Ungag errors while doing so.
+                int oldgag = global.gag;
+                if (global.isSpeculativeGagging() && !td->isSpeculative())
+                    global.gag = 0;
+                td->semantic(td->scope);
+                global.gag = oldgag;
+            }
+        }
+        if (!td->semanticRun)
+        {
+            ::error(loc, "forward reference to template %s", td->toChars());
             goto Lerror;
         }
-        if (!td->onemember || !td->onemember->toAlias()->isFuncDeclaration())
+        FuncDeclaration *f = td->onemember
+                ? td->onemember->toAlias()->isFuncDeclaration() : NULL;
+        if (!f)
         {
             if (!tiargs)
                 tiargs = new Objects();
@@ -2189,9 +2220,9 @@ FuncDeclaration *TemplateDeclaration::deduceFunctionTemplate(Loc loc, Scope *sc,
             Objects dedtypes;
             dedtypes.setDim(td->parameters->dim);
             assert(td->semanticRun);
-            MATCH m2 = td->matchWithInstance(ti, &dedtypes, fargs, 0);
+            MATCH mta = td->matchWithInstance(ti, &dedtypes, fargs, 0);
             //printf("matchWithInstance = %d\n", m2);
-            if (!m2 || m2 < m_best2)        // no match or less match
+            if (!mta || mta < ta_last)      // no match or less match
                 continue;
 
             ti->semantic(sc, fargs);
@@ -2201,203 +2232,174 @@ FuncDeclaration *TemplateDeclaration::deduceFunctionTemplate(Loc loc, Scope *sc,
             Dsymbol *s = ti->inst->toAlias();
             FuncDeclaration *fd = s->isFuncDeclaration();
             if (!fd)
-            {
-                if (!(flags & 1))
-                    td->error("is not a function template");
                 goto Lerror;
-            }
-            fd = resolveFuncCall(loc, sc, fd, NULL, tthis, fargs, flags);
+            fd = resolveFuncCall(loc, sc, fd, NULL, tthis, fargs, 1);
             if (!fd)
                 continue;
 
             TypeFunction *tf = (TypeFunction *)fd->type;
-            MATCH m = (MATCH) tf->callMatch(fd->needThis() && !fd->isCtorDeclaration() ? tthis : NULL, fargs);
-            if (m < m_best)
+            MATCH mfa = tf->callMatch(fd->needThis() && !fd->isCtorDeclaration() ? tthis : NULL, fargs);
+            if (mfa < m->last)
                 continue;
 
             // td is the new best match
             td_ambig = NULL;
             assert(td->scope);
             td_best = td;
-            fd_best = fd;
-            m_best = m;
-            m_best2 = m2;
+            ta_last = mta;
+            m->last = mfa;
+            m->lastf = fd;
             tdargs->setDim(dedtypes.dim);
             memcpy(tdargs->tdata(), dedtypes.tdata(), tdargs->dim * sizeof(void *));
             continue;
         }
 
-        MATCH m, m2;
-        Objects dedargs;
-        FuncDeclaration *fd = NULL;
+        for (size_t ov_index = 0; f; f = f->overnext0, ov_index++)
+        {
+            Objects dedargs;
+            FuncDeclaration *fd = NULL;
+            int x = td->deduceFunctionTemplateMatch(f, loc, sc, tiargs, tthis, fargs, &dedargs);
+            MATCH mta = (MATCH)(x >> 4);
+            MATCH mfa = (MATCH)(x & 0xF);
+            //printf("match:t/f = %d/%d\n", mta, mfa);
+            if (!mfa)               // if no match
+                continue;
 
-        m = td->deduceFunctionTemplateMatch(loc, sc, tiargs, tthis, fargs, &dedargs);
-        m2 = (MATCH)(m >> 4);
-        m = (MATCH)(m & 0xF);
-        //printf("deduceFunctionTemplateMatch = %d, m2 = %d\n", m, m2);
-        if (!m)                 // if no match
+            Type *tthis_fd = NULL;
+            if (f->isCtorDeclaration())
+            {
+                // Constructor call requires additional check.
+                // For that, do instantiate in early stage.
+                fd = td->doHeaderInstantiation(sc, &dedargs, tthis, fargs);
+                if (!fd)
+                    goto Lerror;
+
+                TypeFunction *tf = (TypeFunction *)fd->type;
+                tthis_fd = fd->needThis() ? tthis : NULL;
+                if (tthis_fd)
+                {
+                    assert(tf->next);
+                    if (MODimplicitConv(tf->mod, tthis_fd->mod) ||
+                        tf->isWild() && tf->isShared() == tthis_fd->isShared() ||
+                        fd->isolateReturn())
+                    {
+                        tthis_fd = NULL;
+                    }
+                    else
+                        continue;   // MATCHnomatch
+                }
+            }
+
+            if (mta < ta_last) goto Ltd_best;
+            if (mta > ta_last) goto Ltd;
+
+            if (mfa < m->last) goto Ltd_best;
+            if (mfa > m->last) goto Ltd;
+
+            if (td_best)
+            {
+                // Disambiguate by picking the most specialized TemplateDeclaration
+                MATCH c1 = td->leastAsSpecialized(td_best, fargs);
+                MATCH c2 = td_best->leastAsSpecialized(td, fargs);
+                //printf("1: c1 = %d, c2 = %d\n", c1, c2);
+                if (c1 > c2) goto Ltd;
+                if (c1 < c2) goto Ltd_best;
+            }
+
+            if (!m->lastf)
+            {
+                m->lastf = td_best->doHeaderInstantiation(sc, tdargs, tthis, fargs);
+                if (!m->lastf) goto Lerror;
+                tthis_best = m->lastf->needThis() ? tthis : NULL;
+            }
+            if (!fd)
+            {
+                fd = td->doHeaderInstantiation(sc, &dedargs, tthis, fargs);
+                if (!fd) goto Lerror;
+                tthis_fd = fd->needThis() ? tthis : NULL;
+            }
+            assert(fd && m->lastf);
+
+            {
+                // Disambiguate by tf->callMatch
+                TypeFunction *tf1 = (TypeFunction *)fd->type;
+                TypeFunction *tf2 = (TypeFunction *)m->lastf->type;
+                MATCH c1 = tf1->callMatch(tthis_fd,   fargs);
+                MATCH c2 = tf2->callMatch(tthis_best, fargs);
+                //printf("2: c1 = %d, c2 = %d\n", c1, c2);
+                if (c1 > c2) goto Ltd;
+                if (c1 < c2) goto Ltd_best;
+            }
+            {
+                // Disambiguate by picking the most specialized FunctionDeclaration
+                MATCH c1 = fd->leastAsSpecialized(m->lastf);
+                MATCH c2 = m->lastf->leastAsSpecialized(fd);
+                //printf("3: c1 = %d, c2 = %d\n", c1, c2);
+                if (c1 > c2) goto Ltd;
+                if (c1 < c2) goto Ltd_best;
+            }
+
+          Lambig:           // td_best and td are ambiguous
+            //printf("Lambig\n");
+            td_ambig = td;
+            m->nextf = fd;  // Caution! m->nextf isn't complete instantiated fd, so must not call toPrettyChars()
+            m->count++;
             continue;
 
-        Type *tthis_fd = NULL;
-        if (td->onemember->toAlias()->isFuncDeclaration()->isCtorDeclaration())
-        {
-            // Constructor call requires additional check.
-            // For that, do instantiate in early stage.
-            fd = td->doHeaderInstantiation(sc, &dedargs, tthis, fargs);
-            if (!fd)
-                goto Lerror;
+          Ltd_best:         // td_best is the best match so far
+            td_ambig = NULL;
+            continue;
 
-            TypeFunction *tf = (TypeFunction *)fd->type;
-            tthis_fd = fd->needThis() ? tthis : NULL;
-            if (tthis_fd)
-            {
-                assert(tf->next);
-                if (MODimplicitConv(tf->mod, tthis_fd->mod) ||
-                    tf->isWild() && tf->isShared() == tthis_fd->isShared() ||
-                    fd->isolateReturn())
-                {
-                    tthis_fd = NULL;
-                }
-                else
-                    continue;   // MATCHnomatch
-            }
+          Ltd:              // td is the new best match
+            td_ambig = NULL;
+            assert(td->scope);
+            td_best = td;
+            ta_last = mta;
+            m->last = mfa;
+            m->lastf = fd;
+            tthis_best = tthis_fd;
+            overload_index = ov_index;
+            m->nextf = NULL;
+            m->count = 1;
+            tdargs->setDim(dedargs.dim);
+            memcpy(tdargs->tdata(), dedargs.tdata(), tdargs->dim * sizeof(void *));
+            continue;
         }
-
-        if (m2 < m_best2)
-            goto Ltd_best;
-        if (m2 > m_best2)
-            goto Ltd;
-
-        if (m < m_best)
-            goto Ltd_best;
-        if (m > m_best)
-            goto Ltd;
-
-        {
-        // Disambiguate by picking the most specialized TemplateDeclaration
-        MATCH c1 = td->leastAsSpecialized(td_best, fargs);
-        MATCH c2 = td_best->leastAsSpecialized(td, fargs);
-        //printf("1: c1 = %d, c2 = %d\n", c1, c2);
-
-        if (c1 > c2)
-            goto Ltd;
-        else if (c1 < c2)
-            goto Ltd_best;
-        }
-
-        if (!fd_best)
-        {
-            fd_best = td_best->doHeaderInstantiation(sc, tdargs, tthis, fargs);
-            if (!fd_best)
-                goto Lerror;
-            tthis_best = fd_best->needThis() ? tthis : NULL;
-        }
-        if (!fd)
-        {
-            fd = td->doHeaderInstantiation(sc, &dedargs, tthis, fargs);
-            if (!fd)
-                goto Lerror;
-            tthis_fd = fd->needThis() ? tthis : NULL;
-        }
-        assert(fd && fd_best);
-
-        {
-        // Disambiguate by tf->callMatch
-        TypeFunction *tf1 = (TypeFunction *)fd->type;
-        TypeFunction *tf2 = (TypeFunction *)fd_best->type;
-        MATCH c1 = tf1->callMatch(tthis_fd, fargs);
-        MATCH c2 = tf2->callMatch(tthis_best, fargs);
-        //printf("2: c1 = %d, c2 = %d\n", c1, c2);
-
-        if (c1 > c2)
-            goto Ltd;
-        if (c1 < c2)
-            goto Ltd_best;
-        }
-
-        {
-        // Disambiguate by picking the most specialized FunctionDeclaration
-        MATCH c1 = fd->leastAsSpecialized(fd_best);
-        MATCH c2 = fd_best->leastAsSpecialized(fd);
-        //printf("3: c1 = %d, c2 = %d\n", c1, c2);
-
-        if (c1 > c2)
-            goto Ltd;
-        if (c1 < c2)
-            goto Ltd_best;
-        }
-
-      Lambig:           // td_best and td are ambiguous
-        td_ambig = td;
-        continue;
-
-      Ltd_best:         // td_best is the best match so far
-        td_ambig = NULL;
-        continue;
-
-      Ltd:              // td is the new best match
-        td_ambig = NULL;
-        assert(td->scope);
-        td_best = td;
-        fd_best = fd;
-        tthis_best = tthis_fd;
-        m_best = m;
-        m_best2 = m2;
-        tdargs->setDim(dedargs.dim);
-        memcpy(tdargs->tdata(), dedargs.tdata(), tdargs->dim * sizeof(void *));
-        continue;
     }
+    //printf("td_best = %p, m->lastf = %p, match:t/f = %d/%d\n", td_best, m->lastf, mta, mfa);
     if (!td_best)
     {
-        if (!(flags & 1))
-        {
-            ::error(loc, "%s %s.%s does not match any function template declaration. Candidates are:",
-                    kind(), parent->toPrettyChars(), ident->toChars());
-
-            // Display candidate template functions
-            int numToDisplay = 5; // sensible number to display
-            for (TemplateDeclaration *td = this; td; td = td->overnext)
-            {
-                ::errorSupplemental(td->loc, "%s", td->toPrettyChars());
-                if (!global.params.verbose && --numToDisplay == 0)
-                {
-                    // Too many overloads to sensibly display.
-                    // Just show count of remaining overloads.
-                    int remaining = 0;
-                    for (; td; td = td->overnext)
-                        ++remaining;
-                    if (remaining > 0)
-                        ::errorSupplemental(loc, "... (%d more, -v to show) ...", remaining);
-                    break;
-                }
-            }
-        }
+        if (m->lastf) return;
         goto Lerror;
-    }
-    if (td_ambig)
-    {
-        ::error(loc, "%s %s.%s matches more than one template declaration, %s(%d):%s and %s(%d):%s",
-                kind(), parent->toPrettyChars(), ident->toChars(),
-                td_best->loc.filename,  td_best->loc.linnum,  td_best->toChars(),
-                td_ambig->loc.filename, td_ambig->loc.linnum, td_ambig->toChars());
     }
 
     if (!td_best->onemember || !td_best->onemember->toAlias()->isFuncDeclaration())
-        return fd_best;
+        return;
 
     /* The best match is td_best with arguments tdargs.
      * Now instantiate the template.
      */
     assert(td_best->scope);
+    TemplateInstance *ti;
     ti = new TemplateInstance(loc, td_best, tdargs);
     ti->semantic(sc, fargs);
-    fd_best = ti->toAlias()->isFuncDeclaration();
-    if (!fd_best)
-        goto Lerror;
-    if (!((TypeFunction*)fd_best->type)->callMatch(fd_best->needThis() && !fd_best->isCtorDeclaration() ? tthis : NULL, fargs))
+    m->lastf = ti->toAlias()->isFuncDeclaration();
+    if (!m->lastf)
         goto Lerror;
 
-    if (FuncLiteralDeclaration *fld = fd_best->isFuncLiteralDeclaration())
+    // look forward instantiated overload function
+    // Dsymbol::oneMembers is alredy called in TemplateInstance::semantic.
+    // it has filled overnext0d
+    while (overload_index--)
+    {
+        m->lastf = m->lastf->overnext0;
+        assert(m->lastf);
+    }
+
+    if (!((TypeFunction*)m->lastf->type)->callMatch(m->lastf->needThis() && !m->lastf->isCtorDeclaration() ? tthis : NULL, fargs))
+        goto Lerror;
+
+    if (FuncLiteralDeclaration *fld = m->lastf->isFuncLiteralDeclaration())
     {
         // Inside template constraint, nested reference check doesn't work correctly.
         if (!(sc->flags & SCOPEstaticif) && fld->tok == TOKreserved)
@@ -2413,49 +2415,20 @@ FuncDeclaration *TemplateDeclaration::deduceFunctionTemplate(Loc loc, Scope *sc,
      * Bugzilla 9208: For auto function, completion should be deferred to the end of
      * its semantic3. Should not complete it in here.
      */
-    {   TypeFunction *tf = (TypeFunction *)fd_best->type;
+    {   TypeFunction *tf = (TypeFunction *)m->lastf->type;
         assert(tf->ty == Tfunction);
-        if (tf->next && !fd_best->inferRetType)
+        if (tf->next && !m->lastf->inferRetType)
         {
-            fd_best->type = tf->semantic(loc, sc);
+            m->lastf->type = tf->semantic(loc, sc);
         }
     }
-
-    if (!(flags & 1))
-        fd_best->functionSemantic();
-
-    return fd_best;
+    return;
 
   Lerror:
-#if DMDV2
-    if (!(flags & 1))
-#endif
-    {
-        HdrGenState hgs;
-
-        OutBuffer bufa;
-        Objects *args = tiargs;
-        if (args)
-        {   for (size_t i = 0; i < args->dim; i++)
-            {
-                if (i)
-                    bufa.writestring(", ");
-                RootObject *oarg = (*args)[i];
-                ObjectToCBuffer(&bufa, &hgs, oarg);
-            }
-        }
-
-        OutBuffer buf;
-        argExpTypesToCBuffer(&buf, fargs, &hgs);
-        if (this->overnext)
-            ::error(this->loc, "%s %s.%s cannot deduce template function from argument types !(%s)(%s)",
-                    kind(), parent->toPrettyChars(), ident->toChars(),
-                    bufa.toChars(), buf.toChars());
-        else
-            error(loc, "cannot deduce template function from argument types !(%s)(%s)",
-                  bufa.toChars(), buf.toChars());
-    }
-    return NULL;
+    m->lastf = NULL;
+    m->count = 0;
+    m->last = MATCHnomatch;
+    return;
 }
 
 /*************************************************
@@ -2800,10 +2773,7 @@ size_t templateParameterLookup(Type *tparam, TemplateParameters *parameters)
     {
         TypeIdentifier *tident = (TypeIdentifier *)tparam;
         //printf("\ttident = '%s'\n", tident->toChars());
-        if (tident->idents.dim == 0)
-        {
-            return templateIdentifierLookup(tident->ident, parameters);
-        }
+        return templateIdentifierLookup(tident->ident, parameters);
     }
     return IDX_NOTFOUND;
 }
@@ -2864,6 +2834,63 @@ MATCH Type::deduceType(Scope *sc, Type *tparam, TemplateParameters *parameters,
         }
 
         TemplateParameter *tp = (*parameters)[i];
+
+        TypeIdentifier *tident = (TypeIdentifier *)tparam;
+        if (tident->idents.dim > 0)
+        {
+            //printf("matching %s to %s\n", tparam->toChars(), toChars());
+            Dsymbol *s = this->toDsymbol(sc);
+            for (size_t j = tident->idents.dim; j-- > 0; )
+            {
+                RootObject *id = tident->idents[j];
+                if (id->dyncast() == DYNCAST_IDENTIFIER)
+                {
+                    if (!s || !s->parent)
+                        goto Lnomatch;
+                    Dsymbol *s2 = s->parent->searchX(Loc(), sc, id);
+                    if (!s2)
+                        goto Lnomatch;
+                    s2 = s2->toAlias();
+                    //printf("[%d] s = %s %s, s2 = %s %s\n", j, s->kind(), s->toChars(), s2->kind(), s2->toChars());
+                    if (s != s2)
+                    {
+                        if (Type *t = s2->getType())
+                        {
+                            if (s != t->toDsymbol(sc))
+                                goto Lnomatch;
+                        }
+                        else
+                            goto Lnomatch;
+                    }
+                    s = s->parent;
+                }
+                else
+                    goto Lnomatch;
+            }
+            //printf("[e] s = %s\n", s?s->toChars():"(null)");
+            if (TemplateTypeParameter *ttp = tp->isTemplateTypeParameter())
+            {
+                Type *tt = s->getType();
+                if (!tt)
+                    goto Lnomatch;
+                Type *at = (Type *)(*dedtypes)[i];
+                if (!at || tt->equals(at))
+                {
+                    (*dedtypes)[i] = tt;
+                    goto Lexact;
+                }
+            }
+            if (TemplateAliasParameter *tap = tp->isTemplateAliasParameter())
+            {
+                Dsymbol *s2 = (Dsymbol *)(*dedtypes)[i];
+                if (!s2 || s == s2)
+                {
+                    (*dedtypes)[i] = s;
+                    goto Lexact;
+                }
+            }
+            goto Lnomatch;
+        }
 
         // Found the corresponding parameter tp
         if (!tp->isTemplateTypeParameter())
@@ -5897,7 +5924,14 @@ bool TemplateInstance::findTemplateDeclaration(Scope *sc)
 
         /* It should be a TemplateDeclaration, not some other symbol
          */
-        tempdecl = s->isTemplateDeclaration();
+        if (FuncDeclaration *f = s->isFuncDeclaration())
+        {
+            tempdecl = f->findTemplateDeclRoot();
+        }
+        else
+        {
+            tempdecl = s->isTemplateDeclaration();
+        }
         if (!tempdecl)
         {
             if (!s->parent && global.errors)
@@ -5917,8 +5951,8 @@ bool TemplateInstance::findTemplateDeclaration(Scope *sc)
             //assert(s->parent);
             TemplateInstance *ti = s->parent ? s->parent->isTemplateInstance() : NULL;
             if (ti &&
-                (ti->name == id ||
-                 ti->toAlias()->ident == id)
+                (ti->name == s->ident ||
+                 ti->toAlias()->ident == s->ident)
                 &&
                 ti->tempdecl)
             {
@@ -6781,7 +6815,7 @@ hash_t TemplateInstance::hashCode()
 {
     if (!hash)
     {
-        hash = (size_t)enclosing;
+        hash = (size_t)(void *)enclosing;
         hash += arrayObjectHash(&tdtypes);
     }
     return hash;

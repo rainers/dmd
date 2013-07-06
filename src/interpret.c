@@ -1377,13 +1377,19 @@ Expression *BreakStatement::interpret(InterState *istate)
 #endif
     START()
     if (ident)
-    {   LabelDsymbol *label = istate->fd->searchLabel(ident);
+    {
+        LabelDsymbol *label = istate->fd->searchLabel(ident);
         assert(label && label->statement);
-        Statement *s = label->statement;
-        if (s->isLabelStatement())
-            s = s->isLabelStatement()->statement;
-        if (s->isScopeStatement())
-            s = s->isScopeStatement()->statement;
+        LabelStatement *ls = label->statement;
+        Statement *s;
+        if (ls->gotoTarget)
+            s = ls->gotoTarget;
+        else
+        {
+            s = ls->statement;
+            if (s->isScopeStatement())
+                s = s->isScopeStatement()->statement;
+        }
         istate->gotoTarget = s;
         return EXP_BREAK_INTERPRET;
     }
@@ -1401,13 +1407,19 @@ Expression *ContinueStatement::interpret(InterState *istate)
 #endif
     START()
     if (ident)
-    {   LabelDsymbol *label = istate->fd->searchLabel(ident);
+    {
+        LabelDsymbol *label = istate->fd->searchLabel(ident);
         assert(label && label->statement);
-        Statement *s = label->statement;
-        if (s->isLabelStatement())
-            s = s->isLabelStatement()->statement;
-        if (s->isScopeStatement())
-            s = s->isScopeStatement()->statement;
+        LabelStatement *ls = label->statement;
+        Statement *s;
+        if (ls->gotoTarget)
+            s = ls->gotoTarget;
+        else
+        {
+            s = ls->statement;
+            if (s->isScopeStatement())
+                s = s->isScopeStatement()->statement;
+        }
         istate->gotoTarget = s;
         return EXP_CONTINUE_INTERPRET;
     }
@@ -2404,9 +2416,7 @@ Expression *TupleExp::interpret(InterState *istate, CtfeGoal goal)
 
         ex = e->interpret(istate);
         if (exceptionOrCantInterpret(ex))
-        {   delete expsx;
             return ex;
-        }
 
         // A tuple of assignments can contain void (Bug 5676).
         if (goal == ctfeNeedNothing)
@@ -2459,9 +2469,7 @@ Expression *ArrayLiteralExp::interpret(InterState *istate, CtfeGoal goal)
             if (e->op == TOKindex)  // segfault bug 6250
                 assert( ((IndexExp*)e)->e1 != this);
             ex = e->interpret(istate);
-            if (ex == EXP_CANT_INTERPRET)
-                goto Lerror;
-            if (ex->op == TOKthrownexception)
+            if (exceptionOrCantInterpret(ex))
                 return ex;
 
             /* If any changes, do Copy On Write
@@ -2485,7 +2493,10 @@ Expression *ArrayLiteralExp::interpret(InterState *istate, CtfeGoal goal)
     {
         expandTuples(expsx);
         if (expsx->dim != elements->dim)
-            goto Lerror;
+        {
+            error("Internal Compiler Error: Invalid array literal");
+            return EXP_CANT_INTERPRET;
+        }
         ArrayLiteralExp *ae = new ArrayLiteralExp(loc, expsx);
         ae->type = type;
         return copyLiteral(ae);
@@ -2497,12 +2508,6 @@ Expression *ArrayLiteralExp::interpret(InterState *istate, CtfeGoal goal)
     }
 #endif
     return copyLiteral(this);
-
-Lerror:
-    if (expsx)
-        delete expsx;
-    error("cannot interpret array literal");
-    return EXP_CANT_INTERPRET;
 }
 
 Expression *AssocArrayLiteralExp::interpret(InterState *istate, CtfeGoal goal)
@@ -2521,11 +2526,8 @@ Expression *AssocArrayLiteralExp::interpret(InterState *istate, CtfeGoal goal)
         Expression *ex;
 
         ex = ekey->interpret(istate);
-        if (ex == EXP_CANT_INTERPRET)
-            goto Lerr;
-        if (ex->op == TOKthrownexception)
+        if (exceptionOrCantInterpret(ex))
             return ex;
-
 
         /* If any changes, do Copy On Write
          */
@@ -2537,9 +2539,7 @@ Expression *AssocArrayLiteralExp::interpret(InterState *istate, CtfeGoal goal)
         }
 
         ex = evalue->interpret(istate);
-        if (ex == EXP_CANT_INTERPRET)
-            goto Lerr;
-        if (ex->op == TOKthrownexception)
+        if (exceptionOrCantInterpret(ex))
             return ex;
 
         /* If any changes, do Copy On Write
@@ -2556,7 +2556,10 @@ Expression *AssocArrayLiteralExp::interpret(InterState *istate, CtfeGoal goal)
     if (valuesx != values)
         expandTuples(valuesx);
     if (keysx->dim != valuesx->dim)
-        goto Lerr;
+    {
+        error("Internal Compiler Error: invalid AA");
+        return EXP_CANT_INTERPRET;
+    }
 
     /* Remove duplicate keys
      */
@@ -2591,13 +2594,6 @@ Expression *AssocArrayLiteralExp::interpret(InterState *istate, CtfeGoal goal)
         return ae;
     }
     return this;
-
-Lerr:
-    if (keysx != keys)
-        delete keysx;
-    if (valuesx != values)
-        delete values;
-    return EXP_CANT_INTERPRET;
 }
 
 Expression *StructLiteralExp::interpret(InterState *istate, CtfeGoal goal)
@@ -2609,41 +2605,56 @@ Expression *StructLiteralExp::interpret(InterState *istate, CtfeGoal goal)
     if (ownedByCtfe)
         return copyLiteral(this);
 
-    if (elements)
-    {
-        for (size_t i = 0; i < elements->dim; i++)
-        {   Expression *e = (*elements)[i];
+    size_t elemdim = elements ? elements->dim : 0;
+
+    for (size_t i = 0; i < sd->fields.dim; i++)
+    {   Expression *e = NULL;
+        Expression *ex = NULL;
+        if (i >= elemdim)
+        {
+            /* If a nested struct has no initialized hidden pointer,
+             * set it to null to match the runtime behaviour.
+             */
+            if (i == sd->fields.dim - 1 && sd->isNested())
+            {   // Context field has not been filled
+                ex = new NullExp(loc);
+                ex->type = sd->fields[i]->type;
+            }
+        }
+        else
+        {
+            e = (*elements)[i];
             if (!e)
                 continue;
 
-            Expression *ex = e->interpret(istate);
+            ex = e->interpret(istate);
             if (exceptionOrCantInterpret(ex))
-            {   delete expsx;
                 return ex;
-            }
+        }
 
-            /* If any changes, do Copy On Write
-             */
-            if (ex != e)
-            {
-                if (!expsx)
-                {   expsx = new Expressions();
-                    ++CtfeStatus::numArrayAllocs;
-                    expsx->setDim(elements->dim);
-                    for (size_t j = 0; j < elements->dim; j++)
-                    {
-                        (*expsx)[j] = (*elements)[j];
-                    }
+        /* If any changes, do Copy On Write
+         */
+        if (ex != e)
+        {
+            if (!expsx)
+            {   expsx = new Expressions();
+                ++CtfeStatus::numArrayAllocs;
+                expsx->setDim(sd->fields.dim);
+                for (size_t j = 0; j < elements->dim; j++)
+                {
+                    (*expsx)[j] = (*elements)[j];
                 }
-                (*expsx)[i] = ex;
             }
+            (*expsx)[i] = ex;
         }
     }
+
     if (elements && expsx)
     {
         expandTuples(expsx);
-        if (expsx->dim != elements->dim)
-        {   delete expsx;
+        if (expsx->dim != sd->fields.dim)
+        {
+            error("Internal Compiler Error: invalid struct literal");
             return EXP_CANT_INTERPRET;
         }
         StructLiteralExp *se = new StructLiteralExp(loc, sd, expsx);
@@ -2847,13 +2858,19 @@ Expression *BinExp::interpretCommon(InterState *istate, CtfeGoal goal, fp_t fp)
     if (exceptionOrCantInterpret(e1))
         return e1;
     if (e1->isConst() != 1)
-        goto Lcant;
+    {
+        error("Internal Compiler Error: non-constant value %s", this->e1->toChars());
+        return EXP_CANT_INTERPRET;
+    }
 
     e2 = this->e2->interpret(istate);
     if (exceptionOrCantInterpret(e2))
         return e2;
     if (e2->isConst() != 1)
-        goto Lcant;
+    {
+        error("Internal Compiler Error: non-constant value %s", this->e2->toChars());
+        return EXP_CANT_INTERPRET;
+    }
 
     if (op == TOKshr || op == TOKshl || op == TOKushr)
     {
@@ -2868,9 +2885,6 @@ Expression *BinExp::interpretCommon(InterState *istate, CtfeGoal goal, fp_t fp)
     if (e == EXP_CANT_INTERPRET)
         error("%s cannot be interpreted at compile time", toChars());
     return e;
-
-Lcant:
-    return EXP_CANT_INTERPRET;
 }
 
 typedef int (*fp2_t)(Loc loc, TOK, Expression *, Expression *);
@@ -3040,9 +3054,9 @@ Expression *BinExp::interpretAssignCommon(InterState *istate, CtfeGoal goal, fp_
         {
             desttype = ((TypeArray *)desttype)->next;
 #if DMDV2
-            if (srctype == desttype->castMod(0))
+            if (srctype->equals(desttype->castMod(0)))
 #else
-            if (srctype == desttype)
+            if (srctype->equals(desttype))
 #endif
             {
                 isBlockAssignment = true;
@@ -3062,7 +3076,7 @@ Expression *BinExp::interpretAssignCommon(InterState *istate, CtfeGoal goal, fp_
     bool wantRef = false;
     bool wantLvalueRef = false;
 
-    if (!fp && this->e1->type->toBasetype() == this->e2->type->toBasetype() &&
+    if (!fp && this->e1->type->toBasetype()->equals(this->e2->type->toBasetype()) &&
         (e1->type->toBasetype()->ty == Tarray || isAssocArray(e1->type)
              || e1->type->toBasetype()->ty == Tclass)
          //  e = *x is never a reference, because *x is always a value
@@ -4087,10 +4101,10 @@ Expression *interpretAssignToSlice(InterState *istate, CtfeGoal goal, Loc loc,
                 existingAE->type->ty == Tarray);
 #if DMDV2
         Type *desttype = ((TypeArray *)existingAE->type)->next->castMod(0);
-        bool directblk = (e2->type->toBasetype()->castMod(0)) == desttype;
+        bool directblk = (e2->type->toBasetype()->castMod(0))->equals(desttype);
 #else
         Type *desttype = ((TypeArray *)existingAE->type)->next;
-        bool directblk = (e2->type->toBasetype()) == desttype;
+        bool directblk = (e2->type->toBasetype())->equals(desttype);
 #endif
         bool cow = !(newval->op == TOKstructliteral || newval->op == TOKarrayliteral
             || newval->op == TOKstring);
@@ -5266,7 +5280,7 @@ Expression *CastExp::interpret(InterState *istate, CtfeGoal goal)
             e->type = type;
             return e;
         }
-        if (e1->op == TOKindex && ((IndexExp *)e1)->e1->type != e1->type)
+        if (e1->op == TOKindex && !((IndexExp *)e1)->e1->type->equals(e1->type))
         {   // type painting operation
             IndexExp *ie = (IndexExp *)e1;
             e = new IndexExp(e1->loc, ie->e1, ie->e2);
@@ -5321,7 +5335,7 @@ Expression *CastExp::interpret(InterState *istate, CtfeGoal goal)
             if (e1->op == TOKvar)
                 e = new VarExp(loc, ((VarExp *)e1)->var);
             else
-                e = new SymOffExp(loc, ((SymOffExp *)e1)->var, 0);
+                e = new SymOffExp(loc, ((SymOffExp *)e1)->var, ((SymOffExp *)e1)->offset);
             e->type = to;
             return e;
         }
@@ -5405,17 +5419,14 @@ Expression *AssertExp::interpret(InterState *istate, CtfeGoal goal)
         }
         else
             error("%s failed", toChars());
-        goto Lcant;
+        return EXP_CANT_INTERPRET;
     }
     else
     {
         error("%s is not a compile-time boolean expression", e1->toChars());
-        goto Lcant;
+        return EXP_CANT_INTERPRET;
     }
     return e1;
-
-Lcant:
-    return EXP_CANT_INTERPRET;
 }
 
 Expression *PtrExp::interpret(InterState *istate, CtfeGoal goal)
@@ -5662,7 +5673,7 @@ Expression *DotVarExp::interpret(InterState *istate, CtfeGoal goal)
                  * CastExp.
                  */
                 if (goal == ctfeNeedLvalue && e->op == TOKindex &&
-                    e->type == type &&
+                    e->type->equals(type) &&
                     isPointer(type) )
                     return e;
                 // ...Otherwise, just return the (simplified) dotvar expression

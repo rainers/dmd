@@ -64,6 +64,7 @@ public:
 
     TemplateDeclaration *overnext;      // next overloaded TemplateDeclaration
     TemplateDeclaration *overroot;      // first in overnext list
+    FuncDeclaration *funcroot;          // first function in unified overload list
 
     PASS semanticRun;              // 1 semantic() run
 
@@ -99,8 +100,7 @@ public:
     MATCH matchWithInstance(TemplateInstance *ti, Objects *atypes, Expressions *fargs, int flag);
     MATCH leastAsSpecialized(TemplateDeclaration *td2, Expressions *fargs);
 
-    MATCH deduceFunctionTemplateMatch(Loc loc, Scope *sc, Objects *tiargs, Type *tthis, Expressions *fargs, Objects *dedargs);
-    FuncDeclaration *deduceFunctionTemplate(Loc loc, Scope *sc, Objects *tiargs, Type *tthis, Expressions *fargs, int flags = 0);
+    MATCH deduceFunctionTemplateMatch(FuncDeclaration *f, Loc loc, Scope *sc, Objects *tiargs, Type *tthis, Expressions *fargs, Objects *dedargs);
     RootObject *declareParameter(Scope *sc, TemplateParameter *tp, RootObject *o);
     FuncDeclaration *doHeaderInstantiation(Scope *sc, Objects *tdargs, Type *tthis, Expressions *fargs);
     TemplateInstance *findExistingInstance(TemplateInstance *tithis, Expressions *fargs);

@@ -2652,6 +2652,23 @@ void test6169() pure @safe
 }
 
 /***************************************************/
+// 10506
+
+void impureFunc10506() {}
+string join10506(RoR)(RoR ror)
+{
+    impureFunc10506();
+    return ror[0] ~ ror[1];
+}
+
+void test10506() pure
+{
+    void foobar() {}
+
+    mixin(["foo", "bar"].join10506()~";");
+}
+
+/***************************************************/
 
 const shared class C5107
 {
@@ -6397,6 +6414,34 @@ const c10390 = new C10390();
 pragma(msg, c10390);
 
 /***************************************************/
+// 10542
+
+class B10542
+{
+    this() nothrow pure @safe { }
+}
+
+class D10542 : B10542
+{
+}
+
+void test10542() nothrow pure @safe
+{
+    new D10542;
+}
+
+/***************************************************/
+// 10539
+
+void test10539()
+{
+    int[2][2] a;
+    int* p1 = a.ptr.ptr;    // OK <- error
+    int* p2 = (*a.ptr).ptr; // OK
+    assert(p1 is p2);
+}
+
+/***************************************************/
 
 int main()
 {
@@ -6665,6 +6710,8 @@ int main()
     test9883();
     test10091();
     test9130();
+    test10542();
+    test10539();
 
     printf("Success\n");
     return 0;
