@@ -335,7 +335,7 @@ hash_t arrayObjectHash(Objects *oa1)
                 FuncAliasDeclaration *fa1 = s1->isFuncAliasDeclaration();
                 if (fa1)
                     s1 = fa1->toAliasFunc();
-                hash += (size_t)(void *)s1->ident + (size_t)(void *)s1->parent;
+                hash += (size_t)(void *)s1->getIdent() + (size_t)(void *)s1->parent;
             }
             else if (Tuple *u1 = isTuple(o1))
                 hash += arrayObjectHash(&u1->objects);
@@ -933,8 +933,10 @@ MATCH TemplateDeclaration::matchWithInstance(TemplateInstance *ti,
             fd->vthis = fd->declareThis(paramscope, ad);
         }
 
-        e = e->ctfeSemantic(sc);
+        sc = sc->startCTFE();
+        e = e->semantic(sc);
         e = resolveProperties(sc, e);
+        sc = sc->endCTFE();
         if (e->op == TOKerror)
             goto Lnomatch;
 
@@ -1377,6 +1379,8 @@ MATCH TemplateDeclaration::deduceFunctionTemplateMatch(FuncDeclaration *f, Loc l
                     }
                 }
 
+                if (nfargs - argi < rem)
+                    goto Lnomatch;
                 tuple_dim = nfargs - argi - rem;
                 t->objects.setDim(tuple_dim);
                 for (size_t i = 0; i < tuple_dim; i++)
@@ -1633,20 +1637,21 @@ Lretry:
                                            ((TypeIdentifier *)taai)->idents.dim == 0))
             {
                 if (farg->op == TOKstring)
-                {   StringExp *se = (StringExp *)farg;
-                    argtype = new TypeSArray(argtype->nextOf(), new IntegerExp(se->loc, se->len, Type::tindex));
-                    argtype = argtype->semantic(se->loc, NULL);
+                {
+                    StringExp *se = (StringExp *)farg;
+                    argtype = TypeSArray::makeType(se->loc, argtype->nextOf(), se->len);
                 }
                 else if (farg->op == TOKslice)
-                {   SliceExp *se = (SliceExp *)farg;
+                {
+                    SliceExp *se = (SliceExp *)farg;
                     Type *tsa = se->toStaticArrayType();
                     if (tsa)
                         argtype = tsa;
                 }
                 else if (farg->op == TOKarrayliteral)
-                {   ArrayLiteralExp *ae = (ArrayLiteralExp *)farg;
-                    argtype = new TypeSArray(argtype->nextOf(), new IntegerExp(ae->loc, ae->elements->dim, Type::tindex));
-                    argtype = argtype->semantic(ae->loc, NULL);
+                {
+                    ArrayLiteralExp *ae = (ArrayLiteralExp *)farg;
+                    argtype = TypeSArray::makeType(ae->loc, argtype->nextOf(), ae->elements->dim);
                 }
             }
 
@@ -2004,8 +2009,10 @@ Lmatch:
             fd->vthis = fd->declareThis(paramscope, ad);
         }
 
-        e = e->ctfeSemantic(paramscope);
-        e = resolveProperties(sc, e);
+        Scope *scx = paramscope->startCTFE();
+        e = e->semantic(scx);
+        e = resolveProperties(scx, e);
+        scx->endCTFE();
 
         if (fd && fd->vthis)
             fd->vthis = vthissave;
@@ -2221,7 +2228,7 @@ void templateResolve(Match *m, TemplateDeclaration *tdstart, Loc loc, Scope *sc,
             dedtypes.setDim(td->parameters->dim);
             assert(td->semanticRun);
             MATCH mta = td->matchWithInstance(ti, &dedtypes, fargs, 0);
-            //printf("matchWithInstance = %d\n", m2);
+            //printf("matchWithInstance = %d\n", mta);
             if (!mta || mta < ta_last)      // no match or less match
                 continue;
 
@@ -3149,7 +3156,12 @@ MATCH Type::deduceType(Scope *sc, Type *tparam, TemplateParameters *parameters,
     }
 
     if (nextOf())
+    {
+        if (tparam->deco)
+            return implicitConvTo(tparam);
+
         return nextOf()->deduceType(sc, tparam->nextOf(), parameters, dedtypes, wildmatch);
+    }
 
 Lexact:
     return MATCHexact;
@@ -4239,7 +4251,9 @@ RootObject *aliasParameterSemantic(Loc loc, Scope *sc, RootObject *o, TemplatePa
         }
         else if (ea)
         {
-            ea = ea->ctfeSemantic(sc);
+            sc = sc->startCTFE();
+            ea = ea->semantic(sc);
+            sc = sc->endCTFE();
             o = ea->ctfeInterpret();
         }
     }
@@ -4565,9 +4579,11 @@ void TemplateValueParameter::semantic(Scope *sc, TemplateParameters *parameters)
 
 #if 0   // defer semantic analysis to arg match
     if (specValue)
-    {   Expression *e = specValue;
-
-        e = e->ctfeSemantic(sc);
+    {
+        Expression *e = specValue;
+        sc = sc->startCTFE();
+        e = e->semantic(sc);
+        sc = sc->endCTFE();
         e = e->implicitCastTo(sc, valType);
         e = e->ctfeInterpret();
         if (e->op == TOKint64 || e->op == TOKfloat64 ||
@@ -4577,9 +4593,11 @@ void TemplateValueParameter::semantic(Scope *sc, TemplateParameters *parameters)
     }
 
     if (defaultValue)
-    {   Expression *e = defaultValue;
-
-        e = e->ctfeSemantic(sc);
+    {
+        Expression *e = defaultValue;
+        sc = sc->startCTFE();
+        e = e->semantic(sc);
+        sc = sc->endCTFE();
         e = e->implicitCastTo(sc, valType);
         e = e->ctfeInterpret();
         if (e->op == TOKint64)
@@ -4701,13 +4719,17 @@ MATCH TemplateValueParameter::matchArg(Scope *sc, RootObject *oarg,
 
         Expression *e = specValue;
 
-        e = e->ctfeSemantic(sc);
+        sc = sc->startCTFE();
+        e = e->semantic(sc);
         e = resolveProperties(sc, e);
+        sc = sc->endCTFE();
         e = e->implicitCastTo(sc, vt);
         e = e->ctfeInterpret();
 
         ei = ei->syntaxCopy();
-        ei = ei->ctfeSemantic(sc);
+        sc = sc->startCTFE();
+        ei = ei->semantic(sc);
+        sc = sc->endCTFE();
         ei = ei->implicitCastTo(sc, vt);
         ei = ei->ctfeInterpret();
         //printf("\tei: %s, %s\n", ei->toChars(), ei->type->toChars());
@@ -5682,16 +5704,15 @@ void TemplateInstance::semanticTiargs(Loc loc, Scope *sc, Objects *tiargs, int f
                 j--;
                 continue;
             }
-            (*tiargs)[j] = ta;
+            (*tiargs)[j] = ta->merge2();
         }
         else if (ea)
         {
         Lexpr:
             //printf("+[%d] ea = %s %s\n", j, Token::toChars(ea->op), ea->toChars());
-            if (flags & 1)
-                ea = ea->semantic(sc);
-            else
-                ea = ea->ctfeSemantic(sc);
+            if (!(flags & 1)) sc = sc->startCTFE();
+            ea = ea->semantic(sc);
+            if (!(flags & 1)) sc = sc->endCTFE();
             if (flags & 1) // only used by __traits, must not interpret the args
             {
                 VarDeclaration *v;
@@ -6183,9 +6204,17 @@ int TemplateInstance::hasNestedArgs(Objects *args)
           Lsa:
             sa = sa->toAlias();
             TemplateDeclaration *td = sa->isTemplateDeclaration();
+            if (td)
+            {
+                TemplateInstance *ti = sa->toParent()->isTemplateInstance();
+                if (ti && ti->enclosing)
+                    sa = ti;
+            }
+            TemplateInstance *ti = sa->isTemplateInstance();
             AggregateDeclaration *ad = sa->isAggregateDeclaration();
             Declaration *d = sa->isDeclaration();
             if ((td && td->literal) ||
+                (ti && ti->enclosing) ||
 #if FIXBUG8863
                 (ad && ad->isNested()) ||
 #endif

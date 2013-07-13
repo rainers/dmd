@@ -331,6 +331,85 @@ static assert(!is(typeof(compiles!(rshr10252(80)))));
 static assert(is(typeof(compiles!(ushr10252(2)))));
 static assert(!is(typeof(compiles!(ushr10252(60)))));
 
+/**************************************************
+  1982 CTFE null problems
+**************************************************/
+
+enum a1982 = [1, 2, 3];
+static assert (a1982 !is null);
+
+string foo1982() { return null; }
+static assert (foo1982() is null);
+static assert (!foo1982().length);
+
+static assert (null is null);
+
+/**************************************************
+  7988 CTFE return values should be allowed in compile-time expressions
+**************************************************/
+
+class X7988 { int y; this() { y = 2; }}
+static assert( (new X7988).y == 2);
+
+/**************************************************
+  8253 ICE: calling of member function of non-CTFE class variable
+**************************************************/
+
+class Bug8253 {
+    bool j(){
+        return true;
+    }
+}
+Bug8253 m8253;
+static assert(!is(typeof(compiles!(m8253.j()))));
+
+/**************************************************
+  8285 Issue with slice returned from CTFE function
+**************************************************/
+
+string foo8285() {
+     string s = "ab";
+     return s[0 .. $];
+}
+
+template T8285b(string s) { }
+
+template T8285a() {
+     enum s = foo8285();
+     alias T8285b!(s) t2;
+}
+
+int bar8285() {
+     alias T8285a!() t1;
+     return 0;
+}
+
+int baz8285(int x) {
+     return 0;
+}
+
+static assert(baz8285(bar8285()) == 0);
+
+// test case 2
+
+string xbar8285() {
+    string s = "ab";
+    return s[0..$];
+}
+
+template xT8285a() {
+    enum xT8285a = xbar8285()[0..$];
+}
+
+string xbaz8285() {
+    return xT8285a!();
+}
+
+string xfoo8285(string s) {
+    return s;
+}
+
+static assert(xfoo8285(xbaz8285()) == "ab");
 
 /**************************************************
   'this' parameter bug revealed during refactoring
@@ -3529,6 +3608,21 @@ int bug10211()
 static assert(bug10211());
 
 /**************************************************
+    10568 CTFE rejects function pointer safety casts
+**************************************************/
+
+@safe void safetyDance() {}
+
+int isItSafeToDance()
+{
+    void function() @trusted yourfriends = &safetyDance;
+    void function() @safe nofriendsOfMine = yourfriends;
+    return 1;
+}
+
+static assert(isItSafeToDance());
+
+/**************************************************
     9170 Allow reinterpret casts float<->int
 **************************************************/
 int f9170(float x) {
@@ -4475,6 +4569,15 @@ static assert({
 }());
 
 /**************************************************
+    10499 static template struct declaration
+**************************************************/
+
+static assert({
+    static struct Result() {}
+    return true;
+}());
+
+/**************************************************
     6522 opAssign + foreach ref
 **************************************************/
 
@@ -5303,6 +5406,18 @@ bool bug7987()
 
 static assert(bug7987());
 
+/**************************************************
+    10579 typeinfo.func() must not segfault
+**************************************************/
+
+static assert(!is(typeof(compiles!(typeid(int).toString.length))));
+
+class Bug10579 {
+    int foo() { return 1; }
+}
+Bug10579 uninitialized10579;
+
+static assert(!is(typeof(compiles!(uninitialized10579.foo()))));
 
 /******************************************************/
 
@@ -5362,8 +5477,6 @@ label:
     return true;
 }
 static assert(bug8865());
-
-
 
 /******************************************************/
 

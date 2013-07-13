@@ -1429,6 +1429,23 @@ STATIC elem * elbitwise(elem *e, goal_t goal)
                 return optelem(e,goal);
             }
         }
+
+        /* Replace:
+         *  (1 << a) & b
+         * with:
+         *  b btst a
+         */
+        if (e1->Eoper == OPshl &&
+            ELCONST(e1->E1,1))
+        {
+            e->Eoper = OPbtst;
+            e->Ety = OPbool;
+            e->E1 = e2;
+            e->E2 = e1->E2;
+            e1->E2 = NULL;
+            el_free(e1);
+            return optelem(e, goal);
+        }
     }
 
     return e;
@@ -2318,33 +2335,36 @@ L1:
 }
 
 /**********************************************
- * Try to rewrite sequence of || with faster operations, such as BT.
+ * Try to rewrite sequence of || and && with faster operations, such as BT.
  * Returns:
  *      false   nothing changed
  *      true    *pe is rewritten
  */
 
-STATIC bool optim_oror(elem **pe)
+STATIC bool optim_loglog(elem **pe)
 {
     if (I16)
         return false;
     elem *e = *pe;
-    size_t n = el_opN(e, OPoror);
+    int op = e->Eoper;
+    assert(op == OPandand || op == OPoror);
+    size_t n = el_opN(e, op);
     if (n <= 3)
         return false;
     unsigned ty = e->Ety;
     elem **array = (elem **)malloc(n * sizeof(elem *));
     assert(array);
     elem **p = array;
-    el_opArray(&p, e, OPoror);
+    el_opArray(&p, e, op);
 
     bool any = false;
     size_t first, last;
     targ_ullong emin, emax;
+    int cmpop = op == OPandand ? OPne : OPeqeq;
     for (size_t i = 0; i < n; ++i)
     {
         elem *eq = array[i];
-        if (eq->Eoper == OPeqeq &&
+        if (eq->Eoper == cmpop &&
             eq->E2->Eoper == OPconst &&
             tyintegral(eq->E2->Ety) &&
             !el_sideeffect(eq->E1))
@@ -2401,12 +2421,16 @@ STATIC bool optim_oror(elem **pe)
          *   (e - emin) <= (emax - emin) && (1 << (int)(e - emin)) & bits
          * where bits is:
          *   (1<<(c1-emin)) | (1<<(c2-emin)) | (1<<(c3-emin)) ...
+         *
+         * For the case of:
+         *  x!=c1 && x!=c2 && x!=c3 && ...
+         * using De Morgan's theorem, rewrite as:
+         *   (e - emin) > (emax - emin) || ((1 << (int)(e - emin)) & ~bits)
          */
 
         // Delete all the || nodes that are no longer referenced
-        el_opFree(e, OPoror);
+        el_opFree(e, op);
 
-        unsigned tyc = array[first]->E1->Ety;
         if (emax < 32)                  // if everything fits in a 32 bit register
             emin = 0;                   // no need for bias
 
@@ -2427,12 +2451,22 @@ STATIC bool optim_oror(elem **pe)
         //printf("n = %d, count = %d, min = %d, max = %d\n", (int)n, last - first + 1, (int)emin, (int)emax);
         //printf("bits = x%llx\n", bits);
 
-        elem *ex = el_bin(OPmin,tyc,array[first]->E1,el_long(tyc,emin));
-        ex = el_bin(OPle,TYbool,ex,el_long(touns(tyc),emax - emin));
-        elem *ey = el_bin(OPmin,tyc,array[first + 1]->E1,el_long(tyc,emin));
-#if 1
-        ey = el_bin(OPbtst,TYbool,el_long(tyc,bits),ey);
-#else
+        if (op == OPandand)
+            bits = ~bits;
+
+        unsigned tyc = array[first]->E1->Ety;
+
+        elem *ex = el_bin(OPmin, tyc, array[first]->E1, el_long(tyc,emin));
+        ex = el_bin(op == OPandand ? OPgt : OPle, TYbool, ex, el_long(touns(tyc), emax - emin));
+        elem *ey = el_bin(OPmin, tyc, array[first + 1]->E1, el_long(tyc,emin));
+
+        tym_t tybits = TYuint;
+        if ((emax - emin) >= 32)
+        {
+            assert(I64);                // need 64 bit BT
+            tybits = TYullong;
+        }
+
         // Shift count must be an int
         switch (tysize(tyc))
         {
@@ -2449,10 +2483,13 @@ STATIC bool optim_oror(elem **pe)
             default:
                 assert(0);
         }
-        ey = el_bin(OPshl,tyc,el_long(tyc,1),ey);
-        ey = el_bin(OPand,tyc,ey,el_long(tyc,bits));
+#if 1
+        ey = el_bin(OPbtst,TYbool,el_long(tybits,bits),ey);
+#else
+        ey = el_bin(OPshl,tybits,el_long(tybits,1),ey);
+        ey = el_bin(OPand,tybits,ey,el_long(tybits,bits));
 #endif
-        ex = el_bin(OPandand,ty,ex,ey);
+        ex = el_bin(op == OPandand ? OPoror : OPandand, ty, ex, ey);
 
         /* Free unneeded nodes
          */
@@ -2465,10 +2502,10 @@ STATIC bool optim_oror(elem **pe)
 
         array[first] = ex;
 
-        for (size_t i = first + 1; last + i < n; ++i)
-            array[first + i] = array[last + i];
+        for (size_t i = first + 1; i + (last - first) < n; ++i)
+            array[i] = array[i + (last - first)];
         n -= last - first;
-        (*pe) = el_opCombine(array,n,OPoror,ty);
+        (*pe) = el_opCombine(array, n, op, ty);
 
         free(array);
         return true;
@@ -4790,11 +4827,18 @@ beg:
                 goto Llog;
 
             case OPoror:
-                if (OPTIMIZER && optim_oror(&e))
+                if (rightgoal)
+                    rightgoal = GOALflags;
+                if (OPTIMIZER && optim_loglog(&e))
                     goto beg;
                 goto Llog;
 
             case OPandand:
+                if (rightgoal)
+                    rightgoal = GOALflags;
+                if (OPTIMIZER && optim_loglog(&e))
+                    goto beg;
+
             Llog:               // case (c log f()) with no goal
                 if (goal || el_sideeffect(e->E2))
                     leftgoal = GOALflags;

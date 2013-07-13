@@ -21,7 +21,7 @@
 #include "arraytypes.h"
 #include "expression.h"
 
-class Scope;
+struct Scope;
 class Identifier;
 class Expression;
 class StructDeclaration;
@@ -506,6 +506,8 @@ public:
 #if CPP_MANGLE
     void toCppMangle(OutBuffer *buf, CppMangleState *cms);
 #endif
+
+    static Type *makeType(Loc loc, Type *tn, dinteger_t dim);
 
     type *toCtype();
     type *toCParamtype();

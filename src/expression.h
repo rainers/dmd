@@ -19,7 +19,7 @@
 
 class Type;
 class TypeVector;
-class Scope;
+struct Scope;
 class TupleDeclaration;
 class VarDeclaration;
 class FuncDeclaration;
@@ -68,6 +68,7 @@ void initPrecedence();
 typedef int (*apply_fp_t)(Expression *, void *);
 
 Expression *resolveProperties(Scope *sc, Expression *e);
+Expression *resolvePropertiesOnly(Scope *sc, Expression *e1);
 void accessCheck(Loc loc, Scope *sc, Expression *e, Declaration *d);
 Expression *build_overload(Loc loc, Scope *sc, Expression *ethis, Expression *earg, Dsymbol *d);
 Dsymbol *search_function(ScopeDsymbol *ad, Identifier *funcid);
@@ -87,8 +88,8 @@ Expression *resolveAliasThis(Scope *sc, Expression *e);
 Expression *callCpCtor(Loc loc, Scope *sc, Expression *e, int noscope);
 bool checkPostblit(Loc loc, Type *t);
 #endif
-ArrayExp *resolveOpDollar(Scope *sc, ArrayExp *ae);
-SliceExp *resolveOpDollar(Scope *sc, SliceExp *se);
+Expression *resolveOpDollar(Scope *sc, ArrayExp *ae);
+Expression *resolveOpDollar(Scope *sc, SliceExp *se);
 Expressions *arrayExpressionSemantic(Expressions *exps, Scope *sc);
 
 /* Run CTFE on the expression, but allow the expression to be a TypeExp
@@ -108,8 +109,6 @@ enum CtfeGoal
 
 #define WANTflags   1
 #define WANTvalue   2
-// A compile-time result is required. Give an error if not possible
-#define WANTinterpret 4
 // Same as WANTvalue, but also expand variables as far as possible
 #define WANTexpand  8
 
@@ -129,7 +128,6 @@ public:
     virtual int apply(apply_fp_t fp, void *param);
     virtual Expression *semantic(Scope *sc);
     Expression *trySemantic(Scope *sc);
-    Expression *ctfeSemantic(Scope *sc);
 
     int dyncast() { return DYNCAST_EXPRESSION; }        // kludge for template.isExpression()
 
@@ -1340,6 +1338,7 @@ class IndexExp : public BinExp
 public:
     VarDeclaration *lengthVar;
     int modifiable;
+    bool skipboundscheck;
 
     IndexExp(Loc loc, Expression *e1, Expression *e2);
     Expression *syntaxCopy();

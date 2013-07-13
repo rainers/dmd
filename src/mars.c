@@ -140,6 +140,13 @@ bool Global::isSpeculativeGagging()
     return gag && gag == speculativeGag;
 }
 
+void Global::increaseErrorCount()
+{
+    if (gag)
+        ++gaggedErrors;
+    ++errors;
+}
+
 
 char *Loc::toChars()
 {
