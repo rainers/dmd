@@ -383,6 +383,8 @@ class TypeInfoStructDeclaration : public TypeInfoDeclaration
 public:
     TypeInfoStructDeclaration(Type *tinfo);
 
+    void semantic3(Scope* sc);
+
     void toDt(dt_t **pdt);
 };
 
@@ -392,6 +394,8 @@ public:
     TypeInfoClassDeclaration(Type *tinfo);
     Symbol *toSymbol();
 
+    void semantic3(Scope* sc);
+
     void toDt(dt_t **pdt);
 };
 
@@ -399,6 +403,8 @@ class TypeInfoInterfaceDeclaration : public TypeInfoDeclaration
 {
 public:
     TypeInfoInterfaceDeclaration(Type *tinfo);
+
+    void semantic3(Scope* sc);
 
     void toDt(dt_t **pdt);
 };

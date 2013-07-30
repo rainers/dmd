@@ -2430,6 +2430,13 @@ TypeInfoStructDeclaration::TypeInfoStructDeclaration(Type *tinfo)
     type = Type::typeinfostruct->type;
 }
 
+void TypeInfoStructDeclaration::semantic3(Scope* sc)
+{
+    AggregateDeclaration *sym = tinfo->toDsymbol(sc)->isAggregateDeclaration();
+    if (sym)
+        sym->semantic3(sc);
+}
+
 /***************************** TypeInfoClassDeclaration ***********************/
 
 TypeInfoClassDeclaration::TypeInfoClassDeclaration(Type *tinfo)
@@ -2442,6 +2449,13 @@ TypeInfoClassDeclaration::TypeInfoClassDeclaration(Type *tinfo)
     type = Type::typeinfoclass->type;
 }
 
+void TypeInfoClassDeclaration::semantic3(Scope* sc)
+{
+    AggregateDeclaration *sym = tinfo->toDsymbol(sc)->isAggregateDeclaration();
+    if (sym)
+        sym->semantic3(sc);
+}
+
 /***************************** TypeInfoInterfaceDeclaration *******************/
 
 TypeInfoInterfaceDeclaration::TypeInfoInterfaceDeclaration(Type *tinfo)
@@ -2452,6 +2466,13 @@ TypeInfoInterfaceDeclaration::TypeInfoInterfaceDeclaration(Type *tinfo)
         ObjectNotFound(Id::TypeInfo_Interface);
     }
     type = Type::typeinfointerface->type;
+}
+
+void TypeInfoInterfaceDeclaration::semantic3(Scope* sc)
+{
+    AggregateDeclaration *sym = tinfo->toDsymbol(sc)->isAggregateDeclaration();
+    if (sym)
+        sym->semantic3(sc);
 }
 
 /***************************** TypeInfoTypedefDeclaration *********************/

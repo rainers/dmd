@@ -687,6 +687,7 @@ void TypeInfoStructDeclaration::toDt(dt_t **pdt)
     }
 
     // xgetRTInfo
+    assert(sd->getRTInfo || !Type::rtinfo);
     if (sd->getRTInfo)
         sd->getRTInfo->toDt(pdt);
     else if (m_flags)

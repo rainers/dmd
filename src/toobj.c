@@ -452,6 +452,7 @@ void ClassDeclaration::toObjFile(int multiobj)
         dtsize_t(&dt, 0);        // module getMembers() function
 #endif
 
+    assert(getRTInfo || !Type::rtinfo);
     // xgetRTInfo
     if (getRTInfo)
         getRTInfo->toDt(&dt);
@@ -896,6 +897,8 @@ void InterfaceDeclaration::toObjFile(int multiobj)
 
     // xgetRTInfo
     // xgetRTInfo
+    assert(getRTInfo || !Type::rtinfo);
+
     if (getRTInfo)
         getRTInfo->toDt(&dt);
     else
