@@ -59,7 +59,7 @@ int Tptrdiff_t = Tint32;
 
 /***************************** Type *****************************/
 
-ClassDeclaration *Type::typeinfo;
+ClassDeclaration *Type::dtypeinfo;
 ClassDeclaration *Type::typeinfoclass;
 ClassDeclaration *Type::typeinfointerface;
 ClassDeclaration *Type::typeinfostruct;
@@ -1725,7 +1725,7 @@ Type *Type::merge()
         }
         else
         {
-            sv->ptrvalue = (t = stripDefaultArgs(t));
+            sv->ptrvalue = (char *)(t = stripDefaultArgs(t));
             deco = t->deco = (char *)sv->toDchars();
             //printf("new value, deco = '%s' %p\n", t->deco, t->deco);
         }
@@ -6499,7 +6499,6 @@ void TypeQualified::resolveHelper(Loc loc, Scope *sc,
                 }
                 else
                 {
-                  Lerror:
                     if (id->dyncast() == DYNCAST_DSYMBOL)
                     {   // searchX already handles errors for template instances
                         assert(global.errors);
@@ -7965,10 +7964,10 @@ Expression *TypeStruct::dotExp(Scope *sc, Expression *e, Identifier *ident, int 
             exps->push(new DotVarExp(ev->loc, ev, v));
         }
         e = new TupleExp(e->loc, e0, exps);
-        sc = sc->push();
-        sc->noaccesscheck = 1;
-        e = e->semantic(sc);
-        sc->pop();
+        Scope *sc2 = sc->push();
+        sc2->flags = sc->flags | SCOPEnoaccesscheck;
+        e = e->semantic(sc2);
+        sc2->pop();
         return e;
     }
 
@@ -8505,17 +8504,18 @@ Expression *TypeClass::dotExp(Scope *sc, Expression *e, Identifier *ident, int f
             ev = new VarExp(e->loc, vd);
         }
         for (size_t i = 0; i < sym->fields.dim; i++)
-        {   VarDeclaration *v = sym->fields[i];
+        {
+            VarDeclaration *v = sym->fields[i];
             // Don't include hidden 'this' pointer
             if (v->isThisDeclaration())
                 continue;
             exps->push(new DotVarExp(ev->loc, ev, v));
         }
         e = new TupleExp(e->loc, e0, exps);
-        sc = sc->push();
-        sc->noaccesscheck = 1;
-        e = e->semantic(sc);
-        sc->pop();
+        Scope *sc2 = sc->push();
+        sc2->flags = sc->flags | SCOPEnoaccesscheck;
+        e = e->semantic(sc2);
+        sc2->pop();
         return e;
     }
 

@@ -123,7 +123,6 @@ void FuncDeclaration::semantic(Scope *sc)
     StructDeclaration *sd;
     ClassDeclaration *cd;
     InterfaceDeclaration *id;
-    Dsymbol *pd;
     bool doesoverride;
 
 #if 0
@@ -338,9 +337,14 @@ void FuncDeclaration::semantic(Scope *sc)
     }
 
     if (isOverride() && !isVirtual())
-        error("cannot override a non-virtual function");
+    {
+        if ((prot() == PROTprivate || prot() == PROTpackage) && isMember())
+            error("%s method is not virtual and cannot override", Pprotectionnames[prot()]);
+        else
+            error("cannot override a non-virtual function");
+    }
 
-    if (isAbstract() && isFinal())
+    if (isAbstract() && isFinalFunc())
         error("cannot be both final and abstract");
 #if 0
     if (isAbstract() && fbody)
@@ -415,10 +419,8 @@ void FuncDeclaration::semantic(Scope *sc)
 
     cd = parent->isClassDeclaration();
     if (cd)
-    {   size_t vi;
-        CtorDeclaration *ctor;
-        DtorDeclaration *dtor;
-
+    {
+        size_t vi;
         if (isCtorDeclaration())
         {
 //          ctor = (CtorDeclaration *)this;
@@ -426,34 +428,6 @@ void FuncDeclaration::semantic(Scope *sc)
 //              cd->ctor = ctor;
             goto Ldone;
         }
-
-#if 0
-        dtor = isDtorDeclaration();
-        if (dtor)
-        {
-            if (cd->dtor)
-                error("multiple destructors for class %s", cd->toChars());
-            cd->dtor = dtor;
-        }
-
-        if (isInvariantDeclaration())
-        {
-            cd->invs.push(this);
-        }
-
-        if (isNewDeclaration())
-        {
-            if (!cd->aggNew)
-                cd->aggNew = (NewDeclaration *)(this);
-        }
-
-        if (isDelete())
-        {
-            if (cd->aggDelete)
-                error("multiple delete's for class %s", cd->toChars());
-            cd->aggDelete = (DeleteDeclaration *)(this);
-        }
-#endif
 
         if (storage_class & STCabstract)
             cd->isabstract = 1;
@@ -507,13 +481,13 @@ void FuncDeclaration::semantic(Scope *sc)
                         if (f)
                         {
                             f = f->overloadExactMatch(type);
-                            if (f && f->isFinal() && f->prot() != PROTprivate)
+                            if (f && f->isFinalFunc() && f->prot() != PROTprivate)
                                 error("cannot override final function %s", f->toPrettyChars());
                         }
                     }
                 }
 
-                if (isFinal())
+                if (isFinalFunc())
                 {
                     // Don't check here, as it may override an interface function
                     //if (isOverride())
@@ -560,7 +534,7 @@ void FuncDeclaration::semantic(Scope *sc)
                 }
 
                 // This function overrides fdv
-                if (fdv->isFinal())
+                if (fdv->isFinalFunc())
                     error("cannot override final function %s", fdv->toPrettyChars());
 
                 doesoverride = TRUE;
@@ -725,7 +699,7 @@ void FuncDeclaration::semantic(Scope *sc)
                     if (f)
                     {
                         f = f->overloadExactMatch(type);
-                        if (f && f->isFinal() && f->prot() != PROTprivate)
+                        if (f && f->isFinalFunc() && f->prot() != PROTprivate)
                             error("cannot override final function %s.%s", b->base->toChars(), f->toPrettyChars());
                     }
                 }
@@ -890,7 +864,7 @@ Ldone:
         {
             printedMain = true;
             const char *name = FileName::searchPath(global.path, mod->srcfile->toChars(), 1);
-            printf("%-10s%-10s\t%s\n", "entry", type, name);
+            printf("entry     %-10s\t%s\n", type, name);
         }
     }
 
@@ -970,7 +944,7 @@ void FuncDeclaration::semantic3(Scope *sc)
     }
 
     frequire = mergeFrequire(frequire);
-    fensure = mergeFensure(fensure);
+    fensure = mergeFensure(fensure, outId);
 
     if (fbody || frequire || fensure)
     {
@@ -1054,7 +1028,7 @@ void FuncDeclaration::semantic3(Scope *sc)
                 v_arguments->parent = this;
 
                 //t = Type::typeinfo->type->constOf()->arrayOf();
-                t = Type::typeinfo->type->arrayOf();
+                t = Type::dtypeinfo->type->arrayOf();
                 _arguments = new VarDeclaration(Loc(), t, Id::_arguments, NULL);
                 _arguments->semantic(sc2);
                 sc2->insert(_arguments);
@@ -1501,6 +1475,12 @@ void FuncDeclaration::semantic3(Scope *sc)
 
             // BUG: need to treat parameters as const
             // BUG: need to disallow returns and throws
+            if (inferRetType && fdensure && ((TypeFunction *)fdensure->type)->parameters)
+            {
+                // Return type was unknown in the first semantic pass
+                Parameter *p = (*((TypeFunction *)fdensure->type)->parameters)[0];
+                p->type = ((TypeFunction *)type)->nextOf();
+            }
             fens = fens->semantic(sc2);
 
             sc2 = sc2->pop();
@@ -2152,7 +2132,7 @@ Statement *FuncDeclaration::mergeFrequire(Statement *sf)
  * 'out's are AND'd together, i.e. all of them need to pass.
  */
 
-Statement *FuncDeclaration::mergeFensure(Statement *sf)
+Statement *FuncDeclaration::mergeFensure(Statement *sf, Identifier *oid)
 {
     /* Same comments as for mergeFrequire(), except that we take care
      * of generating a consistent reference to the 'result' local by
@@ -2179,7 +2159,7 @@ Statement *FuncDeclaration::mergeFensure(Statement *sf)
             sc->pop();
         }
 
-        sf = fdv->mergeFensure(sf);
+        sf = fdv->mergeFensure(sf, oid);
         if (fdv->fdensure)
         {
             //printf("fdv->fensure: %s\n", fdv->fensure->toChars());
@@ -2187,7 +2167,7 @@ Statement *FuncDeclaration::mergeFensure(Statement *sf)
             Expression *eresult = NULL;
             if (outId)
             {
-                eresult = new IdentifierExp(loc, outId);
+                eresult = new IdentifierExp(loc, oid);
 
                 Type *t1 = fdv->type->nextOf()->toBasetype();
                 Type *t2 = this->type->nextOf()->toBasetype();
@@ -2209,7 +2189,7 @@ Statement *FuncDeclaration::mergeFensure(Statement *sf)
 
             if (sf)
             {
-                sf = new CompoundStatement(fensure->loc, s2, sf);
+                sf = new CompoundStatement(sf->loc, s2, sf);
             }
             else
                 sf = s2;
@@ -3203,12 +3183,12 @@ bool FuncDeclaration::isVirtual()
         isMember() &&
         !(isStatic() || protection == PROTprivate || protection == PROTpackage) &&
         p->isClassDeclaration() &&
-        !(p->isInterfaceDeclaration() && isFinal()));
+        !(p->isInterfaceDeclaration() && isFinalFunc()));
 #endif
     return isMember() &&
         !(isStatic() || protection == PROTprivate || protection == PROTpackage) &&
         p->isClassDeclaration() &&
-        !(p->isInterfaceDeclaration() && isFinal());
+        !(p->isInterfaceDeclaration() && isFinalFunc());
 }
 
 // Determine if a function is pedantically virtual
@@ -3222,21 +3202,21 @@ bool FuncDeclaration::isVirtualMethod()
     if (!isVirtual())
         return false;
     // If it's a final method, and does not override anything, then it is not virtual
-    if (isFinal() && foverrides.dim == 0)
+    if (isFinalFunc() && foverrides.dim == 0)
     {
         return false;
     }
     return true;
 }
 
-bool FuncDeclaration::isFinal()
+bool FuncDeclaration::isFinalFunc()
 {
     if (toAliasFunc() != this)
-        return toAliasFunc()->isFinal();
+        return toAliasFunc()->isFinalFunc();
 
     ClassDeclaration *cd;
 #if 0
-    printf("FuncDeclaration::isFinal(%s), %x\n", toChars(), Declaration::isFinal());
+    printf("FuncDeclaration::isFinalFunc(%s), %x\n", toChars(), Declaration::isFinal());
     printf("%p %d %d %d\n", isMember(), isStatic(), Declaration::isFinal(), ((cd = toParent()->isClassDeclaration()) != NULL && cd->storage_class & STCfinal));
     printf("result is %d\n",
         isMember() &&
@@ -4429,8 +4409,6 @@ void StaticDtorDeclaration::semantic(Scope *sc)
     {   sc = scope;
         scope = NULL;
     }
-
-    ClassDeclaration *cd = sc->scopesym->isClassDeclaration();
 
     if (!type)
         type = new TypeFunction(NULL, Type::tvoid, FALSE, LINKd);

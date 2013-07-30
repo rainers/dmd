@@ -1284,7 +1284,16 @@ Lnomatch:
         {
             if (func->fes)
                 func = func->fes->func;
-            if (!((TypeFunction *)func->type)->iswild)
+            bool isWild = false;
+            for (FuncDeclaration *fd = func; fd; fd = fd->toParent2()->isFuncDeclaration())
+            {
+                if (((TypeFunction *)fd->type)->iswild)
+                {
+                    isWild = true;
+                    break;
+                }
+            }
+            if (!isWild)
             {
                 error("inout variables can only be declared inside inout functions");
             }
@@ -1407,7 +1416,6 @@ Lnomatch:
             init = new ExpInitializer(e->loc, e);
         }
 
-        StructInitializer *si = init->isStructInitializer();
         ExpInitializer *ei = init->isExpInitializer();
 
         if (ei && isScope())
@@ -1707,7 +1715,10 @@ Ldtor:
     edtor = callScopeDtor(sc);
     if (edtor)
     {
-        edtor = edtor->semantic(sc);
+        if (sc->func && storage_class & (STCstatic | STCgshared))
+            edtor = edtor->semantic(sc->module->scope);
+        else
+            edtor = edtor->semantic(sc);
 
 #if 0 // currently disabled because of std.stdio.stdin, stdout and stderr
         if (isDataseg() && !(storage_class & STCextern))
@@ -2374,7 +2385,7 @@ void ClassInfoDeclaration::semantic(Scope *sc)
 /********************************* TypeInfoDeclaration ****************************/
 
 TypeInfoDeclaration::TypeInfoDeclaration(Type *tinfo, int internal)
-    : VarDeclaration(Loc(), Type::typeinfo->type, tinfo->getTypeInfoIdent(internal), NULL)
+    : VarDeclaration(Loc(), Type::dtypeinfo->type, tinfo->getTypeInfoIdent(internal), NULL)
 {
     this->tinfo = tinfo;
     storage_class = STCstatic | STCgshared;

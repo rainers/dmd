@@ -40,7 +40,7 @@ ClassDeclaration *ClassDeclaration::errorException;
 ClassDeclaration::ClassDeclaration(Loc loc, Identifier *id, BaseClasses *baseclasses, bool inObject)
     : AggregateDeclaration(loc, id)
 {
-    static char msg[] = "only object.d can define this reserved class name";
+    static const char msg[] = "only object.d can define this reserved class name";
 
     if (baseclasses)
         // Actually, this is a transfer
@@ -78,7 +78,7 @@ ClassDeclaration::ClassDeclaration(Loc loc, Identifier *id, BaseClasses *basecla
             if (id == Id::TypeInfo)
             {   if (!inObject)
                     error("%s", msg);
-                Type::typeinfo = this;
+                Type::dtypeinfo = this;
             }
 
             if (id == Id::TypeInfo_Class)
@@ -592,6 +592,7 @@ void ClassDeclaration::semantic(Scope *sc)
     if (baseClass)
     {   sc->offset = baseClass->structsize;
         alignsize = baseClass->alignsize;
+        sc->offset = (sc->offset + alignsize - 1) & ~(alignsize - 1);
 //      if (enclosing)
 //          sc->offset += Target::ptrsize;      // room for uplevel context pointer
     }
@@ -623,7 +624,6 @@ void ClassDeclaration::semantic(Scope *sc)
     // Set the offsets of the fields and determine the size of the class
 
     unsigned offset = structsize;
-    bool isunion = isUnionDeclaration() != NULL;
     for (size_t i = 0; i < members->dim; i++)
     {   Dsymbol *s = (*members)[i];
         s->setFieldOffset(this, &offset, false);
@@ -877,10 +877,10 @@ int ClassDeclaration::isBaseOf(ClassDeclaration *cd, int *poffset)
     {
         /* cd->baseClass might not be set if cd is forward referenced.
          */
-        if (!cd->baseClass && cd->baseclasses->dim && !cd->isInterfaceDeclaration())
+        if (!cd->baseClass && cd->scope && !cd->isInterfaceDeclaration())
         {
             cd->semantic(NULL);
-            if (!cd->baseClass)
+            if (!cd->baseClass && cd->scope)
                 cd->error("base class is forward referenced by %s", toChars());
         }
 
@@ -1012,7 +1012,7 @@ int ClassDeclaration::isFuncHidden(FuncDeclaration *fd)
         for (size_t i = 0; i < os->a.dim; i++)
         {   Dsymbol *s2 = os->a[i];
             FuncDeclaration *f2 = s2->isFuncDeclaration();
-            if (f2 && overloadApply(f2, &isf, fd))
+            if (f2 && overloadApply(f2, &isf, (void *)fd))
                 return 0;
         }
         return 1;
@@ -1021,7 +1021,7 @@ int ClassDeclaration::isFuncHidden(FuncDeclaration *fd)
     {
         FuncDeclaration *fdstart = s->isFuncDeclaration();
         //printf("%s fdstart = %p\n", s->kind(), fdstart);
-        if (overloadApply(fdstart, &isf, fd))
+        if (overloadApply(fdstart, &isf, (void *)fd))
             return 0;
 
         return !fd->parent->isTemplateMixin();
@@ -1621,7 +1621,6 @@ BaseClass::BaseClass(Type *type, PROT protection)
 
 int BaseClass::fillVtbl(ClassDeclaration *cd, FuncDeclarations *vtbl, int newinstance)
 {
-    ClassDeclaration *id = base;
     int result = 0;
 
     //printf("BaseClass::fillVtbl(this='%s', cd='%s')\n", base->toChars(), cd->toChars());

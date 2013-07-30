@@ -111,7 +111,7 @@ Expression *Type::getInternalTypeInfo(Scope *sc)
 Expression *Type::getTypeInfo(Scope *sc)
 {
     //printf("Type::getTypeInfo() %p, %s\n", this, toChars());
-    if (!Type::typeinfo)
+    if (!Type::dtypeinfo)
     {
         error(Loc(), "TypeInfo not found. object.d may be incorrectly installed or corrupt, compile with -v switch");
         fatal();
@@ -241,9 +241,9 @@ TypeInfoDeclaration *TypeTuple::getTypeInfoDeclaration()
 void TypeInfoDeclaration::toDt(dt_t **pdt)
 {
     //printf("TypeInfoDeclaration::toDt() %s\n", toChars());
-    verifyStructSize(Type::typeinfo, 2 * Target::ptrsize);
+    verifyStructSize(Type::dtypeinfo, 2 * Target::ptrsize);
 
-    dtxoff(pdt, Type::typeinfo->toVtblSymbol(), 0); // vtbl for TypeInfo
+    dtxoff(pdt, Type::dtypeinfo->toVtblSymbol(), 0); // vtbl for TypeInfo
     dtsize_t(pdt, 0);                        // monitor
 }
 
@@ -594,23 +594,6 @@ void TypeInfoStructDeclaration::toDt(dt_t **pdt)
         tftostring = (TypeFunction *)tftostring->semantic(Loc(), &sc);
     }
 
-    TypeFunction *tfcmpptr;
-    {
-        Scope sc;
-
-        /* const int opCmp(ref const KeyType s);
-         */
-        Parameters *arguments = new Parameters;
-
-        // arg type is ref const T
-        Parameter *arg = new Parameter(STCref, tc->constOf(), NULL, NULL);
-
-        arguments->push(arg);
-        tfcmpptr = new TypeFunction(arguments, Type::tint32, 0, LINKd);
-        tfcmpptr->mod = MODconst;
-        tfcmpptr = (TypeFunction *)tfcmpptr->semantic(Loc(), &sc);
-    }
-
     s = search_function(sd, Id::tohash);
     fdx = s ? s->isFuncDeclaration() : NULL;
     if (fdx)
@@ -642,20 +625,8 @@ void TypeInfoStructDeclaration::toDt(dt_t **pdt)
     else
         dtsize_t(pdt, 0);
 
-    s = search_function(sd, Id::cmp);
-    fdx = s ? s->isFuncDeclaration() : NULL;
-    if (fdx)
-    {
-        //printf("test1 %s, %s, %s\n", fdx->toChars(), fdx->type->toChars(), tfeqptr->toChars());
-        fd = fdx->overloadExactMatch(tfcmpptr);
-        if (fd)
-        {   dtxoff(pdt, fd->toSymbol(), 0);
-            //printf("test2\n");
-        }
-        else
-            //fdx->error("must be declared as extern (D) int %s(%s*)", fdx->toChars(), sd->toChars());
-            dtsize_t(pdt, 0);
-    }
+    if (sd->xcmp)
+        dtxoff(pdt, sd->xcmp->toSymbol(), 0);
     else
         dtsize_t(pdt, 0);
 

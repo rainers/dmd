@@ -519,7 +519,7 @@ Statements *CompileStatement::flatten(Scope *sc)
         else
         {
             se = se->toUTF8(sc);
-            Parser p(sc->module, (unsigned char *)se->string, se->len, 0);
+            Parser p(sc->module, (utf8_t *)se->string, se->len, 0);
             p.loc = loc;
             p.nextToken();
 
@@ -2000,8 +2000,6 @@ Lagain:
                 return this;
             }
 
-            Type *tret = func->type->nextOf();
-
             TypeFunction *tfld = NULL;
             if (sapply)
             {   FuncDeclaration *fdapply = sapply->isFuncDeclaration();
@@ -2134,7 +2132,7 @@ Lagain:
                 /* Call:
                  *      _aApply(aggr, flde)
                  */
-                static char fntab[9][3] =
+                static const char fntab[9][3] =
                 { "cc","cw","cd",
                   "wc","cc","wd",
                   "dc","dw","dd"
@@ -2573,14 +2571,13 @@ Statement *IfStatement::semantic(Scope *sc)
     unsigned cs0 = sc->callSuper;
     unsigned cs1;
 
-    Scope *scd;
+    ScopeDsymbol *sym = new ScopeDsymbol();
+    sym->parent = sc->scopesym;
+    Scope *scd = sc->push(sym);
     if (arg)
     {   /* Declare arg, which we will set to be the
          * result of condition.
          */
-        ScopeDsymbol *sym = new ScopeDsymbol();
-        sym->parent = sc->scopesym;
-        scd = sc->push(sym);
 
         match = new VarDeclaration(loc, arg->type, arg->ident, new ExpInitializer(loc, condition));
         match->parent = sc->func;
@@ -2604,7 +2601,6 @@ Statement *IfStatement::semantic(Scope *sc)
         condition = condition->semantic(sc);
         condition = condition->addDtorHook(sc);
         condition = resolveProperties(sc, condition);
-        scd = sc->push();
     }
 
     // Convert to boolean after declaring arg so this works:
@@ -4412,6 +4408,8 @@ Statement *WithStatement::semantic(Scope *sc)
             wthis = new VarDeclaration(loc, e->type, Id::withSym, init);
             wthis->semantic(sc);
             sym = new WithScopeSymbol(this);
+            // Need to set the scope to make use of resolveAliasThis
+            sym->setScope(sc);
             sym->parent = sc->scopesym;
         }
         else

@@ -588,7 +588,7 @@ int tryMain(size_t argc, char *argv[])
                 //      -cov=nnn
                 if (p[4] == '=')
                 {
-                    if (isdigit((unsigned char)p[5]))
+                    if (isdigit((utf8_t)p[5]))
                     {   long percent;
 
                         errno = 0;
@@ -682,7 +682,7 @@ Language changes listed by -transition=id:\n\
 #endif
                         return EXIT_FAILURE;
                     }
-                    if (isdigit((unsigned char)p[12]))
+                    if (isdigit((utf8_t)p[12]))
                     {   long num;
 
                         errno = 0;
@@ -864,7 +864,7 @@ Language changes listed by -transition=id:\n\
                 //      -debug=identifier
                 if (p[6] == '=')
                 {
-                    if (isdigit((unsigned char)p[7]))
+                    if (isdigit((utf8_t)p[7]))
                     {   long level;
 
                         errno = 0;
@@ -890,7 +890,7 @@ Language changes listed by -transition=id:\n\
                 //      -version=identifier
                 if (p[8] == '=')
                 {
-                    if (isdigit((unsigned char)p[9]))
+                    if (isdigit((utf8_t)p[9]))
                     {   long level;
 
                         errno = 0;

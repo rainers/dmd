@@ -22,6 +22,7 @@
 #include "template.h"
 
 FuncDeclaration *StructDeclaration::xerreq;     // object.xopEquals
+FuncDeclaration *StructDeclaration::xerrcmp;    // object.xopCmp
 
 /********************************* AggregateDeclaration ****************************/
 
@@ -88,6 +89,22 @@ void AggregateDeclaration::semantic2(Scope *sc)
             //printf("\t[%d] %s\n", i, s->toChars());
             s->semantic2(sc);
         }
+
+        if (StructDeclaration *sd = isStructDeclaration())
+        {
+            /* Even if the struct exists in imported module, calculating
+             * xeq and xcmp is necessary in order to generate correct TypeInfo.
+             * However, immediately doing it at the end of StructDeclaration::semantic
+             * might cause forward reference error during instantiation of
+             * template opEquals/opCmp. So should be done at the end of semantic2.
+             */
+            //if (sd->xeq != NULL) printf("sd = %s xeq @ [%s]\n", sd->toChars(), sd->loc.toChars());
+            //assert(sd->xeq == NULL);
+            if (sd->xeq == NULL)
+                sd->xeq = sd->buildXopEquals(sc);
+            if (sd->xcmp == NULL)
+                sd->xcmp = sd->buildXopCmp(sc);
+        }
         sc->pop();
     }
 }
@@ -103,14 +120,6 @@ void AggregateDeclaration::semantic3(Scope *sc)
         {
             Dsymbol *s = (*members)[i];
             s->semantic3(sc);
-        }
-
-        if (StructDeclaration *sd = isStructDeclaration())
-        {
-            //if (sd->xeq != NULL) printf("sd = %s xeq @ [%s]\n", sd->toChars(), sd->loc.toChars());
-            //assert(sd->xeq == NULL);
-            if (sd->xeq == NULL)
-                sd->xeq = sd->buildXopEquals(sc);
         }
         sc = sc->pop();
 
@@ -432,6 +441,7 @@ StructDeclaration::StructDeclaration(Loc loc, Identifier *id)
     postblit = NULL;
 
     xeq = NULL;
+    xcmp = NULL;
     alignment = 0;
 #endif
     arg1type = NULL;

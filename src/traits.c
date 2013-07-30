@@ -125,7 +125,7 @@ Expression *TraitsExp::semantic(Scope *sc)
     printf("TraitsExp::semantic() %s\n", toChars());
 #endif
     if (ident != Id::compiles && ident != Id::isSame &&
-        ident != Id::identifier)
+        ident != Id::identifier && ident != Id::getProtection)
     {
         TemplateInstance::semanticTiargs(loc, sc, args, 1);
     }
@@ -262,7 +262,7 @@ Expression *TraitsExp::semantic(Scope *sc)
     else if (ident == Id::isFinalFunction)
     {
         FuncDeclaration *f;
-        ISDSYMBOL((f = s->isFuncDeclaration()) != NULL && f->isFinal())
+        ISDSYMBOL((f = s->isFuncDeclaration()) != NULL && f->isFinalFunc())
     }
 #if DMDV2
     else if (ident == Id::isStaticFunction)
@@ -317,6 +317,12 @@ Expression *TraitsExp::semantic(Scope *sc)
     {
         if (dim != 1)
             goto Ldimerror;
+
+        Scope *sc2 = sc->push();
+        sc2->flags = sc->flags | SCOPEnoaccesscheck;
+        TemplateInstance::semanticTiargs(loc, sc2, args, 1);
+        sc2->pop();
+
         RootObject *o = (*args)[0];
         Dsymbol *s = getDsymbol(o);
         if (!s)
@@ -743,6 +749,11 @@ Expression *TraitsExp::semantic(Scope *sc)
 
         TupleExp *tup = new TupleExp(loc, unitTests);
         return tup->semantic(sc);
+    }
+    else if (ident == Id::isOverrideFunction)
+    {
+        FuncDeclaration *f;
+        ISDSYMBOL((f = s->isFuncDeclaration()) != NULL && f->isOverride())
     }
     else
     {   error("unrecognized trait %s", ident->toChars());

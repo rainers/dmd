@@ -939,6 +939,57 @@ void getProtection()
 }
 
 /********************************************************/
+// 9546
+
+void test9546()
+{
+    import imports.a9546;
+
+    S s;
+    static assert(__traits(getProtection, s.privA) == "private");
+    static assert(__traits(getProtection, s.protA) == "protected");
+    static assert(__traits(getProtection, s.packA) == "package");
+    static assert(__traits(getProtection, S.privA) == "private");
+    static assert(__traits(getProtection, S.protA) == "protected");
+    static assert(__traits(getProtection, S.packA) == "package");
+
+    static assert(__traits(getProtection, mixin("s.privA")) == "private");
+    static assert(__traits(getProtection, mixin("s.protA")) == "protected");
+    static assert(__traits(getProtection, mixin("s.packA")) == "package");
+    static assert(__traits(getProtection, mixin("S.privA")) == "private");
+    static assert(__traits(getProtection, mixin("S.protA")) == "protected");
+    static assert(__traits(getProtection, mixin("S.packA")) == "package");
+
+    static assert(__traits(getProtection, __traits(getMember, s, "privA")) == "private");
+    static assert(__traits(getProtection, __traits(getMember, s, "protA")) == "protected");
+    static assert(__traits(getProtection, __traits(getMember, s, "packA")) == "package");
+    static assert(__traits(getProtection, __traits(getMember, S, "privA")) == "private");
+    static assert(__traits(getProtection, __traits(getMember, S, "protA")) == "protected");
+    static assert(__traits(getProtection, __traits(getMember, S, "packA")) == "package");
+
+    static assert(__traits(getProtection, s.privF) == "private");
+    static assert(__traits(getProtection, s.protF) == "protected");
+    static assert(__traits(getProtection, s.packF) == "package");
+    static assert(__traits(getProtection, S.privF) == "private");
+    static assert(__traits(getProtection, S.protF) == "protected");
+    static assert(__traits(getProtection, S.packF) == "package");
+
+    static assert(__traits(getProtection, mixin("s.privF")) == "private");
+    static assert(__traits(getProtection, mixin("s.protF")) == "protected");
+    static assert(__traits(getProtection, mixin("s.packF")) == "package");
+    static assert(__traits(getProtection, mixin("S.privF")) == "private");
+    static assert(__traits(getProtection, mixin("S.protF")) == "protected");
+    static assert(__traits(getProtection, mixin("S.packF")) == "package");
+
+    static assert(__traits(getProtection, __traits(getMember, s, "privF")) == "private");
+    static assert(__traits(getProtection, __traits(getMember, s, "protF")) == "protected");
+    static assert(__traits(getProtection, __traits(getMember, s, "packF")) == "package");
+    static assert(__traits(getProtection, __traits(getMember, S, "privF")) == "private");
+    static assert(__traits(getProtection, __traits(getMember, S, "protF")) == "protected");
+    static assert(__traits(getProtection, __traits(getMember, S, "packF")) == "package");
+}
+
+/********************************************************/
 // 9091
 
 template isVariable9091(X...) if (X.length == 1)
@@ -1219,6 +1270,8 @@ void test10096()
     auto x = foo10096!s;
 }
 
+/********************************************************/
+
 unittest { }
 
 struct GetUnitTests
@@ -1231,6 +1284,24 @@ void test_getUnitTests ()
     // Always returns empty tuple if the -unittest flag isn't used
     static assert(__traits(getUnitTests, mixin(__MODULE__)).length == 0);
     static assert(__traits(getUnitTests, GetUnitTests).length == 0);
+}
+
+/********************************************************/
+
+class TestIsOverrideFunctionBase
+{
+    void bar () {}
+}
+
+class TestIsOverrideFunctionPass : TestIsOverrideFunctionBase
+{
+    override void bar () {}
+}
+
+void test_isOverrideFunction ()
+{
+    assert(__traits(isOverrideFunction, TestIsOverrideFunctionPass.bar) == true);
+    assert(__traits(isOverrideFunction, TestIsOverrideFunctionBase.bar) == false);
 }
 
 /********************************************************/
@@ -1271,6 +1342,7 @@ int main()
     test9136();
     test10096();
     test_getUnitTests();
+    test_isOverrideFunction();
 
     writeln("Success");
     return 0;

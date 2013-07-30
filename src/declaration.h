@@ -708,7 +708,7 @@ public:
     bool needThis();
     bool isVirtualMethod();
     virtual bool isVirtual();
-    virtual bool isFinal();
+    virtual bool isFinalFunc();
     virtual bool addPreInvariant();
     virtual bool addPostInvariant();
     Expression *interpret(InterState *istate, Expressions *arguments, Expression *thisexp = NULL);
@@ -724,7 +724,7 @@ public:
     bool hasNestedFrameRefs();
     void buildResultVar();
     Statement *mergeFrequire(Statement *);
-    Statement *mergeFensure(Statement *);
+    Statement *mergeFensure(Statement *, Identifier *oid);
     Parameters *getParameters(int *pvarargs);
 
     static FuncDeclaration *genCfunc(Type *treturn, const char *name);
