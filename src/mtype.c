@@ -1379,57 +1379,19 @@ int MODmerge(unsigned char mod1, unsigned char mod2)
         return mod1;
 
     //printf("MODmerge(1 = %x, 2 = %x)\n", modfrom, modto);
-    #define X(m, n) (((m) << 4) | (n))
-    // cases are commutative
-    #define Y(m, n) X(m, n): case X(n, m)
-    switch (X(mod1, mod2))
-    {
-#if 0
-        case X(0, 0):
-        case X(MODconst, MODconst):
-        case X(MODimmutable, MODimmutable):
-        case X(MODshared, MODshared):
-        case X(MODshared | MODconst, MODshared | MODconst):
-        case X(MODwild, MODwild):
-        case X(MODshared | MODwild, MODshared | MODwild):
-#endif
+    unsigned char result = 0;
 
-        case Y(0, MODconst):
-        case Y(0, MODimmutable):
-        case Y(MODconst, MODimmutable):
-        case Y(MODconst, MODwild):
-        case Y(0, MODwild):
-        case Y(MODimmutable, MODwild):
-            return MODconst;
-
-        case Y(0, MODshared):
-            return MODshared;
-
-        case Y(0, MODshared | MODconst):
-        case Y(MODconst, MODshared):
-        case Y(MODconst, MODshared | MODconst):
-        case Y(MODimmutable, MODshared):
-        case Y(MODimmutable, MODshared | MODconst):
-        case Y(MODshared, MODshared | MODconst):
-        case Y(0, MODshared | MODwild):
-        case Y(MODconst, MODshared | MODwild):
-        case Y(MODimmutable, MODshared | MODwild):
-        case Y(MODshared, MODwild):
-        case Y(MODshared, MODshared | MODwild):
-        case Y(MODshared | MODconst, MODwild):
-        case Y(MODshared | MODconst, MODshared | MODwild):
-            return MODshared | MODconst;
-
-        case Y(MODwild, MODshared | MODwild):
-            return MODshared | MODwild;
-
-        default:
-            assert(0);
-    }
-    #undef Y
-    #undef X
-    assert(0);
-    return 0;
+    // If either type is shared, the result will be shared
+    if ((mod1 | mod2) & MODshared)
+        result |= MODshared;
+    // If both types are wild, the result will be wild
+    // Otherwise if either type is const or immutable or wild
+    // the result will be const
+    if (mod1 & mod2 & MODwild)
+        result |= MODwild;
+    else if ((mod1 | mod2) & (MODconst | MODimmutable | MODwild))
+        result |= MODconst;
+    return result;
 }
 
 /*********************************
@@ -3599,11 +3561,19 @@ Expression *TypeArray::dotExp(Scope *sc, Expression *e, Identifier *ident, int f
 
     if (ident == Id::reverse && (n->ty == Tchar || n->ty == Twchar))
     {
-        static const char *name[2] = { "_adReverseChar", "_adReverseWchar" };
+        static const char *reverseName[2] = { "_adReverseChar", "_adReverseWchar" };
+        static FuncDeclaration *reverseFd[2] = { NULL, NULL };
 
-        const char *nm = name[n->ty == Twchar];
-        FuncDeclaration *fd = FuncDeclaration::genCfunc(n->arrayOf(), nm);
-        Expression *ec = new VarExp(Loc(), fd);
+        int i = n->ty == Twchar;
+        if (!reverseFd[i]) {
+            Parameters *args = new Parameters;
+            Type *next = n->ty == Twchar ? Type::twchar : Type::tchar;
+            Type *arrty = next->arrayOf();
+            args->push(new Parameter(STCin, arrty, NULL, NULL));
+            reverseFd[i] = FuncDeclaration::genCfunc(args, arrty, reverseName[i]);
+        }
+
+        Expression *ec = new VarExp(Loc(), reverseFd[i]);
         e = e->castTo(sc, n->arrayOf());        // convert to dynamic array
         Expressions *arguments = new Expressions();
         arguments->push(e);
@@ -3612,9 +3582,19 @@ Expression *TypeArray::dotExp(Scope *sc, Expression *e, Identifier *ident, int f
     }
     else if (ident == Id::sort && (n->ty == Tchar || n->ty == Twchar))
     {
-        const char *nm = n->ty == Twchar ? "_adSortWchar" : "_adSortChar";
-        FuncDeclaration *fd = FuncDeclaration::genCfunc(n->arrayOf(), nm);
-        Expression *ec = new VarExp(Loc(), fd);
+        static const char *sortName[2] = { "_adSortChar", "_adSortWchar" };
+        static FuncDeclaration *sortFd[2] = { NULL, NULL };
+
+        int i = n->ty == Twchar;
+        if (!sortFd[i]) {
+            Parameters *args = new Parameters;
+            Type *next = n->ty == Twchar ? Type::twchar : Type::tchar;
+            Type *arrty = next->arrayOf();
+            args->push(new Parameter(STCin, arrty, NULL, NULL));
+            sortFd[i] = FuncDeclaration::genCfunc(args, arrty, sortName[i]);
+        }
+
+        Expression *ec = new VarExp(Loc(), sortFd[i]);
         e = e->castTo(sc, n->arrayOf());        // convert to dynamic array
         Expressions *arguments = new Expressions();
         arguments->push(e);
@@ -3632,7 +3612,27 @@ Expression *TypeArray::dotExp(Scope *sc, Expression *e, Identifier *ident, int f
         Expression *olde = e;
         assert(size);
         dup = (ident == Id::dup || ident == Id::idup);
-        fd = FuncDeclaration::genCfunc(tvoid->arrayOf(), dup ? Id::adDup : Id::adReverse);
+
+        if (dup) {
+            static FuncDeclaration *adDup_fd = NULL;
+            if (!adDup_fd) {
+                Parameters* args = new Parameters;
+                args->push(new Parameter(STCin, Type::dtypeinfo->type, NULL, NULL));
+                args->push(new Parameter(STCin, Type::tvoid->arrayOf(), NULL, NULL));
+                adDup_fd = FuncDeclaration::genCfunc(args, Type::tvoid->arrayOf(), Id::adDup);
+            }
+            fd = adDup_fd;
+        } else {
+            static FuncDeclaration *adReverse_fd = NULL;
+            if (!adReverse_fd) {
+                Parameters* args = new Parameters;
+                args->push(new Parameter(STCin, Type::tvoid->arrayOf(), NULL, NULL));
+                args->push(new Parameter(STCin, Type::tsize_t, NULL, NULL));
+                adReverse_fd = FuncDeclaration::genCfunc(args, Type::tvoid->arrayOf(), Id::adReverse);
+            }
+            fd = adReverse_fd;
+        }
+
         ec = new VarExp(Loc(), fd);
         e = e->castTo(sc, n->arrayOf());        // convert to dynamic array
         arguments = new Expressions();
@@ -3666,11 +3666,16 @@ Expression *TypeArray::dotExp(Scope *sc, Expression *e, Identifier *ident, int f
     }
     else if (ident == Id::sort)
     {
+        static FuncDeclaration *fd = NULL;
         Expression *ec;
-        FuncDeclaration *fd;
         Expressions *arguments;
 
-        fd = FuncDeclaration::genCfunc(tvoid->arrayOf(), "_adSort");
+        if (!fd) {
+            Parameters* args = new Parameters;
+            args->push(new Parameter(STCin, Type::tvoid->arrayOf(), NULL, NULL));
+            args->push(new Parameter(STCin, Type::dtypeinfo->type, NULL, NULL));
+            fd = FuncDeclaration::genCfunc(args, Type::tvoid->arrayOf(), "_adSort");
+        }
         ec = new VarExp(Loc(), fd);
         e = e->castTo(sc, n->arrayOf());        // convert to dynamic array
         arguments = new Expressions();
@@ -7385,14 +7390,24 @@ Expression *TypeEnum::getProperty(Loc loc, Identifier *ident, int flag)
 
     if (ident == Id::max)
     {
-        if (!sym->maxval)
+        if (!sym->isdone)
             goto Lfwd;
+        if (!sym->maxval)
+        {
+            error(loc, "enum %s has no .max property because the base type %s is not an integral type", toChars(), sym->memtype->toChars());
+            return new ErrorExp;
+        }
         e = sym->maxval;
     }
     else if (ident == Id::min)
     {
-        if (!sym->minval)
+        if (!sym->isdone)
             goto Lfwd;
+        if (!sym->minval)
+        {
+            error(loc, "enum %s has no .min property because the base type %s is not an integral type", toChars(), sym->memtype->toChars());
+            return new ErrorExp;
+        }
         e = sym->minval;
     }
     else if (ident == Id::init)

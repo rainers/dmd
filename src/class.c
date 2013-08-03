@@ -310,8 +310,15 @@ void ClassDeclaration::semantic(Scope *sc)
 
     // Expand any tuples in baseclasses[]
     for (size_t i = 0; i < baseclasses->dim; )
-    {   BaseClass *b = (*baseclasses)[i];
+    {
+        BaseClass *b = (*baseclasses)[i];
+
+        unsigned oldgag = global.gag;
+        if (global.isSpeculativeGagging() && !isSpeculative())
+            global.gag = 0;
         b->type = b->type->semantic(loc, sc);
+        global.gag = oldgag;
+
         Type *tb = b->type->toBasetype();
 
         if (tb->ty == Ttuple)
@@ -988,8 +995,11 @@ ClassDeclaration *ClassDeclaration::searchBase(Loc loc, Identifier *ident)
  */
 
 #if DMDV2
-int isf(void *param, FuncDeclaration *fd)
+int isf(void *param, Dsymbol *s)
 {
+    FuncDeclaration *fd = s->isFuncDeclaration();
+    if (!fd)
+        return 0;
     //printf("param = %p, fd = %p %s\n", param, fd, fd->toChars());
     return (RootObject *)param == fd;
 }
@@ -999,7 +1009,8 @@ int ClassDeclaration::isFuncHidden(FuncDeclaration *fd)
     //printf("ClassDeclaration::isFuncHidden(class = %s, fd = %s)\n", toChars(), fd->toChars());
     Dsymbol *s = search(Loc(), fd->ident, 4|2);
     if (!s)
-    {   //printf("not found\n");
+    {
+        //printf("not found\n");
         /* Because, due to a hack, if there are multiple definitions
          * of fd->ident, NULL is returned.
          */
@@ -1010,9 +1021,10 @@ int ClassDeclaration::isFuncHidden(FuncDeclaration *fd)
     if (os)
     {
         for (size_t i = 0; i < os->a.dim; i++)
-        {   Dsymbol *s2 = os->a[i];
+        {
+            Dsymbol *s2 = os->a[i];
             FuncDeclaration *f2 = s2->isFuncDeclaration();
-            if (f2 && overloadApply(f2, &isf, (void *)fd))
+            if (f2 && overloadApply(f2, (void *)fd, &isf))
                 return 0;
         }
         return 1;
@@ -1021,7 +1033,7 @@ int ClassDeclaration::isFuncHidden(FuncDeclaration *fd)
     {
         FuncDeclaration *fdstart = s->isFuncDeclaration();
         //printf("%s fdstart = %p\n", s->kind(), fdstart);
-        if (overloadApply(fdstart, &isf, (void *)fd))
+        if (overloadApply(fdstart, (void *)fd, &isf))
             return 0;
 
         return !fd->parent->isTemplateMixin();

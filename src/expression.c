@@ -2080,7 +2080,7 @@ real_t Expression::toImaginary()
 complex_t Expression::toComplex()
 {
     error("Floating point constant expression expected instead of %s", toChars());
-    return 0.0;
+    return (complex_t)0.0;
 }
 
 StringExp *Expression::toString()
@@ -2745,7 +2745,7 @@ real_t IntegerExp::toImaginary()
 
 complex_t IntegerExp::toComplex()
 {
-    return toReal();
+    return (complex_t)toReal();
 }
 
 int IntegerExp::isBool(int result)
@@ -7785,9 +7785,7 @@ Expression *DotVarExp::semantic(Scope *sc)
             accessCheck(loc, sc, e1, var);
 
             VarDeclaration *v = var->isVarDeclaration();
-#if PULL93
-            if (v && (v->isDataseg() || (v->storage_class & STCmanifest)))
-#endif
+            if (!PULL93 || v && (v->isDataseg() || (v->storage_class & STCmanifest)))
             {
                 Expression *e = expandVar(WANTvalue, v);
                 if (e)
@@ -10741,7 +10739,7 @@ Expression *IndexExp::semantic(Scope *sc)
             e2 = e2->optimize(WANTvalue);
             dinteger_t length = el->toInteger();
             if (length)
-                skipboundscheck = IntRange(0, length).contains(e2->getIntRange());
+                skipboundscheck = IntRange(SignExtendedNumber(0), SignExtendedNumber(length)).contains(e2->getIntRange());
         }
     }
 
