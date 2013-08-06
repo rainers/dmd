@@ -2447,11 +2447,34 @@ TypeInfoStructDeclaration::TypeInfoStructDeclaration(Type *tinfo)
     type = Type::typeinfostruct->type;
 }
 
+Scope* rebuildScope(Dsymbol* sym)
+{
+    assert(sym);
+    if(Module* m = sym->isModule())
+        return Scope::createGlobal(m);
+    if(ScopeDsymbol* ss = sym->isScopeDsymbol())
+    {
+        Scope* sc = rebuildScope(sym->parent);
+        return sc->push(ss);
+    }
+    return rebuildScope(sym->parent);
+}
+
+void aggrSemantic3(AggregateDeclaration *sym)
+{
+    // rebuild scope of sym, because the symbol is just added anyway
+    if (Scope* sc = rebuildScope(sym))
+    {
+        sym->semantic3(sc);
+        while(sc)
+            sc = sc->pop();
+    }
+}
+
 void TypeInfoStructDeclaration::semantic3(Scope* sc)
 {
-    AggregateDeclaration *sym = tinfo->toDsymbol(sc)->isAggregateDeclaration();
-    if (sym)
-        sym->semantic3(sc);
+    if (AggregateDeclaration *sym = tinfo->toDsymbol(sc)->isAggregateDeclaration())
+        aggrSemantic3(sym);
 }
 
 /***************************** TypeInfoClassDeclaration ***********************/
@@ -2468,9 +2491,8 @@ TypeInfoClassDeclaration::TypeInfoClassDeclaration(Type *tinfo)
 
 void TypeInfoClassDeclaration::semantic3(Scope* sc)
 {
-    AggregateDeclaration *sym = tinfo->toDsymbol(sc)->isAggregateDeclaration();
-    if (sym)
-        sym->semantic3(sc);
+    if (AggregateDeclaration *sym = tinfo->toDsymbol(sc)->isAggregateDeclaration())
+        aggrSemantic3(sym);
 }
 
 /***************************** TypeInfoInterfaceDeclaration *******************/
@@ -2487,9 +2509,8 @@ TypeInfoInterfaceDeclaration::TypeInfoInterfaceDeclaration(Type *tinfo)
 
 void TypeInfoInterfaceDeclaration::semantic3(Scope* sc)
 {
-    AggregateDeclaration *sym = tinfo->toDsymbol(sc)->isAggregateDeclaration();
-    if (sym)
-        sym->semantic3(sc);
+    if (AggregateDeclaration *sym = tinfo->toDsymbol(sc)->isAggregateDeclaration())
+        aggrSemantic3(sym);
 }
 
 /***************************** TypeInfoTypedefDeclaration *********************/
