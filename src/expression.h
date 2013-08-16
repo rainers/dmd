@@ -483,11 +483,14 @@ public:
     Expression *interpret(InterState *istate, CtfeGoal goal = ctfeNeedRvalue);
     MATCH implicitConvTo(Type *t);
     Expression *castTo(Scope *sc, Type *t);
+    Expression *implicitCastTo(Scope *sc, Type *t);
     Expression *inferType(Type *t, int flag = 0, Scope *sc = NULL, TemplateParameters *tparams = NULL);
     dt_t **toDt(dt_t **pdt);
 
     Expression *doInline(InlineDoState *ids);
     Expression *inlineScan(InlineScanState *iss);
+
+    void verifyTypeInfo(Scope* sc);
 };
 
 class AssocArrayLiteralExp : public Expression
@@ -510,10 +513,13 @@ public:
     Expression *interpret(InterState *istate, CtfeGoal goal = ctfeNeedRvalue);
     MATCH implicitConvTo(Type *t);
     Expression *castTo(Scope *sc, Type *t);
+    Expression *implicitCastTo(Scope *sc, Type *t);
     Expression *inferType(Type *t, int flag = 0, Scope *sc = NULL, TemplateParameters *tparams = NULL);
 
     Expression *doInline(InlineDoState *ids);
     Expression *inlineScan(InlineScanState *iss);
+
+    void verifyTypeInfo(Scope* sc);
 };
 
 // scrubReturnValue is running
@@ -638,6 +644,8 @@ public:
     Expression *semantic(Scope *sc);
     Expression *interpret(InterState *istate, CtfeGoal goal = ctfeNeedRvalue);
     Expression *optimize(int result, bool keepLvalue = false);
+    Expression *castTo(Scope *sc, Type *t);
+    Expression *implicitCastTo(Scope *sc, Type *t);
     MATCH implicitConvTo(Type *t);
     elem *toElem(IRState *irs);
     void toCBuffer(OutBuffer *buf, HdrGenState *hgs);
@@ -1491,6 +1499,8 @@ public:
     Identifier *opId();
     Identifier *opId_r();
 
+    Expression* verifyTypeInfo(Scope* sc);
+
     elem *toElem(IRState *irs);
 };
 
@@ -1711,6 +1721,7 @@ class RemoveExp : public BinExp
 public:
     RemoveExp(Loc loc, Expression *e1, Expression *e2);
     Expression *interpret(InterState *istate, CtfeGoal goal = ctfeNeedRvalue);
+    Expression *semantic(Scope *sc);
     void toCBuffer(OutBuffer *buf, HdrGenState *hgs);
     elem *toElem(IRState *irs);
 };
@@ -1729,6 +1740,8 @@ public:
     int isCommutative();
     Identifier *opId();
     Expression *op_overload(Scope *sc);
+
+    void verifyTypeInfo(Scope* sc);
 
     elem *toElem(IRState *irs);
 };

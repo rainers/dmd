@@ -130,27 +130,7 @@ void AggregateDeclaration::semantic3(Scope *sc)
         }
         sc = sc->pop();
 
-        if (!getRTInfo && Type::rtinfo &&
-            (!isDeprecated() || global.params.useDeprecated) && // don't do it for unused deprecated types
-            (type && type->ty != Terror)) // or error types
-        {
-            // Evaluate: RTinfo!type
-            Objects *tiargs = new Objects();
-            tiargs->push(type);
-            TemplateInstance *ti = new TemplateInstance(loc, Type::rtinfo, tiargs);
-            ti->semantic(sc);
-            ti->semantic2(sc);
-            ti->semantic3(sc);
-            Dsymbol *s = ti->toAlias();
-            Expression *e = new DsymbolExp(Loc(), s, 0);
-
-            Scope *sc = ti->tempdecl->scope->startCTFE();
-            e = e->semantic(sc);
-            sc->endCTFE();
-
-            e = e->ctfeInterpret();
-            getRTInfo = e;
-        }
+        type->getTypeInfo(sc); // implicitely calls generateTypeInfoData
 
         if (sd)
         {
@@ -174,6 +154,30 @@ void AggregateDeclaration::semantic3(Scope *sc)
                     sd->xcmp = sd->xerrcmp;
             }
         }
+    }
+}
+
+void AggregateDeclaration::generateTypeInfoData(Scope *sc)
+{
+    if (!getRTInfo && Type::rtinfo &&
+        (!isDeprecated() || global.params.useDeprecated) && // don't do it for unused deprecated types
+        (type && type->ty != Terror)) // or error types
+    {   // Evaluate: gcinfo!type
+        Objects *tiargs = new Objects();
+        tiargs->push(type);
+        TemplateInstance *ti = new TemplateInstance(loc, Type::rtinfo, tiargs);
+        ti->semantic(sc);
+        ti->semantic2(sc);
+        ti->semantic3(sc);
+        Dsymbol *s = ti->toAlias();
+        Expression *e = new DsymbolExp(Loc(), s, 0);
+
+        Scope *sc = ti->tempdecl->scope->startCTFE();
+        e = e->semantic(sc);
+        sc->endCTFE();
+
+        e = e->ctfeInterpret();
+        getRTInfo = e;
     }
 }
 

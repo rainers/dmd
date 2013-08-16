@@ -396,6 +396,10 @@ void EnumDeclaration::semantic(Scope *sc)
     if (sc != sce)
         sce->pop();
     //members->print();
+
+    if (0 && !isAnonymous())
+        if (memtype)
+            memtype->buildTypeInfo(sc); // avoid creating it from the backend, better create it now
 }
 
 bool EnumDeclaration::oneMember(Dsymbol **ps, Identifier *ident)

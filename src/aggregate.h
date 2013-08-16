@@ -90,6 +90,7 @@ public:
     void setScope(Scope *sc);
     void semantic2(Scope *sc);
     void semantic3(Scope *sc);
+    void generateTypeInfoData(Scope *sc);
     void inlineScan();
     unsigned size(Loc loc);
     static void alignmember(structalign_t salign, unsigned size, unsigned *poffset);

@@ -144,6 +144,29 @@ Expression *FuncExp::implicitCastTo(Scope *sc, Type *t)
     return inferType(t)->Expression::implicitCastTo(sc, t);
 }
 
+Expression *NewExp::implicitCastTo(Scope *sc, Type *t)
+{
+    Expression* e = Expression::implicitCastTo(sc, t);
+    e->type->buildTypeInfo(sc); // very likely this is needed for code gen
+    return e;
+}
+
+Expression *ArrayLiteralExp::implicitCastTo(Scope *sc, Type *t)
+{
+    Expression* e = Expression::implicitCastTo(sc, t);
+    if(type->vtinfo)
+        e->type->buildTypeInfo(sc); // very likely this is needed for code gen
+    return e;
+}
+
+Expression *AssocArrayLiteralExp::implicitCastTo(Scope *sc, Type *t)
+{
+    Expression* e = Expression::implicitCastTo(sc, t);
+    if(type->vtinfo)
+        e->type->buildTypeInfo(sc); // very likely this is needed for code gen
+    return e;
+}
+
 /*******************************************
  * Return !=0 if we can implicitly convert this to type t.
  * Don't do the actual cast.
@@ -1254,6 +1277,13 @@ Expression *NullExp::castTo(Scope *sc, Type *t)
     return e;
 }
 
+Expression *NewExp::castTo(Scope *sc, Type *t)
+{
+    Expression* e = Expression::castTo(sc, t);
+    e->type->buildTypeInfo(sc); // very likely this is needed for code gen
+    return e;
+}
+
 Expression *StructLiteralExp::castTo(Scope *sc, Type *t)
 {
     Expression *e = Expression::castTo(sc, t);
@@ -1610,6 +1640,7 @@ Expression *ArrayLiteralExp::castTo(Scope *sc, Type *t)
             (*e->elements)[i] = ex;
         }
         e->type = t;
+        e->verifyTypeInfo(sc);
         return e;
     }
     if (tb->ty == Tpointer && typeb->ty == Tsarray)
@@ -1618,6 +1649,7 @@ Expression *ArrayLiteralExp::castTo(Scope *sc, Type *t)
         if (!tp->equals(e->type))
         {   e = (ArrayLiteralExp *)copy();
             e->type = tp;
+            e->verifyTypeInfo(sc);
         }
     }
     else if (tb->ty == Tvector &&
@@ -1670,6 +1702,7 @@ Expression *AssocArrayLiteralExp::castTo(Scope *sc, Type *t)
             (*e->keys)[i] = ex;
         }
         e->type = t;
+        e->verifyTypeInfo(sc);
         return e;
     }
     return e->Expression::castTo(sc, t);

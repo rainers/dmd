@@ -360,6 +360,7 @@ class TypeInfoDeclaration : public VarDeclaration
 {
 public:
     Type *tinfo;
+    Scope* deferredScope;
 
     TypeInfoDeclaration(Type *tinfo, int internal);
     Dsymbol *syntaxCopy(Dsymbol *);
@@ -377,6 +378,8 @@ class TypeInfoStructDeclaration : public TypeInfoDeclaration
 {
 public:
     TypeInfoStructDeclaration(Type *tinfo);
+
+    void semantic3(Scope* sc);
 
     void toDt(dt_t **pdt);
 };
@@ -403,6 +406,8 @@ class TypeInfoTypedefDeclaration : public TypeInfoDeclaration
 public:
     TypeInfoTypedefDeclaration(Type *tinfo);
 
+    void semantic3(Scope* sc);
+
     void toDt(dt_t **pdt);
 };
 
@@ -410,6 +415,8 @@ class TypeInfoPointerDeclaration : public TypeInfoDeclaration
 {
 public:
     TypeInfoPointerDeclaration(Type *tinfo);
+
+    void semantic3(Scope* sc);
 
     void toDt(dt_t **pdt);
 };
@@ -419,6 +426,8 @@ class TypeInfoArrayDeclaration : public TypeInfoDeclaration
 public:
     TypeInfoArrayDeclaration(Type *tinfo);
 
+    void semantic3(Scope* sc);
+
     void toDt(dt_t **pdt);
 };
 
@@ -426,6 +435,8 @@ class TypeInfoStaticArrayDeclaration : public TypeInfoDeclaration
 {
 public:
     TypeInfoStaticArrayDeclaration(Type *tinfo);
+
+    void semantic3(Scope* sc);
 
     void toDt(dt_t **pdt);
 };
@@ -435,6 +446,8 @@ class TypeInfoAssociativeArrayDeclaration : public TypeInfoDeclaration
 public:
     TypeInfoAssociativeArrayDeclaration(Type *tinfo);
 
+    void semantic3(Scope* sc);
+
     void toDt(dt_t **pdt);
 };
 
@@ -442,6 +455,8 @@ class TypeInfoEnumDeclaration : public TypeInfoDeclaration
 {
 public:
     TypeInfoEnumDeclaration(Type *tinfo);
+
+    void semantic3(Scope* sc);
 
     void toDt(dt_t **pdt);
 };
@@ -451,6 +466,8 @@ class TypeInfoFunctionDeclaration : public TypeInfoDeclaration
 public:
     TypeInfoFunctionDeclaration(Type *tinfo);
 
+    void semantic3(Scope* sc);
+
     void toDt(dt_t **pdt);
 };
 
@@ -459,6 +476,8 @@ class TypeInfoDelegateDeclaration : public TypeInfoDeclaration
 public:
     TypeInfoDelegateDeclaration(Type *tinfo);
 
+    void semantic3(Scope* sc);
+
     void toDt(dt_t **pdt);
 };
 
@@ -466,6 +485,8 @@ class TypeInfoTupleDeclaration : public TypeInfoDeclaration
 {
 public:
     TypeInfoTupleDeclaration(Type *tinfo);
+
+    void semantic3(Scope* sc);
 
     void toDt(dt_t **pdt);
 };
@@ -477,6 +498,8 @@ public:
     TypeInfoConstDeclaration(Type *tinfo);
 
     void toDt(dt_t **pdt);
+
+    void semantic3(Scope* sc);
 };
 
 class TypeInfoInvariantDeclaration : public TypeInfoDeclaration
@@ -485,6 +508,8 @@ public:
     TypeInfoInvariantDeclaration(Type *tinfo);
 
     void toDt(dt_t **pdt);
+
+    void semantic3(Scope* sc);
 };
 
 class TypeInfoSharedDeclaration : public TypeInfoDeclaration
@@ -493,6 +518,8 @@ public:
     TypeInfoSharedDeclaration(Type *tinfo);
 
     void toDt(dt_t **pdt);
+
+    void semantic3(Scope* sc);
 };
 
 class TypeInfoWildDeclaration : public TypeInfoDeclaration
@@ -501,12 +528,16 @@ public:
     TypeInfoWildDeclaration(Type *tinfo);
 
     void toDt(dt_t **pdt);
+
+    void semantic3(Scope* sc);
 };
 
 class TypeInfoVectorDeclaration : public TypeInfoDeclaration
 {
 public:
     TypeInfoVectorDeclaration(Type *tinfo);
+
+    void semantic3(Scope* sc);
 
     void toDt(dt_t **pdt);
 };

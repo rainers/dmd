@@ -324,6 +324,7 @@ public:
     virtual void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps);
     Expression *getInternalTypeInfo(Scope *sc);
     Expression *getTypeInfo(Scope *sc);
+    TypeInfoDeclaration *buildTypeInfo(Scope *sc);
     virtual TypeInfoDeclaration *getTypeInfoDeclaration();
     virtual int builtinTypeInfo();
     virtual Type *reliesOnTident(TemplateParameters *tparams = NULL);

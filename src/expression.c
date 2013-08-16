@@ -4348,7 +4348,10 @@ Expression *ArrayLiteralExp::semantic(Scope *sc)
     printf("ArrayLiteralExp::semantic('%s')\n", toChars());
 #endif
     if (type)
+    {
+        verifyTypeInfo(sc);
         return this;
+    }
 
     /* Perhaps an empty array literal [ ] should be rewritten as null?
      */
@@ -4370,7 +4373,14 @@ Expression *ArrayLiteralExp::semantic(Scope *sc)
         return new ErrorExp();
     }
 
+    verifyTypeInfo(sc);
     return this;
+}
+
+void ArrayLiteralExp::verifyTypeInfo(Scope* sc)
+{
+    if (elements && !type->vtinfo)
+        type->buildTypeInfo(sc ? sc : Module::rootModule->scope);
 }
 
 int ArrayLiteralExp::isBool(int result)
@@ -4484,7 +4494,26 @@ Expression *AssocArrayLiteralExp::semantic(Scope *sc)
 
     type = new TypeAArray(tvalue, tkey);
     type = type->semantic(loc, sc);
+
+    verifyTypeInfo(sc);
     return this;
+}
+
+void AssocArrayLiteralExp::verifyTypeInfo(Scope* sc)
+{
+    if (keys->dim)
+    {
+        Type *t = type->toBasetype()->mutableOf();
+        if (t->ty == Taarray)
+            t->buildTypeInfo(sc);
+        else
+        {
+            // UAAARG! toElem turns AssociativeArray(K,V) back into TypeAArray
+            Type* ta = new TypeAArray((*values)[0]->type, (*keys)[0]->type);
+            ta = ta->semantic(loc, NULL);
+            ta->buildTypeInfo(sc);
+        }
+    }
 }
 
 
@@ -4680,6 +4709,8 @@ Expression *StructLiteralExp::semantic(Scope *sc)
             }
             offset = v->offset + v->type->size();
         }
+        if (e)
+            e = e->semantic(sc);
         if (e && e->op == TOKerror)
         {
             /* An error in the initializer needs to be recorded as an error
@@ -4746,8 +4777,10 @@ Expression *StructLiteralExp::getField(Type *type, unsigned offset)
                 z->setDim(length);
                 for (size_t q = 0; q < length; ++q)
                     (*z)[q] = e->copy();
-                e = new ArrayLiteralExp(loc, z);
-                e->type = type;
+                ArrayLiteralExp* ae = new ArrayLiteralExp(loc, z);
+                ae->type = type;
+                ae->verifyTypeInfo(NULL); // no Scope available here, will use rootModule
+                e = ae;
             }
             else
             {
@@ -5445,6 +5478,8 @@ Lagain:
         error("new can only create structs, dynamic arrays or class objects, not %s's", type->toChars());
         goto Lerr;
     }
+
+    type->buildTypeInfo(sc); // very likely this is needed for code gen
 
 //printf("NewExp: '%s'\n", toChars());
 //printf("NewExp:type '%s'\n", type->toChars());
@@ -10706,6 +10741,7 @@ Expression *IndexExp::semantic(Scope *sc)
             {
                 e2 = e2->implicitCastTo(sc, taa->index);        // type checking
             }
+            taa->index->getInternalTypeInfo(sc);
             type = taa->next;
             break;
         }
@@ -11412,6 +11448,7 @@ Ltupleassign:
             return ale->e1;
 
         checkDefCtor(ale->loc, ale->e1->type->toBasetype()->nextOf());
+        ale->e1->type->toBasetype()->buildTypeInfo(sc);
     }
     else if (e1->op == TOKslice)
     {
@@ -11682,6 +11719,10 @@ Expression *CatAssignExp::semantic(Scope *sc)
             error("cannot append type %s to type %s", tb2->toChars(), tb1->toChars());
         return new ErrorExp();
     }
+
+    if (tb1->ty == Tarray)
+        tb1->buildTypeInfo(sc);
+
     return reorderSettingAAElem(sc);
 }
 
@@ -12086,7 +12127,7 @@ Expression *CatExp::semantic(Scope *sc)
                 e2 = new ArrayLiteralExp(e2->loc, e2);
                 e2->type = type;
             }
-            return this;
+            return verifyTypeInfo(sc);
         }
         else if ((tb2->ty == Tsarray || tb2->ty == Tarray) &&
             e1->implicitConvTo(tb2next) >= MATCHconvert &&
@@ -12100,7 +12141,7 @@ Expression *CatExp::semantic(Scope *sc)
                 e1 = new ArrayLiteralExp(e1->loc, e1);
                 e1->type = type;
             }
-            return this;
+            return verifyTypeInfo(sc);
         }
 
         if ((tb1->ty == Tsarray || tb1->ty == Tarray) &&
@@ -12149,7 +12190,7 @@ Expression *CatExp::semantic(Scope *sc)
         else if ((t1->ty == Tarray || t1->ty == Tsarray) &&
                  (t2->ty == Tarray || t2->ty == Tsarray))
         {
-            e = this;
+            e = verifyTypeInfo(sc);
         }
         else
         {
@@ -12160,6 +12201,17 @@ Expression *CatExp::semantic(Scope *sc)
         e->type = e->type->semantic(loc, sc);
         return e;
     }
+    return this;
+}
+
+Expression* CatExp::verifyTypeInfo(Scope* sc)
+{
+    Type *tb1 = e1->type->toBasetype();
+    Type *tb2 = e2->type->toBasetype();
+
+    Type *ta = (tb1->ty == Tarray || tb1->ty == Tsarray) ? tb1 : tb2;
+    ta->buildTypeInfo(sc);
+
     return this;
 }
 
@@ -12819,6 +12871,8 @@ Expression *InExp::semantic(Scope *sc)
 
             // Return type is pointer to value
             type = ta->nextOf()->pointerTo();
+
+            ta->index->getInternalTypeInfo(sc); // needed by toElem
             break;
         }
 
@@ -12853,6 +12907,20 @@ void RemoveExp::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
     buf->writestring(".remove(");
     expToCBuffer(buf, hgs, e2, PREC_assign);
     buf->writestring(")");
+}
+
+Expression *RemoveExp::semantic(Scope *sc)
+{
+    Expression* e = BinExp::semantic(sc);
+    if (e->op == TOKerror)
+        return e;
+
+    assert(e == this);
+    Type *tb = e1->type->toBasetype();
+    assert(tb->ty == Taarray);
+    TypeAArray *taa = (TypeAArray *)tb;
+    taa->index->getInternalTypeInfo(sc); // needed by toElem
+    return e;
 }
 
 /************************************************************/
@@ -12924,6 +12992,16 @@ Expression *CmpExp::semantic(Scope *sc)
             t2next->implicitConvTo(t1next) < MATCHconst &&
             (t1next->ty != Tvoid && t2next->ty != Tvoid))
             error("array comparison type mismatch, %s vs %s", t1next->toChars(), t2next->toChars());
+
+        if(t1->ty != Tpointer)
+        {
+            Type *telement = t1next->toBasetype();
+#if DMDV2
+            telement->arrayOf()->getInternalTypeInfo(sc);
+#else
+            telement->getInternalTypeInfo(sc);
+#endif
+        }
         e = this;
     }
     else if (t1->ty == Tstruct || t2->ty == Tstruct ||
@@ -13056,6 +13134,7 @@ Expression *EqualExp::semantic(Scope *sc)
             {   error("cannot compare %s and %s", t1->toChars(), t2->toChars());
                 return new ErrorExp();
             }
+            verifyTypeInfo(sc);
             return e;
         }
     }
@@ -13156,6 +13235,7 @@ Expression *EqualExp::semantic(Scope *sc)
             e2 = e2->castTo(sc, Type::tcomplex80);
         }
     }
+    verifyTypeInfo(sc);
 
     if (e1->type->toBasetype()->ty == Tvector)
         return incompatibleTypes();
@@ -13168,6 +13248,25 @@ int EqualExp::isBit()
     return TRUE;
 }
 
+void EqualExp::verifyTypeInfo(Scope* sc)
+{
+    Type *t1 = e1->type->toBasetype();
+    Type *t2 = e2->type->toBasetype();
+
+    if ((t1->ty == Tarray || t1->ty == Tsarray) &&
+        (t2->ty == Tarray || t2->ty == Tsarray))
+    {
+        Type *telement  = t1->nextOf()->toBasetype();
+        Type *telement2 = t2->nextOf()->toBasetype();
+#if DMDV2
+        telement->arrayOf()->getInternalTypeInfo(sc);
+#else
+        telement->getInternalTypeInfo(sc);
+#endif
+    }
+    else if (t1->ty == Taarray && t2->toBasetype()->ty == Taarray)
+        t1->buildTypeInfo(sc); // needed during code gen
+}
 
 
 /************************************************************/

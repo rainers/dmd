@@ -4199,6 +4199,7 @@ Expression *TypeSArray::defaultInitLiteral(Loc loc)
         (*elements)[i] = elementinit;
     ArrayLiteralExp *ae = new ArrayLiteralExp(Loc(), elements);
     ae->type = this;
+    ae->verifyTypeInfo(NULL); // no Scope available here, will use rootModule
     return ae;
 }
 
