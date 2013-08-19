@@ -8248,7 +8248,15 @@ Expression *TypeStruct::defaultInitLiteral(Loc loc)
 
 int TypeStruct::isZeroInit(Loc loc)
 {
-    assert(sym->zeroInit != -1); // already evaluated?
+    if (sym->zeroInit == -1 && sym->scope)
+    {   // Struct is forward referenced. We need to resolve the whole thing.
+        sym->semantic(NULL);
+    }
+    if (sym->zeroInit == -1)
+    {
+        error(loc, "struct %s is forward referenced", sym->toChars());
+        return 0;
+    }
     return sym->zeroInit == 1;
 }
 
