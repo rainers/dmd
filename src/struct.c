@@ -643,29 +643,7 @@ void StructDeclaration::semantic(Scope *sc)
     //printf("-StructDeclaration::semantic(this=%p, '%s')\n", this, toChars());
 
     // Determine if struct is all zeros or not
-    zeroInit = 1;
-    for (size_t i = 0; i < fields.dim; i++)
-    {
-        Dsymbol *s = fields[i];
-        VarDeclaration *vd = s->isVarDeclaration();
-        if (vd && !vd->isDataseg())
-        {
-            if (vd->init)
-            {
-                // Should examine init to see if it is really all 0's
-                zeroInit = 0;
-                break;
-            }
-            else
-            {
-                if (!vd->type->isZeroInit(loc))
-                {
-                    zeroInit = 0;
-                    break;
-                }
-            }
-        }
-    }
+    zeroInit = calcZeroInit();
 
 #if DMDV1
     /* This doesn't work for DMDV2 because (ref S) and (S) parameter
@@ -793,6 +771,29 @@ void StructDeclaration::semantic(Scope *sc)
     }
 #endif
     assert(type->ty != Tstruct || ((TypeStruct *)type)->sym == this);
+}
+
+int StructDeclaration::calcZeroInit()
+{
+    // Determine if struct is all zeros or not
+    for (size_t i = 0; i < fields.dim; i++)
+    {
+        Dsymbol *s = fields[i];
+        VarDeclaration *vd = s->isVarDeclaration();
+        if (vd && !vd->isDataseg())
+        {
+            if (vd->init)
+            {
+                // Should examine init to see if it is really all 0's
+                return 0;
+            }
+            else if (!vd->type->isZeroInit(loc))
+            {
+                return 0;
+            }
+        }
+    }
+    return 1;
 }
 
 Dsymbol *StructDeclaration::search(Loc loc, Identifier *ident, int flags)

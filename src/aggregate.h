@@ -164,6 +164,7 @@ public:
     const char *kind();
     void finalizeSize(Scope *sc);
     bool isPOD();
+    int calcZeroInit();
 #if DMDV1
     Expression *cloneMembers();
 #endif

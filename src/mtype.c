@@ -8253,10 +8253,7 @@ int TypeStruct::isZeroInit(Loc loc)
         sym->semantic(NULL);
     }
     if (sym->zeroInit == -1)
-    {
-        error(loc, "struct %s is forward referenced", sym->toChars());
-        return 0;
-    }
+        sym->zeroInit = sym->calcZeroInit();
     return sym->zeroInit == 1;
 }
 
