@@ -1149,7 +1149,8 @@ void TypedefDeclaration::toObjFile(int multiobj)
     if (global.params.symdebug)
         toDebug();
 
-    //type->getTypeInfo(NULL);    // generate TypeInfo
+    if (type->builtinTypeInfo())
+        type->buildTypeInfo(NULL)->toObjFile(multiobj);
 
     TypeTypedef *tc = (TypeTypedef *)type;
     if (type->isZeroInit() || !tc->sym->init)
