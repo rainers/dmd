@@ -8248,7 +8248,8 @@ Expression *TypeStruct::defaultInitLiteral(Loc loc)
 
 int TypeStruct::isZeroInit(Loc loc)
 {
-    return sym->zeroInit;
+    assert(sym->zeroInit != -1); // already evaluated?
+    return sym->zeroInit == 1;
 }
 
 int TypeStruct::checkBoolean()

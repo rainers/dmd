@@ -955,7 +955,8 @@ void StructDeclaration::toObjFile(int multiobj)
         if (global.params.symdebug)
             toDebug();
 
-        //type->getTypeInfo(NULL);        // generate TypeInfo
+        if (type->builtinTypeInfo())
+            type->buildTypeInfo(NULL)->toObjFile(multiobj);
 
         if (1)
         {
@@ -1190,7 +1191,9 @@ void EnumDeclaration::toObjFile(int multiobj)
     if (global.params.symdebug)
         toDebug();
 
-    //type->getTypeInfo(NULL);    // generate TypeInfo
+    // generate TypeInfo
+    if (type->builtinTypeInfo())
+        type->buildTypeInfo(NULL)->toObjFile(multiobj);
 
     TypeEnum *tc = (TypeEnum *)type;
     if (!tc->sym->defaultval || type->isZeroInit())

@@ -1471,7 +1471,8 @@ void InterfaceDeclaration::semantic(Scope *sc)
     if (sc->module == sc->module->importedFrom) 
     {
         // generate TypeInfo if module not imported, but actually compiled
-        type->buildTypeInfo(sc);
+        if (!type->vtinfo)
+            type->vtinfo = type->getTypeInfoDeclaration();
         sc->module->members->push(type->vtinfo);
     }
 #if 0

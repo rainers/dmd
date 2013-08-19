@@ -397,7 +397,7 @@ void EnumDeclaration::semantic(Scope *sc)
         sce->pop();
     //members->print();
 
-    if (0 && !isAnonymous())
+    if (!isAnonymous())
         if (memtype)
             memtype->buildTypeInfo(sc); // avoid creating it from the backend, better create it now
 }

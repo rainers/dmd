@@ -111,10 +111,12 @@ Expression *Type::getInternalTypeInfo(Scope *sc)
  * for a created TypeInfoDeclaration 
  */
 
-TypeInfoDeclaration *Type::buildTypeInfo(Scope *sc)
+TypeInfoDeclaration *Type::buildTypeInfo(Scope *sc, bool checkNeedSemantic)
 {
     if (vtinfo)
         return vtinfo;
+    if (sc && checkNeedSemantic && !typeInfoNeedsSemantic())
+        return 0;
 
     //printf("Type::getTypeInfo() %p, %s\n", this, toChars());
     if (!Type::dtypeinfo)
@@ -126,7 +128,6 @@ TypeInfoDeclaration *Type::buildTypeInfo(Scope *sc)
     Type *t = merge2(); // do this since not all Type's are merge'd
     if (!t->vtinfo)
     {
-        bool modifiedType = true;
 #if DMDV2
         if (t->isShared())      // does both 'shared' and 'shared const'
             t->vtinfo = new TypeInfoSharedDeclaration(t);
@@ -138,10 +139,7 @@ TypeInfoDeclaration *Type::buildTypeInfo(Scope *sc)
             t->vtinfo = new TypeInfoWildDeclaration(t);
         else
 #endif
-        {
             t->vtinfo = t->getTypeInfoDeclaration();
-            modifiedType = false;
-        }
         assert(t->vtinfo);
         vtinfo = t->vtinfo;
 
@@ -151,7 +149,9 @@ TypeInfoDeclaration *Type::buildTypeInfo(Scope *sc)
         if (!t->builtinTypeInfo())
         {   // Generate COMDAT
             if (sc)                     // if in semantic() pass
-            {   // Find module that will go all the way to an object file
+            {
+                // Find module that will go all the way to an object file
+
                 Module *m = sc->module->importedFrom;
                 m->members->push(t->vtinfo);
                 if(m->semanticRun >= 3)
@@ -167,7 +167,7 @@ TypeInfoDeclaration *Type::buildTypeInfo(Scope *sc)
                 //  being added to the AST for semantic analysis (no RTInfo generated)
                 // to ease transition, modifier types are just put out as they just forward
                 //  to the actual TypeInfo
-                if (!modifiedType)
+                if (t->typeInfoNeedsSemantic())
                     error(Loc(), "ICE: unexpected type info request for %s", t->toChars());
                 t->vtinfo->toObjFile(global.params.multiobj);
             }
@@ -181,7 +181,7 @@ TypeInfoDeclaration *Type::buildTypeInfo(Scope *sc)
 
 Expression *Type::getTypeInfo(Scope *sc)
 {
-    buildTypeInfo(sc);
+    buildTypeInfo(sc, false);
     Expression *e = new VarExp(Loc(), vtinfo);
     e = e->addressOf(sc);
     e->type = vtinfo->type;          // do this so we don't get redundant dereference
@@ -194,9 +194,24 @@ TypeInfoDeclaration *Type::getTypeInfoDeclaration()
     return new TypeInfoDeclaration(this, 0);
 }
 
+bool Type::typeInfoNeedsSemantic()
+{
+    return false;
+}
+
+bool TypeNext::typeInfoNeedsSemantic()
+{
+    return next->typeInfoNeedsSemantic();
+}
+
 TypeInfoDeclaration *TypeTypedef::getTypeInfoDeclaration()
 {
     return new TypeInfoTypedefDeclaration(this);
+}
+
+bool TypeTypedef::typeInfoNeedsSemantic()
+{
+    return sym->basetype->typeInfoNeedsSemantic();
 }
 
 TypeInfoDeclaration *TypePointer::getTypeInfoDeclaration()
@@ -219,9 +234,30 @@ TypeInfoDeclaration *TypeAArray::getTypeInfoDeclaration()
     return new TypeInfoAssociativeArrayDeclaration(this);
 }
 
+bool TypeAArray::typeInfoNeedsSemantic()
+{
+    return TypeNext::typeInfoNeedsSemantic()
+#if DMDV2
+        || getImpl()->type->typeInfoNeedsSemantic()
+#endif
+        || index->typeInfoNeedsSemantic();
+}
+
 TypeInfoDeclaration *TypeStruct::getTypeInfoDeclaration()
 {
     return new TypeInfoStructDeclaration(this);
+}
+
+bool TypeStruct::typeInfoNeedsSemantic()
+{
+    if (global.params.is64bit)
+    {
+        if (sym->arg1type && sym->arg1type->typeInfoNeedsSemantic())
+            return true;
+        if (sym->arg2type && sym->arg2type->typeInfoNeedsSemantic())
+            return true;
+    }
+    return isZeroInit(Loc()); // TypeInfo written with the StructDeclaration otherwise
 }
 
 TypeInfoDeclaration *TypeClass::getTypeInfoDeclaration()
@@ -242,6 +278,13 @@ TypeInfoDeclaration *TypeEnum::getTypeInfoDeclaration()
     return new TypeInfoEnumDeclaration(this);
 }
 
+bool TypeEnum::typeInfoNeedsSemantic()
+{
+    if (sym->memtype && sym->memtype->typeInfoNeedsSemantic())
+        return true;
+    return !builtinTypeInfo();
+}
+
 TypeInfoDeclaration *TypeFunction::getTypeInfoDeclaration()
 {
     return new TypeInfoFunctionDeclaration(this);
@@ -255,6 +298,15 @@ TypeInfoDeclaration *TypeDelegate::getTypeInfoDeclaration()
 TypeInfoDeclaration *TypeTuple::getTypeInfoDeclaration()
 {
     return new TypeInfoTupleDeclaration(this);
+}
+
+bool TypeTuple::typeInfoNeedsSemantic()
+{
+    size_t dim = arguments->dim;
+    for (size_t i = 0; i < dim; i++)
+        if ((*arguments)[i]->type->typeInfoNeedsSemantic())
+            return true;
+    return false;
 }
 
 /****************************************************
@@ -966,6 +1018,39 @@ int TypeClass::builtinTypeInfo()
      */
 #if DMDV2
     return mod ? 0 : 1;
+#else
+    return 1;
+#endif
+}
+
+int TypeStruct::builtinTypeInfo()
+{
+    /* If the struct has a non-zero initializer, the type info contains a reference
+     * to it, so we need to compile and link the module with the struct declaration anyway.
+     * As a result we can claim the TypeInfo is builtin
+     */
+#if DMDV2
+    return mod || isZeroInit(Loc()) ? 0 : 1;
+#else
+    return 1;
+#endif
+}
+
+int TypeTypedef::builtinTypeInfo()
+{
+    // see comment in TypeStruct::builtinTypeInfo()
+#if DMDV2
+    return mod || !sym->init || isZeroInit(Loc()) ? 0 : 1;
+#else
+    return 1;
+#endif
+}
+
+int TypeEnum::builtinTypeInfo()
+{
+    // see comment in TypeStruct::builtinTypeInfo()
+#if DMDV2
+    return mod || !sym->defaultval || isZeroInit(Loc()) ? 0 : 1;
 #else
     return 1;
 #endif
