@@ -146,7 +146,7 @@ TypeInfoDeclaration *Type::buildTypeInfo(Scope *sc, bool checkNeedSemantic)
         /* If this has a custom implementation in std/typeinfo, then
          * do not generate a COMDAT for it.
          */
-        if (!t->builtinTypeInfo())
+        if (!t->builtinTypeInfo() && t->ty != Terror)
         {   // Generate COMDAT
             if (sc)                     // if in semantic() pass
             {
@@ -181,6 +181,8 @@ TypeInfoDeclaration *Type::buildTypeInfo(Scope *sc, bool checkNeedSemantic)
 
 Expression *Type::getTypeInfo(Scope *sc)
 {
+    if(ty == Terror)
+        return new ErrorExp();
     buildTypeInfo(sc, false);
     Expression *e = new VarExp(Loc(), vtinfo);
     e = e->addressOf(sc);
