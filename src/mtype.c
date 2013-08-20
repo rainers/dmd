@@ -157,7 +157,7 @@ const char *Type::kind()
 Type *Type::copy()
 {
     Type *t = (Type *)mem.malloc(sizeTy[ty]);
-    memcpy(t, this, sizeTy[ty]);
+    memcpy((void*)t, (void*)this, sizeTy[ty]);
     return t;
 }
 
@@ -396,7 +396,7 @@ Type *Type::nullAttributes()
 {
     unsigned sz = sizeTy[ty];
     Type *t = (Type *)mem.malloc(sz);
-    memcpy(t, this, sz);
+    memcpy((void*)t, (void*)this, sz);
     // t->mod = NULL;  // leave mod unchanged
     t->deco = NULL;
     t->arrayof = NULL;
@@ -1910,10 +1910,17 @@ Type *Type::substWildTo(unsigned mod)
     //printf("+Type::substWildTo this = %s, mod = x%x\n", toChars(), mod);
     Type *t;
 
-    if (nextOf())
+    if (Type *tn = nextOf())
     {
-        t = nextOf()->substWildTo(mod);
-        if (t == nextOf())
+        // substitution has no effect on function pointer type.
+        if (ty == Tpointer && tn->ty == Tfunction)
+        {
+            t = this;
+            goto L1;
+        }
+
+        t = tn->substWildTo(mod);
+        if (t == tn)
             t = this;
         else
         {
@@ -1928,6 +1935,10 @@ Type *Type::substWildTo(unsigned mod)
                 t = new TypeAArray(t, ((TypeAArray *)this)->index->syntaxCopy());
                 ((TypeAArray *)t)->sc = ((TypeAArray *)this)->sc;   // duplicate scope
             }
+            else if (ty == Tdelegate)
+            {
+                t = new TypeDelegate(t);
+            }
             else
                 assert(0);
 
@@ -1937,6 +1948,7 @@ Type *Type::substWildTo(unsigned mod)
     else
         t = this;
 
+L1:
     if (isWild())
     {
         if (mod & MODconst)
@@ -1951,6 +1963,47 @@ Type *Type::substWildTo(unsigned mod)
 
     //printf("-Type::substWildTo t = %s\n", t->toChars());
     return t;
+}
+
+Type *TypeFunction::substWildTo(unsigned)
+{
+    if (!iswild && !(mod & MODwild))
+        return this;
+
+    // Substitude inout qualifier of function type to mutable or immutable
+    // would break type system. Instead substitude inout to the most weak
+    // qualifer - const.
+    unsigned m = MODconst;
+
+    assert(next);
+    Type *tret = next->substWildTo(m);
+    Parameters *params = parameters;
+    if (mod & MODwild)
+        params = parameters->copy();
+    for (size_t i = 0; i < params->dim; i++)
+    {
+        Parameter *p = (*params)[i];
+        Type *t = p->type->substWildTo(m);
+        if (t == p->type)
+            continue;
+        if (params == parameters)
+            params = parameters->copy();
+        (*params)[i] = new Parameter(p->storageClass, t, NULL, NULL);
+    }
+    if (next == tret && params == parameters)
+        return this;
+
+    // Similar to TypeFunction::syntaxCopy;
+    TypeFunction *t = new TypeFunction(params, tret, varargs, linkage);
+    t->mod = ((mod & MODwild) ? (mod & ~MODwild) | MODconst : mod);
+    t->isnothrow = isnothrow;
+    t->purity = purity;
+    t->isproperty = isproperty;
+    t->isref = isref;
+    t->iswild = false;  // done
+    t->trust = trust;
+    t->fargs = fargs;
+    return t->merge();
 }
 
 /**************************
@@ -5108,6 +5161,7 @@ Type *TypeFunction::syntaxCopy()
     t->purity = purity;
     t->isproperty = isproperty;
     t->isref = isref;
+    t->iswild = iswild;
     t->trust = trust;
     t->fargs = fargs;
     return t;
@@ -5535,7 +5589,7 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
         for (size_t i = 0; i < parameters->dim; i++)
         {   Parameter *arg = (*parameters)[i];
             Parameter *cpy = (Parameter *)mem.malloc(sizeof(Parameter));
-            memcpy(cpy, arg, sizeof(Parameter));
+            memcpy((void*)cpy, (void*)arg, sizeof(Parameter));
             (*tf->parameters)[i] = cpy;
         }
     }
