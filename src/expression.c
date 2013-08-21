@@ -4412,7 +4412,8 @@ Expression *ArrayLiteralExp::semantic(Scope *sc)
 void ArrayLiteralExp::verifyTypeInfo(Scope* sc)
 {
     if (elements && !type->vtinfo)
-        type->buildTypeInfo(sc ? sc : Module::rootModule->scope);
+        if (!sc || !(sc->flags & SCOPEctfe))
+            type->buildTypeInfo(sc ? sc : Module::rootModule->scope);
 }
 
 int ArrayLiteralExp::isBool(int result)
