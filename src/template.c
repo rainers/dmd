@@ -2186,8 +2186,8 @@ void functionResolve(Match *m, Dsymbol *dstart, Loc loc, Scope *sc,
         printf("\t%s %s\n", arg->type->toChars(), arg->toChars());
         //printf("\tty = %d\n", arg->type->ty);
     }
-    printf("stc = %llx\n", dstart->scope->stc);
-    printf("match:t/f = %d/%d\n", ta_last, m->last);
+    //printf("stc = %llx\n", dstart->scope->stc);
+    //printf("match:t/f = %d/%d\n", ta_last, m->last);
 #endif
 
   struct ParamDeduce
@@ -2364,10 +2364,9 @@ void functionResolve(Match *m, Dsymbol *dstart, Loc loc, Scope *sc,
                 return 0;
 
             Dsymbol *s = ti->inst->toAlias();
-            FuncDeclaration *fd = s->isFuncDeclaration();
-            if (!fd)
+            if (!s->isFuncDeclaration() && !s->isTemplateDeclaration())
                 goto Lerror;
-            fd = resolveFuncCall(loc, sc, fd, NULL, tthis, fargs, 1);
+            FuncDeclaration *fd = resolveFuncCall(loc, sc, s, NULL, tthis, fargs, 1);
             if (!fd)
                 return 0;
 
@@ -5452,7 +5451,6 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
     // in target_symbol_list(_idx) so we can remove it later if we encounter
     // an error.
 #if 1
-    int dosemantic3 = 0;
     Dsymbols *target_symbol_list = NULL;
     size_t target_symbol_list_idx;
 
@@ -5466,8 +5464,9 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
 #endif
 
         //if (scx && scx->scopesym) printf("3: scx is %s %s\n", scx->scopesym->kind(), scx->scopesym->toChars());
-        if (scx && scx->scopesym &&
-            scx->scopesym->members && !scx->scopesym->isTemplateMixin()
+        if (scx && scx->scopesym && scx->scopesym->members &&
+            !scx->scopesym->isTemplateMixin() &&
+            !scx->scopesym->isModule()
 #if 0 // removed because it bloated compile times
             /* The problem is if A imports B, and B imports A, and both A
              * and B instantiate the same template, does the compilation of A
@@ -5484,13 +5483,22 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
         }
         else
         {
-            Module *m = (enclosing ? sc : tempdecl->scope)->module->importedFrom;
+            Module *m = (enclosing ? sc : tempdecl->scope)->module;
+            if (m->importedFrom != m)
+            {
+                //if (tinst && tinst->objFileModule)
+                //    m = tinst->objFileModule;
+                //else
+                    m = m->importedFrom;
+            }
             //printf("\t2: adding to module %s instead of module %s\n", m->toChars(), sc->module->toChars());
             a = m->members;
+
+            /* Defer semantic3 running in order to avoid mutual forward reference.
+             * See test/runnable/test10736.d
+             */
             if (m->semanticRun >= 3)
-            {
-                dosemantic3 = 1;
-            }
+                Module::addDeferredSemantic3(this);
         }
         for (size_t i = 0; 1; i++)
         {
@@ -5687,14 +5695,15 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
      * for initializers inside a function.
      */
 //    if (sc->parent->isFuncDeclaration())
-
+    {
         /* BUG 782: this has problems if the classes this depends on
          * are forward referenced. Find a way to defer semantic()
          * on this template.
          */
         semantic2(sc2);
+    }
 
-    if (sc->func || dosemantic3)
+    if (sc->func)
     {
         trySemantic3(sc2);
     }
@@ -6431,6 +6440,18 @@ int TemplateInstance::hasNestedArgs(Objects *args)
                     sa = ((FuncExp *)ea)->fd;
                 goto Lsa;
             }
+            // Emulate Expression::toMangleBuffer call that had exist in TemplateInstance::genIdent.
+            if (ea->op != TOKint64 &&               // IntegerExp
+                ea->op != TOKfloat64 &&             // RealExp
+                ea->op != TOKcomplex80 &&           // CompexExp
+                ea->op != TOKnull &&                // NullExp
+                ea->op != TOKstring &&              // StringExp
+                ea->op != TOKarrayliteral &&        // ArrayLiteralExp
+                ea->op != TOKassocarrayliteral &&   // AssocArrayLiteralExp
+                ea->op != TOKstructliteral)         // StructLiteralExp
+            {
+                ea->error("expression %s is not a valid template value argument", ea->toChars());
+            }
         }
         else if (sa)
         {
@@ -6713,14 +6734,20 @@ bool TemplateInstance::needsTypeInference(Scope *sc, int flag)
          * then return true
          */
         FuncDeclaration *fd;
-        if (!td->onemember ||
-            (fd = td->onemember/*->toAlias()*/->isFuncDeclaration()) == NULL ||
+        if (!td->onemember)
+            return 0;
+        if (TemplateDeclaration *td2 = td->onemember->isTemplateDeclaration())
+        {
+            if (!td2->onemember || !td2->onemember->isFuncDeclaration())
+                return 0;
+            if (ti->tiargs->dim > td->parameters->dim && !td->isVariadic())
+                return 0;
+            return 1;
+        }
+        if ((fd = td->onemember->isFuncDeclaration()) == NULL ||
             fd->type->ty != Tfunction)
         {
-            /* Not a template function, therefore type inference is not possible.
-             */
-            //printf("false\n");
-            return -1;
+            return 0;
         }
 
         for (size_t i = 0; i < td->parameters->dim; i++)
@@ -6806,7 +6833,7 @@ bool TemplateInstance::needsTypeInference(Scope *sc, int flag)
     for (size_t oi = 0; oi < overs_dim; oi++)
     {
         if (int r = overloadApply(tovers ? tovers->a[oi] : tempdecl, &p, &ParamNeedsInf::fp))
-            return r > 0;
+            return true;
     }
     //printf("false\n");
     return false;

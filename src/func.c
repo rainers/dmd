@@ -1,5 +1,5 @@
 // Compiler implementation of the D programming language
-// Copyright (c) 1999-2012 by Digital Mars
+// Copyright (c) 1999-2013 by Digital Mars
 // All Rights Reserved
 // written by Walter Bright
 // http://www.digitalmars.com
@@ -25,8 +25,10 @@
 #include "template.h"
 #include "hdrgen.h"
 #include "target.h"
+#include "parse.h"
 
 void functionToCBuffer2(TypeFunction *t, OutBuffer *buf, HdrGenState *hgs, int mod, const char *kind);
+void genCmain(Scope *sc);
 
 /********************************* FuncDeclaration ****************************/
 
@@ -867,6 +869,9 @@ Ldone:
             printf("entry     %-10s\t%s\n", type, name);
         }
     }
+
+    if (fbody && isMain() && sc->module == sc->module->importedFrom)
+        genCmain(sc);
 
     return;
 }
@@ -3442,6 +3447,49 @@ FuncDeclaration *FuncDeclaration::genCfunc(Parameters *args, Type *treturn, Iden
     return fd;
 }
 
+/************************************
+ * Generate C main() in response to seeing D main().
+ * This used to be in druntime, but contained a reference to _Dmain
+ * which didn't work when druntime was made into a dll and was linked
+ * to a program, such as a C++ program, that didn't have a _Dmain.
+ */
+
+void genCmain(Scope *sc)
+{
+    /* The D code to be generated is provided as D source code in the form of a string.
+     * Note that Solaris, for unknown reasons, requires both a main() and an _main()
+     */
+    static utf8_t code[] = "extern(C) {\n\
+        int _d_run_main(int argc, char **argv, void* mainFunc);\n\
+        int main(int argc, char **argv) { return _d_run_main(argc, argv, &main); }\n\
+        version (Solaris) int _main(int argc, char** argv) { return main(argc, argv); }\n\
+        }\n\
+        ";
+
+    Parser p(sc->module, code, sizeof(code) / sizeof(code[0]), 0);
+    p.loc = Loc();
+    p.nextToken();
+    Dsymbols *decl = p.parseDeclDefs(0);
+    assert(p.token.value == TOKeof);
+
+    sc = sc->push();
+    sc->parent = sc->module->importedFrom;
+    sc->stc = 0;
+
+    for (size_t i = 0; i < decl->dim; ++i)
+    {   Dsymbol *s = (*decl)[i];
+        sc->module->importedFrom->members->push(s);
+        s->addMember(sc, sc->module->importedFrom, 1);
+    }
+
+    for (size_t i = 0; i < decl->dim; ++i)
+    {   Dsymbol *s = (*decl)[i];
+        s->semantic(sc);
+    }
+
+    sc->pop();
+}
+
 const char *FuncDeclaration::kind()
 {
     return "function";
@@ -4233,16 +4281,16 @@ void SharedStaticCtorDeclaration::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 
 /********************************* StaticDtorDeclaration ****************************/
 
-StaticDtorDeclaration::StaticDtorDeclaration(Loc loc, Loc endloc)
+StaticDtorDeclaration::StaticDtorDeclaration(Loc loc, Loc endloc, StorageClass stc)
     : FuncDeclaration(loc, endloc,
-      Identifier::generateId("_staticDtor"), STCstatic, NULL)
+      Identifier::generateId("_staticDtor"), STCstatic | stc, NULL)
 {
     vgate = NULL;
 }
 
-StaticDtorDeclaration::StaticDtorDeclaration(Loc loc, Loc endloc, const char *name)
+StaticDtorDeclaration::StaticDtorDeclaration(Loc loc, Loc endloc, const char *name, StorageClass stc)
     : FuncDeclaration(loc, endloc,
-      Identifier::generateId(name), STCstatic, NULL)
+      Identifier::generateId(name), STCstatic | stc, NULL)
 {
     vgate = NULL;
 }
@@ -4250,7 +4298,7 @@ StaticDtorDeclaration::StaticDtorDeclaration(Loc loc, Loc endloc, const char *na
 Dsymbol *StaticDtorDeclaration::syntaxCopy(Dsymbol *s)
 {
     assert(!s);
-    StaticDtorDeclaration *sdd = new StaticDtorDeclaration(loc, endloc);
+    StaticDtorDeclaration *sdd = new StaticDtorDeclaration(loc, endloc, storage_class);
     return FuncDeclaration::syntaxCopy(sdd);
 }
 
@@ -4263,7 +4311,7 @@ void StaticDtorDeclaration::semantic(Scope *sc)
     }
 
     if (!type)
-        type = new TypeFunction(NULL, Type::tvoid, FALSE, LINKd);
+        type = new TypeFunction(NULL, Type::tvoid, FALSE, LINKd, storage_class);
 
     /* If the static ctor appears within a template instantiation,
      * it could get called multiple times by the module constructors
@@ -4342,15 +4390,15 @@ void StaticDtorDeclaration::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 
 /********************************* SharedStaticDtorDeclaration ****************************/
 
-SharedStaticDtorDeclaration::SharedStaticDtorDeclaration(Loc loc, Loc endloc)
-    : StaticDtorDeclaration(loc, endloc, "_sharedStaticDtor")
+SharedStaticDtorDeclaration::SharedStaticDtorDeclaration(Loc loc, Loc endloc, StorageClass stc)
+    : StaticDtorDeclaration(loc, endloc, "_sharedStaticDtor", stc)
 {
 }
 
 Dsymbol *SharedStaticDtorDeclaration::syntaxCopy(Dsymbol *s)
 {
     assert(!s);
-    SharedStaticDtorDeclaration *sdd = new SharedStaticDtorDeclaration(loc, endloc);
+    SharedStaticDtorDeclaration *sdd = new SharedStaticDtorDeclaration(loc, endloc, storage_class);
     return FuncDeclaration::syntaxCopy(sdd);
 }
 

@@ -1137,6 +1137,7 @@ Lnomatch:
             }
 
             VarDeclaration *v = new VarDeclaration(loc, arg->type, id, ti);
+            v->storage_class |= storage_class;
             if (arg->storageClass & STCparameter)
                 v->storage_class |= arg->storageClass;
             //printf("declaring field %s of type %s\n", v->toChars(), v->type->toChars());

@@ -1554,6 +1554,7 @@ Language changes listed by -transition=id:\n\
             printf("semantic3 %s\n", m->toChars());
         m->semantic3();
     }
+    Module::runDeferredSemantic3();
     if (global.errors)
         fatal();
 
@@ -1584,14 +1585,14 @@ Language changes listed by -transition=id:\n\
     if (global.params.moduleDeps)
     {
         OutBuffer* ob = global.params.moduleDeps;
-        if (global.params.moduleDepsFile) 
+        if (global.params.moduleDepsFile)
         {
             File deps(global.params.moduleDepsFile);
             deps.setbuffer((void*)ob->data, ob->offset);
             deps.writev();
         }
         else
-            printf("%.*s", ob->offset, ob->data);
+            printf("%.*s", (int)ob->offset, ob->data);
     }
 
     // Scan for functions to inline
