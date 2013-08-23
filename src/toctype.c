@@ -192,7 +192,7 @@ type *TypeStruct::toCtype()
             }
     }
 
-    if (global.params.symdebug)
+    if (0 && global.params.symdebug)
         sym->toDebug();
     //printf("t = %p, Tflags = x%x\n", ctype, ctype->Tflags);
     return ctype;
@@ -255,7 +255,7 @@ type *TypeEnum::toCtype()
         t = ctype = type_alloc(Tint32);
     }
 
-    if (global.params.symdebug)
+    if (0 && global.params.symdebug)
         sym->toDebug();
 
     //printf("t = %p, Tflags = x%x\n", t, t->Tflags);
@@ -297,7 +297,7 @@ type *TypeClass::toCtype()
             symbol_struct_addField(t->Ttag, v->ident->toChars(), v->type->toCtype(), v->offset);
         }
 
-    if (global.params.symdebug)
+    if (0 && global.params.symdebug)
         sym->toDebug();
 
     return ctype;
