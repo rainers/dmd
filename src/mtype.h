@@ -325,8 +325,10 @@ public:
     virtual void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps);
     Expression *getInternalTypeInfo(Scope *sc);
     Expression *getTypeInfo(Scope *sc);
+    TypeInfoDeclaration *buildTypeInfo(Scope *sc, bool checkNeedSemantic = true);
     virtual TypeInfoDeclaration *getTypeInfoDeclaration();
     virtual int builtinTypeInfo();
+    virtual bool typeInfoNeedsSemantic();
     virtual Type *reliesOnTident(TemplateParameters *tparams = NULL);
     virtual int hasWild();
     virtual Expression *toExpression();
@@ -376,6 +378,7 @@ public:
     void checkDeprecated(Loc loc, Scope *sc);
     Type *reliesOnTident(TemplateParameters *tparams = NULL);
     int hasWild();
+    bool typeInfoNeedsSemantic();
     Type *nextOf();
     Type *makeConst();
     Type *makeInvariant();
@@ -570,6 +573,7 @@ public:
     int isZeroInit(Loc loc);
     int checkBoolean();
     TypeInfoDeclaration *getTypeInfoDeclaration();
+    bool typeInfoNeedsSemantic();
     Type *reliesOnTident(TemplateParameters *tparams);
     Expression *toExpression();
     int hasPointers();
@@ -861,6 +865,8 @@ public:
     dt_t **toDt(dt_t **pdt);
     MATCH deduceType(Scope *sc, Type *tparam, TemplateParameters *parameters, Objects *dedtypes, unsigned *wildmatch = NULL);
     TypeInfoDeclaration *getTypeInfoDeclaration();
+    int builtinTypeInfo();
+    bool typeInfoNeedsSemantic();
     int hasPointers();
     TypeTuple *toArgTypes();
     MATCH implicitConvTo(Type *to);
@@ -911,6 +917,8 @@ public:
     int isZeroInit(Loc loc);
     MATCH deduceType(Scope *sc, Type *tparam, TemplateParameters *parameters, Objects *dedtypes, unsigned *wildmatch = NULL);
     TypeInfoDeclaration *getTypeInfoDeclaration();
+    int builtinTypeInfo();
+    bool typeInfoNeedsSemantic();
     int hasPointers();
     TypeTuple *toArgTypes();
     Type *nextOf();
@@ -961,6 +969,8 @@ public:
     dt_t **toDt(dt_t **pdt);
     MATCH deduceType(Scope *sc, Type *tparam, TemplateParameters *parameters, Objects *dedtypes, unsigned *wildmatch = NULL);
     TypeInfoDeclaration *getTypeInfoDeclaration();
+    bool typeInfoNeedsSemantic();
+    int builtinTypeInfo();
     int hasPointers();
     TypeTuple *toArgTypes();
     int hasWild();
@@ -1034,6 +1044,7 @@ public:
     Expression *getProperty(Loc loc, Identifier *ident, int flag);
     Expression *defaultInit(Loc loc);
     TypeInfoDeclaration *getTypeInfoDeclaration();
+    bool typeInfoNeedsSemantic();
 };
 
 class TypeSlice : public TypeNext

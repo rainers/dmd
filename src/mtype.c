@@ -4253,6 +4253,7 @@ Expression *TypeSArray::defaultInitLiteral(Loc loc)
         (*elements)[i] = elementinit;
     ArrayLiteralExp *ae = new ArrayLiteralExp(Loc(), elements);
     ae->type = this;
+    ae->verifyTypeInfo(NULL); // no Scope available here, will use rootModule
     return ae;
 }
 
@@ -8302,7 +8303,13 @@ Expression *TypeStruct::defaultInitLiteral(Loc loc)
 
 int TypeStruct::isZeroInit(Loc loc)
 {
-    return sym->zeroInit;
+    if (sym->zeroInit == -1 && sym->scope)
+    {   // Struct is forward referenced. We need to resolve the whole thing.
+        sym->semantic(NULL);
+    }
+    if (sym->zeroInit == -1)
+        sym->zeroInit = sym->calcZeroInit();
+    return sym->zeroInit == 1;
 }
 
 int TypeStruct::checkBoolean()

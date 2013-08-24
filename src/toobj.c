@@ -793,8 +793,8 @@ void InterfaceDeclaration::toObjFile(int multiobj)
     //////////////////////////////////////////////
 
     // Put out the TypeInfo
-    type->getTypeInfo(NULL);
-    type->vtinfo->toObjFile(multiobj);
+    //type->getTypeInfo(NULL);
+    //type->vtinfo->toObjFile(multiobj);
 
     //////////////////////////////////////////////
 
@@ -955,7 +955,8 @@ void StructDeclaration::toObjFile(int multiobj)
         if (global.params.symdebug)
             toDebug(); // type->toCtype(); // calls toDebug() only once
 
-        type->getTypeInfo(NULL);        // generate TypeInfo
+        if (type->builtinTypeInfo())
+            type->buildTypeInfo(NULL)->toObjFile(multiobj);
 
         if (1)
         {
@@ -1025,6 +1026,9 @@ void VarDeclaration::toObjFile(int multiobj)
 
     if (isDataseg() && !(storage_class & STCextern))
     {
+        if (global.params.verbose)
+            printf("variable  %s\n", toPrettyChars());
+
         s = toSymbol();
         sz = type->size();
 
@@ -1157,7 +1161,8 @@ void TypedefDeclaration::toObjFile(int multiobj)
     if (global.params.symdebug)
         toDebug();
 
-    type->getTypeInfo(NULL);    // generate TypeInfo
+    if (type->builtinTypeInfo())
+        type->buildTypeInfo(NULL)->toObjFile(multiobj);
 
     TypeTypedef *tc = (TypeTypedef *)type;
     if (type->isZeroInit() || !tc->sym->init)
@@ -1199,7 +1204,9 @@ void EnumDeclaration::toObjFile(int multiobj)
     if (global.params.symdebug)
         toDebug(); // type->toCtype(); // calls toDebug() only once
 
-    type->getTypeInfo(NULL);    // generate TypeInfo
+    // generate TypeInfo
+    if (type->builtinTypeInfo())
+        type->buildTypeInfo(NULL)->toObjFile(multiobj);
 
     TypeEnum *tc = (TypeEnum *)type;
     if (!tc->sym->defaultval || type->isZeroInit())

@@ -130,27 +130,7 @@ void AggregateDeclaration::semantic3(Scope *sc)
         }
         sc = sc->pop();
 
-        if (!getRTInfo && Type::rtinfo &&
-            (!isDeprecated() || global.params.useDeprecated) && // don't do it for unused deprecated types
-            (type && type->ty != Terror)) // or error types
-        {
-            // Evaluate: RTinfo!type
-            Objects *tiargs = new Objects();
-            tiargs->push(type);
-            TemplateInstance *ti = new TemplateInstance(loc, Type::rtinfo, tiargs);
-            ti->semantic(sc);
-            ti->semantic2(sc);
-            ti->semantic3(sc);
-            Dsymbol *s = ti->toAlias();
-            Expression *e = new DsymbolExp(Loc(), s, 0);
-
-            Scope *sc = ti->tempdecl->scope->startCTFE();
-            e = e->semantic(sc);
-            sc->endCTFE();
-
-            e = e->ctfeInterpret();
-            getRTInfo = e;
-        }
+        type->getTypeInfo(sc); // implicitely calls generateTypeInfoData
 
         if (sd)
         {
@@ -174,6 +154,30 @@ void AggregateDeclaration::semantic3(Scope *sc)
                     sd->xcmp = sd->xerrcmp;
             }
         }
+    }
+}
+
+void AggregateDeclaration::generateTypeInfoData(Scope *sc)
+{
+    if (!getRTInfo && Type::rtinfo &&
+        (!isDeprecated() || global.params.useDeprecated) && // don't do it for unused deprecated types
+        (type && type->ty != Terror)) // or error types
+    {   // Evaluate: gcinfo!type
+        Objects *tiargs = new Objects();
+        tiargs->push(type);
+        TemplateInstance *ti = new TemplateInstance(loc, Type::rtinfo, tiargs);
+        ti->semantic(sc);
+        ti->semantic2(sc);
+        ti->semantic3(sc);
+        Dsymbol *s = ti->toAlias();
+        Expression *e = new DsymbolExp(Loc(), s, 0);
+
+        Scope *sc = ti->tempdecl->scope->startCTFE();
+        e = e->semantic(sc);
+        sc->endCTFE();
+
+        e = e->ctfeInterpret();
+        getRTInfo = e;
     }
 }
 
@@ -464,7 +468,7 @@ int AggregateDeclaration::numFieldsInUnion(int firstIndex)
 StructDeclaration::StructDeclaration(Loc loc, Identifier *id)
     : AggregateDeclaration(loc, id)
 {
-    zeroInit = 0;       // assume false until we do semantic processing
+    zeroInit = -1;       // assume false until we do semantic processing
 #if DMDV2
     hasIdentityAssign = 0;
     hasIdentityEquals = 0;
@@ -639,29 +643,7 @@ void StructDeclaration::semantic(Scope *sc)
     //printf("-StructDeclaration::semantic(this=%p, '%s')\n", this, toChars());
 
     // Determine if struct is all zeros or not
-    zeroInit = 1;
-    for (size_t i = 0; i < fields.dim; i++)
-    {
-        Dsymbol *s = fields[i];
-        VarDeclaration *vd = s->isVarDeclaration();
-        if (vd && !vd->isDataseg())
-        {
-            if (vd->init)
-            {
-                // Should examine init to see if it is really all 0's
-                zeroInit = 0;
-                break;
-            }
-            else
-            {
-                if (!vd->type->isZeroInit(loc))
-                {
-                    zeroInit = 0;
-                    break;
-                }
-            }
-        }
-    }
+    zeroInit = calcZeroInit();
 
 #if DMDV1
     /* This doesn't work for DMDV2 because (ref S) and (S) parameter
@@ -789,6 +771,29 @@ void StructDeclaration::semantic(Scope *sc)
     }
 #endif
     assert(type->ty != Tstruct || ((TypeStruct *)type)->sym == this);
+}
+
+int StructDeclaration::calcZeroInit()
+{
+    // Determine if struct is all zeros or not
+    for (size_t i = 0; i < fields.dim; i++)
+    {
+        Dsymbol *s = fields[i];
+        VarDeclaration *vd = s->isVarDeclaration();
+        if (vd && !vd->isDataseg())
+        {
+            if (vd->init)
+            {
+                // Should examine init to see if it is really all 0's
+                return 0;
+            }
+            else if (!vd->type->isZeroInit(loc))
+            {
+                return 0;
+            }
+        }
+    }
+    return 1;
 }
 
 Dsymbol *StructDeclaration::search(Loc loc, Identifier *ident, int flags)

@@ -1468,6 +1468,13 @@ void InterfaceDeclaration::semantic(Scope *sc)
     sc->pop();
     //printf("-InterfaceDeclaration::semantic(%s), type = %p\n", toChars(), type);
 
+    if (sc->module == sc->module->importedFrom) 
+    {
+        // generate TypeInfo if module not imported, but actually compiled
+        if (!type->vtinfo)
+            type->vtinfo = type->getTypeInfoDeclaration();
+        sc->module->members->push(type->vtinfo);
+    }
 #if 0
     if (type->ty == Tclass && ((TypeClass *)type)->sym != this)
     {

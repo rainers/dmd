@@ -2398,6 +2398,7 @@ TypeInfoDeclaration::TypeInfoDeclaration(Type *tinfo, int internal)
     storage_class = STCstatic | STCgshared;
     protection = PROTpublic;
     linkage = LINKc;
+    deferredScope = NULL;
 }
 
 Dsymbol *TypeInfoDeclaration::syntaxCopy(Dsymbol *s)
