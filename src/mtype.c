@@ -8808,6 +8808,12 @@ L1:
         /* It's:
          *    Class.d
          */
+
+        // If Class is in a failed template, return an error
+        TemplateInstance *tiparent = d->inTemplateInstance();
+        if (tiparent && tiparent->errors)
+            return new ErrorExp();
+
         if (TupleDeclaration *tup = d->isTupleDeclaration())
         {
             e = new TupleExp(e->loc, tup);
