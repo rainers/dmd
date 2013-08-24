@@ -1850,6 +1850,11 @@ void VarDeclaration::semantic3(Scope *sc)
         }
     }
 #endif
+#if TARGET_WINDOS
+    if (isDataseg() && !(storage_class & STCextern))
+        if(hasPointers())
+            type->buildTypeInfo(sc); // ensure typeinfo generated when writing info for data segment
+#endif
 }
 
 void VarDeclaration::setFieldOffset(AggregateDeclaration *ad, unsigned *poffset, bool isunion)

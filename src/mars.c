@@ -1558,7 +1558,7 @@ Language changes listed by -transition=id:\n\
     if (global.errors)
         fatal();
 
-    if (0 && global.params.useInline)
+    if (global.params.useInline)
     {
         /* The problem with useArrayBounds and useAssert is that the
          * module being linked to may not have generated them, so if
