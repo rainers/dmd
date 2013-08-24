@@ -213,6 +213,8 @@ TypeInfoDeclaration *TypeTypedef::getTypeInfoDeclaration()
 
 bool TypeTypedef::typeInfoNeedsSemantic()
 {
+    if (builtinTypeInfo()) // generated with declaration
+        return false;
     return sym->basetype->typeInfoNeedsSemantic();
 }
 
@@ -252,14 +254,7 @@ TypeInfoDeclaration *TypeStruct::getTypeInfoDeclaration()
 
 bool TypeStruct::typeInfoNeedsSemantic()
 {
-    if (global.params.is64bit)
-    {
-        if (sym->arg1type && sym->arg1type->typeInfoNeedsSemantic())
-            return true;
-        if (sym->arg2type && sym->arg2type->typeInfoNeedsSemantic())
-            return true;
-    }
-    return isZeroInit(Loc()); // TypeInfo written with the StructDeclaration otherwise
+    return !builtinTypeInfo(); // generated with declaration
 }
 
 TypeInfoDeclaration *TypeClass::getTypeInfoDeclaration()
@@ -282,9 +277,9 @@ TypeInfoDeclaration *TypeEnum::getTypeInfoDeclaration()
 
 bool TypeEnum::typeInfoNeedsSemantic()
 {
-    if (sym->memtype && sym->memtype->typeInfoNeedsSemantic())
-        return true;
-    return !builtinTypeInfo();
+    if (builtinTypeInfo()) // generated with declaration
+        return false;
+    return sym->memtype && sym->memtype->typeInfoNeedsSemantic();
 }
 
 TypeInfoDeclaration *TypeFunction::getTypeInfoDeclaration()
