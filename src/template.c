@@ -2331,11 +2331,8 @@ void functionResolve(Match *m, Dsymbol *dstart, Loc loc, Scope *sc,
             if (td->scope)
             {
                 // Try to fix forward reference. Ungag errors while doing so.
-                int oldgag = global.gag;
-                if (global.isSpeculativeGagging() && !td->isSpeculative())
-                    global.gag = 0;
+                Ungag ungag = td->ungagSpeculative();
                 td->semantic(td->scope);
-                global.gag = oldgag;
             }
         }
         if (!td->semanticRun)
@@ -5465,8 +5462,7 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
 
         //if (scx && scx->scopesym) printf("3: scx is %s %s\n", scx->scopesym->kind(), scx->scopesym->toChars());
         if (scx && scx->scopesym && scx->scopesym->members &&
-            !scx->scopesym->isTemplateMixin() &&
-            !scx->scopesym->isModule()
+            !scx->scopesym->isTemplateMixin()
 #if 0 // removed because it bloated compile times
             /* The problem is if A imports B, and B imports A, and both A
              * and B instantiate the same template, does the compilation of A
@@ -5478,12 +5474,28 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
 #endif
            )
         {
+            /* A module can have explicit template instance and its alias
+             * in module scope (e,g, `alias Base64Impl!('+', '/') Base64;`).
+             * When the module is just imported, compiler can assume that
+             * its instantiated code would be contained in the separately compiled
+             * obj/lib file (e.g. phobos.lib). So we can omit their semantic3 running.
+             */
+            //if (scx->scopesym->isModule())
+            //    printf("module level instance %s\n", toChars());
+
             //printf("\t1: adding to %s %s\n", scx->scopesym->kind(), scx->scopesym->toChars());
             a = scx->scopesym->members;
         }
         else
         {
-            Module *m = (enclosing ? sc : tempdecl->scope)->module;
+            Dsymbol *s = enclosing ? enclosing : tempdecl->parent;
+            for (; s; s = s->toParent2())
+            {
+                if (s->isModule())
+                    break;
+            }
+            assert(s);
+            Module *m = (Module *)s;
             if (m->importedFrom != m)
             {
                 //if (tinst && tinst->objFileModule)
@@ -6103,13 +6115,8 @@ bool TemplateInstance::findTemplateDeclaration(Scope *sc)
             if (td->scope)
             {
                 // Try to fix forward reference. Ungag errors while doing so.
-                int oldgag = global.gag;
-                if (global.isSpeculativeGagging() && !td->isSpeculative())
-                    global.gag = 0;
-
+                Ungag ungag = td->ungagSpeculative();
                 td->semantic(td->scope);
-
-                global.gag = oldgag;
             }
             if (!td->semanticRun)
             {

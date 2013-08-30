@@ -67,6 +67,22 @@ void toWinPath(char *src)
     }
 }
 
+Ungag::~Ungag()
+{
+    //printf("+ungag dtor gag %d => %d\n", global.gag, oldgag);
+    global.gag = oldgag;
+}
+
+Ungag Dsymbol::ungagSpeculative()
+{
+    unsigned oldgag = global.gag;
+
+    if (global.isSpeculativeGagging() && !isSpeculative())
+        global.gag = 0;
+
+    return Ungag(oldgag);
+}
+
 Global global;
 
 void Global::init()
@@ -1554,10 +1570,8 @@ Language changes listed by -transition=id:\n\
             printf("semantic3 %s\n", m->toChars());
         m->semantic3();
     }
-    Module::runDeferredSemantic3();
     if (global.errors)
         fatal();
-
     if (global.params.useInline)
     {
         /* The problem with useArrayBounds and useAssert is that the
@@ -1581,6 +1595,9 @@ Language changes listed by -transition=id:\n\
                 fatal();
         }
     }
+    Module::runDeferredSemantic3();
+    if (global.errors)
+        fatal();
 
     if (global.params.moduleDeps)
     {

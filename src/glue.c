@@ -793,6 +793,7 @@ void FuncDeclaration::toObjFile(int multiobj)
 
     if (vthis)
     {
+        assert(!vthis->csym);
         sthis = vthis->toSymbol();
         irs.sthis = sthis;
         if (!(f->Fflags3 & Fnested))
@@ -822,12 +823,9 @@ void FuncDeclaration::toObjFile(int multiobj)
     if (parameters)
     {
         for (size_t i = 0; i < parameters->dim; i++)
-        {   VarDeclaration *v = (*parameters)[i];
-            if (v->csym)
-            {
-                error("compiler error, parameter '%s', bugzilla 2962?", v->toChars());
-                assert(0);
-            }
+        {
+            VarDeclaration *v = (*parameters)[i];
+            assert(!v->csym);
             params[pi + i] = v->toSymbol();
         }
         pi += parameters->dim;

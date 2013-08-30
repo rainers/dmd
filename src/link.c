@@ -17,7 +17,9 @@
 
 #if _WIN32
 #include        <process.h>
-#include        <windows.h>
+#ifdef _MSC_VER
+#include <windows.h>
+#endif
 #endif
 
 #if __sun || _MSC_VER
@@ -751,7 +753,6 @@ int executecmd(char *cmd, char *args, int useenv)
     // Normalize executable path separators, see Bugzilla 9330
     for (char *p=cmd; *p; ++p)
         if (*p == '/') *p = '\\';
-#endif
 
 #ifdef _MSC_VER
     if(strchr(cmd, ' '))
@@ -763,7 +764,9 @@ int executecmd(char *cmd, char *args, int useenv)
         if(len > 0 && len <= cmdlen)
             cmd = shortName;
     }
+#endif 
 #endif
+
     status = executearg0(cmd,args);
 #if _WIN32
     if (status == -1)
