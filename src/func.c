@@ -711,6 +711,10 @@ void FuncDeclaration::semantic(Scope *sc)
     else if (isOverride() && !parent->isTemplateInstance())
         error("override only applies to class member functions");
 
+    // Reflect this->type to f because it could be changed by findVtblIndex
+    assert(type->ty == Tfunction);
+    f = (TypeFunction *)type;
+
     /* Do not allow template instances to add virtual functions
      * to a class.
      */
@@ -785,6 +789,9 @@ void FuncDeclaration::semantic(Scope *sc)
              */
             Loc loc = frequire->loc;
             TypeFunction *tf = new TypeFunction(NULL, Type::tvoid, 0, LINKd);
+            tf->isnothrow = f->isnothrow;
+            tf->purity = f->purity;
+            tf->trust = f->trust;
             FuncDeclaration *fd = new FuncDeclaration(loc, loc,
                 Id::require, STCundefined, tf);
             fd->fbody = frequire;
@@ -812,6 +819,9 @@ void FuncDeclaration::semantic(Scope *sc)
                 arguments->push(a);
             }
             TypeFunction *tf = new TypeFunction(arguments, Type::tvoid, 0, LINKd);
+            tf->isnothrow = f->isnothrow;
+            tf->purity = f->purity;
+            tf->trust = f->trust;
             FuncDeclaration *fd = new FuncDeclaration(loc, loc,
                 Id::ensure, STCundefined, tf);
             fd->fbody = fensure;
@@ -1257,26 +1267,31 @@ void FuncDeclaration::semantic3(Scope *sc)
                 fbody = new CompoundStatement(Loc(), new Statements());
 
             if (inferRetType)
-            {   // If no return type inferred yet, then infer a void
+            {
+                // If no return type inferred yet, then infer a void
                 if (!type->nextOf())
                 {
                     f->next = Type::tvoid;
                     //type = type->semantic(loc, sc);   // Removed with 6902
                 }
-                else if (returns && f->next->ty != Tvoid)
-                {
-                    for (size_t i = 0; i < returns->dim; i++)
-                    {   Expression *exp = (*returns)[i]->exp;
-                        if (!f->next->immutableOf()->equals(exp->type->immutableOf()))
-                        {   exp = exp->castTo(sc2, f->next);
-                            exp = exp->optimize(WANTvalue);
-                            (*returns)[i]->exp = exp;
-                        }
-                        //printf("[%d] %s %s\n", i, exp->type->toChars(), exp->toChars());
-                    }
-                }
-                assert(type == f);
             }
+            if (returns && f->next->ty != Tvoid)
+            {
+                for (size_t i = 0; i < returns->dim; i++)
+                {
+                    Expression *exp = (*returns)[i]->exp;
+                    if (!nrvo_can && !f->isref && exp->isLvalue())
+                        exp = callCpCtor(sc2, exp);
+                    if (!tintro && !f->next->immutableOf()->equals(exp->type->immutableOf()))
+                    {
+                        exp = exp->castTo(sc2, f->next);
+                        exp = exp->optimize(WANTvalue);
+                    }
+                    //printf("[%d] %s %s\n", i, exp->type->toChars(), exp->toChars());
+                    (*returns)[i]->exp = exp;
+                }
+            }
+            assert(type == f);
 
             if (isStaticCtorDeclaration())
             {   /* It's a static constructor. Ensure that all
