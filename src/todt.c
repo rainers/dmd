@@ -712,7 +712,8 @@ void ClassDeclaration::toDt(dt_t **pdt)
 
     // Put in first two members, the vtbl[] and the monitor
     dtxoff(pdt, toVtblSymbol(), 0);
-    dtsize_t(pdt, 0);                    // monitor
+    if (!cpp)
+        dtsize_t(pdt, 0);                    // monitor
 
     // Put in the rest
     toDt2(pdt, this);
@@ -893,8 +894,8 @@ dt_t **TypeSArray::toDtElem(dt_t **pdt, Expression *e)
         Type *tnext = next;
         Type *tbn = tnext->toBasetype();
         while (tbn->ty == Tsarray && (!e || tbn != e->type->nextOf()))
-        {   TypeSArray *tsa = (TypeSArray *)tbn;
-
+        {
+            TypeSArray *tsa = (TypeSArray *)tbn;
             len *= tsa->dim->toInteger();
             tnext = tbn->nextOf();
             tbn = tnext->toBasetype();

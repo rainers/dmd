@@ -616,11 +616,10 @@ elem *sarray_toDarray(Loc loc, Type *tfrom, Type *tto, elem *e)
 
 StructDeclaration *needsPostblit(Type *t)
 {
-    t = t->toBasetype();
-    while (t->ty == Tsarray)
-        t = t->nextOf()->toBasetype();
+    t = t->baseElemOf();
     if (t->ty == Tstruct)
-    {   StructDeclaration *sd = ((TypeStruct *)t)->sym;
+    {
+        StructDeclaration *sd = ((TypeStruct *)t)->sym;
         if (sd->postblit)
             return sd;
     }
@@ -2049,7 +2048,8 @@ elem *AssertExp::toElem(IRState *irs)
 
         // If e1 is a class object, call the class invariant on it
         if (global.params.useInvariants && t1->ty == Tclass &&
-            !((TypeClass *)t1)->sym->isInterfaceDeclaration())
+            !((TypeClass *)t1)->sym->isInterfaceDeclaration() &&
+            !((TypeClass *)t1)->sym->isCPPclass())
         {
             ts = symbol_genauto(t1->toCtype());
             int rtl;
@@ -3977,13 +3977,10 @@ elem *DeleteExp::toElem(IRState *irs)
             /* See if we need to run destructors on the array contents
              */
             elem *et = NULL;
-            Type *tv = tb->nextOf()->toBasetype();
-            while (tv->ty == Tsarray)
-            {   TypeSArray *ta = (TypeSArray *)tv;
-                tv = tv->nextOf()->toBasetype();
-            }
+            Type *tv = tb->nextOf()->baseElemOf();
             if (tv->ty == Tstruct)
-            {   TypeStruct *ts = (TypeStruct *)tv;
+            {
+                TypeStruct *ts = (TypeStruct *)tv;
                 StructDeclaration *sd = ts->sym;
                 if (sd->dtor)
                     et = tb->nextOf()->getTypeInfo(NULL)->toElem(irs);
@@ -4196,30 +4193,30 @@ elem *CastExp::toElem(IRState *irs)
 
         ClassDeclaration *cdfrom = tfrom->isClassHandle();
         ClassDeclaration *cdto   = t->isClassHandle();
+        if (cdfrom->cpp)
+        {
+            if (cdto->cpp)
+            {
+                /* Casting from a C++ interface to a C++ interface
+                 * is always a 'paint' operation
+                 */
+                goto Lret;                  // no-op
+            }
+
+            /* Casting from a C++ interface to a class
+             * always results in null because there is no runtime
+             * information available to do it.
+             *
+             * Casting from a C++ interface to a non-C++ interface
+             * always results in null because there's no way one
+             * can be derived from the other.
+             */
+            e = el_bin(OPcomma, TYnptr, e, el_long(TYnptr, 0));
+            goto Lret;
+        }
         if (cdfrom->isInterfaceDeclaration())
         {
             rtl = RTLSYM_INTERFACE_CAST;
-            if (cdfrom->isCPPinterface())
-            {
-                if (cdto->isCPPinterface())
-                {
-                    /* Casting from a C++ interface to a C++ interface
-                     * is always a 'paint' operation
-                     */
-                    goto Lret;                  // no-op
-                }
-
-                /* Casting from a C++ interface to a class
-                 * always results in null because there is no runtime
-                 * information available to do it.
-                 *
-                 * Casting from a C++ interface to a non-C++ interface
-                 * always results in null because there's no way one
-                 * can be derived from the other.
-                 */
-                e = el_bin(OPcomma, TYnptr, e, el_long(TYnptr, 0));
-                goto Lret;
-            }
         }
         if (cdto->isBaseOf(cdfrom, &offset) && offset != OFFSET_RUNTIME)
         {
