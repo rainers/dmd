@@ -1,6 +1,6 @@
 
 // Compiler implementation of the D programming language
-// Copyright (c) 1999-2012 by Digital Mars
+// Copyright (c) 1999-2013 by Digital Mars
 // All Rights Reserved
 // written by Walter Bright
 // http://www.digitalmars.com
@@ -507,7 +507,6 @@ TemplateDeclaration::TemplateDeclaration(Loc loc, Identifier *id,
     this->overnext = NULL;
     this->overroot = NULL;
     this->funcroot = NULL;
-    this->semanticRun = PASSinit;
     this->onemember = NULL;
     this->literal = 0;
     this->ismixin = ismixin;
@@ -560,7 +559,7 @@ void TemplateDeclaration::semantic(Scope *sc)
     printf("sc->stc = %llx\n", sc->stc);
     printf("sc->module = %s\n", sc->module->toChars());
 #endif
-    if (semanticRun)
+    if (semanticRun != PASSinit)
         return;         // semantic() already run
     semanticRun = PASSsemantic;
 
@@ -2326,7 +2325,7 @@ void functionResolve(Match *m, Dsymbol *dstart, Loc loc, Scope *sc,
         if (!sc)
             sc = td->scope; // workaround for Type::aliasthisOf
 
-        if (!td->semanticRun)
+        if (td->semanticRun == PASSinit)
         {
             if (td->scope)
             {
@@ -2335,7 +2334,7 @@ void functionResolve(Match *m, Dsymbol *dstart, Loc loc, Scope *sc,
                 td->semantic(td->scope);
             }
         }
-        if (!td->semanticRun)
+        if (td->semanticRun == PASSinit)
         {
             ::error(loc, "forward reference to template %s", td->toChars());
             goto Lerror;
@@ -2350,7 +2349,7 @@ void functionResolve(Match *m, Dsymbol *dstart, Loc loc, Scope *sc,
 
             Objects dedtypes;
             dedtypes.setDim(td->parameters->dim);
-            assert(td->semanticRun);
+            assert(td->semanticRun != PASSinit);
             MATCH mta = td->matchWithInstance(ti, &dedtypes, fargs, 0);
             //printf("matchWithInstance = %d\n", mta);
             if (!mta || mta < ta_last)      // no match or less match
@@ -5161,7 +5160,6 @@ TemplateInstance::TemplateInstance(Loc loc, Identifier *ident)
     this->tinst = NULL;
     this->argsym = NULL;
     this->aliasdecl = NULL;
-    this->semanticRun = PASSinit;
     this->semantictiargsdone = false;
     this->withsym = NULL;
     this->nest = 0;
@@ -5191,7 +5189,6 @@ TemplateInstance::TemplateInstance(Loc loc, TemplateDeclaration *td, Objects *ti
     this->tinst = NULL;
     this->argsym = NULL;
     this->aliasdecl = NULL;
-    this->semanticRun = PASSinit;
     this->semantictiargsdone = true;
     this->withsym = NULL;
     this->nest = 0;
@@ -5509,7 +5506,7 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
             /* Defer semantic3 running in order to avoid mutual forward reference.
              * See test/runnable/test10736.d
              */
-            if (m->semanticRun >= 3)
+            if (m->semanticRun >= PASSsemantic3done)
                 Module::addDeferredSemantic3(this);
         }
         for (size_t i = 0; 1; i++)
@@ -5572,7 +5569,7 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
 
     // Create our own scope for the template parameters
     Scope *scope = tempdecl->scope;
-    if (!tempdecl->semanticRun)
+    if (tempdecl->semanticRun == PASSinit)
     {
         error("template instantiation %s forward references template declaration %s", toChars(), tempdecl->toChars());
         return;
@@ -6005,7 +6002,7 @@ void TemplateInstance::semanticTiargs(Loc loc, Scope *sc, Objects *tiargs, int f
             (*tiargs)[j] = sa;
 
             TemplateDeclaration *td = sa->isTemplateDeclaration();
-            if (td && !td->semanticRun && td->literal)
+            if (td && td->semanticRun == PASSinit && td->literal)
             {
                 td->semantic(sc);
             }
@@ -6110,7 +6107,7 @@ bool TemplateInstance::findTemplateDeclaration(Scope *sc)
             return 0;
 
         TemplateInstance *ti = (TemplateInstance *)param;
-        if (!td->semanticRun)
+        if (td->semanticRun == PASSinit)
         {
             if (td->scope)
             {
@@ -6118,7 +6115,7 @@ bool TemplateInstance::findTemplateDeclaration(Scope *sc)
                 Ungag ungag = td->ungagSpeculative();
                 td->semantic(td->scope);
             }
-            if (!td->semanticRun)
+            if (td->semanticRun == PASSinit)
             {
                 ti->error("%s forward references template declaration %s", ti->toChars(), td->toChars());
                 return 1;
@@ -6287,7 +6284,7 @@ bool TemplateInstance::findBestMatch(Scope *sc, Expressions *fargs)
 
         dedtypes.setDim(td->parameters->dim);
         dedtypes.zero();
-        assert(td->semanticRun);
+        assert(td->semanticRun != PASSinit);
         MATCH m = td->matchWithInstance(ti, &dedtypes, ti->fargs, 0);
         //printf("matchWithInstance = %d\n", m);
         if (!m)                 // no match at all
@@ -6813,7 +6810,7 @@ bool TemplateInstance::needsTypeInference(Scope *sc, int flag)
              */
             dedtypes.setDim(td->parameters->dim);
             dedtypes.zero();
-            assert(td->semanticRun);
+            assert(td->semanticRun != PASSinit);
             MATCH m = td->matchWithInstance(ti, &dedtypes, NULL, 0);
             if (m == MATCHnomatch)
                 return 0;
@@ -7270,7 +7267,7 @@ bool TemplateMixin::findTemplateDeclaration(Scope *sc)
             return 0;
 
         TemplateMixin *tm = (TemplateMixin *)param;
-        if (!td->semanticRun)
+        if (td->semanticRun == PASSinit)
         {
             if (td->scope)
                 td->semantic(td->scope);
@@ -7300,7 +7297,7 @@ void TemplateMixin::semantic(Scope *sc)
     printf("+TemplateMixin::semantic('%s', this=%p)\n", toChars(), this);
     fflush(stdout);
 #endif
-    if (semanticRun)
+    if (semanticRun != PASSinit)
     {
         // This for when a class/struct contains mixin members, and
         // is done over because of forward references
@@ -7318,7 +7315,7 @@ void TemplateMixin::semantic(Scope *sc)
             return;
         }
     }
-    if (!semanticRun)
+    if (semanticRun == PASSinit)
         semanticRun = PASSsemantic;
 #if LOG
     printf("\tdo semantic\n");
