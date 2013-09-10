@@ -1148,7 +1148,7 @@ void ClassDeclaration::interfaceSemantic(Scope *sc)
         if (b->base->isCOMinterface())
             com = 1;
 
-        if (b->base->isCPPinterface())
+        if (b->base->isCPPinterface() && id)
             cpp = 1;
 
         vtblInterfaces->push(b);
@@ -1213,7 +1213,7 @@ bool ClassDeclaration::isAbstract()
 
 int ClassDeclaration::vtblOffset()
 {
-    return (com || cpp) ? 0 : 1;
+    return cpp ? 0 : 1;
 }
 
 /****************************************
