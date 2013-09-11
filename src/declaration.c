@@ -895,7 +895,9 @@ void VarDeclaration::semantic(Scope *sc)
                 type = type->nextOf()->arrayOf();
         }
         else
+        {
             type = init->inferType(sc);
+        }
 
         if (needctfe) sc = sc->endCTFE();
 //      type = type->semantic(loc, sc);
