@@ -809,7 +809,7 @@ void TemplateDeclaration::makeParamNamesVisibleInConstraint(Scope *paramscope, E
  * Return match level.
  */
 
-MATCH TemplateDeclaration::matchWithInstance(TemplateInstance *ti,
+MATCH TemplateDeclaration::matchWithInstance(Scope *sc, TemplateInstance *ti,
         Objects *dedtypes, Expressions *fargs, int flag)
 {   MATCH m;
     size_t dedtypes_dim = dedtypes->dim;
@@ -851,6 +851,7 @@ MATCH TemplateDeclaration::matchWithInstance(TemplateInstance *ti,
     ScopeDsymbol *paramsym = new ScopeDsymbol();
     paramsym->parent = scope->parent;
     Scope *paramscope = scope->push(paramsym);
+    paramscope->instantiatingModule = sc->instantiatingModule;
     paramscope->stc = 0;
 
     // Attempt type deduction
@@ -1006,7 +1007,7 @@ Lret:
  *      0       td2 is more specialized than this
  */
 
-MATCH TemplateDeclaration::leastAsSpecialized(TemplateDeclaration *td2, Expressions *fargs)
+MATCH TemplateDeclaration::leastAsSpecialized(Scope *sc, TemplateDeclaration *td2, Expressions *fargs)
 {
     /* This works by taking the template parameters to this template
      * declaration and feeding them to td2 as if it were a template
@@ -1044,7 +1045,7 @@ MATCH TemplateDeclaration::leastAsSpecialized(TemplateDeclaration *td2, Expressi
     dedtypes.setDim(td2->parameters->dim);
 
     // Attempt a type deduction
-    MATCH m = td2->matchWithInstance(&ti, &dedtypes, fargs, 1);
+    MATCH m = td2->matchWithInstance(sc, &ti, &dedtypes, fargs, 1);
     if (m)
     {
         /* A non-variadic template is more specialized than a
@@ -1129,6 +1130,12 @@ MATCH TemplateDeclaration::deduceFunctionTemplateMatch(FuncDeclaration *f, Loc l
     ScopeDsymbol *paramsym = new ScopeDsymbol();
     paramsym->parent = scope->parent;
     Scope *paramscope = scope->push(paramsym);
+
+    paramscope->instantiatingModule = sc->instantiatingModule;
+    Module *mi = sc->instantiatingModule ? sc->instantiatingModule : sc->module;
+    if (!sc->instantiatingModule || sc->instantiatingModule->root)
+        paramscope->instantiatingModule = mi;
+
     paramscope->callsc = sc;
     paramscope->stc = 0;
 
@@ -2350,7 +2357,7 @@ void functionResolve(Match *m, Dsymbol *dstart, Loc loc, Scope *sc,
             Objects dedtypes;
             dedtypes.setDim(td->parameters->dim);
             assert(td->semanticRun != PASSinit);
-            MATCH mta = td->matchWithInstance(ti, &dedtypes, fargs, 0);
+            MATCH mta = td->matchWithInstance(sc, ti, &dedtypes, fargs, 0);
             //printf("matchWithInstance = %d\n", mta);
             if (!mta || mta < ta_last)      // no match or less match
                 return 0;
@@ -2435,8 +2442,8 @@ void functionResolve(Match *m, Dsymbol *dstart, Loc loc, Scope *sc,
             if (td_best)
             {
                 // Disambiguate by picking the most specialized TemplateDeclaration
-                MATCH c1 = td->leastAsSpecialized(td_best, fargs);
-                MATCH c2 = td_best->leastAsSpecialized(td, fargs);
+                MATCH c1 = td->leastAsSpecialized(sc, td_best, fargs);
+                MATCH c2 = td_best->leastAsSpecialized(sc, td, fargs);
                 //printf("1: c1 = %d, c2 = %d\n", c1, c2);
                 if (c1 > c2) goto Ltd;
                 if (c1 < c2) goto Ltd_best;
@@ -2623,7 +2630,7 @@ FuncDeclaration *TemplateDeclaration::doHeaderInstantiation(Scope *sc,
     ti->tinst = sc->tinst;
     {
         ti->tdtypes.setDim(parameters->dim);
-        if (!matchWithInstance(ti, &ti->tdtypes, fargs, 2))
+        if (!matchWithInstance(sc, ti, &ti->tdtypes, fargs, 2))
             return NULL;
     }
 
@@ -2642,6 +2649,7 @@ FuncDeclaration *TemplateDeclaration::doHeaderInstantiation(Scope *sc,
     ti->argsym = new ScopeDsymbol();
     ti->argsym->parent = scope->parent;
     scope = scope->push(ti->argsym);
+    scope->instantiatingModule = sc->instantiatingModule;
 
     bool hasttp = false;
 
@@ -5156,6 +5164,7 @@ TemplateInstance::TemplateInstance(Loc loc, Identifier *ident)
     this->name = ident;
     this->tiargs = NULL;
     this->tempdecl = NULL;
+    this->instantiatingModule = NULL;
     this->inst = NULL;
     this->tinst = NULL;
     this->argsym = NULL;
@@ -5185,6 +5194,7 @@ TemplateInstance::TemplateInstance(Loc loc, TemplateDeclaration *td, Objects *ti
     this->name = td->ident;
     this->tiargs = tiargs;
     this->tempdecl = td;
+    this->instantiatingModule = NULL;
     this->inst = NULL;
     this->tinst = NULL;
     this->argsym = NULL;
@@ -5331,6 +5341,28 @@ void TemplateInstance::trySemantic3(Scope *sc2)
 void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
 {
     //printf("TemplateInstance::semantic('%s', this=%p, gag = %d, sc = %p)\n", toChars(), this, global.gag, sc);
+#if 0
+    for (Dsymbol *s = this; s; s = s->parent)
+    {
+        printf("\t%s\n", s->toChars());
+    }
+    printf("Scope\n");
+    for (Scope *scx = sc; scx; scx = scx->enclosing)
+    {
+        printf("\t%s parent %s instantiatingModule %p\n", scx->module ? scx->module->toChars() : "null", scx->parent ? scx->parent->toChars() : "null", scx->instantiatingModule);
+    }
+#endif
+
+    Module *mi = sc->instantiatingModule ? sc->instantiatingModule : sc->module;
+
+    /* If a TemplateInstance is ever instantiated by non-root modules,
+     * we do not have to generate code for it,
+     * because it will be generated when the non-root module is compiled.
+     */
+    if (!instantiatingModule || instantiatingModule->root)
+        instantiatingModule = mi;
+    //printf("mi = %s\n", mi->toChars());
+
 #if LOG
     printf("\n+TemplateInstance::semantic('%s', this=%p)\n", toChars(), this);
 #endif
@@ -5416,6 +5448,8 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
 #if LOG
             printf("\tit's a match with instance %p, %d\n", inst, inst->semanticRun);
 #endif
+            if (!inst->instantiatingModule || inst->instantiatingModule->root)
+                inst->instantiatingModule = mi;
             return;
         }
     L1: ;
@@ -5581,6 +5615,8 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
     argsym = new ScopeDsymbol();
     argsym->parent = scope->parent;
     scope = scope->push(argsym);
+    if (!scope->instantiatingModule || scope->instantiatingModule->root)
+        scope->instantiatingModule = mi;
 //    scope->stc = 0;
 
     // Declare each template parameter as an alias for the argument type
@@ -6236,7 +6272,7 @@ bool TemplateInstance::findBestMatch(Scope *sc, Expressions *fargs)
         assert(tempdecl->scope);
         // Deduce tdtypes
         tdtypes.setDim(tempdecl->parameters->dim);
-        if (!tempdecl->matchWithInstance(this, &tdtypes, fargs, 2))
+        if (!tempdecl->matchWithInstance(sc, this, &tdtypes, fargs, 2))
         {
             error("incompatible arguments for template instantiation");
             return false;
@@ -6252,6 +6288,7 @@ bool TemplateInstance::findBestMatch(Scope *sc, Expressions *fargs)
   struct ParamBest
   {
     // context
+    Scope *sc;
     TemplateInstance *ti;
     Objects dedtypes;
     // result
@@ -6285,7 +6322,7 @@ bool TemplateInstance::findBestMatch(Scope *sc, Expressions *fargs)
         dedtypes.setDim(td->parameters->dim);
         dedtypes.zero();
         assert(td->semanticRun != PASSinit);
-        MATCH m = td->matchWithInstance(ti, &dedtypes, ti->fargs, 0);
+        MATCH m = td->matchWithInstance(sc, ti, &dedtypes, ti->fargs, 0);
         //printf("matchWithInstance = %d\n", m);
         if (!m)                 // no match at all
             return 0;
@@ -6295,8 +6332,8 @@ bool TemplateInstance::findBestMatch(Scope *sc, Expressions *fargs)
 
         {
         // Disambiguate by picking the most specialized TemplateDeclaration
-        MATCH c1 = td->leastAsSpecialized(td_best, ti->fargs);
-        MATCH c2 = td_best->leastAsSpecialized(td, ti->fargs);
+        MATCH c1 = td->leastAsSpecialized(sc, td_best, ti->fargs);
+        MATCH c2 = td_best->leastAsSpecialized(sc, td, ti->fargs);
         //printf("c1 = %d, c2 = %d\n", c1, c2);
         if (c1 > c2) goto Ltd;
         if (c1 < c2) goto Ltd_best;
@@ -6322,6 +6359,7 @@ bool TemplateInstance::findBestMatch(Scope *sc, Expressions *fargs)
     ParamBest p;
     // context
     p.ti = this;
+    p.sc = sc;
 
     /* Since there can be multiple TemplateDeclaration's with the same
      * name, look for the best match.
@@ -6715,6 +6753,7 @@ bool TemplateInstance::needsTypeInference(Scope *sc, int flag)
   struct ParamNeedsInf
   {
     // context
+    Scope *sc;
     TemplateInstance *ti;
     int flag;
     // result
@@ -6811,7 +6850,7 @@ bool TemplateInstance::needsTypeInference(Scope *sc, int flag)
             dedtypes.setDim(td->parameters->dim);
             dedtypes.zero();
             assert(td->semanticRun != PASSinit);
-            MATCH m = td->matchWithInstance(ti, &dedtypes, NULL, 0);
+            MATCH m = td->matchWithInstance(sc, ti, &dedtypes, NULL, 0);
             if (m == MATCHnomatch)
                 return 0;
         }
@@ -6828,6 +6867,7 @@ bool TemplateInstance::needsTypeInference(Scope *sc, int flag)
     ParamNeedsInf p;
     // context
     p.ti    = this;
+    p.sc    = sc;
     p.flag  = flag;
     // result
     p.count = 0;
@@ -6856,6 +6896,7 @@ void TemplateInstance::semantic2(Scope *sc)
         sc = tempdecl->scope;
         assert(sc);
         sc = sc->push(argsym);
+        sc->instantiatingModule = instantiatingModule;
         sc = sc->push(this);
         sc->tinst = this;
         for (size_t i = 0; i < members->dim; i++)
@@ -6887,6 +6928,7 @@ void TemplateInstance::semantic3(Scope *sc)
     {
         sc = tempdecl->scope;
         sc = sc->push(argsym);
+        sc->instantiatingModule = instantiatingModule;
         sc = sc->push(this);
         sc->tinst = this;
         int needGagging = (speculative && !global.gag);
@@ -7588,6 +7630,7 @@ void TemplateMixin::semantic3(Scope *sc)
     if (members)
     {
         sc = sc->push(argsym);
+        sc->instantiatingModule = instantiatingModule;
         sc = sc->push(this);
         for (size_t i = 0; i < members->dim; i++)
         {
