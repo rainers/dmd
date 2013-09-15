@@ -47,6 +47,7 @@
 #include "hdrgen.h"
 
 FuncDeclaration *hasThis(Scope *sc);
+void sizeToCBuffer(OutBuffer *buf, HdrGenState *hgs, Expression *e);
 
 #define LOGDOTEXP       0       // log ::dotExp()
 #define LOGDEFAULTINIT  0       // log ::defaultInit()
@@ -4100,7 +4101,9 @@ void TypeSArray::toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod)
         return;
     }
     next->toCBuffer2(buf, hgs, this->mod);
-    buf->printf("[%s]", dim->toChars());
+    buf->writeByte('[');
+    sizeToCBuffer(buf, hgs, dim);
+    buf->writeByte(']');
 }
 
 Expression *TypeSArray::dotExp(Scope *sc, Expression *e, Identifier *ident, int flag)
@@ -5708,15 +5711,27 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
 
             Type *t = fparam->type->toBasetype();
 
-            if (fparam->storageClass & (STCout | STCref | STClazy))
-            {
-                //if (t->ty == Tsarray)
-                    //error(loc, "cannot have out or ref parameter of type %s", t->toChars());
-                if (fparam->storageClass & STCout && fparam->type->mod & (STCconst | STCimmutable))
-                    error(loc, "cannot have const or immutable out parameter of type %s", t->toChars());
-            }
             if (!(fparam->storageClass & STClazy) && t->ty == Tvoid)
                 error(loc, "cannot have parameter of type %s", fparam->type->toChars());
+            if (fparam->storageClass & (STCref | STClazy))
+            {
+            }
+            else if (fparam->storageClass & STCout)
+            {
+                if (fparam->type->mod & (STCconst | STCimmutable))
+                    error(loc, "cannot have const or immutable out parameter of type %s", t->toChars());
+                else
+                {
+                    Type *tv = t;
+                    while (tv->ty == Tsarray)
+                        tv = tv->nextOf()->toBasetype();
+                    if (tv->ty == Tstruct && ((TypeStruct *)tv)->sym->noDefaultCtor)
+                    {
+                        error(loc, "cannot have out parameter of type %s because the default construction is disbaled",
+                            fparam->type->toChars());
+                    }
+                }
+            }
 
             if (t->hasWild() &&
                 !(t->ty == Tpointer && t->nextOf()->ty == Tfunction || t->ty == Tdelegate))
@@ -7373,7 +7388,7 @@ Type *TypeEnum::syntaxCopy()
 Type *TypeEnum::semantic(Loc loc, Scope *sc)
 {
     //printf("TypeEnum::semantic() %s\n", toChars());
-    if (!sym->isdone)
+    if (sym->semanticRun == PASSinit)
     {
         assert(sym->scope);
         sym->semantic(sym->scope);
@@ -7471,7 +7486,7 @@ Expression *TypeEnum::getProperty(Loc loc, Identifier *ident, int flag)
 
     if (ident == Id::max)
     {
-        if (!sym->isdone)
+        if (sym->semanticRun == PASSinit)
             goto Lfwd;
         if (!sym->maxval)
         {
@@ -7482,7 +7497,7 @@ Expression *TypeEnum::getProperty(Loc loc, Identifier *ident, int flag)
     }
     else if (ident == Id::min)
     {
-        if (!sym->isdone)
+        if (sym->semanticRun == PASSinit)
             goto Lfwd;
         if (!sym->minval)
         {
@@ -9401,8 +9416,11 @@ void TypeSlice::toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod)
     }
     next->toCBuffer2(buf, hgs, this->mod);
 
-    buf->printf("[%s .. ", lwr->toChars());
-    buf->printf("%s]", upr->toChars());
+    buf->writeByte('[');
+    sizeToCBuffer(buf, hgs, lwr);
+    buf->writestring(" .. ");
+    sizeToCBuffer(buf, hgs, upr);
+    buf->writeByte(']');
 }
 
 /***************************** TypeNull *****************************/
