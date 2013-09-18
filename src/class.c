@@ -1,6 +1,6 @@
 
 // Compiler implementation of the D programming language
-// Copyright (c) 1999-2012 by Digital Mars
+// Copyright (c) 1999-2013 by Digital Mars
 // All Rights Reserved
 // written by Walter Bright
 // http://www.digitalmars.com
@@ -1148,9 +1148,13 @@ void ClassDeclaration::interfaceSemantic(Scope *sc)
         if (b->base->isCOMinterface())
             com = 1;
 
+#if 1
         if (b->base->isCPPinterface() && id)
+            id->cpp = 1;
+#else
+        if (b->base->isCPPinterface())
             cpp = 1;
-
+#endif
         vtblInterfaces->push(b);
         b->copyBaseInterfaces(vtblInterfaces);
     }
@@ -1209,6 +1213,9 @@ bool ClassDeclaration::isAbstract()
  * For class objects, yes, this is where the classinfo ptr goes.
  * For COM interfaces, no.
  * For non-COM interfaces, yes, this is where the Interface ptr goes.
+ * Returns:
+ *      0       vtbl[0] is first virtual function pointer
+ *      1       vtbl[0] is classinfo/interfaceinfo pointer
  */
 
 int ClassDeclaration::vtblOffset()
