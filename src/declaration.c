@@ -1318,7 +1318,7 @@ Lnomatch:
             else if (storage_class & STCparameter)
                 ;
             else
-                error("initializer required for type %s", type->toChars());
+                error("default construction is disabled for type %s", type->toChars());
         }
     }
 #endif

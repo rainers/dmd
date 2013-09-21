@@ -7388,11 +7388,8 @@ Type *TypeEnum::syntaxCopy()
 Type *TypeEnum::semantic(Loc loc, Scope *sc)
 {
     //printf("TypeEnum::semantic() %s\n", toChars());
-    if (sym->semanticRun == PASSinit)
-    {
-        assert(sym->scope);
-        sym->semantic(sym->scope);
-    }
+    if (deco)
+        return this;
     return merge();
 }
 
@@ -7594,6 +7591,11 @@ int TypeEnum::hasPointers()
 
 Type *TypeEnum::nextOf()
 {
+    if (sym->semanticRun == PASSinit)
+    {
+        assert(sym->scope);
+        sym->semantic(sym->scope);
+    }
     assert(sym->memtype);
     return sym->memtype->nextOf();
 }
