@@ -1047,7 +1047,7 @@ int TypeEnum::builtinTypeInfo()
 {
     // see comment in TypeStruct::builtinTypeInfo()
 #if DMDV2
-    return mod || !sym->defaultval || isZeroInit(Loc()) ? 0 : 1;
+    return mod || !sym->members || isZeroInit(Loc()) ? 0 : 1;
 #else
     return 1;
 #endif

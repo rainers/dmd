@@ -346,6 +346,10 @@ void EnumDeclaration::semantic(Scope *sc)
 
     //if (defaultval) printf("defaultval: %s %s\n", defaultval->toChars(), defaultval->type->toChars());
     //members->print();
+
+    if (!isAnonymous())
+        if (memtype)
+            memtype->buildTypeInfo(sc); // avoid creating it from the backend, better create it now
 }
 
 /******************************
@@ -418,10 +422,6 @@ Expression *EnumDeclaration::getMaxMinValue(Loc loc, Identifier *id)
 Lerrors:
     *pval = new ErrorExp();
     return *pval;
-
-    if (!isAnonymous())
-        if (memtype)
-            memtype->buildTypeInfo(sc); // avoid creating it from the backend, better create it now
 }
 
 Expression *EnumDeclaration::getDefaultValue(Loc loc)
