@@ -131,7 +131,7 @@ void AggregateDeclaration::semantic3(Scope *sc)
         sc = sc->pop();
 
         type->buildTypeInfo(sc, false); // implicitely calls generateTypeInfoData
-        if (isStructDeclaration() && type->vtinfo && type->builtinTypeInfo())
+        if (type->vtinfo && type->builtinTypeInfo())
             type->vtinfo->semantic3(sc);
 
         if (sd)

@@ -393,6 +393,8 @@ public:
     TypeInfoClassDeclaration(Type *tinfo);
     Symbol *toSymbol();
 
+    void semantic3(Scope* sc);
+
     void toDt(dt_t **pdt);
 };
 
@@ -800,6 +802,7 @@ public:
         ForeachStatement *fes, Identifier *id = NULL);
     void toCBuffer(OutBuffer *buf, HdrGenState *hgs);
     Dsymbol *syntaxCopy(Dsymbol *);
+    void genIdent(Scope *sc, TemplateDeclaration *td);
     bool isNested();
     bool isVirtual();
 

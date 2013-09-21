@@ -915,6 +915,20 @@ void TypeInfoClassDeclaration::toDt(dt_t **pdt)
 #endif
 }
 
+void TypeInfoClassDeclaration::semantic3(Scope* sc)
+{
+    TypeClass *tc = (TypeClass *)tinfo;
+    ClassDeclaration *cd = tc->sym;
+
+    // rebuild scope of sym, because the symbol is just added anyway
+    if (Scope* sc = rebuildScope(cd))
+    {
+        cd->generateTypeInfoData(sc);
+        while(sc && !sc->nofree)
+            sc = sc->pop();
+    }
+}
+
 void TypeInfoInterfaceDeclaration::toDt(dt_t **pdt)
 {
     //printf("TypeInfoInterfaceDeclaration::toDt() %s\n", tinfo->toChars());
