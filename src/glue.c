@@ -616,7 +616,7 @@ void FuncDeclaration::toObjFile(int multiobj)
         if (!importsRoot)
         {
             //printf("instantiated by %s   %s\n", ti->instantiatingModule->toChars(), ti->toChars());
-            return;
+            //return;
         }
     }
 
