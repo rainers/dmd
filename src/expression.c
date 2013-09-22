@@ -6065,14 +6065,14 @@ void FuncLiteralDeclaration::genIdent(Scope *sc, TemplateDeclaration *td)
         else                            s = "__funcliteral";
 
         DsymbolTable *symtab;
-        if (sc->flags & (SCOPEstaticif | SCOPEstaticassert))
-        {
-            // e.g. in template constraint
-        }
-        else if (FuncDeclaration *func = sc->parent->isFuncDeclaration())
+        if (FuncDeclaration *func = sc->parent->isFuncDeclaration())
         {
             symtab = func->localsymtab;
-            goto L1;
+            if (symtab)
+            {
+                // Inside template constraint, symtab is not set yet.
+                goto L1;
+            }
         }
         else
         {

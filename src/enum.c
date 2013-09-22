@@ -660,7 +660,7 @@ void EnumMember::semantic(Scope *sc)
         e = e->ctfeInterpret();
         if (e->toInteger())
         {
-            error("overflow of enum value %s", eprev->toChars());
+            error("initialization with (%s.%s + 1) causes overflow for type '%s'", emprev->ed->toChars(), emprev->toChars(), ed->type->toBasetype()->toChars());
             goto Lerrors;
         }
 
