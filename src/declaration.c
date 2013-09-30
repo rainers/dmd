@@ -1307,11 +1307,12 @@ Lnomatch:
         }
     }
 
-    if (!(storage_class & (STCctfe | STCref)) && tbn->ty == Tstruct &&
+    if (!(storage_class & (STCctfe | STCref | STCresult)) && tbn->ty == Tstruct &&
         ((TypeStruct *)tbn)->sym->noDefaultCtor)
     {
         if (!init)
-        {   if (isField())
+        {
+            if (isField())
                 /* For fields, we'll check the constructor later to make sure it is initialized
                  */
                 storage_class |= STCnodefaultctor;
@@ -2393,6 +2394,17 @@ Dsymbol *TypeInfoDeclaration::syntaxCopy(Dsymbol *s)
 void TypeInfoDeclaration::semantic(Scope *sc)
 {
     assert(linkage == LINKc);
+}
+
+char *TypeInfoDeclaration::toChars()
+{
+    //printf("TypeInfoDeclaration::toChars() tinfo = %s\n", tinfo->toChars());
+    OutBuffer buf;
+    buf.writestring("typeid(");
+    buf.writestring(tinfo->toChars());
+    buf.writeByte(')');
+    buf.writeByte(0);
+    return buf.extractData();
 }
 
 /***************************** TypeInfoConstDeclaration **********************/

@@ -2319,7 +2319,7 @@ TypeBasic *Type::isTypeBasic()
 }
 
 
-void Type::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps)
+void Type::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid)
 {
     //printf("Type::resolve() %s, %d\n", toChars(), ty);
     Type *t = semantic(loc, sc);
@@ -3857,13 +3857,14 @@ Expression *semanticLength(Scope *sc, TupleDeclaration *s, Expression *exp)
     return exp;
 }
 
-void TypeSArray::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps)
+void TypeSArray::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid)
 {
     //printf("TypeSArray::resolve() %s\n", toChars());
-    next->resolve(loc, sc, pe, pt, ps);
+    next->resolve(loc, sc, pe, pt, ps, intypeid);
     //printf("s = %p, e = %p, t = %p\n", *ps, *pe, *pt);
     if (*pe)
-    {   // It's really an index expression
+    {
+        // It's really an index expression
         Expressions *exps = new Expressions();
         exps->setDim(1);
         (*exps)[0] = dim;
@@ -3872,7 +3873,8 @@ void TypeSArray::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol
         *pe = new ArrayExp(loc, *pe, exps);
     }
     else if (*ps)
-    {   Dsymbol *s = *ps;
+    {
+        Dsymbol *s = *ps;
         TupleDeclaration *td = s->isTupleDeclaration();
         if (td)
         {
@@ -3888,7 +3890,8 @@ void TypeSArray::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol
             uinteger_t d = dim->toUInteger();
 
             if (d >= td->objects->dim)
-            {   error(loc, "tuple index %llu exceeds length %u", d, td->objects->dim);
+            {
+                error(loc, "tuple index %llu exceeds length %u", d, td->objects->dim);
                 goto Ldefault;
             }
             RootObject *o = (*td->objects)[(size_t)d];
@@ -3937,7 +3940,7 @@ void TypeSArray::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol
     else
     {
      Ldefault:
-        Type::resolve(loc, sc, pe, pt, ps);
+        Type::resolve(loc, sc, pe, pt, ps, intypeid);
     }
 }
 
@@ -4361,13 +4364,14 @@ Type *TypeDArray::semantic(Loc loc, Scope *sc)
     return merge();
 }
 
-void TypeDArray::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps)
+void TypeDArray::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid)
 {
     //printf("TypeDArray::resolve() %s\n", toChars());
-    next->resolve(loc, sc, pe, pt, ps);
+    next->resolve(loc, sc, pe, pt, ps, intypeid);
     //printf("s = %p, e = %p, t = %p\n", *ps, *pe, *pt);
     if (*pe)
-    {   // It's really a slice expression
+    {
+        // It's really a slice expression
         if (Dsymbol *s = getDsymbol(*pe))
             *pe = new DsymbolExp(loc, s, 1);
         *pe = new SliceExp(loc, *pe, NULL, NULL);
@@ -4383,7 +4387,7 @@ void TypeDArray::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol
     else
     {
      Ldefault:
-        Type::resolve(loc, sc, pe, pt, ps);
+        Type::resolve(loc, sc, pe, pt, ps, intypeid);
     }
 }
 
@@ -4578,7 +4582,8 @@ Type *TypeAArray::semantic(Loc loc, Scope *sc)
 
         index->resolve(loc, sc, &e, &t, &s);
         if (e)
-        {   // It was an expression -
+        {
+            // It was an expression -
             // Rewrite as a static array
             TypeSArray *tsa = new TypeSArray(next, e);
             return tsa->semantic(loc, sc);
@@ -4586,7 +4591,8 @@ Type *TypeAArray::semantic(Loc loc, Scope *sc)
         else if (t)
             index = t->semantic(loc, sc);
         else
-        {   index->error(loc, "index is not a type or an expression");
+        {
+            index->error(loc, "index is not a type or an expression");
             return Type::terror;
         }
     }
@@ -4702,7 +4708,7 @@ StructDeclaration *TypeAArray::getImpl()
     return impl;
 }
 
-void TypeAArray::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps)
+void TypeAArray::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid)
 {
     //printf("TypeAArray::resolve() %s\n", toChars());
 
@@ -4714,21 +4720,21 @@ void TypeAArray::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol
         Type *t;
         Dsymbol *s;
 
-        index->resolve(loc, sc, &e, &t, &s);
+        index->resolve(loc, sc, &e, &t, &s, intypeid);
         if (e)
         {
             // It was an expression -
             // Rewrite as a static array
             TypeSArray *tsa = new TypeSArray(next, e);
             tsa->mod = this->mod;   // just copy mod field so tsa's semantic is not yet done
-            return tsa->resolve(loc, sc, pe, pt, ps);
+            return tsa->resolve(loc, sc, pe, pt, ps, intypeid);
         }
         else if (t)
             index = t;
         else
             index->error(loc, "index is not a type or an expression");
     }
-    Type::resolve(loc, sc, pe, pt, ps);
+    Type::resolve(loc, sc, pe, pt, ps, intypeid);
 }
 
 
@@ -6527,7 +6533,7 @@ d_uns64 TypeQualified::size(Loc loc)
 
 void TypeQualified::resolveHelper(Loc loc, Scope *sc,
         Dsymbol *s, Dsymbol *scopesym,
-        Expression **pe, Type **pt, Dsymbol **ps)
+        Expression **pe, Type **pt, Dsymbol **ps, bool intypeid)
 {
 #if 0
     printf("TypeQualified::resolveHelper(sc = %p, idents = '%s')\n", sc, toChars());
@@ -6546,15 +6552,19 @@ void TypeQualified::resolveHelper(Loc loc, Scope *sc,
         for (size_t i = 0; i < idents.dim; i++)
         {
             RootObject *id = idents[i];
+            Type *t = s->getType();     // type symbol, type alias, or type tuple?
             Dsymbol *sm = s->searchX(loc, sc, id);
             //printf("\t3: s = '%s' %p, kind = '%s'\n",s->toChars(), s, s->kind());
             //printf("\tgetType = '%s'\n", s->getType()->toChars());
+            if (intypeid && !t && sm && sm->needThis())
+                goto L3;
             if (!sm)
             {
-                Type *t = s->getType();     // type symbol, type alias, or type tuple?
                 if (!t)
-                {   if (s->isDeclaration())         // var, func, or tuple declaration?
-                    {   t = s->isDeclaration()->type;
+                {
+                    if (s->isDeclaration())         // var, func, or tuple declaration?
+                    {
+                        t = s->isDeclaration()->type;
                         if (!t && s->isTupleDeclaration())  // expression tuple?
                             goto L3;
                     }
@@ -6586,7 +6596,8 @@ void TypeQualified::resolveHelper(Loc loc, Scope *sc,
                             e = die->semanticY(sc, 0);
                         }
                         else
-                        {   assert(id->dyncast() == DYNCAST_DSYMBOL);
+                        {
+                            assert(id->dyncast() == DYNCAST_DSYMBOL);
                             TemplateInstance *ti = ((Dsymbol *)id)->isTemplateInstance();
                             assert(ti);
                             DotTemplateInstanceExp *dte = new DotTemplateInstanceExp(e->loc, e, ti->name, ti->tiargs);
@@ -6769,7 +6780,7 @@ void TypeIdentifier::toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod)
  *      if type, *pt is set
  */
 
-void TypeIdentifier::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps)
+void TypeIdentifier::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid)
 {
     Dsymbol *scopesym;
 
@@ -6798,7 +6809,7 @@ void TypeIdentifier::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsy
     }
 
     Dsymbol *s = sc->search(loc, ident, &scopesym);
-    resolveHelper(loc, sc, s, scopesym, pe, pt, ps);
+    resolveHelper(loc, sc, s, scopesym, pe, pt, ps, intypeid);
     if (*pt)
         (*pt) = (*pt)->addMod(mod);
 }
@@ -6845,8 +6856,8 @@ Type *TypeIdentifier::semantic(Loc loc, Scope *sc)
         //printf("\tit's a type %d, %s, %s\n", t->ty, t->toChars(), t->deco);
 
         if (t->ty == Ttypedef)
-        {   TypeTypedef *tt = (TypeTypedef *)t;
-
+        {
+            TypeTypedef *tt = (TypeTypedef *)t;
             if (tt->sym->sem == SemanticIn)
             {   error(loc, "circular reference of typedef %s", tt->toChars());
                 return terror;
@@ -6942,7 +6953,7 @@ void TypeInstance::toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod)
     toCBuffer2Helper(buf, hgs);
 }
 
-void TypeInstance::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps)
+void TypeInstance::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid)
 {
     // Note close similarity to TypeIdentifier::resolve()
 
@@ -6963,10 +6974,11 @@ void TypeInstance::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymb
     //printf("TypeInstance::resolve(sc = %p, idents = '%s')\n", sc, id->toChars());
     s = tempinst;
     if (s)
-    {   //printf("s = %s\n", s->toChars());
+    {
+        //printf("s = %s\n", s->toChars());
         s->semantic(sc);
     }
-    resolveHelper(loc, sc, s, NULL, pe, pt, ps);
+    resolveHelper(loc, sc, s, NULL, pe, pt, ps, intypeid);
     if (*pt)
         *pt = (*pt)->addMod(mod);
     //printf("pt = '%s'\n", (*pt)->toChars());
@@ -7110,7 +7122,7 @@ void TypeTypeof::toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod)
     toCBuffer2Helper(buf, hgs);
 }
 
-void TypeTypeof::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps)
+void TypeTypeof::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid)
 {
     *pe = NULL;
     *pt = NULL;
@@ -7153,7 +7165,8 @@ void TypeTypeof::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol
             goto Lerr;
         }
         if (t->ty == Ttypeof)
-        {   error(loc, "forward reference to %s", toChars());
+        {
+            error(loc, "forward reference to %s", toChars());
             goto Lerr;
         }
     }
@@ -7162,7 +7175,7 @@ void TypeTypeof::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol
     else
     {
         if (Dsymbol *s = t->toDsymbol(sc))
-            resolveHelper(loc, sc, s, NULL, pe, pt, ps);
+            resolveHelper(loc, sc, s, NULL, pe, pt, ps, intypeid);
         else
         {
             Expression *e = new TypeExp(loc, t);
@@ -7261,7 +7274,7 @@ Dsymbol *TypeReturn::toDsymbol(Scope *sc)
     return t->toDsymbol(sc);
 }
 
-void TypeReturn::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps)
+void TypeReturn::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid)
 {
     *pe = NULL;
     *pt = NULL;
@@ -7272,7 +7285,8 @@ void TypeReturn::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol
     {
         FuncDeclaration *func = sc->func;
         if (!func)
-        {   error(loc, "typeof(return) must be inside function");
+        {
+            error(loc, "typeof(return) must be inside function");
             goto Lerr;
         }
         if (func->fes)
@@ -7290,7 +7304,7 @@ void TypeReturn::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol
     else
     {
         if (Dsymbol *s = t->toDsymbol(sc))
-            resolveHelper(loc, sc, s, NULL, pe, pt, ps);
+            resolveHelper(loc, sc, s, NULL, pe, pt, ps, intypeid);
         else
         {
             Expression *e = new TypeExp(loc, t);
@@ -9286,17 +9300,19 @@ Type *TypeSlice::semantic(Loc loc, Scope *sc)
     return t;
 }
 
-void TypeSlice::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps)
+void TypeSlice::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid)
 {
-    next->resolve(loc, sc, pe, pt, ps);
+    next->resolve(loc, sc, pe, pt, ps, intypeid);
     if (*pe)
-    {   // It's really a slice expression
+    {
+        // It's really a slice expression
         if (Dsymbol *s = getDsymbol(*pe))
             *pe = new DsymbolExp(loc, s, 1);
         *pe = new SliceExp(loc, *pe, lwr, upr);
     }
     else if (*ps)
-    {   Dsymbol *s = *ps;
+    {
+        Dsymbol *s = *ps;
         TupleDeclaration *td = s->isTupleDeclaration();
         if (td)
         {
@@ -9317,7 +9333,8 @@ void TypeSlice::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol 
             uinteger_t i2 = upr->toUInteger();
 
             if (!(i1 <= i2 && i2 <= td->objects->dim))
-            {   error(loc, "slice [%llu..%llu] is out of range of [0..%u]", i1, i2, td->objects->dim);
+            {
+                error(loc, "slice [%llu..%llu] is out of range of [0..%u]", i1, i2, td->objects->dim);
                 goto Ldefault;
             }
 
@@ -9346,7 +9363,7 @@ void TypeSlice::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol 
     else
     {
      Ldefault:
-        Type::resolve(loc, sc, pe, pt, ps);
+        Type::resolve(loc, sc, pe, pt, ps, intypeid);
     }
 }
 

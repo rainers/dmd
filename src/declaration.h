@@ -368,6 +368,7 @@ public:
     TypeInfoDeclaration(Type *tinfo, int internal);
     Dsymbol *syntaxCopy(Dsymbol *);
     void semantic(Scope *sc);
+    char *toChars();
 
     void emitComment(Scope *sc);
     void toJson(JsonOut *json);
@@ -375,6 +376,8 @@ public:
     Symbol *toSymbol();
     void toObjFile(int multiobj);                       // compile to .obj file
     virtual void toDt(dt_t **pdt);
+
+    TypeInfoDeclaration *isTypeInfoDeclaration() { return this; }
 };
 
 class TypeInfoStructDeclaration : public TypeInfoDeclaration

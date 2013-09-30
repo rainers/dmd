@@ -2074,6 +2074,13 @@ RootObject *TemplateDeclaration::declareParameter(Scope *sc, TemplateParameter *
         sa = ((ScopeExp *)ea)->sds;
     else if (ea && (ea->op == TOKthis || ea->op == TOKsuper))
         sa = ((ThisExp *)ea)->var;
+    else if (ea && ea->op == TOKfunction)
+    {
+        if (((FuncExp *)ea)->td)
+            sa = ((FuncExp *)ea)->td;
+        else
+            sa = ((FuncExp *)ea)->fd;
+    }
 
     if (targ)
     {
@@ -2083,14 +2090,6 @@ RootObject *TemplateDeclaration::declareParameter(Scope *sc, TemplateParameter *
     else if (sa)
     {
         //printf("Alias %s %s;\n", sa->ident->toChars(), tp->ident->toChars());
-        s = new AliasDeclaration(Loc(), tp->ident, sa);
-    }
-    else if (ea && ea->op == TOKfunction)
-    {
-        if (((FuncExp *)ea)->td)
-            sa = ((FuncExp *)ea)->td;
-        else
-            sa = ((FuncExp *)ea)->fd;
         s = new AliasDeclaration(Loc(), tp->ident, sa);
     }
     else if (ea)
@@ -2637,12 +2636,13 @@ FuncDeclaration *TemplateDeclaration::doHeaderInstantiation(Scope *sc,
         fd = new FuncDeclaration(fd->loc, fd->endloc, fd->ident, fd->storage_class, fd->type->syntaxCopy());
     fd->parent = ti;
 
-    Scope *scope = this->scope;
+    Module *mi = sc->instantiatingModule ? sc->instantiatingModule : sc->module;
 
+    Scope *scope = this->scope;
     ti->argsym = new ScopeDsymbol();
     ti->argsym->parent = scope->parent;
     scope = scope->push(ti->argsym);
-    scope->instantiatingModule = sc->instantiatingModule;
+    scope->instantiatingModule = mi;
 
     bool hasttp = false;
 
@@ -6168,8 +6168,8 @@ void TemplateInstance::semanticTiargs(Loc loc, Scope *sc, Objects *tiargs, int f
                 else if (fe->td)
                 {   /* If template argument is a template lambda,
                      * get template declaration itself. */
-                    sa = fe->td;
-                    goto Ldsym;
+                    //sa = fe->td;
+                    //goto Ldsym;
                 }
             }
             if (ea->op == TOKdotvar)
@@ -7051,9 +7051,10 @@ void TemplateInstance::toCBufferTiargs(OutBuffer *buf, HdrGenState *hgs)
             RootObject *oarg = (*tiargs)[0];
             if (Type *t = isType(oarg))
             {
-                if (t->isTypeBasic() ||
-                    t->equals(Type::tstring) ||
-                    t->ty == Tident && ((TypeIdentifier *)t)->idents.dim == 0)
+                if (t->equals(Type::tstring) ||
+                    t->mod == 0 &&
+                    (t->isTypeBasic() ||
+                     t->ty == Tident && ((TypeIdentifier *)t)->idents.dim == 0))
                 {
                     buf->writestring(t->toChars());
                     return;

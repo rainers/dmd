@@ -322,7 +322,7 @@ public:
     virtual dt_t **toDt(dt_t **pdt);
     Identifier *getTypeInfoIdent(int internal);
     virtual MATCH deduceType(Scope *sc, Type *tparam, TemplateParameters *parameters, Objects *dedtypes, unsigned *wildmatch = NULL);
-    virtual void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps);
+    virtual void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
     Expression *getInternalTypeInfo(Scope *sc);
     Expression *getTypeInfo(Scope *sc);
     TypeInfoDeclaration *buildTypeInfo(Scope *sc, bool checkNeedSemantic = true);
@@ -485,7 +485,7 @@ public:
     d_uns64 size(Loc loc);
     unsigned alignsize();
     Type *semantic(Loc loc, Scope *sc);
-    void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps);
+    void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
     void toDecoBuffer(OutBuffer *buf, int flag);
     void toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod);
     void toJson(JsonOut *json);
@@ -527,7 +527,7 @@ public:
     d_uns64 size(Loc loc);
     unsigned alignsize();
     Type *semantic(Loc loc, Scope *sc);
-    void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps);
+    void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
     void toDecoBuffer(OutBuffer *buf, int flag);
     void toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod);
     void toJson(JsonOut *json);
@@ -564,7 +564,7 @@ public:
     d_uns64 size(Loc loc);
     Type *semantic(Loc loc, Scope *sc);
     StructDeclaration *getImpl();
-    void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps);
+    void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
     void toDecoBuffer(OutBuffer *buf, int flag);
     void toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod);
     void toJson(JsonOut *json);
@@ -750,7 +750,7 @@ public:
     void toJson(JsonOut *json);
     d_uns64 size(Loc loc);
     void resolveHelper(Loc loc, Scope *sc, Dsymbol *s, Dsymbol *scopesym,
-        Expression **pe, Type **pt, Dsymbol **ps);
+        Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
 };
 
 class TypeIdentifier : public TypeQualified
@@ -766,7 +766,7 @@ public:
     void toDecoBuffer(OutBuffer *buf, int flag);
     void toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod);
     void toJson(JsonOut *json);
-    void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps);
+    void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
     Dsymbol *toDsymbol(Scope *sc);
     Type *semantic(Loc loc, Scope *sc);
     MATCH deduceType(Scope *sc, Type *tparam, TemplateParameters *parameters, Objects *dedtypes, unsigned *wildmatch = NULL);
@@ -788,7 +788,7 @@ public:
     //void toDecoBuffer(OutBuffer *buf, int flag);
     void toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod);
     void toJson(JsonOut *json);
-    void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps);
+    void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
     Type *semantic(Loc loc, Scope *sc);
     Dsymbol *toDsymbol(Scope *sc);
     Type *reliesOnTident(TemplateParameters *tparams = NULL);
@@ -808,7 +808,7 @@ public:
     Dsymbol *toDsymbol(Scope *sc);
     void toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod);
     void toJson(JsonOut *json);
-    void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps);
+    void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
     Type *semantic(Loc loc, Scope *sc);
     d_uns64 size(Loc loc);
 };
@@ -820,7 +820,7 @@ public:
     const char *kind();
     Type *syntaxCopy();
     Dsymbol *toDsymbol(Scope *sc);
-    void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps);
+    void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
     Type *semantic(Loc loc, Scope *sc);
     void toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod);
     void toJson(JsonOut *json);
@@ -1058,7 +1058,7 @@ public:
     const char *kind();
     Type *syntaxCopy();
     Type *semantic(Loc loc, Scope *sc);
-    void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps);
+    void resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol **ps, bool intypeid = false);
     void toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod);
     void toJson(JsonOut *json);
 };

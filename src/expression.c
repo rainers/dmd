@@ -5726,6 +5726,8 @@ void SymOffExp::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 {
     if (offset)
         buf->printf("(& %s+%u)", var->toChars(), offset);
+    else if (var->isTypeInfoDeclaration())
+        buf->printf("%s", var->toChars());
     else
         buf->printf("& %s", var->toChars());
 }
@@ -6434,7 +6436,7 @@ Expression *TypeidExp::semantic(Scope *sc)
 
     if (ta)
     {
-        ta->resolve(loc, sc, &ea, &ta, &sa);
+        ta->resolve(loc, sc, &ea, &ta, &sa, true);
     }
 
     if (ea)
@@ -8481,7 +8483,6 @@ Expression *CallExp::semantic(Scope *sc)
     Type *t1;
     int istemp;
     Objects *tiargs = NULL;     // initial list of template arguments
-    TemplateInstance *tierror = NULL;
     Expression *ethis = NULL;
     Type *tthis = NULL;
 
@@ -8555,7 +8556,6 @@ Expression *CallExp::semantic(Scope *sc)
                 /* Go with partial explicit specialization
                  */
                 tiargs = ti->tiargs;
-                tierror = ti;                   // for error reporting
                 assert(ti->tempdecl);
                 if (TemplateDeclaration *td = ti->tempdecl->isTemplateDeclaration())
                     e1 = new TemplateExp(loc, td);
@@ -8595,7 +8595,6 @@ Ldotti:
                 /* Go with partial explicit specialization
                  */
                 tiargs = ti->tiargs;
-                tierror = ti;                   // for error reporting
                 assert(ti->tempdecl);
                 if (TemplateDeclaration *td = ti->tempdecl->isTemplateDeclaration())
                     e1 = new DotTemplateExp(loc, se->e1, td);
@@ -9097,10 +9096,7 @@ Lagain:
             TemplateExp *te = (TemplateExp *)e1;
             f = resolveFuncCall(loc, sc, te->td, tiargs, NULL, arguments);
             if (!f)
-            {   if (tierror)
-                    tierror->error("errors instantiating template");    // give better error message
                 return new ErrorExp();
-            }
             if (f->needThis())
             {
                 if (hasThis(sc))
