@@ -1003,6 +1003,52 @@ enum  Date9775 date9775e1 = Date9775(2012, 12, 21);
 enum           date9775e2 = Date9775(2012, 12, 21);
 
 /********************************************/
+// 11105
+
+struct S11105
+{
+    int[2][1] a21;
+}
+
+void test11105()
+{
+    S11105 s = S11105([1, 2]);
+}
+
+/********************************************/
+// 11147
+
+struct V11147
+{
+    union
+    {
+        struct
+        {
+            float x = 0;
+            float y = 0;
+            float z = 0;
+        }
+        struct
+        {
+            float r;
+            float g;
+            float b;
+        }
+    }
+}
+
+void test11147()
+{
+    auto v = V11147.init;
+    assert(v.x == 0f);
+    assert(v.y == 0f);
+    assert(v.z == 0f);
+    assert(v.r == 0f);
+    assert(v.g == 0f);
+    assert(v.b == 0f);
+}
+
+/********************************************/
 
 int main()
 {
@@ -1039,6 +1085,8 @@ int main()
     test9116();
     test9293();
     test9566();
+    test11105();
+    test11147();
 
     printf("Success\n");
     return 0;

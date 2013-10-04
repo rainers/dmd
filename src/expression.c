@@ -4725,13 +4725,12 @@ Expression *StructLiteralExp::semantic(Scope *sc)
         if (stype)
             telem = telem->addMod(stype->mod);
         Type *origType = telem;
-        if (!e->implicitConvTo(telem))
+        while (!e->implicitConvTo(telem) && telem->toBasetype()->ty == Tsarray)
         {
             /* Static array initialization, as in:
              *  T[3][5] = e;
              */
-            while (telem->toBasetype()->ty == Tsarray)
-                telem = telem->toBasetype()->nextOf();
+            telem = telem->toBasetype()->nextOf();
         }
 
         if (!e->implicitConvTo(telem))
@@ -6828,7 +6827,7 @@ Expression *IsExp::semantic(Scope *sc)
             {   TemplateParameter *tp = (*parameters)[i];
                 Declaration *s = NULL;
 
-                m = tp->matchArg(sc, &tiargs, i, parameters, &dedtypes, &s);
+                m = tp->matchArg(loc, sc, &tiargs, i, parameters, &dedtypes, &s);
                 if (m == MATCHnomatch)
                     goto Lno;
                 s->semantic(sc);

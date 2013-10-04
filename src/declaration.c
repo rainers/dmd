@@ -1218,7 +1218,10 @@ Lnomatch:
 #if DMDV2
             if (tbn->ty == Tstruct && ((TypeStruct *)tbn)->sym->noDefaultCtor ||
                 tbn->ty == Tclass  && ((TypeClass  *)tbn)->sym->noDefaultCtor)
-                aad->noDefaultCtor = TRUE;
+            {
+                if (!isThisDeclaration())
+                    aad->noDefaultCtor = TRUE;
+            }
 #endif
 #else
             if (storage_class & (STCconst | STCimmutable) && init)
@@ -1235,7 +1238,10 @@ Lnomatch:
 #if DMDV2
                 if ((tbn->ty == Tstruct && ((TypeStruct *)tbn)->sym->noDefaultCtor) ||
                     (tbn->ty == Tclass  && ((TypeClass  *)tbn)->sym->noDefaultCtor))
-                    aad->noDefaultCtor = TRUE;
+                {
+                    if (!isThisDeclaration())
+                        aad->noDefaultCtor = TRUE;
+                }
 #endif
             }
 #endif

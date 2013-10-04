@@ -1519,10 +1519,6 @@ Parameters *Parser::parseParameters(int *pvarargs, TemplateParameters **tpl)
                     if (stc & (stc - 1) &&        // if stc is not a power of 2
                         !(stc == (STCin | STCref)))
                         error("incompatible parameter storage classes");
-                    if ((storageClass & (STCconst | STCout)) == (STCconst | STCout))
-                        error("out cannot be const");
-                    if ((storageClass & (STCimmutable | STCout)) == (STCimmutable | STCout))
-                        error("out cannot be immutable");
                     if ((storageClass & STCscope) && (storageClass & (STCref | STCout)))
                         error("scope cannot be ref or out");
 
@@ -2779,7 +2775,8 @@ Type *Parser::parseDeclarator(Type *t, Identifier **pident, TemplateParameters *
              * Improve error messages for the common bug of a missing return type
              * by looking to see if (a) looks like a parameter list.
              */
-            if (isParameters(&peekt)) {
+            if (isParameters(&peekt))
+            {
                 error("function declaration without return type. "
                 "(Note that constructors are always named 'this')");
             }
@@ -3084,7 +3081,6 @@ Dsymbols *Parser::parseDeclarations(StorageClass storage_class, utf8_t *comment)
             break;
         }
         case TOKtypedef:
-            deprecation("use of typedef is deprecated; use alias instead");
             tok = token.value;
             nextToken();
             break;
@@ -3306,8 +3302,9 @@ L2:
                 init = parseInitializer();
             }
             if (tok == TOKtypedef)
-            {   v = new TypedefDeclaration(loc, ident, t, init);
+            {
                 deprecation("use of typedef is deprecated; use alias instead");
+                v = new TypedefDeclaration(loc, ident, t, init);
             }
             else
             {
