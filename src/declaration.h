@@ -387,6 +387,7 @@ public:
 
     void semantic3(Scope* sc);
 
+    void toObjFile(int multiobj);
     void toDt(dt_t **pdt);
 };
 
@@ -398,6 +399,7 @@ public:
 
     void semantic3(Scope* sc);
 
+    void toObjFile(int multiobj);
     void toDt(dt_t **pdt);
 };
 

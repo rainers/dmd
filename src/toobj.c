@@ -1329,7 +1329,7 @@ void TemplateInstance::toObjFile(int multiobj)
 #if LOG
     printf("TemplateInstance::toObjFile('%s', this = %p)\n", toChars(), this);
 #endif
-    if (!errors && members)
+    if (!isInErrorTree() && members)
     {
         if (multiobj)
             // Append to list of object files to be written later
@@ -1353,3 +1353,20 @@ void TemplateMixin::toObjFile(int multiobj)
     TemplateInstance::toObjFile(0);
 }
 
+/* ================================================================== */
+
+void TypeInfoStructDeclaration::toObjFile(int multiobj)
+{
+    TypeStruct *tc = (TypeStruct *)tinfo;
+    if (!tc->sym->isInErrorTree())
+        TypeInfoDeclaration::toObjFile(multiobj);
+}
+
+/* ================================================================== */
+
+void TypeInfoClassDeclaration::toObjFile(int multiobj)
+{
+    TypeClass *tc = (TypeClass *)tinfo;
+    if (!tc->sym->isInErrorTree())
+        TypeInfoDeclaration::toObjFile(multiobj);
+}

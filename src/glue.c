@@ -583,6 +583,7 @@ void FuncDeclaration::toObjFile(int multiobj)
     assert(semanticRun == PASSsemantic3done);
     assert(ident != Id::empty);
 
+#if 0 // rs: disable, it causes link errors
     /* Skip generating code if this part of a TemplateInstance that is instantiated
      * only by non-root modules (i.e. modules not listed on the command line).
      */
@@ -616,9 +617,10 @@ void FuncDeclaration::toObjFile(int multiobj)
         if (!importsRoot)
         {
             //printf("instantiated by %s   %s\n", ti->instantiatingModule->toChars(), ti->toChars());
-            //return;
+            return;
         }
     }
+#endif
 
     // start code generation
     semanticRun = PASSobj;

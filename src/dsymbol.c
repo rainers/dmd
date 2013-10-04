@@ -328,6 +328,15 @@ bool Dsymbol::isAnonymous()
     return ident == NULL;
 }
 
+bool Dsymbol::isInErrorTree()
+{
+    if(errors)
+        return true;
+    if(!parent)
+        return false;
+    return parent->isInErrorTree();
+}
+
 /*************************************
  * Set scope for future semantic analysis so we can
  * deal better with forward references.

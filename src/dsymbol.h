@@ -186,6 +186,7 @@ public:
     virtual bool isExport();                    // is Dsymbol exported?
     virtual bool isImportedSymbol();            // is Dsymbol imported?
     virtual bool isDeprecated();                // is Dsymbol deprecated?
+    virtual bool isInErrorTree();               // this or ancestor has error
 #if DMDV2
     virtual bool isOverloadable();
     virtual bool hasOverloads();

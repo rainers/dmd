@@ -7119,6 +7119,30 @@ const char *TemplateInstance::kind()
     return "template instance";
 }
 
+bool TemplateInstance::isInErrorTree()
+{
+    if(errors)
+        return true;
+    for (int i = 0; i < tiargs->dim; i++)
+    {
+        RootObject* arg = (*tiargs)[i];
+        if (Dsymbol* s = isDsymbol(arg))
+        {
+            if (s->isInErrorTree())
+                return true;
+        }
+        else if (Type* t = isType(arg))
+        {
+            if (Dsymbol* s = t->toDsymbol(NULL))
+                if (s->isInErrorTree())
+                    return true;
+        }
+    }
+    if(!parent)
+        return false;
+    return parent->isInErrorTree();
+}
+
 bool TemplateInstance::oneMember(Dsymbol **ps, Identifier *ident)
 {
     *ps = NULL;

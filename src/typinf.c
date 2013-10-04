@@ -150,7 +150,9 @@ TypeInfoDeclaration *Type::buildTypeInfo(Scope *sc, bool checkNeedSemantic)
         /* If this has a custom implementation in std/typeinfo, then
          * do not generate a COMDAT for it.
          */
-        if (!t->builtinTypeInfo() && t->ty != Terror)
+        if (t->ty == Terror)
+            vtinfo->errors = 1;
+        else if (!t->builtinTypeInfo())
         {
             // Generate COMDAT
             if (sc)                     // if in semantic() pass
@@ -164,12 +166,12 @@ TypeInfoDeclaration *Type::buildTypeInfo(Scope *sc, bool checkNeedSemantic)
                     t->vtinfo->deferredScope = sc;
                     sc->setNoFree();
                 }
-#if 0
                 if (ty == Tstruct)
                 {
                     Dsymbol *s;
                     StructDeclaration *sd = ((TypeStruct *)this)->sym;
-                    if ((sd->xeq  && sd->xeq  != sd->xerreq  ||
+                    if (sd->members &&
+                        (sd->xeq  && sd->xeq  != sd->xerreq  ||
                          sd->xcmp && sd->xcmp != sd->xerrcmp ||
                          search_toHash(sd) ||
                          search_toString(sd)
@@ -179,7 +181,6 @@ TypeInfoDeclaration *Type::buildTypeInfo(Scope *sc, bool checkNeedSemantic)
                         Module::addDeferredSemantic3(sd);
                     }
                 }
-#endif
             }
             else                        // if in obj generation pass
             {

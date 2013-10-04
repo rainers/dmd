@@ -363,6 +363,7 @@ public:
 
     TemplateInstance *isTemplateInstance() { return this; }
     AliasDeclaration *isAliasDeclaration();
+    virtual bool isInErrorTree();
 };
 
 class TemplateMixin : public TemplateInstance
