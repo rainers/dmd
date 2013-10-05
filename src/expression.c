@@ -3565,7 +3565,7 @@ Lagain:
             if (v->scope)
             {
                 v->inuse++;
-                v->init->semantic(v->scope, v->type, INITinterpret);
+                v->init = v->init->semantic(v->scope, v->type, INITinterpret);
                 v->scope = NULL;
                 v->inuse--;
             }
@@ -4677,8 +4677,7 @@ Expression *StructLiteralExp::syntaxCopy()
 }
 
 Expression *StructLiteralExp::semantic(Scope *sc)
-{   Expression *e;
-
+{
 #if LOGSEMANTIC
     printf("StructLiteralExp::semantic('%s')\n", toChars());
 #endif
@@ -4694,7 +4693,8 @@ Expression *StructLiteralExp::semantic(Scope *sc)
     expandTuples(elements);
     size_t offset = 0;
     for (size_t i = 0; i < elements->dim; i++)
-    {   e = (*elements)[i];
+    {
+        Expression *e = (*elements)[i];
         if (!e)
             continue;
 
@@ -4712,11 +4712,10 @@ Expression *StructLiteralExp::semantic(Scope *sc)
             error("more initializers than fields (%d) of %s", nfields, sd->toChars());
             return new ErrorExp();
         }
-        Dsymbol *s = sd->fields[i];
-        VarDeclaration *v = s->isVarDeclaration();
-        assert(v);
+        VarDeclaration *v = sd->fields[i];
         if (v->offset < offset)
-        {   error("overlapping initialization for %s", v->toChars());
+        {
+            error("overlapping initialization for %s", v->toChars());
             return new ErrorExp();
         }
         offset = v->offset + v->type->size();
@@ -4746,13 +4745,14 @@ Expression *StructLiteralExp::semantic(Scope *sc)
     /* Fill out remainder of elements[] with default initializers for fields[]
      */
     for (size_t i = elements->dim; i < nfields; i++)
-    {   Dsymbol *s = sd->fields[i];
-        VarDeclaration *v = s->isVarDeclaration();
-        assert(v);
+    {
+        Expression *e;
+        VarDeclaration *v = sd->fields[i];
         assert(!v->isThisDeclaration());
 
         if (v->offset < offset)
-        {   e = NULL;
+        {
+            e = NULL;
             sd->hasUnions = 1;
         }
         else

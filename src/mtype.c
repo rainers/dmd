@@ -4232,7 +4232,10 @@ Expression *TypeSArray::defaultInit(Loc loc)
 #if LOGDEFAULTINIT
     printf("TypeSArray::defaultInit() '%s'\n", toChars());
 #endif
-    return next->defaultInit(loc);
+    if (next->ty == Tvoid)
+        return tuns8->defaultInit(loc);
+    else
+        return next->defaultInit(loc);
 }
 
 int TypeSArray::isZeroInit(Loc loc)
