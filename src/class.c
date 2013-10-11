@@ -1484,6 +1484,13 @@ void InterfaceDeclaration::semantic(Scope *sc)
         this->errors = true;
         type = Type::terror;
     }
+    else if (sc->module == sc->module->importedFrom) 
+    {
+        // generate TypeInfo if module not imported, but actually compiled
+        if (!type->vtinfo)
+            type->vtinfo = type->getTypeInfoDeclaration();
+        sc->module->members->push(type->vtinfo);
+    }
 }
 
 
