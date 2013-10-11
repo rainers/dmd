@@ -2928,7 +2928,7 @@ Statement *PragmaStatement::semantic(Scope *sc)
                 char *name = (char *)mem.malloc(se->len + 1);
                 memcpy(name, se->string, se->len);
                 name[se->len] = 0;
-                printf("library   %s\n", name);
+                fprintf(global.stdmsg, "library   %s\n", name);
                 mem.free(name);
             }
         }
@@ -3722,14 +3722,10 @@ Statement *ReturnStatement::semantic(Scope *sc)
         if (!tf->isref)
             exp = exp->optimize(WANTvalue);
 
+        if (Expression *e = exp->isTemp())
+            exp = e;                // don't need temporary
         if (exp->op == TOKcall)
-            valueNoDtor(exp);
-        else
-        {
-            Expression *e = exp->isTemp();
-            if (e)
-                exp = e;                // don't need temporary
-        }
+            exp = valueNoDtor(exp);
 
         if (fd->nrvo_can && exp->op == TOKvar)
         {

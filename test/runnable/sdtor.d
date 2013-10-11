@@ -3021,6 +3021,66 @@ void test10789()
 }
 
 /**********************************/
+// 11134
+
+void test11134()
+{
+    void test(S)()
+    {
+        S s;
+        S[2] sa;
+        S[2][] dsa = [[S(), S()]];
+        dsa.reserve(dsa.length + 2);    // avoid postblit calls by GC
+
+        S.count = 0;
+        dsa ~= sa;
+        assert(S.count == 2);
+
+        S.count = 0;
+        dsa ~= [s, s];
+        assert(S.count == 2);
+    }
+
+    static struct SS
+    {
+        static int count;
+        this(this) { ++count; }
+    }
+    test!SS();
+
+    struct NS
+    {
+        static int count;
+        this(this) { ++count; }
+    }
+    test!NS();
+}
+
+/**********************************/
+// 11197
+
+struct S11197a
+{
+    this(bool) {}
+    this(this) {}
+}
+
+struct S11197b
+{
+    //this(bool) {}
+    this(this) {}
+}
+
+void test11197()
+{
+    S11197a[][string] aa1;
+    aa1["test"] ~= S11197a.init;
+
+    S11197b[][string] aa2;
+    aa2["test"] ~= S11197b.init;
+}
+
+/**********************************/
 
 struct S7474 {
   float x;
@@ -3124,6 +3184,8 @@ int main()
     test10244();
     test10694();
     test10789();
+    test11134();
+    test11197();
     test7474();
 
     printf("Success\n");

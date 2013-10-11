@@ -730,7 +730,7 @@ void TypeInfoStructDeclaration::toDt(dt_t **pdt)
      *  bool function(in void*, in void*) xopEquals;
      *  int function(in void*, in void*) xopCmp;
      *  string function(const(void)*) xtoString;
-     *  uint m_flags;
+     *  StructFlags m_flags;
      *  //xgetMembers;
      *  xdtor;
      *  xpostblit;
@@ -786,8 +786,9 @@ void TypeInfoStructDeclaration::toDt(dt_t **pdt)
     else
         dtsize_t(pdt, 0);
 
-    // uint m_flags;
-    size_t m_flags = tc->hasPointers();
+    // StructFlags m_flags;
+    StructFlags::Type m_flags = 0;
+    if (tc->hasPointers()) m_flags |= StructFlags::hasPointers;
     dtsize_t(pdt, m_flags);
 
 #if DMDV2
@@ -836,10 +837,10 @@ void TypeInfoStructDeclaration::toDt(dt_t **pdt)
     // xgetRTInfo
     if (sd->getRTInfo)
         sd->getRTInfo->toDt(pdt);
-    else if (m_flags)
-        dtsize_t(pdt, 1);       // has pointers
+    else if (m_flags & StructFlags::hasPointers)
+        dtsize_t(pdt, 1);
     else
-        dtsize_t(pdt, 0);       // no pointers
+        dtsize_t(pdt, 0);
 }
 
 // the Aggregate has to run semantic3 in the scope of the Type, not elsewhere
