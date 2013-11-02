@@ -838,6 +838,14 @@ void StructDeclaration::semantic(Scope *sc)
         semantic3(sc);
     }
 
+#if 0
+    {
+        // build a literal now to initialize vtinfo of element types
+        StructLiteralExp *sle = new StructLiteralExp(loc, this, NULL);
+        Expression *e = sle->fill(true);
+    }
+#endif
+
     if (global.errors != errors)
     {   // The type is no good.
         type = Type::terror;
