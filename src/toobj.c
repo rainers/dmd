@@ -978,8 +978,8 @@ void StructDeclaration::toObjFile(int multiobj)
 
             sinit->Sfl = FLdata;
             toDt(&sinit->Sdt);
-
-            out_readonly(sinit);
+            dt_optimize(sinit->Sdt);
+            out_readonly(sinit);    // put in read-only segment
             outdata(sinit);
         }
 

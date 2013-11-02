@@ -289,6 +289,8 @@ int runLINK()
 
         char *linkcmd = getenv("LINKCMD");
         if (!linkcmd)
+            linkcmd = getenv("LINKCMD"); // backward compatible
+        if (!linkcmd)
         {
             if (vcinstalldir)
             {

@@ -2606,8 +2606,12 @@ void functionResolve(Match *m, Dsymbol *dstart, Loc loc, Scope *sc,
 
         if (FuncLiteralDeclaration *fld = m->lastf->isFuncLiteralDeclaration())
         {
-            // Inside template constraint, nested reference check doesn't work correctly.
-            if (!(sc->flags & SCOPEstaticif) && fld->tok == TOKreserved)
+            if ((sc->flags & SCOPEstaticif) || sc->intypeof)
+            {
+                // Inside template constraint, or inside typeof,
+                // nested reference check doesn't work correctly.
+            }
+            else if (fld->tok == TOKreserved)
             {
                 // change to non-nested
                 fld->tok = TOKfunction;
@@ -3360,7 +3364,7 @@ MATCH Type::deduceType(Scope *sc, Type *tparam, TemplateParameters *parameters,
 
     if (nextOf())
     {
-        if (tparam->deco)
+        if (tparam->deco && !tparam->hasWild())
             return implicitConvTo(tparam);
 
         return nextOf()->deduceType(sc, tparam->nextOf(), parameters, dedtypes, wildmatch);
@@ -5680,7 +5684,7 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
             }
         }
     }
-    if (found_deferred_ad)
+    if (found_deferred_ad || Module::deferred.dim)
         goto Laftersemantic;
 
     /* ConditionalDeclaration may introduce eponymous declaration,
@@ -7191,16 +7195,21 @@ int TemplateInstance::compare(RootObject *o)
             Parameters *fparameters = fd->getParameters(NULL);
             size_t nfparams = Parameter::dim(fparameters); // Num function parameters
             for (size_t j = 0; j < nfparams && j < fargs->dim; j++)
-            {   Parameter *fparam = Parameter::getNth(fparameters, j);
+            {
+                Parameter *fparam = Parameter::getNth(fparameters, j);
                 Expression *farg = (*fargs)[j];
+                if (Expression *e = farg->isTemp())
+                    farg = e;
                 if (fparam->storageClass & STCauto)         // if "auto ref"
                 {
                     if (farg->isLvalue())
-                    {   if (!(fparam->storageClass & STCref))
+                    {
+                        if (!(fparam->storageClass & STCref))
                             goto Lnotequals;                // auto ref's don't match
                     }
                     else
-                    {   if (fparam->storageClass & STCref)
+                    {
+                        if (fparam->storageClass & STCref)
                             goto Lnotequals;                // auto ref's don't match
                     }
                 }
