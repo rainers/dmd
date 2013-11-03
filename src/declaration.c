@@ -961,7 +961,7 @@ void VarDeclaration::semantic(Scope *sc)
             if (s)
             {
                 AggregateDeclaration *ad2 = s->isAggregateDeclaration();
-                if (ad2 && ad2->hasUnions)
+                if (ad2 && (ad2->isUnionDeclaration() || ad2->hasUnionsWithPointers))
                 {
                     if (sc->func->setUnsafe())
                         error("unions containing pointers are not allowed in @safe functions");

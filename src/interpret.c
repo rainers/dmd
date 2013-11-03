@@ -5785,10 +5785,12 @@ Expression *DotVarExp::interpret(InterState *istate, CtfeGoal goal)
             StructLiteralExp *se = ex->op == TOKclassreference ? ((ClassReferenceExp *)ex)->value : (StructLiteralExp *)ex;
             /* We don't know how to deal with overlapping fields
              */
+#if 0 // obviously we can as long as se->sd->hasUnions is not set correctly
             if (se->sd->hasUnions)
             {   error("Unions with overlapping fields are not yet supported in CTFE");
                 return EXP_CANT_INTERPRET;
             }
+#endif
             // We can't use getField, because it makes a copy
             int i = -1;
             if (ex->op == TOKclassreference)

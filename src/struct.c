@@ -106,6 +106,7 @@ AggregateDeclaration::AggregateDeclaration(Loc loc, Identifier *id)
     structsize = 0;             // size of struct
     alignsize = 0;              // size of struct for alignment purposes
     hasUnions = 0;
+    hasUnionsWithPointers = 0;
     sizeok = SIZEOKnone;        // size not determined yet
     deferred = NULL;
     isdeprecated = false;
@@ -838,7 +839,7 @@ void StructDeclaration::semantic(Scope *sc)
         semantic3(sc);
     }
 
-#if 0
+#if 1
     {
         // build a literal now to initialize vtinfo of element types
         StructLiteralExp *sle = new StructLiteralExp(loc, this, NULL);

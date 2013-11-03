@@ -408,6 +408,7 @@ class TypeInfoInterfaceDeclaration : public TypeInfoDeclaration
 public:
     TypeInfoInterfaceDeclaration(Type *tinfo);
 
+    void toObjFile(int multiobj);
     void toDt(dt_t **pdt);
 };
 

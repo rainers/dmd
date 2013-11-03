@@ -4795,6 +4795,8 @@ Expression *StructLiteralExp::fill(bool ctorinit)
                 continue;
 
             sd->hasUnions = 1;  // note that directly unrelated...
+            if(!sd->hasUnionsWithPointers && v2->type->hasPointers())
+                sd->hasUnionsWithPointers = 1;
 
             if ((*elements)[j])
             {
@@ -8055,7 +8057,7 @@ Expression *DotVarExp::semantic(Scope *sc)
             (s = t1->toDsymbol(sc)) != NULL)
         {
             AggregateDeclaration *ad = s->isAggregateDeclaration();
-            if (ad && ad->hasUnions)
+            if (ad && (ad->isUnionDeclaration() || ad->hasUnionsWithPointers))
             {
                 if (sc->func->setUnsafe())
                 {   error("union %s containing pointers are not allowed in @safe functions", t1->toChars());

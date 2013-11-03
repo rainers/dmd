@@ -51,7 +51,8 @@ public:
     Type *handle;               // 'this' type
     unsigned structsize;        // size of struct
     unsigned alignsize;         // size of struct for alignment purposes
-    int hasUnions;              // set if aggregate has overlapping fields
+    char hasUnions;             // set if aggregate has overlapping fields
+    char hasUnionsWithPointers; // set if aggregate has overlapping pointer fields
     VarDeclarations fields;     // VarDeclaration fields
     Sizeok sizeok;         // set when structsize contains valid data
     Dsymbol *deferred;          // any deferred semantic2() or semantic3() symbol

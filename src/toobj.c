@@ -1374,3 +1374,12 @@ void TypeInfoClassDeclaration::toObjFile(int multiobj)
     if (!tc->sym->isInErrorTree())
         TypeInfoDeclaration::toObjFile(multiobj);
 }
+
+/* ================================================================== */
+
+void TypeInfoInterfaceDeclaration::toObjFile(int multiobj)
+{
+    TypeClass *tc = (TypeClass *)tinfo;
+    if (!tc->sym->isInErrorTree())
+        TypeInfoDeclaration::toObjFile(multiobj);
+}
