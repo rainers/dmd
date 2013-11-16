@@ -153,7 +153,6 @@ ClassDeclaration::ClassDeclaration(Loc loc, Identifier *id, BaseClasses *basecla
                 Type::typeinfotypelist = this;
             }
 
-#if DMDV2
             if (id == Id::TypeInfo_Const)
             {   if (!inObject)
                     error("%s", msg);
@@ -183,7 +182,6 @@ ClassDeclaration::ClassDeclaration(Loc loc, Identifier *id, BaseClasses *basecla
                     error("%s", msg);
                 Type::typeinfovector = this;
             }
-#endif
         }
 
         if (id == Id::Object)
@@ -211,16 +209,8 @@ ClassDeclaration::ClassDeclaration(Loc loc, Identifier *id, BaseClasses *basecla
         }
 
 #if !MODULEINFO_IS_STRUCT
-  #ifdef DMDV2
         if (id == Id::ModuleInfo && !Module::moduleinfo)
             Module::moduleinfo = this;
-  #else
-        if (id == Id::ModuleInfo)
-        {   if (Module::moduleinfo)
-                error("%s", msg);
-            Module::moduleinfo = this;
-        }
-  #endif
 #endif
     }
 
@@ -384,6 +374,17 @@ void ClassDeclaration::semantic(Scope *sc)
                     if (/*doAncestorsSemantic == SemanticIn &&*/ tc->sym->scope)
                         tc->sym->semantic(NULL);
                 }
+
+                if (tc->sym->symtab && tc->sym->scope == NULL)
+                {
+                    /* Bugzilla 11034: Essentailly, class inheritance hierarchy
+                     * and instance size of each classes are orthogonal information.
+                     * Therefore, even if tc->sym->sizeof == SIZEOKnone,
+                     * we need to set baseClass field for class covariance check.
+                     */
+                    baseClass = tc->sym;
+                    b->base = baseClass;
+                }
                 if (!tc->sym->symtab || tc->sym->scope || tc->sym->sizeok == SIZEOKnone)
                 {
                     //printf("%s: forward reference of base class %s\n", toChars(), tc->sym->toChars());
@@ -396,10 +397,6 @@ void ClassDeclaration::semantic(Scope *sc)
                         tc->sym->scope->module->addDeferredSemantic(tc->sym);
                     scope->module->addDeferredSemantic(this);
                     return;
-                }
-                else
-                {   baseClass = tc->sym;
-                    b->base = baseClass;
                 }
              L7: ;
             }
@@ -990,7 +987,6 @@ ClassDeclaration *ClassDeclaration::searchBase(Loc loc, Identifier *ident)
  * Return 1 if function is hidden (not findable through search).
  */
 
-#if DMDV2
 int isf(void *param, Dsymbol *s)
 {
     FuncDeclaration *fd = s->isFuncDeclaration();
@@ -1035,7 +1031,6 @@ int ClassDeclaration::isFuncHidden(FuncDeclaration *fd)
         return !fd->parent->isTemplateMixin();
     }
 }
-#endif
 
 /****************
  * Find virtual function matching identifier and type.
@@ -1163,7 +1158,6 @@ int ClassDeclaration::isCOMinterface()
     return 0;
 }
 
-#if DMDV2
 int ClassDeclaration::isCPPclass()
 {
     return cpp;
@@ -1173,7 +1167,6 @@ int ClassDeclaration::isCPPinterface()
 {
     return 0;
 }
-#endif
 
 
 /****************************************
@@ -1603,12 +1596,10 @@ int InterfaceDeclaration::isCOMinterface()
     return com;
 }
 
-#if DMDV2
 int InterfaceDeclaration::isCPPinterface()
 {
     return cpp;
 }
-#endif
 
 /*******************************************
  */

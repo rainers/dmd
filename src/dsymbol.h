@@ -121,7 +121,7 @@ public:
     Dsymbol *parent;
     Symbol *csym;               // symbol for code generator
     Symbol *isym;               // import version of csym
-    utf8_t *comment;     // documentation comment for this Dsymbol
+    const utf8_t *comment;     // documentation comment for this Dsymbol
     Loc loc;                    // where defined
     Scope *scope;               // !=NULL means context to use for semantic()
     bool errors;                // this symbol failed to pass semantic()
@@ -187,10 +187,8 @@ public:
     virtual bool isImportedSymbol();            // is Dsymbol imported?
     virtual bool isDeprecated();                // is Dsymbol deprecated?
     virtual bool isInErrorTree();               // this or ancestor has error
-#if DMDV2
     virtual bool isOverloadable();
     virtual bool hasOverloads();
-#endif
     virtual LabelDsymbol *isLabel();            // is this a LabelDsymbol?
     virtual AggregateDeclaration *isMember();   // is this symbol a member of an AggregateDeclaration?
     virtual Type *getType();                    // is this a type?
@@ -206,7 +204,7 @@ public:
     virtual void addLocalClass(ClassDeclarations *) { }
     virtual void checkCtorConstInit() { }
 
-    virtual void addComment(utf8_t *comment);
+    virtual void addComment(const utf8_t *comment);
     virtual void emitComment(Scope *sc);
     void emitDitto(Scope *sc);
 
@@ -273,7 +271,7 @@ public:
     DsymbolTable *symtab;       // members[] sorted into table
 
     Dsymbols *imports;          // imported Dsymbol's
-    unsigned char *prots;       // array of PROT, one for each import
+    PROT *prots;       // array of PROT, one for each import
 
     ScopeDsymbol();
     ScopeDsymbol(Identifier *id);
@@ -333,7 +331,6 @@ public:
 
 // Overload Sets
 
-#if DMDV2
 class OverloadSet : public Dsymbol
 {
 public:
@@ -344,7 +341,6 @@ public:
     OverloadSet *isOverloadSet() { return this; }
     const char *kind();
 };
-#endif
 
 // Table of Dsymbol's
 

@@ -18,10 +18,7 @@
 
 #if _MSC_VER
 #include <malloc.h>
-#include <complex>
 #include <limits>
-#elif __DMC__
-#include <complex.h>
 #elif __MINGW32__
 #include <malloc.h>
 #endif
@@ -135,14 +132,12 @@ Type::Type(TY ty)
     this->ty = ty;
     this->mod = 0;
     this->deco = NULL;
-#if DMDV2
     this->cto = NULL;
     this->ito = NULL;
     this->sto = NULL;
     this->scto = NULL;
     this->wto = NULL;
     this->swto = NULL;
-#endif
     this->pto = NULL;
     this->rto = NULL;
     this->arrayof = NULL;
@@ -253,7 +248,7 @@ void Type::init()
     mangleChar[Tcomplex80] = 'c';
 
     mangleChar[Tbool] = 'b';
-    mangleChar[Tascii] = 'a';
+    mangleChar[Tchar] = 'a';
     mangleChar[Twchar] = 'u';
     mangleChar[Tdchar] = 'w';
 
@@ -284,7 +279,7 @@ void Type::init()
           Timaginary32, Timaginary64, Timaginary80,
           Tcomplex32, Tcomplex64, Tcomplex80,
           Tbool,
-          Tascii, Twchar, Tdchar };
+          Tchar, Twchar, Tdchar };
 
     for (size_t i = 0; i < sizeof(basetab) / sizeof(basetab[0]); i++)
     {   Type *t = new TypeBasic(basetab[i]);
@@ -362,7 +357,7 @@ d_uns64 Type::size(Loc loc)
 
 unsigned Type::alignsize()
 {
-    return size(Loc());
+    return (unsigned)size(Loc());
 }
 
 Type *Type::semantic(Loc loc, Scope *sc)
@@ -1226,22 +1221,16 @@ Type *Type::arrayOf()
 
 Type *Type::aliasthisOf()
 {
-    AggregateDeclaration *ad = NULL;
-    if (ty == Tclass)
+    AggregateDeclaration *ad = isAggregate(this);
+    if (ad && ad->aliasthis)
     {
-        ad = ((TypeClass *)this)->sym;
-        goto L1;
-    }
-    else if (ty == Tstruct)
-    {
-        ad = ((TypeStruct *)this)->sym;
-    L1:
-        if (!ad->aliasthis)
-            return NULL;
-
-        Declaration *d = ad->aliasthis->isDeclaration();
-        if (d)
-        {   assert(d->type);
+        Dsymbol *s = ad->aliasthis;
+        if (s->isAliasDeclaration())
+            s = s->toAlias();
+        Declaration *d = s->isDeclaration();
+        if (d && !d->isTupleDeclaration())
+        {
+            assert(d->type);
             Type *t = d->type;
             if (d->isVarDeclaration() && d->needThis())
             {
@@ -1260,15 +1249,16 @@ Type *Type::aliasthisOf()
             }
             return t;
         }
-        EnumDeclaration *ed = ad->aliasthis->isEnumDeclaration();
+        EnumDeclaration *ed = s->isEnumDeclaration();
         if (ed)
         {
             Type *t = ed->type;
             return t;
         }
-        TemplateDeclaration *td = ad->aliasthis->isTemplateDeclaration();
+        TemplateDeclaration *td = s->isTemplateDeclaration();
         if (td)
-        {   assert(td->scope);
+        {
+            assert(td->scope);
             FuncDeclaration *fd = resolveFuncCall(Loc(), NULL, td, NULL, this, NULL, 1);
             if (fd && fd->functionSemantic())
             {
@@ -1279,7 +1269,7 @@ Type *Type::aliasthisOf()
             else
                 return Type::terror;
         }
-        //printf("%s\n", ad->aliasthis->kind());
+        //printf("%s\n", s->kind());
     }
     return NULL;
 }
@@ -1374,7 +1364,7 @@ int MODmethodConv(unsigned char modfrom, unsigned char modto)
 /***************************
  * Merge mod bits to form common mod.
  */
-int MODmerge(unsigned char mod1, unsigned char mod2)
+unsigned char MODmerge(unsigned char mod1, unsigned char mod2)
 {
     if (mod1 == mod2)
         return mod1;
@@ -1530,8 +1520,8 @@ void Type::toCBuffer3(OutBuffer *buf, HdrGenState *hgs, int mod)
             MODtoBuffer(buf, this->mod & MODshared);
             buf->writeByte('(');
         }
-        int m1 = this->mod & ~MODshared;
-        int m2 = (mod ^ m1) & m1;
+        unsigned char m1 = this->mod & ~MODshared;
+        unsigned char m2 = (mod ^ m1) & m1;
         if (m2)
         {
             MODtoBuffer(buf, m2);
@@ -1718,39 +1708,39 @@ Type *Type::merge2()
     return t;
 }
 
-int Type::isintegral()
+bool Type::isintegral()
 {
-    return FALSE;
+    return false;
 }
 
-int Type::isfloating()
+bool Type::isfloating()
 {
-    return FALSE;
+    return false;
 }
 
-int Type::isreal()
+bool Type::isreal()
 {
-    return FALSE;
+    return false;
 }
 
-int Type::isimaginary()
+bool Type::isimaginary()
 {
-    return FALSE;
+    return false;
 }
 
-int Type::iscomplex()
+bool Type::iscomplex()
 {
-    return FALSE;
+    return false;
 }
 
-int Type::isscalar()
+bool Type::isscalar()
 {
-    return FALSE;
+    return false;
 }
 
-int Type::isunsigned()
+bool Type::isunsigned()
 {
-    return FALSE;
+    return false;
 }
 
 ClassDeclaration *Type::isClassHandle()
@@ -1954,14 +1944,16 @@ L1:
     if (isWild())
     {
         if (mod & MODconst)
-            t = isShared() ? t->sharedConstOf() : t->constOf();
+            t = t->constOf();
         else if (mod & MODimmutable)
             t = t->immutableOf();
         else if (mod & MODwild)
-            t = isShared() ? t->sharedWildOf() : t->wildOf();
+            t = t->wildOf();
         else
-            t = isShared() ? t->sharedOf() : t->mutableOf();
+            t = t->mutableOf();
     }
+    if (isShared())
+        t = t->addMod(MODshared);
 
     //printf("-Type::substWildTo t = %s\n", t->toChars());
     return t;
@@ -2239,7 +2231,7 @@ Expression *Type::noMember(Scope *sc, Expression *e, Identifier *ident, int flag
              *  tempalte opDispatch(name) if (isValid!name) { ... }
              */
             unsigned errors = flag ? global.startGagging() : 0;
-            Expression *e = dti->semanticY(sc, 0);
+            e = dti->semanticY(sc, 0);
             if (flag && global.endGagging(errors))
                 e = NULL;
             return e;
@@ -2803,7 +2795,7 @@ TypeBasic::TypeBasic(TY ty)
                         flags |= TFLAGSintegral | TFLAGSunsigned;
                         break;
 
-        case Tascii:    d = Token::toChars(TOKchar);
+        case Tchar:     d = Token::toChars(TOKchar);
                         flags |= TFLAGSintegral | TFLAGSunsigned;
                         break;
 
@@ -2887,7 +2879,7 @@ d_uns64 TypeBasic::size(Loc loc)
             break;
 
         case Tbool:     size = 1;               break;
-        case Tascii:    size = 1;               break;
+        case Tchar:     size = 1;               break;
         case Twchar:    size = 2;               break;
         case Tdchar:    size = 4;               break;
 
@@ -3141,14 +3133,9 @@ Lfvalue:
     {
         complex_t cvalue;
 
-#if __DMC__
-        //((real_t *)&cvalue)[0] = fvalue;
-        //((real_t *)&cvalue)[1] = fvalue;
-        cvalue = fvalue + fvalue * I;
-#else
         cvalue.re = fvalue;
         cvalue.im = fvalue;
-#endif
+
         //for (int i = 0; i < 20; i++)
         //    printf("%02x ", ((unsigned char *)&cvalue)[i]);
         //printf("\n");
@@ -3310,40 +3297,40 @@ int TypeBasic::isZeroInit(Loc loc)
     }
 }
 
-int TypeBasic::isintegral()
+bool TypeBasic::isintegral()
 {
     //printf("TypeBasic::isintegral('%s') x%x\n", toChars(), flags);
-    return flags & TFLAGSintegral;
+    return (flags & TFLAGSintegral) != 0;
 }
 
-int TypeBasic::isfloating()
+bool TypeBasic::isfloating()
 {
-    return flags & TFLAGSfloating;
+    return (flags & TFLAGSfloating) != 0;
 }
 
-int TypeBasic::isreal()
+bool TypeBasic::isreal()
 {
-    return flags & TFLAGSreal;
+    return (flags & TFLAGSreal) != 0;
 }
 
-int TypeBasic::isimaginary()
+bool TypeBasic::isimaginary()
 {
-    return flags & TFLAGSimaginary;
+    return (flags & TFLAGSimaginary) != 0;
 }
 
-int TypeBasic::iscomplex()
+bool TypeBasic::iscomplex()
 {
-    return flags & TFLAGScomplex;
+    return (flags & TFLAGScomplex) != 0;
 }
 
-int TypeBasic::isunsigned()
+bool TypeBasic::isunsigned()
 {
-    return flags & TFLAGSunsigned;
+    return (flags & TFLAGSunsigned) != 0;
 }
 
-int TypeBasic::isscalar()
+bool TypeBasic::isscalar()
 {
-    return flags & (TFLAGSintegral | TFLAGSfloating);
+    return (flags & (TFLAGSintegral | TFLAGSfloating)) != 0;
 }
 
 MATCH TypeBasic::implicitConvTo(Type *to)
@@ -3352,7 +3339,6 @@ MATCH TypeBasic::implicitConvTo(Type *to)
     if (this == to)
         return MATCHexact;
 
-#if DMDV2
     if (ty == to->ty)
     {
         if (mod == to->mod)
@@ -3364,7 +3350,6 @@ MATCH TypeBasic::implicitConvTo(Type *to)
         else
             return MATCHconvert;
     }
-#endif
 
     if (ty == Tvoid || to->ty == Tvoid)
         return MATCHnomatch;
@@ -3388,7 +3373,6 @@ MATCH TypeBasic::implicitConvTo(Type *to)
         if (tob->flags & (TFLAGSimaginary | TFLAGScomplex))
             return MATCHnomatch;
 
-#if DMDV2
         // If converting from integral to integral
         if (tob->flags & TFLAGSintegral)
         {   d_uns64 sz = size(Loc());
@@ -3404,7 +3388,6 @@ MATCH TypeBasic::implicitConvTo(Type *to)
             /*if (sz == tosz && (flags ^ tob->flags) & TFLAGSunsigned)
                 return MATCHnomatch;*/
         }
-#endif
     }
     else if (flags & TFLAGSfloating)
     {
@@ -3568,23 +3551,23 @@ int TypeVector::isZeroInit(Loc loc)
     return basetype->isZeroInit(loc);
 }
 
-int TypeVector::isintegral()
+bool TypeVector::isintegral()
 {
     //printf("TypeVector::isintegral('%s') x%x\n", toChars(), flags);
     return basetype->nextOf()->isintegral();
 }
 
-int TypeVector::isfloating()
+bool TypeVector::isfloating()
 {
     return basetype->nextOf()->isfloating();
 }
 
-int TypeVector::isunsigned()
+bool TypeVector::isunsigned()
 {
     return basetype->nextOf()->isunsigned();
 }
 
-int TypeVector::isscalar()
+bool TypeVector::isscalar()
 {
     return basetype->nextOf()->isscalar();
 }
@@ -3672,7 +3655,7 @@ Expression *TypeArray::dotExp(Scope *sc, Expression *e, Identifier *ident, int f
         Expression *ec;
         FuncDeclaration *fd;
         Expressions *arguments;
-        int size = next->size(e->loc);
+        dinteger_t size = next->size(e->loc);
         int dup;
 
         Expression *olde = e;
@@ -4263,7 +4246,7 @@ Expression *TypeSArray::defaultInitLiteral(Loc loc)
 #if LOGDEFAULTINIT
     printf("TypeSArray::defaultInitLiteral() '%s'\n", toChars());
 #endif
-    size_t d = dim->toInteger();
+    size_t d = (size_t)dim->toInteger();
     Expression *elementinit;
     if (next->ty == Tvoid)
         elementinit = tuns8->defaultInitLiteral(loc);
@@ -4578,7 +4561,8 @@ Type *TypeAArray::semantic(Loc loc, Scope *sc)
 
     // Deal with the case where we thought the index was a type, but
     // in reality it was an expression.
-    if (index->ty == Tident || index->ty == Tinstance || index->ty == Tsarray)
+    if (index->ty == Tident || index->ty == Tinstance || index->ty == Tsarray ||
+        index->ty == Ttypeof || index->ty == Treturn)
     {
         Expression *e;
         Type *t;
@@ -4637,6 +4621,7 @@ printf("index->ito->ito = x%x\n", index->ito->ito);
         case Tfunction:
         case Tvoid:
         case Tnone:
+        case Ttuple:
             error(loc, "can't have associative array of %s", next->toChars());
         case Terror:
             return Type::terror;
@@ -5036,9 +5021,9 @@ MATCH TypePointer::constConv(Type *to)
     return TypeNext::constConv(to);
 }
 
-int TypePointer::isscalar()
+bool TypePointer::isscalar()
 {
-    return TRUE;
+    return true;
 }
 
 Expression *TypePointer::defaultInit(Loc loc)
@@ -5728,7 +5713,7 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
             }
             else if (fparam->storageClass & STCout)
             {
-                if (unsigned m = fparam->type->mod & (MODimmutable | MODconst | MODwild))
+                if (unsigned char m = fparam->type->mod & (MODimmutable | MODconst | MODwild))
                     error(loc, "cannot have %s out parameter of type %s", MODtoChars(m), t->toChars());
                 else
                 {
@@ -6377,11 +6362,6 @@ d_uns64 TypeDelegate::size(Loc loc)
 
 unsigned TypeDelegate::alignsize()
 {
-#if DMDV1
-    // See Bugzilla 942 for discussion
-    if (!global.params.is64bit)
-        return Target::ptrsize * 2;
-#endif
     return Target::ptrsize;
 }
 
@@ -6600,17 +6580,17 @@ void TypeQualified::resolveHelper(Loc loc, Scope *sc,
                     e = e->semantic(sc);
                     for (; i < idents.dim; i++)
                     {
-                        RootObject *id = idents[i];
-                        //printf("e: '%s', id: '%s', type = %s\n", e->toChars(), id->toChars(), e->type->toChars());
-                        if (id->dyncast() == DYNCAST_IDENTIFIER)
+                        RootObject *id2 = idents[i];
+                        //printf("e: '%s', id: '%s', type = %s\n", e->toChars(), id2->toChars(), e->type->toChars());
+                        if (id2->dyncast() == DYNCAST_IDENTIFIER)
                         {
-                            DotIdExp *die = new DotIdExp(e->loc, e, (Identifier *)id);
+                            DotIdExp *die = new DotIdExp(e->loc, e, (Identifier *)id2);
                             e = die->semanticY(sc, 0);
                         }
                         else
                         {
-                            assert(id->dyncast() == DYNCAST_DSYMBOL);
-                            TemplateInstance *ti = ((Dsymbol *)id)->isTemplateInstance();
+                            assert(id2->dyncast() == DYNCAST_DSYMBOL);
+                            TemplateInstance *ti = ((Dsymbol *)id2)->isTemplateInstance();
                             assert(ti);
                             DotTemplateInstanceExp *dte = new DotTemplateInstanceExp(e->loc, e, ti->name, ti->tiargs);
                             e = dte->semanticY(sc, 0);
@@ -7160,9 +7140,7 @@ void TypeTypeof::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol
         if (global.gag)
             global.speculativeGag = global.gag;
         exp = exp->semantic(sc2);
-#if DMDV2
         exp = resolvePropertiesOnly(sc2, exp);
-#endif
         global.speculativeGag = oldspecgag;
         sc2->pop();
         if (exp->op == TOKtype)
@@ -7509,37 +7487,37 @@ Expression *TypeEnum::getProperty(Loc loc, Identifier *ident, int flag)
     return e;
 }
 
-int TypeEnum::isintegral()
+bool TypeEnum::isintegral()
 {
     return sym->memtype->isintegral();
 }
 
-int TypeEnum::isfloating()
+bool TypeEnum::isfloating()
 {
     return sym->memtype->isfloating();
 }
 
-int TypeEnum::isreal()
+bool TypeEnum::isreal()
 {
     return sym->memtype->isreal();
 }
 
-int TypeEnum::isimaginary()
+bool TypeEnum::isimaginary()
 {
     return sym->memtype->isimaginary();
 }
 
-int TypeEnum::iscomplex()
+bool TypeEnum::iscomplex()
 {
     return sym->memtype->iscomplex();
 }
 
-int TypeEnum::isunsigned()
+bool TypeEnum::isunsigned()
 {
     return sym->memtype->isunsigned();
 }
 
-int TypeEnum::isscalar()
+bool TypeEnum::isscalar()
 {
     return sym->memtype->isscalar();
 }
@@ -7729,7 +7707,7 @@ Expression *TypeTypedef::getProperty(Loc loc, Identifier *ident, int flag)
     return sym->basetype->getProperty(loc, ident, flag);
 }
 
-int TypeTypedef::isintegral()
+bool TypeTypedef::isintegral()
 {
     //printf("TypeTypedef::isintegral()\n");
     //printf("sym = '%s'\n", sym->toChars());
@@ -7737,32 +7715,32 @@ int TypeTypedef::isintegral()
     return sym->basetype->isintegral();
 }
 
-int TypeTypedef::isfloating()
+bool TypeTypedef::isfloating()
 {
     return sym->basetype->isfloating();
 }
 
-int TypeTypedef::isreal()
+bool TypeTypedef::isreal()
 {
     return sym->basetype->isreal();
 }
 
-int TypeTypedef::isimaginary()
+bool TypeTypedef::isimaginary()
 {
     return sym->basetype->isimaginary();
 }
 
-int TypeTypedef::iscomplex()
+bool TypeTypedef::iscomplex()
 {
     return sym->basetype->iscomplex();
 }
 
-int TypeTypedef::isunsigned()
+bool TypeTypedef::isunsigned()
 {
     return sym->basetype->isunsigned();
 }
 
-int TypeTypedef::isscalar()
+bool TypeTypedef::isscalar()
 {
     return sym->basetype->isscalar();
 }
@@ -8000,9 +7978,7 @@ void TypeStruct::toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod)
 
 Expression *TypeStruct::dotExp(Scope *sc, Expression *e, Identifier *ident, int flag)
 {
-    VarDeclaration *v;
     Dsymbol *s;
-    DotVarExp *de;
 
 #if LOGDOTEXP
     printf("TypeStruct::dotExp(e = '%s', ident = '%s')\n", e->toChars(), ident->toChars());
@@ -8089,7 +8065,7 @@ L1:
         s->checkDeprecated(e->loc, sc);
     s = s->toAlias();
 
-    v = s->isVarDeclaration();
+    VarDeclaration *v = s->isVarDeclaration();
     if (v && v->inuse && (!v->type || !v->type->deco))  // Bugzilla 9494
     {   e->error("circular reference to '%s'", v->toPrettyChars());
         return new ErrorExp();
@@ -8229,7 +8205,7 @@ L1:
 #endif
     }
 
-    de = new DotVarExp(e->loc, e, d);
+    DotVarExp *de = new DotVarExp(e->loc, e, d);
     return de->semantic(sc);
 }
 
@@ -8283,7 +8259,7 @@ Expression *TypeStruct::defaultInitLiteral(Loc loc)
         if (e && e->op == TOKerror)
             return e;
         if (e)
-            offset = vd->offset + vd->type->size();
+            offset = vd->offset + (unsigned)vd->type->size();
         (*structelems)[j] = e;
     }
     StructLiteralExp *structinit = new StructLiteralExp(loc, (StructDeclaration *)sym, structelems);
@@ -8560,7 +8536,6 @@ void TypeClass::toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod)
 
 Expression *TypeClass::dotExp(Scope *sc, Expression *e, Identifier *ident, int flag)
 {
-    VarDeclaration *v;
     Dsymbol *s;
 
 #if LOGDOTEXP
@@ -8742,7 +8717,7 @@ L1:
         s->checkDeprecated(e->loc, sc);
     s = s->toAlias();
 
-    v = s->isVarDeclaration();
+    VarDeclaration *v = s->isVarDeclaration();
     if (v && v->inuse && (!v->type || !v->type->deco))  // Bugzilla 9494
     {   e->error("circular reference to '%s'", v->toPrettyChars());
         return new ErrorExp();
@@ -8875,7 +8850,6 @@ L1:
                     // Skip up over nested functions, and get the enclosing
                     // class type.
                     int n = 0;
-                    Dsymbol *s;
                     for (s = tcd->toParent();
                          s && s->isFuncDeclaration();
                          s = s->toParent())
@@ -8949,9 +8923,8 @@ int TypeClass::isscope()
 int TypeClass::isBaseOf(Type *t, int *poffset)
 {
     if (t && t->ty == Tclass)
-    {   ClassDeclaration *cd;
-
-        cd   = ((TypeClass *)t)->sym;
+    {
+        ClassDeclaration *cd = ((TypeClass *)t)->sym;
         if (sym->isBaseOf(cd, poffset))
             return 1;
     }
@@ -9000,8 +8973,15 @@ MATCH TypeClass::constConv(Type *to)
     /* Conversion derived to const(base)
      */
     int offset = 0;
-    if (to->isBaseOf(this, &offset) && offset == 0 && !to->isMutable() && !to->isWild())
-        return MATCHconvert;
+    if (to->isBaseOf(this, &offset) && offset == 0 &&
+        MODimplicitConv(mod, to->mod))
+    {
+        // Disallow:
+        //  derived to base
+        //  inout(derived) to inout(base)
+        if (!to->isMutable() && !to->isWild())
+            return MATCHconvert;
+    }
 
     return MATCHnomatch;
 }
@@ -9318,8 +9298,8 @@ Type *TypeSlice::semantic(Loc loc, Scope *sc)
     }
 
     Parameters *args = new Parameters;
-    args->reserve(i2 - i1);
-    for (size_t i = i1; i < i2; i++)
+    args->reserve((size_t)(i2 - i1));
+    for (size_t i = (size_t)i1; i < (size_t)i2; i++)
     {   Parameter *arg = (*tt->arguments)[i];
         args->push(arg);
     }
@@ -9376,7 +9356,7 @@ void TypeSlice::resolve(Loc loc, Scope *sc, Expression **pe, Type **pt, Dsymbol 
              * is a slice [i1..i2] out of the old one.
              */
             Objects *objects = new Objects;
-            objects->setDim(i2 - i1);
+            objects->setDim((size_t)(i2 - i1));
             for (size_t i = 0; i < objects->dim; i++)
             {
                 (*objects)[i] = (*td->objects)[(size_t)i1 + i];
@@ -9440,8 +9420,9 @@ MATCH TypeNull::implicitConvTo(Type *to)
     // NULL implicitly converts to any pointer type or dynamic array
     //if (type->ty == Tpointer && type->nextOf()->ty == Tvoid)
     {
-        Type *tb= to->toBasetype();
-        if (tb->ty == Tpointer || tb->ty == Tarray ||
+        Type *tb = to->toBasetype();
+        if (tb->ty == Tnull ||
+            tb->ty == Tpointer || tb->ty == Tarray ||
             tb->ty == Taarray  || tb->ty == Tclass ||
             tb->ty == Tdelegate)
             return MATCHconst;
@@ -9461,8 +9442,13 @@ void TypeNull::toDecoBuffer(OutBuffer *buf, int flag)
     Type::toDecoBuffer(buf, flag);
 }
 
-void TypeNull::toCBuffer(OutBuffer *buf, Identifier *ident, HdrGenState *hgs)
+void TypeNull::toCBuffer2(OutBuffer *buf, HdrGenState *hgs, int mod)
 {
+    if (mod != this->mod)
+    {
+        toCBuffer3(buf, hgs, mod);
+        return;
+    }
     buf->writestring("typeof(null)");
 }
 

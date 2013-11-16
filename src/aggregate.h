@@ -58,7 +58,6 @@ public:
     Dsymbol *deferred;          // any deferred semantic2() or semantic3() symbol
     bool isdeprecated;          // !=0 if deprecated
 
-#if DMDV2
     Dsymbol *enclosing;         /* !=NULL if is nested
                                  * pointing to the dsymbol that directly enclosing it.
                                  * 1. The function that enclosing it (nested struct and class)
@@ -67,20 +66,17 @@ public:
                                  * See AggregateDeclaraton::makeNested for the details.
                                  */
     VarDeclaration *vthis;      // 'this' parameter if this aggregate is nested
-#endif
     // Special member functions
     FuncDeclarations invs;              // Array of invariants
     FuncDeclaration *inv;               // invariant
     NewDeclaration *aggNew;             // allocator
     DeleteDeclaration *aggDelete;       // deallocator
 
-#if DMDV2
     Dsymbol *ctor;                      // CtorDeclaration or TemplateDeclaration
     CtorDeclaration *defaultCtor;       // default constructor - should have no arguments, because
                                         // it would be stored in TypeInfo_Class.defaultConstructor
     Dsymbol *aliasthis;                 // forward unresolved lookups to aliasthis
     bool noDefaultCtor;         // no default construction
-#endif
 
     FuncDeclarations dtors;     // Array of destructors
     FuncDeclaration *dtor;      // aggregate destructor
@@ -147,7 +143,6 @@ class StructDeclaration : public AggregateDeclaration
 {
 public:
     int zeroInit;               // !=0 if initialize with 0 fill
-#if DMDV2
     int hasIdentityAssign;      // !=0 if has identity opAssign
     int hasIdentityEquals;      // !=0 if has identity opEquals
     FuncDeclaration *cpctor;    // generated copy-constructor, if any
@@ -160,7 +155,6 @@ public:
     static FuncDeclaration *xerrcmp;     // object.xopCmp
 
     structalign_t alignment;    // alignment applied outside of the struct
-#endif
 
     // For 64 bit Efl function call/return ABI
     Type *arg1type;
@@ -176,10 +170,6 @@ public:
     void finalizeSize(Scope *sc);
     bool isPOD();
     int calcZeroInit();
-#if DMDV1
-    Expression *cloneMembers();
-#endif
-#if DMDV2
     int needOpAssign();
     int needOpEquals();
     FuncDeclaration *buildOpAssign(Scope *sc);
@@ -188,7 +178,6 @@ public:
     FuncDeclaration *buildOpEquals(Scope *sc);
     FuncDeclaration *buildXopEquals(Scope *sc);
     FuncDeclaration *buildXopCmp(Scope *sc);
-#endif
     void toDocBuffer(OutBuffer *buf, Scope *sc);
 
     PROT getAccess(Dsymbol *smember);   // determine access to smember
@@ -231,13 +220,8 @@ struct BaseClass
     void copyBaseInterfaces(BaseClasses *);
 };
 
-#if DMDV2
 #define CLASSINFO_SIZE_64  0x98         // value of ClassInfo.size
 #define CLASSINFO_SIZE  (0x3C+12+4)     // value of ClassInfo.size
-#else
-#define CLASSINFO_SIZE  (0x3C+12+4)     // value of ClassInfo.size
-#define CLASSINFO_SIZE_64  (0x98)       // value of ClassInfo.size
-#endif
 
 struct ClassFlags
 {
@@ -264,10 +248,6 @@ public:
     static ClassDeclaration *errorException;
 
     ClassDeclaration *baseClass;        // NULL only if this is Object
-#if DMDV1
-    CtorDeclaration *ctor;
-    CtorDeclaration *defaultCtor;       // default constructor
-#endif
     FuncDeclaration *staticCtor;
     FuncDeclaration *staticDtor;
     Dsymbols vtbl;                      // Array of FuncDeclaration's making up the vtbl[]
@@ -286,9 +266,7 @@ public:
     TypeInfoClassDeclaration *vclassinfo;       // the ClassInfo object for this ClassDeclaration
     int com;                            // !=0 if this is a COM class (meaning
                                         // it derives from IUnknown)
-#if DMDV2
     int cpp;                            // !=0 if this is a C++ interface
-#endif
     int isscope;                        // !=0 if this is an auto class
     int isabstract;                     // !=0 if abstract class
     int inuse;                          // to prevent recursive attempts
@@ -308,17 +286,13 @@ public:
     virtual int isBaseInfoComplete();
     Dsymbol *search(Loc, Identifier *ident, int flags);
     ClassDeclaration *searchBase(Loc, Identifier *ident);
-#if DMDV2
     int isFuncHidden(FuncDeclaration *fd);
-#endif
     FuncDeclaration *findFunc(Identifier *ident, TypeFunction *tf);
     void interfaceSemantic(Scope *sc);
     int isCOMclass();
     virtual int isCOMinterface();
-#if DMDV2
     int isCPPclass();
     virtual int isCPPinterface();
-#endif
     bool isAbstract();
     virtual int vtblOffset();
     const char *kind();
@@ -354,9 +328,7 @@ public:
     const char *kind();
     int isBaseInfoComplete();
     int vtblOffset();
-#if DMDV2
     int isCPPinterface();
-#endif
     virtual int isCOMinterface();
 
     void toObjFile(int multiobj);                       // compile to .obj file
