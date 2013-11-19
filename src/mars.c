@@ -602,8 +602,8 @@ int tryMain(size_t argc, const char *argv[])
     arch = parse_arch(dflags_argc, dflags_argv, arch);
     char is64bit = arch[0] == '6';
 
-    char envsection[80] = "Environment";
-    inifile(argv[0], inifilename, strcat(envsection, arch));
+    char envsec[80] = "Environment";
+    inifile(argv[0], inifilename, strcat(envsec, arch));
 
     getenv_setargv("DFLAGS", &argc, &argv);
 
