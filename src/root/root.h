@@ -31,7 +31,7 @@ struct OutBuffer;
 
 // Can't include arraytypes.h here, need to declare these directly.
 template <typename TYPE> struct Array;
-typedef Array<class File> Files;
+typedef Array<struct File> Files;
 typedef Array<const char> Strings;
 
 
@@ -67,15 +67,9 @@ public:
      * defined by the library user. For Object, the return value is 0.
      */
     virtual int dyncast();
-
-    /**
-     * Marks pointers for garbage collector by calling mem.mark() for all pointers into heap.
-     */
-    /*virtual*/         // not used, disable for now
-        void mark();
 };
 
-class String : public RootObject
+struct String
 {
 public:
     const char *str;                  // the string itself
@@ -91,12 +85,12 @@ public:
     int compare(RootObject *obj);
     char *toChars();
     void print();
-    void mark();
 };
 
-class FileName : public String
+struct FileName
 {
 public:
+    const char *str;
     FileName(const char *str);
     hash_t hashCode();
     bool equals(RootObject *obj);
@@ -129,9 +123,10 @@ public:
     static const char *canonicalName(const char *name);
 
     static void free(const char *str);
+    char *toChars();
 };
 
-class File : public RootObject
+struct File
 {
 public:
     int ref;                    // != 0 if this is a reference to someone else's buffer
@@ -144,8 +139,6 @@ public:
     File(const char *);
     File(const FileName *);
     ~File();
-
-    void mark();
 
     char *toChars();
 
@@ -250,7 +243,6 @@ struct OutBuffer
     OutBuffer();
     ~OutBuffer();
     char *extractData();
-    void mark();
 
     void reserve(size_t nbytes);
     void setsize(size_t size);
@@ -306,13 +298,6 @@ struct Array
     {
         if (data != &smallarray[0])
             mem.free(data);
-    }
-
-    void mark()
-    {
-        mem.mark(data);
-        for (size_t u = 0; u < dim; u++)
-            mem.mark(data[u]);      // BUG: what if arrays of Object's?
     }
 
     char *toChars()
@@ -520,32 +505,6 @@ struct Array
         }
         return 0;
     }
-};
-
-// TODO: Remove (only used by disabled GC)
-class Bits : public RootObject
-{
-public:
-    unsigned bitdim;
-    unsigned allocdim;
-    unsigned *data;
-
-    Bits();
-    ~Bits();
-    void mark();
-
-    void resize(unsigned bitdim);
-
-    void set(unsigned bitnum);
-    void clear(unsigned bitnum);
-    int test(unsigned bitnum);
-
-    void set();
-    void clear();
-    void copy(Bits *from);
-    Bits *clone();
-
-    void sub(Bits *b);
 };
 
 #endif

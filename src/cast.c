@@ -1100,14 +1100,6 @@ Expression *Expression::castTo(Scope *sc, Type *t)
             else
                 e = new AddrExp(loc, e);
         }
-#if 0
-        else if (tb->ty == Tdelegate && type->ty != Tdelegate)
-        {
-            TypeDelegate *td = (TypeDelegate *)tb;
-            TypeFunction *tf = (TypeFunction *)td->nextOf();
-            return toDelegate(sc, tf->nextOf());
-        }
-#endif
         else
         {
             if (typeb->ty == Tstruct)
@@ -1982,7 +1974,8 @@ Expression *FuncExp::inferType(Type *to, int flag, Scope *sc, TemplateParameters
     {
         if (to->ty == Tdelegate ||
             to->ty == Tpointer && to->nextOf()->ty == Tfunction)
-        {   fd->treq = to;
+        {
+            fd->treq = to;
         }
         return this;
     }
@@ -2002,7 +1995,8 @@ Expression *FuncExp::inferType(Type *to, int flag, Scope *sc, TemplateParameters
     }
 
     if (td)
-    {   /// Parameter types inference from
+    {
+        // Parameter types inference from 'to'
         assert(td->scope);
         if (t->ty == Tfunction)
         {
@@ -2022,10 +2016,12 @@ Expression *FuncExp::inferType(Type *to, int flag, Scope *sc, TemplateParameters
                 {
                     TemplateParameter *tp = (*td->parameters)[i];
                     for (size_t u = 0; u < dim; u++)
-                    {   Parameter *p = Parameter::getNth(tfl->parameters, u);
+                    {
+                        Parameter *p = Parameter::getNth(tfl->parameters, u);
                         if (p->type->ty == Tident &&
                             ((TypeIdentifier *)p->type)->ident == tp->ident)
-                        {   p = Parameter::getNth(tfv->parameters, u);
+                        {
+                            p = Parameter::getNth(tfv->parameters, u);
                             Type *tprm = p->type;
                             if (tprm->reliesOnTident(tparams))
                                 goto L1;
@@ -2053,7 +2049,8 @@ Expression *FuncExp::inferType(Type *to, int flag, Scope *sc, TemplateParameters
                 fld->treq = NULL;
 
                 if (e->op == TOKfunction)
-                {   FuncExp *fe = (FuncExp *)e;
+                {
+                    FuncExp *fe = (FuncExp *)e;
                     assert(fe->td == NULL);
                     e = fe->inferType(to, flag);
                 }
@@ -2082,7 +2079,8 @@ Expression *FuncExp::inferType(Type *to, int flag, Scope *sc, TemplateParameters
     }
 L1:
     if (!flag && !e)
-    {   error("cannot infer function literal type from %s", to->toChars());
+    {
+        error("cannot infer function literal type from %s", to->toChars());
         e = new ErrorExp();
     }
     return e;
@@ -2958,12 +2956,11 @@ IntRange DivExp::getIntRange()
         return Expression::getIntRange() DUMP;
 
     // [a,b] / [c,d] = [min (a/c, a/d, b/c, b/d), max (a/c, a/d, b/c, b/d)]
-    SignExtendedNumber bdy[4] = {
-        ir1.imin / ir2.imin,
-        ir1.imin / ir2.imax,
-        ir1.imax / ir2.imin,
-        ir1.imax / ir2.imax
-    };
+    SignExtendedNumber bdy[4];
+    bdy[0] = ir1.imin / ir2.imin;
+    bdy[1] = ir1.imin / ir2.imax;
+    bdy[2] = ir1.imax / ir2.imin;
+    bdy[3] = ir1.imax / ir2.imax;
     return IntRange::fromNumbers4(bdy).cast(type) DUMP;
 }
 
@@ -2973,12 +2970,11 @@ IntRange MulExp::getIntRange()
     IntRange ir2 = e2->getIntRange();
 
     // [a,b] * [c,d] = [min (ac, ad, bc, bd), max (ac, ad, bc, bd)]
-    SignExtendedNumber bdy[4] = {
-        ir1.imin * ir2.imin,
-        ir1.imin * ir2.imax,
-        ir1.imax * ir2.imin,
-        ir1.imax * ir2.imax
-    };
+    SignExtendedNumber bdy[4];
+    bdy[0] = ir1.imin * ir2.imin;
+    bdy[1] = ir1.imin * ir2.imax;
+    bdy[2] = ir1.imax * ir2.imin;
+    bdy[3] = ir1.imax * ir2.imax;
     return IntRange::fromNumbers4(bdy).cast(type) DUMP;
 }
 

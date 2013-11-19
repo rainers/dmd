@@ -127,10 +127,6 @@ void RootObject::toBuffer(OutBuffer *b)
     b->writestring("Object");
 }
 
-void RootObject::mark()
-{
-}
-
 /****************************** String ********************************/
 
 String::String(const char *str)
@@ -141,11 +137,6 @@ String::String(const char *str)
 String::~String()
 {
     mem.free((void *)str);
-}
-
-void String::mark()
-{
-    mem.mark((void *)str);
 }
 
 hash_t String::calcHash(const char *str, size_t len)
@@ -224,7 +215,7 @@ void String::print()
 /****************************** FileName ********************************/
 
 FileName::FileName(const char *str)
-    : String(str)
+    : str(mem.strdup(str))
 {
 }
 
@@ -374,7 +365,7 @@ hash_t FileName::hashCode()
     }
 #else
     // darwin HFS is case insensitive, though...
-    return String::hashCode();
+    return String::calcHash(str, strlen(str));
 #endif
 }
 
@@ -935,6 +926,11 @@ void FileName::free(const char *str)
     mem.free((void *)str);
 }
 
+char *FileName::toChars()
+{
+    return (char *)str;         // toChars() should really be const
+}
+
 
 /****************************** File ********************************/
 
@@ -963,19 +959,12 @@ File::~File()
         if (ref == 0)
             mem.free(buffer);
 #if _WIN32
-        else if (ref == 2)
+        if (ref == 2)
             UnmapViewOfFile(buffer);
 #endif
     }
     if (touchtime)
         mem.free(touchtime);
-}
-
-void File::mark()
-{
-    mem.mark(buffer);
-    mem.mark(touchtime);
-    mem.mark(name);
 }
 
 /*************************************
@@ -1388,9 +1377,9 @@ Files *File::match(FileName *n)
             char *fn;
             File *f;
 
-            fn = (char *)mem.malloc(name - c + strlen(fileinfo.cFileName) + 1);
+            fn = (char *)mem.malloc(name - c + strlen(&fileinfo.cFileName[0]) + 1);
             memcpy(fn, c, name - c);
-            strcpy(fn + (name - c), fileinfo.cFileName);
+            strcpy(fn + (name - c), &fileinfo.cFileName[0]);
             f = new File(fn);
             f->touchtime = mem.malloc(sizeof(WIN32_FIND_DATAA));
             memcpy(f->touchtime, &fileinfo, sizeof(fileinfo));
@@ -1482,11 +1471,6 @@ char *OutBuffer::extractData()
     offset = 0;
     size = 0;
     return p;
-}
-
-void OutBuffer::mark()
-{
-    mem.mark(data);
 }
 
 void OutBuffer::reserve(size_t nbytes)
@@ -1854,98 +1838,4 @@ char *OutBuffer::toChars()
 {
     writeByte(0);
     return (char *)data;
-}
-
-// TODO: Remove (only used by disabled GC)
-/********************************* Bits ****************************/
-
-Bits::Bits()
-{
-    data = NULL;
-    bitdim = 0;
-    allocdim = 0;
-}
-
-Bits::~Bits()
-{
-    mem.free(data);
-}
-
-void Bits::mark()
-{
-    mem.mark(data);
-}
-
-void Bits::resize(unsigned bitdim)
-{
-    unsigned allocdim;
-    unsigned mask;
-
-    allocdim = (bitdim + 31) / 32;
-    data = (unsigned *)mem.realloc(data, allocdim * sizeof(data[0]));
-    if (this->allocdim < allocdim)
-        memset(data + this->allocdim, 0, (allocdim - this->allocdim) * sizeof(data[0]));
-
-    // Clear other bits in last word
-    mask = (1 << (bitdim & 31)) - 1;
-    if (mask)
-        data[allocdim - 1] &= ~mask;
-
-    this->bitdim = bitdim;
-    this->allocdim = allocdim;
-}
-
-void Bits::set(unsigned bitnum)
-{
-    data[bitnum / 32] |= 1 << (bitnum & 31);
-}
-
-void Bits::clear(unsigned bitnum)
-{
-    data[bitnum / 32] &= ~(1 << (bitnum & 31));
-}
-
-int Bits::test(unsigned bitnum)
-{
-    return data[bitnum / 32] & (1 << (bitnum & 31));
-}
-
-void Bits::set()
-{   unsigned mask;
-
-    memset(data, ~0, allocdim * sizeof(data[0]));
-
-    // Clear other bits in last word
-    mask = (1 << (bitdim & 31)) - 1;
-    if (mask)
-        data[allocdim - 1] &= mask;
-}
-
-void Bits::clear()
-{
-    memset(data, 0, allocdim * sizeof(data[0]));
-}
-
-void Bits::copy(Bits *from)
-{
-    assert(bitdim == from->bitdim);
-    memcpy(data, from->data, allocdim * sizeof(data[0]));
-}
-
-Bits *Bits::clone()
-{
-    Bits *b;
-
-    b = new Bits();
-    b->resize(bitdim);
-    b->copy(this);
-    return b;
-}
-
-void Bits::sub(Bits *b)
-{
-    unsigned u;
-
-    for (u = 0; u < allocdim; u++)
-        data[u] &= ~b->data[u];
 }

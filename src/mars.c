@@ -429,14 +429,6 @@ Usage:\n\
 
 extern signed char tyalignsize[];
 
-#if _WIN32 && __DMC__
-extern "C"
-{
-    extern int _xi_a;
-    extern int _end;
-}
-#endif
-
 static Module *entrypoint = NULL;
 
 /************************************
@@ -454,7 +446,7 @@ void genCmain(Scope *sc)
     /* The D code to be generated is provided as D source code in the form of a string.
      * Note that Solaris, for unknown reasons, requires both a main() and an _main()
      */
-    static utf8_t code[] = "extern(C) {\n\
+    static const utf8_t cmaincode[] = "extern(C) {\n\
         int _d_run_main(int argc, char **argv, void* mainFunc);\n\
         int _Dmain(char[][] args);\n\
         int main(int argc, char **argv) { return _d_run_main(argc, argv, &_Dmain); }\n\
@@ -465,7 +457,7 @@ void genCmain(Scope *sc)
     Identifier *id = Id::entrypoint;
     Module *m = new Module("__entrypoint.d", id, 0, 0);
 
-    Parser p(m, code, sizeof(code) / sizeof(code[0]), 0);
+    Parser p(m, cmaincode, strlen((const char *)cmaincode), 0);
     p.scanloc = Loc();
     p.nextToken();
     m->members = p.parseModule();
@@ -485,12 +477,6 @@ void genCmain(Scope *sc)
 
 int tryMain(size_t argc, const char *argv[])
 {
-    mem.init();                         // initialize storage allocator
-    mem.setStackBottom(&argv);
-#if _WIN32 && __DMC__
-    mem.addroots((char *)&_xi_a, (char *)&_end);
-#endif
-
     Strings files;
     Strings libmodules;
     size_t argcstart = argc;
@@ -1100,7 +1086,7 @@ Language changes listed by -transition=id:\n\
 
     if(global.params.is64bit != is64bit)
         error(Loc(), "the architecture must not be changed in the %s section of %s",
-              is64bit ? "Environment64" : "Environment32", inifilename);
+              envsec, inifilename);
 
     // Target uses 64bit pointers.
     global.params.isLP64 = global.params.is64bit;
@@ -1172,15 +1158,7 @@ Language changes listed by -transition=id:\n\
         global.params.objname = NULL;
 
         // Haven't investigated handling these options with multiobj
-        if (!global.params.cov && !global.params.trace
-#if 0 && TARGET_WINDOS
-            /* multiobj causes class/struct debug info to be attached to init-data,
-             * but this will not be linked into the executable, so this info is lost.
-             * Bugzilla 4014
-             */
-            && !global.params.symdebug
-#endif
-           )
+        if (!global.params.cov && !global.params.trace)
             global.params.multiobj = 1;
     }
     else if (global.params.run)

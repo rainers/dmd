@@ -1190,12 +1190,12 @@ void preFunctionParameters(Loc loc, Scope *sc, Expressions *exps)
         {   Expression *arg = (*exps)[i];
 
             arg = resolveProperties(sc, arg);
-            (*exps)[i] =  arg;
-
             if (arg->op == TOKtype)
-                arg->error("%s is not an expression", arg->toChars());
-
-            //arg->rvalue();
+            {
+                arg->error("cannot pass type %s as a function argument", arg->toChars());
+                arg = new ErrorExp();
+            }
+            (*exps)[i] =  arg;
         }
     }
 }
@@ -1684,6 +1684,21 @@ Type *functionParameters(Loc loc, Scope *sc, TypeFunction *tf,
                     case Timaginary32:
                         arg = arg->castTo(sc, Type::timaginary64);
                         break;
+                }
+
+                if (tf->varargs == 1)
+                {
+                    const char *p = tf->linkage == LINKc ? "extern(C)" : "extern(C++)";
+                    if (arg->type->ty == Tarray)
+                    {
+                        arg->error("cannot pass dynamic arrays to %s vararg functions", p);
+                        arg = new ErrorExp();
+                    }
+                    if (arg->type->ty == Tsarray)
+                    {
+                        arg->error("cannot pass static arrays to %s vararg functions", p);
+                        arg = new ErrorExp();
+                    }
                 }
             }
 
@@ -2505,13 +2520,10 @@ Expression *Expression::checkToPointer()
 
 Expression *Expression::addressOf(Scope *sc)
 {
-    Expression *e;
-    Type *t = type;
-
     //printf("Expression::addressOf()\n");
-    e = toLvalue(sc, NULL);
+    Expression *e = toLvalue(sc, NULL);
     e = new AddrExp(loc, e);
-    e->type = t->pointerTo();
+    e->type = type->pointerTo();
     return e;
 }
 
@@ -5171,6 +5183,8 @@ Expression *TemplateExp::toLvalue(Scope *sc, Expression *e)
 {
     if (!fd)
         return Expression::toLvalue(sc, e);
+
+    assert(sc);
     Expression *ex = new DsymbolExp(loc, fd, 1);
     ex = ex->semantic(sc);
     return ex;
@@ -5834,11 +5848,13 @@ int VarExp::isLvalue()
 Expression *VarExp::toLvalue(Scope *sc, Expression *e)
 {
     if (var->storage_class & STCmanifest)
-    {   error("manifest constant '%s' is not lvalue", var->toChars());
+    {
+        error("manifest constant '%s' is not lvalue", var->toChars());
         return new ErrorExp();
     }
     if (var->storage_class & STClazy)
-    {   error("lazy variables cannot be lvalues");
+    {
+        error("lazy variables cannot be lvalues");
         return new ErrorExp();
     }
     if (var->ident == Id::ctfe)
@@ -6352,7 +6368,7 @@ Expression *DeclarationExp::semantic(Scope *sc)
                         (s2 = scx->scopesym->symtab->lookup(s->ident)) != NULL &&
                         s != s2)
                     {
-                        error("is shadowing declaration %s", s->toPrettyChars());
+                        error("%s %s is shadowing %s %s", s->kind(), s->ident->toChars(), s2->kind(), s2->toPrettyChars());
                         return new ErrorExp();
                     }
                 }
@@ -6671,7 +6687,9 @@ Expression *IsExp::semantic(Scope *sc)
             case TOKenum:
                 if (targ->ty != Tenum)
                     goto Lno;
-                tded = ((TypeEnum *)targ)->sym->memtype;
+                tded = ((TypeEnum *)targ)->sym->getMemtype(loc);
+                if (tded->ty == Terror)
+                    return new ErrorExp();
                 break;
 
             case TOKdelegate:
@@ -7219,7 +7237,8 @@ int BinAssignExp::isLvalue()
 }
 
 Expression *BinAssignExp::toLvalue(Scope *sc, Expression *ex)
-{   Expression *e;
+{
+    Expression *e;
 
     if (e1->op == TOKvar)
     {
@@ -7228,11 +7247,14 @@ Expression *BinAssignExp::toLvalue(Scope *sc, Expression *ex)
          *    e1
          */
         e = e1->copy();
-        e = new CommaExp(loc, this, e);
-        e = e->semantic(sc);
+        e = Expression::combine(this, e);
     }
     else
     {
+        // toLvalue may be called from inline.c with sc == NULL,
+        // but this branch should not be reached at that time.
+        assert(sc);
+
         /* Convert (e1 op= e2) to
          *    ref v = e1;
          *    v op= e2;
@@ -8488,6 +8510,7 @@ Expression *CallExp::semantic(Scope *sc)
     Objects *tiargs = NULL;     // initial list of template arguments
     Expression *ethis = NULL;
     Type *tthis = NULL;
+    Expression *e1org = e1;
 
 #if LOGSEMANTIC
     printf("CallExp::semantic() %s\n", toChars());
@@ -9256,6 +9279,7 @@ Lagain:
 
     if (!type)
     {
+        e1 = e1org;     // Bugzilla 10922, avoid recursive expression printing
         error("forward reference to inferred return type of function call %s", toChars());
         return new ErrorExp();
     }
@@ -9476,8 +9500,9 @@ Expression *AddrExp::semantic(Scope *sc)
                 {
                     if (sc->func->setUnsafe())
                     {
+                        const char *p = v->isParameter() ? "parameter" : "local";
                         error("cannot take address of %s %s in @safe function %s",
-                            v->isParameter() ? "parameter" : "local",
+                            p,
                             v->toChars(),
                             sc->func->toChars());
                     }
@@ -10686,6 +10711,8 @@ Expression *DotExp::semantic(Scope *sc)
             return e;
         }
     }
+    if (e2->op == TOKtype)
+        return e2;
     if (!type)
         type = e2->type;
     return this;
@@ -10960,8 +10987,6 @@ int IndexExp::isLvalue()
 
 Expression *IndexExp::toLvalue(Scope *sc, Expression *e)
 {
-//    if (type && type->toBasetype()->ty == Tvoid)
-//      error("voids have no value");
     return this;
 }
 
@@ -11701,7 +11726,6 @@ Ltupleassign:
                     e2 = new SliceExp(e2->loc, e2, NULL, NULL);
                     e2 = e2->semantic(sc);
                 }
-        #if 1
                 else if (!e2->implicitConvTo(e1->type))
                 {
                     // If multidimensional static array, treat as one large array
@@ -11716,33 +11740,6 @@ Ltupleassign:
                         e1->type = TypeSArray::makeType(Loc(), t->nextOf(), dim);
                     }
                 }
-        #else   // TODO: This is an enhancement feature.
-                else
-                {
-                    /* multidimentional block assignment on initialization
-                     * Rewrite:
-                     *     T e;   // T may be static array type
-                     *     T[d1][d2]...[dn] sa = e;
-                     * as:
-                     *     T[d1*d2* ... dn] sa = e;
-                     */
-                    Type *t = t1->nextOf();
-                    dinteger_t dim = ((TypeSArray *)t1)->dim->toInteger();
-                    while (1)
-                    {
-                        if (t2->implicitConvTo(t))
-                        {
-                            if (t != t1->nextOf())
-                                e1->type = TypeSArray::makeType(Loc(), t, dim);
-                            break;
-                        }
-                        if (t->ty != Tsarray)
-                            break;
-                        dim *= ((TypeSArray *)t)->dim->toInteger();
-                        t = t->nextOf()->toBasetype();
-                    }
-                }
-        #endif
 
                 // Convert e1 to e1[]
                 e1 = new SliceExp(e1->loc, e1, NULL, NULL);
@@ -13813,16 +13810,11 @@ int CondExp::isLvalue()
 
 Expression *CondExp::toLvalue(Scope *sc, Expression *ex)
 {
-    PtrExp *e;
-
     // convert (econd ? e1 : e2) to *(econd ? &e1 : &e2)
-    e = new PtrExp(loc, this, type);
-
+    PtrExp *e = new PtrExp(loc, this, type);
     e1 = e1->addressOf(sc);
     e2 = e2->addressOf(sc);
-
-    typeCombine(sc);
-
+    //typeCombine(sc);
     type = e2->type;
     return e;
 }

@@ -471,7 +471,7 @@ RootObject *objectSyntaxCopy(RootObject *o)
 /* ======================== TemplateDeclaration ============================= */
 
 TemplateDeclaration::TemplateDeclaration(Loc loc, Identifier *id,
-        TemplateParameters *parameters, Expression *constraint, Dsymbols *decldefs, int ismixin)
+        TemplateParameters *parameters, Expression *constraint, Dsymbols *decldefs, bool ismixin, bool literal)
     : ScopeDsymbol(id)
 {
 #if LOG
@@ -499,8 +499,9 @@ TemplateDeclaration::TemplateDeclaration(Loc loc, Identifier *id,
     this->overroot = NULL;
     this->funcroot = NULL;
     this->onemember = NULL;
-    this->literal = 0;
+    this->literal = literal;
     this->ismixin = ismixin;
+    this->isstatic = true;
     this->previous = NULL;
     this->protection = PROTundefined;
     this->numinstances = 0;
@@ -538,8 +539,7 @@ Dsymbol *TemplateDeclaration::syntaxCopy(Dsymbol *)
     if (constraint)
         e = constraint->syntaxCopy();
     Dsymbols *d = Dsymbol::arraySyntaxCopy(members);
-    td = new TemplateDeclaration(loc, ident, p, e, d, ismixin);
-    td->literal = literal;
+    td = new TemplateDeclaration(loc, ident, p, e, d, ismixin, literal);
     return td;
 }
 
@@ -590,7 +590,8 @@ void TemplateDeclaration::semantic(Scope *sc)
      * a copy since attributes can change.
      */
     if (!this->scope)
-    {   this->scope = new Scope(*sc);
+    {
+        this->scope = new Scope(*sc);
         this->scope->setNoFree();
     }
 
@@ -602,6 +603,9 @@ void TemplateDeclaration::semantic(Scope *sc)
 
     if (!parent)
         parent = sc->parent;
+
+    isstatic = toParent()->isModule() ||
+               toParent()->isFuncDeclaration() && (scope->stc & STCstatic);
 
     protection = sc->protection;
 
@@ -629,7 +633,8 @@ void TemplateDeclaration::semantic(Scope *sc)
 
         tp->semantic(paramscope, parameters);
         if (i + 1 != parameters->dim && tp->isTemplateTupleParameter())
-        {   error("template tuple parameter must be last one");
+        {
+            error("template tuple parameter must be last one");
             errors = true;
         }
     }
@@ -2863,7 +2868,11 @@ void TemplateDeclaration::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 
 
 char *TemplateDeclaration::toChars()
-{   OutBuffer buf;
+{
+    if (literal)
+        return Dsymbol::toChars();
+
+    OutBuffer buf;
     HdrGenState hgs;
 
     memset(&hgs, 0, sizeof(hgs));
@@ -2879,7 +2888,8 @@ char *TemplateDeclaration::toChars()
     buf.writeByte(')');
 
     if (onemember)
-    {   /* Bugzilla 9406:
+    {
+        /* Bugzilla 9406:
          * onemember->toAlias() might run semantic, so should not call it in stringizing
          */
         FuncDeclaration *fd = onemember->isFuncDeclaration();
@@ -2892,7 +2902,8 @@ char *TemplateDeclaration::toChars()
     }
 
     if (constraint)
-    {   buf.writestring(" if (");
+    {
+        buf.writestring(" if (");
         constraint->toCBuffer(&buf, &hgs);
         buf.writeByte(')');
     }
@@ -3662,12 +3673,12 @@ MATCH TypeInstance::deduceType(Scope *sc,
     printf("\tthis   = %d, ", ty); print();
     printf("\ttparam = %d, ", tparam->ty); tparam->print();
 #endif
-    TemplateDeclaration *tempdecl = tempinst->tempdecl->isTemplateDeclaration();
-    assert(tempdecl);
-
     // Extra check
-    if (tparam && tparam->ty == Tinstance)
+    if (tparam && tparam->ty == Tinstance && tempinst->tempdecl)
     {
+        TemplateDeclaration *tempdecl = tempinst->tempdecl->isTemplateDeclaration();
+        assert(tempdecl);
+
         TypeInstance *tp = (TypeInstance *)tparam;
 
         //printf("tempinst->tempdecl = %p\n", tempdecl);
@@ -4377,12 +4388,13 @@ void TemplateTypeParameter::toCBuffer(OutBuffer *buf, HdrGenState *hgs)
 
 
 void *TemplateTypeParameter::dummyArg()
-{   Type *t;
-
+{
+    Type *t;
     if (specType)
         t = specType;
     else
-    {   // Use this for alias-parameter's too (?)
+    {
+        // Use this for alias-parameter's too (?)
         if (!tdummy)
             tdummy = new TypeIdentifier(loc, ident);
         t = tdummy;
@@ -5424,7 +5436,7 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
     if (tempdecl->ismixin)
         error("mixin templates are not regular templates");
 
-    hasNestedArgs(tiargs);
+    hasNestedArgs(tiargs, tempdecl->isstatic);
 
     arrayCheckRecursiveExpansion(&tdtypes, tempdecl, sc);
 
@@ -5689,6 +5701,8 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
     sc2->parent = /*enclosing ? sc->parent :*/ this;
     sc2->tinst = this;
     sc2->speculative = speculative;
+    if (enclosing && tempdecl->isstatic)
+        sc2->stc &= ~STCstatic;
 
     tryExpandMembers(sc2);
 
@@ -5765,7 +5779,8 @@ void TemplateInstance::semantic(Scope *sc, Expressions *fargs)
     // Give additional context info if error occurred during instantiation
     if (global.errors != errorsave)
     {
-        error(loc, "error instantiating");
+        if (!tempdecl->literal)
+            error(loc, "error instantiating");
         if (tinst)
         {   tinst->printInstantiationTrace();
         }
@@ -6580,7 +6595,7 @@ bool TemplateInstance::needsTypeInference(Scope *sc, int flag)
  * Sets enclosing property if so, and returns != 0;
  */
 
-bool TemplateInstance::hasNestedArgs(Objects *args)
+bool TemplateInstance::hasNestedArgs(Objects *args, bool isstatic)
 {
     int nested = 0;
     //printf("TemplateInstance::hasNestedArgs('%s')\n", tempdecl->ident->toChars());
@@ -6671,7 +6686,7 @@ bool TemplateInstance::hasNestedArgs(Objects *args)
                 ))
             {
                 // if module level template
-                if (tempdecl->toParent()->isModule())
+                if (isstatic)
                 {
                     Dsymbol *dparent = sa->toParent2();
                     if (!enclosing)
@@ -6706,7 +6721,7 @@ bool TemplateInstance::hasNestedArgs(Objects *args)
         }
         else if (va)
         {
-            nested |= hasNestedArgs(&va->objects);
+            nested |= hasNestedArgs(&va->objects, isstatic);
         }
     }
     //printf("-TemplateInstance::hasNestedArgs('%s') = %d\n", tempdecl->ident->toChars(), nested);
