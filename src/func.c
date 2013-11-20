@@ -92,6 +92,7 @@ FuncDeclaration::FuncDeclaration(Loc loc, Loc endloc, Identifier *id, StorageCla
     requiresClosure = false;
     flags = 0;
     returns = NULL;
+    gotos = NULL;
 }
 
 Dsymbol *FuncDeclaration::syntaxCopy(Dsymbol *s)
@@ -320,7 +321,12 @@ void FuncDeclaration::semantic(Scope *sc)
     storage_class &= ~STCref;
     if (type->ty != Tfunction)
     {
-        error("%s must be a function instead of %s", toChars(), type->toChars());
+        if (type->ty != Terror)
+        {
+            error("%s must be a function instead of %s", toChars(), type->toChars());
+            type = Type::terror;
+        }
+        errors = true;
         return;
     }
     f = (TypeFunction *)type;
@@ -1763,6 +1769,15 @@ void FuncDeclaration::semantic3(Scope *sc)
             }
         }
 
+        // Fix up forward-referenced gotos
+        if (gotos)
+        {
+            for (size_t i = 0; i < gotos->dim; ++i)
+            {
+                (*gotos)[i]->checkLabel();
+            }
+        }
+
         sc2->callSuper = 0;
         sc2->pop();
     }
@@ -2772,7 +2787,6 @@ Lerror:
     if (tthis)
         tthis->modToBuffer(&fargsBuf);
 
-    assert(!m.lastf || m.nextf);
     if (!m.lastf && !(flags & 1))   // no match
     {
         if (td)

@@ -519,8 +519,7 @@ Statements *CompileStatement::flatten(Scope *sc)
         else
         {
             se = se->toUTF8(sc);
-            Parser p(sc->module, (utf8_t *)se->string, se->len, 0);
-            p.scanloc = loc;
+            Parser p(loc, sc->module, (utf8_t *)se->string, se->len, 0);
             p.nextToken();
 
             while (p.token.value != TOKeof)
@@ -5036,8 +5035,8 @@ Statement *GotoStatement::syntaxCopy()
 }
 
 Statement *GotoStatement::semantic(Scope *sc)
-{   FuncDeclaration *fd = sc->parent->isFuncDeclaration();
-
+{
+    FuncDeclaration *fd = sc->func;
     //printf("GotoStatement::semantic()\n");
     ident = fixupLabelName(sc, ident);
 
@@ -5059,12 +5058,30 @@ Statement *GotoStatement::semantic(Scope *sc)
         sc->fes->gotos->push(s);         // 'look at this later' list
         return s;
     }
+
+    // Add to fwdref list to check later
+    if (!label->statement)
+    {
+        if (!fd->gotos)
+            fd->gotos = new GotoStatements();
+        fd->gotos->push(this);
+    }
+
     if (label->statement && label->statement->tf != sc->tf)
     {
         error("cannot goto in or out of finally block");
         return new ErrorStatement();
     }
+
     return this;
+}
+
+void GotoStatement::checkLabel()
+{
+    if (!label->statement)
+    {
+        error("label '%s' is undefined", label->toChars());
+    }
 }
 
 int GotoStatement::blockExit(bool mustNotThrow)
