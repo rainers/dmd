@@ -5284,9 +5284,11 @@ void TemplateInstance::semantic(Scope *sc)
 void TemplateInstance::expandMembers(Scope *sc2)
 {
     for (size_t i = 0; i < members->dim; i++)
-    {   Dsymbol *s = (*members)[i];
+    {
+        Dsymbol *s = (*members)[i];
         s->setScope(sc2);
     }
+
     for (size_t i = 0; i < members->dim; i++)
     {
         Dsymbol *s = (*members)[i];
@@ -7248,8 +7250,6 @@ int TemplateInstance::compare(RootObject *o)
             {
                 Parameter *fparam = Parameter::getNth(fparameters, j);
                 Expression *farg = (*fargs)[j];
-                if (Expression *e = farg->isTemp())
-                    farg = e;
                 if (fparam->storageClass & STCauto)         // if "auto ref"
                 {
                     if (farg->isLvalue())
@@ -7575,6 +7575,12 @@ void TemplateMixin::semantic(Scope *sc)
         global.gag = 0;                 // ensure error message gets printed
         error("recursive expansion");
         fatal();
+    }
+
+    for (size_t i = 0; i < members->dim; i++)
+    {
+        Dsymbol *s = (*members)[i];
+        s->setScope(sc2);
     }
 
     for (size_t i = 0; i < members->dim; i++)

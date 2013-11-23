@@ -1698,6 +1698,11 @@ Lagain:
                             goto Lerror2;
                         }
                     }
+                    TypeSArray *ta = tab->ty == Tsarray ? (TypeSArray *)tab : NULL;
+                    if (ta && !IntRange::fromType(var->type).contains(ta->dim->getIntRange()))
+                    {
+                        error("index type '%s' cannot cover index range 0..%llu\n", arg->type->toChars(), ta->dim->toInteger());
+                    }
                 }
                 else
                 {
@@ -3699,9 +3704,6 @@ Statement *ReturnStatement::semantic(Scope *sc)
             exp = exp->inferType(fld->treq->nextOf()->nextOf());
         exp = exp->semantic(sc);
         exp = resolveProperties(sc, exp);
-
-        if (Expression *e = exp->isTemp())
-            exp = e;                // don't need temporary
         if (exp->op == TOKcall)
             exp = valueNoDtor(exp);
 
@@ -5081,6 +5083,13 @@ void GotoStatement::checkLabel()
     if (!label->statement)
     {
         error("label '%s' is undefined", label->toChars());
+        return;
+    }
+
+    if (label->statement->tf != tf)
+    {
+        error("cannot goto in or out of finally block");
+        return;
     }
 }
 

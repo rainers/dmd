@@ -5806,8 +5806,6 @@ Type *TypeFunction::semantic(Loc loc, Scope *sc)
                 if (fargs && i < fargs->dim)
                 {
                     Expression *farg = (*fargs)[i];
-                    if (Expression *e = farg->isTemp())
-                        farg = e;
                     if (farg->isLvalue())
                         ;                               // ref parameter
                     else
@@ -6015,9 +6013,8 @@ MATCH TypeFunction::callMatch(Type *tthis, Expressions *args, int flag)
     }
 
     for (size_t u = 0; u < nparams; u++)
-    {   MATCH m;
-
-        // BUG: what about out and ref?
+    {
+        MATCH m;
 
         Parameter *p = Parameter::getNth(parameters, u);
         assert(p);
@@ -6030,8 +6027,6 @@ MATCH TypeFunction::callMatch(Type *tthis, Expressions *args, int flag)
         {
         Expression *arg = (*args)[u];
         assert(arg);
-        if (Expression *e = arg->isTemp())
-            arg = e;
 
         if (arg->op == TOKfunction)
         {
@@ -6630,7 +6625,8 @@ void TypeQualified::resolveHelper(Loc loc, Scope *sc,
         if (VarDeclaration *v = s->isVarDeclaration())
         {
             if (v && v->inuse && (!v->type || !v->type->deco))  // Bugzilla 9494
-            {   error(loc, "circular reference to '%s'", v->toPrettyChars());
+            {
+                error(loc, "circular reference to '%s'", v->toPrettyChars());
                 *pe = new ErrorExp();
                 return;
             }
@@ -8066,7 +8062,8 @@ L1:
 
     VarDeclaration *v = s->isVarDeclaration();
     if (v && v->inuse && (!v->type || !v->type->deco))  // Bugzilla 9494
-    {   e->error("circular reference to '%s'", v->toPrettyChars());
+    {
+        e->error("circular reference to '%s'", v->toPrettyChars());
         return new ErrorExp();
     }
     if (v && !v->isDataseg() && (v->storage_class & STCmanifest))
@@ -8244,6 +8241,11 @@ Expression *TypeStruct::defaultInitLiteral(Loc loc)
     {
         VarDeclaration *vd = sym->fields[j];
         Expression *e;
+        if (vd->inuse)
+        {
+            error(loc, "circular reference to '%s'", vd->toPrettyChars());
+            return new ErrorExp();
+        }
         if (vd->offset < offset)
             e = NULL;
         else if (vd->init)
@@ -8718,7 +8720,8 @@ L1:
 
     VarDeclaration *v = s->isVarDeclaration();
     if (v && v->inuse && (!v->type || !v->type->deco))  // Bugzilla 9494
-    {   e->error("circular reference to '%s'", v->toPrettyChars());
+    {
+        e->error("circular reference to '%s'", v->toPrettyChars());
         return new ErrorExp();
     }
     if (v && !v->isDataseg() && (v->storage_class & STCmanifest))

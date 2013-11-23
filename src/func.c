@@ -166,6 +166,8 @@ void FuncDeclaration::semantic(Scope *sc)
         if (StructDeclaration *sd = ad->isStructDeclaration())
             sd->makeNested();
     }
+    if (sc->func)
+        storage_class |= sc->func->storage_class & STCdisable;
     // Remove prefix storage classes silently.
     if ((storage_class & STC_TYPECTOR) && !(ad || isNested()))
         storage_class &= ~STC_TYPECTOR;
@@ -3532,13 +3534,15 @@ void FuncDeclaration::checkNestedReference(Scope *sc, Loc loc)
             {
                 bool found = false;
                 for (int i = 0; i < siblingCallers.dim; ++i)
-                {   if (siblingCallers[i] == fdthis)
+                {
+                    if (siblingCallers[i] == fdthis)
                         found = true;
                 }
                 if (!found)
                 {
                     //printf("\tadding sibling %s\n", fdthis->toPrettyChars());
-                    siblingCallers.push(fdthis);
+                    if (!sc->intypeof && !(sc->flags & SCOPEcompile))
+                        siblingCallers.push(fdthis);
                 }
             }
         }
