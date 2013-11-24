@@ -216,6 +216,8 @@ MATCH IntegerExp::implicitConvTo(Type *t)
     if (t->ty == Tvector)
     {   TypeVector *tv = (TypeVector *)t;
         TypeBasic *tb = tv->elementType();
+        if (tb->ty == Tvoid)
+            goto Lno;
         toty = tb->ty;
     }
 

@@ -7117,7 +7117,7 @@ Expression *BinAssignExp::semantic(Scope *sc)
         e = e->semantic(sc);
         return e;
     }
-    else if (e1->op == TOKslice)
+    else if (e1->op == TOKslice || e1->type->ty == Tarray || e1->type->ty == Tsarray)
     {
         // T[] op= ...
         e = typeCombine(sc);
@@ -10004,20 +10004,20 @@ Expression *CastExp::semantic(Scope *sc)
             return new VectorExp(loc, e1, to);
         }
 
-        if (tob->isintegral() && t1b->ty == Tarray)
-        {
-            error("cannot cast %s to integral type %s", e1->toChars(), to->toChars());
-            return new ErrorExp();
-        }
+        if ((tob->ty == Tarray || tob->ty == Tsarray) && t1b->isTypeBasic())
+            goto Lfail;
+
+        if (tob->isTypeBasic() && (t1b->ty == Tarray || t1b->ty == Tsarray))
+            goto Lfail;
 
         if (tob->ty == Tpointer && t1b->ty == Tdelegate)
             deprecation("casting from %s to %s is deprecated", e1->type->toChars(), to->toChars());
 
         if (t1b->ty == Tvoid && tob->ty != Tvoid && e1->op != TOKfunction)
-        {
-            error("cannot cast %s of type %s to %s", e1->toChars(), e1->type->toChars(), to->toChars());
-            return new ErrorExp();
-        }
+            goto Lfail;
+
+        if (tob->ty == Tclass && t1b->isTypeBasic())
+            goto Lfail;
     }
     else if (!to)
     {   error("cannot cast tuple");
@@ -10039,13 +10039,6 @@ Expression *CastExp::semantic(Scope *sc)
         if (t1b->implicitConvTo(tob))
             goto Lsafe;
 
-        if (!t1b->isMutable() && tob->isMutable())
-            goto Lunsafe;
-
-        if (t1b->isShared() && !tob->isShared())
-            // Cast away shared
-            goto Lunsafe;
-
         if (!tob->hasPointers())
             goto Lsafe;
 
@@ -10062,6 +10055,8 @@ Expression *CastExp::semantic(Scope *sc)
                 cdto->isCPPinterface())
                 goto Lunsafe;
 
+            if (!MODimplicitConv(t1b->mod, tob->mod))
+                goto Lunsafe;
             goto Lsafe;
         }
 
@@ -10096,14 +10091,20 @@ Expression *CastExp::semantic(Scope *sc)
 Lsafe:
     /* Instantiate AA implementations during semantic analysis.
      */
-    Type *tfrom = e1->type->toBasetype();
-    Type *t = to->toBasetype();
-    if (tfrom->ty == Taarray)
-        ((TypeAArray *)tfrom)->getImpl();
-    if (t->ty == Taarray)
-        ((TypeAArray *)t)->getImpl();
-    Expression *e = e1->castTo(sc, to);
-    return e;
+    {
+        Type *tfrom = e1->type->toBasetype();
+        Type *t = to->toBasetype();
+        if (tfrom->ty == Taarray)
+            ((TypeAArray *)tfrom)->getImpl();
+        if (t->ty == Taarray)
+            ((TypeAArray *)t)->getImpl();
+        Expression *e = e1->castTo(sc, to);
+        return e;
+    }
+
+Lfail:
+    error("cannot cast %s of type %s to %s", e1->toChars(), e1->type->toChars(), to->toChars());
+    return new ErrorExp();
 }
 
 
@@ -11947,7 +11948,8 @@ Ltupleassign:
 
     /* Look for array operations
      */
-    if (e1->op == TOKslice && !ismemset &&
+    if ((e1->op == TOKslice || e1->type->ty == Tarray) &&
+        !ismemset &&
         (e2->op == TOKadd || e2->op == TOKmin ||
          e2->op == TOKmul || e2->op == TOKdiv ||
          e2->op == TOKmod || e2->op == TOKxor ||
@@ -12173,7 +12175,7 @@ Expression *PowAssignExp::semantic(Scope *sc)
         return e;
 
     assert(e1->type && e2->type);
-    if (e1->op == TOKslice)
+    if (e1->op == TOKslice || e1->type->ty == Tarray || e1->type->ty == Tsarray)
     {   // T[] ^^= ...
         e = typeCombine(sc);
         if (e->op == TOKerror)

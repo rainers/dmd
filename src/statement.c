@@ -1701,7 +1701,7 @@ Lagain:
                     TypeSArray *ta = tab->ty == Tsarray ? (TypeSArray *)tab : NULL;
                     if (ta && !IntRange::fromType(var->type).contains(ta->dim->getIntRange()))
                     {
-                        error("index type '%s' cannot cover index range 0..%llu\n", arg->type->toChars(), ta->dim->toInteger());
+                        error("index type '%s' cannot cover index range 0..%llu", arg->type->toChars(), ta->dim->toInteger());
                     }
                 }
                 else
@@ -2106,13 +2106,14 @@ Lagain:
                     {   error("foreach: index cannot be ref");
                         goto Lerror2;
                     }
-                    if (!arg->type->equals(taa->index))
+                    if (!taa->index->implicitConvTo(arg->type))
                     {   error("foreach: index must be type %s, not %s", taa->index->toChars(), arg->type->toChars());
                         goto Lerror2;
                     }
                     arg = (*arguments)[1];
                 }
-                if (!arg->type->equals(taa->nextOf()))
+                if ((!arg->type->equals(taa->nextOf()) && (arg->storageClass & STCref)) ||
+                    !taa->nextOf()->implicitConvTo(arg->type))
                 {   error("foreach: value must be type %s, not %s", taa->nextOf()->toChars(), arg->type->toChars());
                     goto Lerror2;
                 }
