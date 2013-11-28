@@ -535,7 +535,7 @@ int tryMain(size_t argc, const char *argv[])
 #if TARGET_WINDOS
 	global.params.objfmt = OBJ_OMF;
     global.params.is64bit = false;
-    global.params.defaultlibname = "phobos,druntime";
+    global.params.defaultlibname = "phobos";
 #elif TARGET_LINUX
     global.params.defaultlibname = "libphobos2.a";
 #elif TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
@@ -1183,7 +1183,7 @@ Language changes listed by -transition=id:\n\
 #if TARGET_WINDOS
         VersionCondition::addPredefinedGlobalIdent("Win64");
         if (!setdefaultlib)
-        {   global.params.defaultlibname = "phobos64,druntime64";
+        {   global.params.defaultlibname = "phobos64";
             if (!setdebuglib)
                 global.params.debuglibname = global.params.defaultlibname;
         }

@@ -461,7 +461,6 @@ int main(string[] args)
                 command ~= " -m"~envData.model~" -c "~curSrc~" -o "~curObj;
             }
 
-			writeln("CC executing '"~command~"'");
             auto rc = system(command);
             if(rc)
             {

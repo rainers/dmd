@@ -208,7 +208,7 @@ struct ObjModule
     unsigned short index;       // index in Second Linker Member
     const char *name;           // module name (file name)
     int name_offset;            // if not -1, offset into string table of name
-    time_t file_time;           // file time
+    long file_time;             // file time
     unsigned user_id;
     unsigned group_id;
     unsigned file_mode;
