@@ -742,6 +742,7 @@ VarDeclaration::VarDeclaration(Loc loc, Type *type, Identifier *id, Initializer 
     aliassym = NULL;
     onstack = 0;
     canassign = 0;
+    lastVar = NULL;
     ctfeAdrOnStack = -1;
     rundtor = NULL;
     edtor = NULL;
@@ -1393,15 +1394,7 @@ Lnomatch:
         sc = sc->push();
         sc->stc &= ~(STC_TYPECTOR | STCpure | STCnothrow | STCref | STCdisable);
 
-        ArrayInitializer *ai = init->isArrayInitializer();
-        if (ai && tb->ty == Taarray)
-        {
-            Expression *e = ai->toAssocArrayLiteral();
-            init = new ExpInitializer(e->loc, e);
-        }
-
         ExpInitializer *ei = init->isExpInitializer();
-
         if (ei && isScope())
         {
             // See if initializer is a NewExp that can be allocated on the stack
@@ -1436,7 +1429,12 @@ Lnomatch:
                 //printf("fd = '%s', var = '%s'\n", fd->toChars(), toChars());
                 if (!ei)
                 {
-                    Expression *e = init->toExpression();
+                    ArrayInitializer *ai = init->isArrayInitializer();
+                    Expression *e;
+                    if (ai && (tb->ty == Taarray || tb->ty == Tstruct && ai->isAssociativeArray()))
+                        e = ai->toAssocArrayLiteral();
+                    else
+                        e = init->toExpression();
                     if (!e)
                     {
                         // Run semantic, but don't need to interpret
