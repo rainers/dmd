@@ -290,6 +290,8 @@ struct Objstate
     int fisegi;                 // SegData[] index of FI segment
 
 #if MARS
+    int hpsegi;                 // SegData[] of "has pointer" segment
+    int tlshpsegi;              // SegData[] of "TLS has pointer" segment
     int fmsegi;                 // SegData[] of FM segment
 #endif
 
@@ -519,6 +521,73 @@ seg_data *getsegment()
     pseg->SDseg = seg;
     pseg->segidx = 0;
     return pseg;
+}
+
+int Obj::hpseg(bool tls)
+{
+    //return DATA;
+#define DATACLASS       6                       // data class lname index
+    int& segi = tls ? obj.tlshpsegi : obj.hpsegi;
+
+    if (segi == 0)
+    {
+        static char tls_lnames[] =
+        {   "\06HPTLSB\05HPTLS\06HPTLSE"
+        };
+        static char lnames[] =
+        {   "\03HPB\02HP\03HPE"
+        };
+
+        // Put out LNAMES record
+
+        if(tls)
+            objrecord(LNAMES,tls_lnames,sizeof(tls_lnames) - 1);
+        else
+            objrecord(LNAMES,lnames,sizeof(lnames) - 1);
+
+        int dsegattr = I32
+            ? SEG_ATTR(SEG_ALIGN4,SEG_C_PUBLIC,0,USE32)
+            : SEG_ATTR(SEG_ALIGN2,SEG_C_PUBLIC,0,USE16);
+
+        // Put out beginning segment
+        objsegdef(dsegattr,0,obj.lnameidx,DATACLASS);
+        obj.lnameidx++;
+        obj.segidx++;
+
+        // Put out segment definition record
+        segi = obj_newfarseg(0,DATACLASS);
+        objsegdef(dsegattr,0,obj.lnameidx,DATACLASS);
+        SegData[segi]->attr = dsegattr;
+        assert(SegData[segi]->segidx == obj.segidx);
+
+        // Put out ending segment
+        objsegdef(dsegattr,0,obj.lnameidx + 1,DATACLASS);
+
+        obj.lnameidx += 2;              // for next time
+        obj.segidx += 2;
+
+//        dbg_printf("NOSCAN seg is %d\n", obj.noscansegi);
+    }
+    return segi;
+
+}
+
+
+
+int Obj::write_pointerInfo(Symbol *s, Symbol *ti)
+{
+    // output address,TypeInfo pair to new segment
+    int seg = hpseg(s->Sfl == FLtlsdata);
+    targ_size_t offset = Offset(seg);
+
+    int flags = CFoff;
+    if (I64)
+        flags |= CFoffset64;
+
+    offset += objmod->reftoident(seg, offset, s, 0, flags);
+    offset += objmod->reftoident(seg, offset, ti, 0, flags);
+    Offset(seg) = offset;
+    return 1;
 }
 
 

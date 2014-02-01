@@ -88,6 +88,12 @@ struct Obj
     VIRTUAL void func_start(Symbol *sfunc);
     VIRTUAL void func_term(Symbol *sfunc);
 
+#if TARGET_WINDOS
+    VIRTUAL int write_pointerInfo(Symbol *s, Symbol *ti);
+    int hpseg(bool tls);
+    int tlshpseg();
+#endif
+
 #if TARGET_LINUX || TARGET_OSX || TARGET_FREEBSD || TARGET_OPENBSD || TARGET_SOLARIS
     static unsigned addstr(Outbuffer *strtab, const char *);
     static void gotref(symbol *s);
@@ -181,6 +187,10 @@ struct MsCoffObj : Obj
     static unsigned addstr(Outbuffer *strtab, const char *);
     VIRTUAL void func_start(Symbol *sfunc);
     VIRTUAL void func_term(Symbol *sfunc);
+
+#if TARGET_WINDOS
+    VIRTUAL int write_pointerInfo(Symbol *s, Symbol *ti) { return 0; }
+#endif
 
     static int getsegment(const char *sectname, unsigned long flags);
     static int getsegment2(unsigned shtidx);
