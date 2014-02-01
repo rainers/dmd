@@ -251,7 +251,7 @@ double Port::strtod(const char *p, char **endp)
 // See backend/strtold.c.
 longdouble Port::strtold(const char *p, char **endp)
 {
-    return ::strtold(p, endp);
+    return ::ld_strtold(p, endp);
 }
 
 #endif
