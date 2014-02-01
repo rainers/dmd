@@ -4650,7 +4650,8 @@ void UnitTestDeclaration::semantic(Scope *sc)
         scope = NULL;
     }
 
-    if (global.params.useUnitTests)
+    // only analyse if not in an imported file or in a template instantiation
+    if (global.params.useUnitTests && (sc->module->isRoot() || isInstantiated()))
     {
         if (!type)
             type = new TypeFunction(NULL, Type::tvoid, false, LINKd);

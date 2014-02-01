@@ -288,6 +288,9 @@ void EnumDeclaration::semantic(Scope *sc)
 
     //if (defaultval) printf("defaultval: %s %s\n", defaultval->toChars(), defaultval->type->toChars());
     //members->print();
+
+    if (!isAnonymous() && memtype)
+        memtype->buildTypeInfo(sc); // avoid creating it from the backend, better create it now
 }
 
 /******************************

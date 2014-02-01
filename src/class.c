@@ -774,7 +774,11 @@ void ClassDeclaration::semantic(Scope *sc)
         if (!(f->storage_class & STCdisable))
             error(f->loc, "identity assignment operator overload is illegal");
     }
-    sc->pop();
+    sc = sc->pop();
+
+    if (!sc->nofree)
+        sc->setNoFree();                // may need it even after semantic() finishes
+    rtinfoScope = sc;
 
 #if 0 // Do not call until toObjfile() because of forward references
     // Fill in base class vtbl[]s
@@ -1474,14 +1478,25 @@ void InterfaceDeclaration::semantic(Scope *sc)
 
     inuse--;
     //members->print();
-    sc->pop();
+    sc = sc->pop();
     //printf("-InterfaceDeclaration::semantic(%s), type = %p\n", toChars(), type);
+
+    if (!sc->nofree)
+        sc->setNoFree();                // may need it even after semantic() finishes
+    rtinfoScope = sc;
 
     if (type->ty == Tclass && ((TypeClass *)type)->sym != this)
     {
         error("failed semantic analysis");
         this->errors = true;
         type = Type::terror;
+    }
+    else if (sc->module->isRoot())
+    {
+        // generate TypeInfo if module not imported, but actually compiled
+        if (!type->vtinfo)
+            type->vtinfo = type->getTypeInfoDeclaration();
+        sc->module->members->push(type->vtinfo);
     }
 }
 

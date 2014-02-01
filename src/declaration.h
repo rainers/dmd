@@ -378,6 +378,9 @@ public:
     TypeInfoStructDeclaration(Type *tinfo);
     static TypeInfoStructDeclaration *create(Type *tinfo);
 
+    void semantic3(Scope* sc);
+
+    void toObjFile(int multiobj);
     void accept(Visitor *v) { v->visit(this); }
 };
 
@@ -388,6 +391,9 @@ public:
     static TypeInfoClassDeclaration *create(Type *tinfo);
     Symbol *toSymbol();
 
+    void semantic3(Scope* sc);
+
+    void toObjFile(int multiobj);
     void accept(Visitor *v) { v->visit(this); }
 };
 
@@ -397,6 +403,7 @@ public:
     TypeInfoInterfaceDeclaration(Type *tinfo);
     static TypeInfoInterfaceDeclaration *create(Type *tinfo);
 
+    void toObjFile(int multiobj);
     void accept(Visitor *v) { v->visit(this); }
 };
 
@@ -406,6 +413,7 @@ public:
     TypeInfoTypedefDeclaration(Type *tinfo);
     static TypeInfoTypedefDeclaration *create(Type *tinfo);
 
+    void semantic3(Scope* sc);
     void accept(Visitor *v) { v->visit(this); }
 };
 
@@ -415,6 +423,7 @@ public:
     TypeInfoPointerDeclaration(Type *tinfo);
     static TypeInfoPointerDeclaration *create(Type *tinfo);
 
+    void semantic3(Scope* sc);
     void accept(Visitor *v) { v->visit(this); }
 };
 
@@ -424,6 +433,7 @@ public:
     TypeInfoArrayDeclaration(Type *tinfo);
     static TypeInfoArrayDeclaration *create(Type *tinfo);
 
+    void semantic3(Scope* sc);
     void accept(Visitor *v) { v->visit(this); }
 };
 
@@ -433,6 +443,7 @@ public:
     TypeInfoStaticArrayDeclaration(Type *tinfo);
     static TypeInfoStaticArrayDeclaration *create(Type *tinfo);
 
+    void semantic3(Scope* sc);
     void accept(Visitor *v) { v->visit(this); }
 };
 
@@ -442,6 +453,7 @@ public:
     TypeInfoAssociativeArrayDeclaration(Type *tinfo);
     static TypeInfoAssociativeArrayDeclaration *create(Type *tinfo);
 
+    void semantic3(Scope* sc);
     void accept(Visitor *v) { v->visit(this); }
 };
 
@@ -451,6 +463,7 @@ public:
     TypeInfoEnumDeclaration(Type *tinfo);
     static TypeInfoEnumDeclaration *create(Type *tinfo);
 
+    void semantic3(Scope* sc);
     void accept(Visitor *v) { v->visit(this); }
 };
 
@@ -460,6 +473,7 @@ public:
     TypeInfoFunctionDeclaration(Type *tinfo);
     static TypeInfoFunctionDeclaration *create(Type *tinfo);
 
+    void semantic3(Scope* sc);
     void accept(Visitor *v) { v->visit(this); }
 };
 
@@ -469,6 +483,7 @@ public:
     TypeInfoDelegateDeclaration(Type *tinfo);
     static TypeInfoDelegateDeclaration *create(Type *tinfo);
 
+    void semantic3(Scope* sc);
     void accept(Visitor *v) { v->visit(this); }
 };
 
@@ -478,6 +493,7 @@ public:
     TypeInfoTupleDeclaration(Type *tinfo);
     static TypeInfoTupleDeclaration *create(Type *tinfo);
 
+    void semantic3(Scope* sc);
     void accept(Visitor *v) { v->visit(this); }
 };
 
@@ -488,6 +504,8 @@ public:
     static TypeInfoConstDeclaration *create(Type *tinfo);
 
     void accept(Visitor *v) { v->visit(this); }
+
+    void semantic3(Scope* sc);
 };
 
 class TypeInfoInvariantDeclaration : public TypeInfoDeclaration
@@ -497,6 +515,8 @@ public:
     static TypeInfoInvariantDeclaration *create(Type *tinfo);
 
     void accept(Visitor *v) { v->visit(this); }
+
+    void semantic3(Scope* sc);
 };
 
 class TypeInfoSharedDeclaration : public TypeInfoDeclaration
@@ -506,6 +526,8 @@ public:
     static TypeInfoSharedDeclaration *create(Type *tinfo);
 
     void accept(Visitor *v) { v->visit(this); }
+
+    void semantic3(Scope* sc);
 };
 
 class TypeInfoWildDeclaration : public TypeInfoDeclaration
@@ -515,6 +537,8 @@ public:
     static TypeInfoWildDeclaration *create(Type *tinfo);
 
     void accept(Visitor *v) { v->visit(this); }
+
+    void semantic3(Scope* sc);
 };
 
 class TypeInfoVectorDeclaration : public TypeInfoDeclaration
@@ -523,6 +547,7 @@ public:
     TypeInfoVectorDeclaration(Type *tinfo);
     static TypeInfoVectorDeclaration *create(Type *tinfo);
 
+    void semantic3(Scope* sc);
     void accept(Visitor *v) { v->visit(this); }
 };
 

@@ -1327,8 +1327,7 @@ Lnomatch:
             init = new ExpInitializer(loc, e);
             goto Ldtor;
         }
-        else if (type->ty == Tstruct &&
-            ((TypeStruct *)type)->sym->zeroInit == 1)
+        else if (type->ty == Tstruct && type->isZeroInit())
         {
             /* If a struct is all zeros, as a special case
              * set it's initializer to the integer 0.

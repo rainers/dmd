@@ -101,6 +101,7 @@ AggregateDeclaration::AggregateDeclaration(Loc loc, Identifier *id)
     noDefaultCtor = false;
     dtor = NULL;
     getRTInfo = NULL;
+    rtinfoScope = NULL;
 }
 
 PROT AggregateDeclaration::prot()
@@ -154,28 +155,9 @@ void AggregateDeclaration::semantic3(Scope *sc)
         }
         sc = sc->pop();
 
-        if (!getRTInfo && Type::rtinfo &&
-            (!isDeprecated() || global.params.useDeprecated) && // don't do it for unused deprecated types
-            (type && type->ty != Terror)) // or error types
-        {
-            // Evaluate: RTinfo!type
-            Objects *tiargs = new Objects();
-            tiargs->push(type);
-            TemplateInstance *ti = new TemplateInstance(loc, Type::rtinfo, tiargs);
-            ti->semantic(sc);
-            ti->semantic2(sc);
-            ti->semantic3(sc);
-            Dsymbol *s = ti->toAlias();
-            Expression *e = new DsymbolExp(Loc(), s, 0);
-
-            Scope *sc2 = ti->tempdecl->scope->startCTFE();
-            sc2->tinst = sc->tinst;
-            e = e->semantic(sc2);
-            sc2->endCTFE();
-
-            e = e->ctfeInterpret();
-            getRTInfo = e;
-        }
+        type->buildTypeInfo(sc, false); // implicitly calls generateTypeInfoData
+        if (type->vtinfo && type->builtinTypeInfo())
+            type->vtinfo->semantic3(sc);
 
         if (sd)
         {
@@ -230,6 +212,32 @@ void AggregateDeclaration::semantic3(Scope *sc)
                 sd->dtor->semantic3(sd->dtor->scope);
             }
         }
+    }
+}
+
+void AggregateDeclaration::generateTypeInfoData(Scope *sc)
+{
+    if (!getRTInfo && Type::rtinfo &&
+        (!isDeprecated() || global.params.useDeprecated) && // don't do it for unused deprecated types
+        (type && type->ty != Terror)) // or error types
+    {
+        // Evaluate: RTInfo!type
+        Objects *tiargs = new Objects();
+        tiargs->push(type);
+        TemplateInstance *ti = new TemplateInstance(loc, Type::rtinfo, tiargs);
+        ti->semantic(sc);
+        ti->semantic2(sc);
+        ti->semantic3(sc);
+        Dsymbol *s = ti->toAlias();
+        Expression *e = new DsymbolExp(Loc(), s, 0);
+
+        Scope *sc2 = ti->tempdecl->scope->startCTFE();
+        sc2->tinst = sc->tinst;
+        e = e->semantic(sc2);
+        sc2->endCTFE();
+
+        e = e->ctfeInterpret();
+        getRTInfo = e;
     }
 }
 
@@ -542,7 +550,7 @@ void AggregateDeclaration::searchCtor()
 StructDeclaration::StructDeclaration(Loc loc, Identifier *id)
     : AggregateDeclaration(loc, id)
 {
-    zeroInit = 0;       // assume false until we do semantic processing
+    zeroInit = -1;       // mark as unknown, calculate lazily in isZeroInit
     hasIdentityAssign = 0;
     hasIdentityEquals = 0;
     cpctor = NULL;
@@ -706,28 +714,7 @@ void StructDeclaration::semantic(Scope *sc)
     //printf("-StructDeclaration::semantic(this=%p, '%s')\n", this, toChars());
 
     // Determine if struct is all zeros or not
-    zeroInit = 1;
-    for (size_t i = 0; i < fields.dim; i++)
-    {
-        VarDeclaration *vd = fields[i];
-        if (!vd->isDataseg())
-        {
-            if (vd->init)
-            {
-                // Should examine init to see if it is really all 0's
-                zeroInit = 0;
-                break;
-            }
-            else
-            {
-                if (!vd->type->isZeroInit(loc))
-                {
-                    zeroInit = 0;
-                    break;
-                }
-            }
-        }
-    }
+    zeroInit = calcZeroInit();
 
     dtor = buildDtor(sc2);
     postblit = buildPostBlit(sc2);
@@ -773,6 +760,21 @@ void StructDeclaration::semantic(Scope *sc)
         semantic3(sc);
     }
 
+    if (sc->module->isRoot() || isInstantiated())
+    {
+        // build a literal now to initialize vtinfo of element types
+        StructLiteralExp *sle = new StructLiteralExp(loc, this, NULL);
+        if (!fill(loc, sle->elements, true))
+        {
+            type = Type::terror;
+            this->errors = true;
+        }
+    }
+
+    if (!sc->nofree)
+        sc->setNoFree();                // may need it even after semantic() finishes
+    rtinfoScope = sc;
+
     if (global.errors != errors)
     {   // The type is no good.
         type = Type::terror;
@@ -791,6 +793,29 @@ void StructDeclaration::semantic(Scope *sc)
         this->errors = true;
         type = Type::terror;
     }
+}
+
+int StructDeclaration::calcZeroInit()
+{
+    // Determine if struct is all zeros or not
+    for (size_t i = 0; i < fields.dim; i++)
+    {
+        Dsymbol *s = fields[i];
+        VarDeclaration *vd = s->isVarDeclaration();
+        if (vd && !vd->isDataseg())
+        {
+            if (vd->init)
+            {
+                // Should examine init to see if it is really all 0's
+                return 0;
+            }
+            else if (!vd->type->isZeroInit(loc))
+            {
+                return 0;
+            }
+        }
+    }
+    return 1;
 }
 
 Dsymbol *StructDeclaration::search(Loc loc, Identifier *ident, int flags)

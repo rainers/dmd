@@ -98,8 +98,13 @@ FuncDeclaration *search_toString(StructDeclaration *sd);
  * Get the exact TypeInfo.
  */
 
-Expression *Type::getTypeInfo(Scope *sc)
+TypeInfoDeclaration *Type::buildTypeInfo(Scope *sc, bool checkNeedSemantic)
 {
+    if (vtinfo)
+        return vtinfo;
+    if (sc && checkNeedSemantic && !typeInfoNeedsSemantic())
+        return 0;
+
     //printf("Type::getTypeInfo() %p, %s\n", this, toChars());
     if (!Type::dtypeinfo)
     {
@@ -126,7 +131,9 @@ Expression *Type::getTypeInfo(Scope *sc)
         /* If this has a custom implementation in std/typeinfo, then
          * do not generate a COMDAT for it.
          */
-        if (!t->builtinTypeInfo())
+        if (t->ty == Terror)
+            vtinfo->errors = 1;
+        else if (!t->builtinTypeInfo())
         {
             // Generate COMDAT
             if (sc)                     // if in semantic() pass
@@ -134,12 +141,19 @@ Expression *Type::getTypeInfo(Scope *sc)
                 // Find module that will go all the way to an object file
                 Module *m = sc->module->importedFrom;
                 m->members->push(t->vtinfo);
+                if(m->semanticRun >= 3)
+                {
+                    Module::addDeferredSemantic3(t->vtinfo);
+                    t->vtinfo->scope = sc;
+                    sc->setNoFree();
+                }
 
                 if (ty == Tstruct)
                 {
                     Dsymbol *s;
                     StructDeclaration *sd = ((TypeStruct *)this)->sym;
-                    if ((sd->xeq  && sd->xeq  != sd->xerreq  ||
+                    if (sd->members &&
+                        (sd->xeq  && sd->xeq  != sd->xerreq  ||
                          sd->xcmp && sd->xcmp != sd->xerrcmp ||
                          (sd->postblit && !(sd->postblit->storage_class & STCdisable)) ||
                          sd->dtor ||
@@ -154,15 +168,30 @@ Expression *Type::getTypeInfo(Scope *sc)
             }
             else                        // if in obj generation pass
             {
+                // it is always a problem if this is called from the backend without
+                //  being added to the AST for semantic analysis (no RTInfo generated)
+                // to ease transition, modifier types are just put out as they just forward
+                //  to the actual TypeInfo
+                if (t->typeInfoNeedsSemantic())
+                    error(Loc(), "ICE: unexpected type info request for %s", t->toChars());
                 t->vtinfo->toObjFile(global.params.multiobj);
             }
         }
     }
     if (!vtinfo)
         vtinfo = t->vtinfo;     // Types aren't merged, but we can share the vtinfo's
-    Expression *e = VarExp::create(Loc(), t->vtinfo);
+    return vtinfo;
+}
+
+
+Expression *Type::getTypeInfo(Scope *sc)
+{
+    if(ty == Terror)
+        return new ErrorExp();
+    buildTypeInfo(sc, false);
+    Expression *e = VarExp::create(Loc(), vtinfo);
     e = e->addressOf(sc);
-    e->type = t->vtinfo->type;          // do this so we don't get redundant dereference
+    e->type = vtinfo->type;          // do this so we don't get redundant dereference
     return e;
 }
 
@@ -172,9 +201,26 @@ TypeInfoDeclaration *Type::getTypeInfoDeclaration()
     return TypeInfoDeclaration::create(this, 0);
 }
 
+bool Type::typeInfoNeedsSemantic()
+{
+    return false;
+}
+
+bool TypeNext::typeInfoNeedsSemantic()
+{
+    return next->typeInfoNeedsSemantic();
+}
+
 TypeInfoDeclaration *TypeTypedef::getTypeInfoDeclaration()
 {
     return TypeInfoTypedefDeclaration::create(this);
+}
+
+bool TypeTypedef::typeInfoNeedsSemantic()
+{
+    if (builtinTypeInfo()) // generated with declaration
+        return false;
+    return sym->basetype->typeInfoNeedsSemantic();
 }
 
 TypeInfoDeclaration *TypePointer::getTypeInfoDeclaration()
@@ -197,9 +243,23 @@ TypeInfoDeclaration *TypeAArray::getTypeInfoDeclaration()
     return TypeInfoAssociativeArrayDeclaration::create(this);
 }
 
+bool TypeAArray::typeInfoNeedsSemantic()
+{
+    return TypeNext::typeInfoNeedsSemantic()
+#if DMDV2
+        || getImpl()->type->typeInfoNeedsSemantic()
+#endif
+        || index->typeInfoNeedsSemantic();
+}
+
 TypeInfoDeclaration *TypeStruct::getTypeInfoDeclaration()
 {
     return TypeInfoStructDeclaration::create(this);
+}
+
+bool TypeStruct::typeInfoNeedsSemantic()
+{
+    return !builtinTypeInfo(); // generated with declaration
 }
 
 TypeInfoDeclaration *TypeClass::getTypeInfoDeclaration()
@@ -220,6 +280,13 @@ TypeInfoDeclaration *TypeEnum::getTypeInfoDeclaration()
     return TypeInfoEnumDeclaration::create(this);
 }
 
+bool TypeEnum::typeInfoNeedsSemantic()
+{
+    if (builtinTypeInfo()) // generated with declaration
+        return false;
+    return sym->memtype && sym->memtype->typeInfoNeedsSemantic();
+}
+
 TypeInfoDeclaration *TypeFunction::getTypeInfoDeclaration()
 {
     return TypeInfoFunctionDeclaration::create(this);
@@ -233,6 +300,159 @@ TypeInfoDeclaration *TypeDelegate::getTypeInfoDeclaration()
 TypeInfoDeclaration *TypeTuple::getTypeInfoDeclaration()
 {
     return TypeInfoTupleDeclaration::create(this);
+}
+
+bool TypeTuple::typeInfoNeedsSemantic()
+{
+    size_t dim = arguments->dim;
+    for (size_t i = 0; i < dim; i++)
+        if ((*arguments)[i]->type->typeInfoNeedsSemantic())
+            return true;
+    return false;
+}
+
+void TypeInfoConstDeclaration::semantic3(Scope* sc)
+{
+    sc = sc ? sc : scope;
+    Type *tm = tinfo->mutableOf()->merge();
+    tm->getTypeInfo(sc);
+}
+
+void TypeInfoInvariantDeclaration::semantic3(Scope* sc)
+{
+    sc = sc ? sc : scope;
+    Type *tm = tinfo->mutableOf()->merge();
+    tm->getTypeInfo(sc);
+}
+
+void TypeInfoSharedDeclaration::semantic3(Scope* sc)
+{
+    sc = sc ? sc : scope;
+    Type *tm = tinfo->unSharedOf()->merge();
+    tm->getTypeInfo(sc);
+}
+
+void TypeInfoWildDeclaration::semantic3(Scope* sc)
+{
+    sc = sc ? sc : scope;
+    Type *tm = tinfo->mutableOf()->merge();
+    tm->getTypeInfo(sc);
+}
+
+void TypeInfoTypedefDeclaration::semantic3(Scope* sc)
+{
+    sc = sc ? sc : scope;
+    TypeTypedef *tc = (TypeTypedef *)tinfo;
+    TypedefDeclaration *sd = tc->sym;
+    sd->basetype = sd->basetype->merge();
+    sd->basetype->getTypeInfo(sc);
+}
+
+void TypeInfoEnumDeclaration::semantic3(Scope* sc)
+{
+    sc = sc ? sc : scope;
+    TypeEnum *tc = (TypeEnum *)tinfo;
+    EnumDeclaration *sd = tc->sym;
+    if (sd->memtype)
+        sd->memtype->getTypeInfo(sc);
+}
+
+void TypeInfoPointerDeclaration::semantic3(Scope* sc)
+{
+    sc = sc ? sc : scope;
+    TypePointer *tc = (TypePointer *)tinfo;
+    tc->next->getTypeInfo(sc);
+}
+
+void TypeInfoArrayDeclaration::semantic3(Scope* sc)
+{
+    sc = sc ? sc : scope;
+    TypeDArray *tc = (TypeDArray *)tinfo;
+    tc->next->getTypeInfo(sc);
+}
+
+void TypeInfoStaticArrayDeclaration::semantic3(Scope* sc)
+{
+    sc = sc ? sc : scope;
+    TypeSArray *tc = (TypeSArray *)tinfo;
+    tc->next->getTypeInfo(sc);
+}
+
+void TypeInfoVectorDeclaration::semantic3(Scope* sc)
+{
+    sc = sc ? sc : scope;
+    TypeVector *tc = (TypeVector *)tinfo;
+    tc->basetype->getTypeInfo(sc);
+}
+
+void TypeInfoAssociativeArrayDeclaration::semantic3(Scope* sc)
+{
+    sc = sc ? sc : scope;
+    TypeAArray *tc = (TypeAArray *)tinfo;
+
+    tc->next->getTypeInfo(sc);
+    tc->index->getTypeInfo(sc);
+#if DMDV2
+    tc->getImpl()->type->getTypeInfo(sc);
+#endif
+}
+
+void TypeInfoFunctionDeclaration::semantic3(Scope* sc)
+{
+    sc = sc ? sc : scope;
+    TypeFunction *tc = (TypeFunction *)tinfo;
+    tc->next->getTypeInfo(sc);
+}
+
+void TypeInfoDelegateDeclaration::semantic3(Scope* sc)
+{
+    sc = sc ? sc : scope;
+    TypeDelegate *tc = (TypeDelegate *)tinfo;
+    tc->next->nextOf()->getTypeInfo(sc);
+}
+
+void TypeInfoStructDeclaration::semantic3(Scope* scope)
+{
+    TypeStruct *tc = (TypeStruct *)tinfo;
+    StructDeclaration *sd = tc->sym;
+
+    // rebuild scope of sym, because the symbol is just added anyway
+	if (Scope* sc = sd->rtinfoScope)
+    {
+        sd->generateTypeInfoData(sc);
+
+        if (global.params.is64bit)
+        {
+            if (Type *t = sd->arg1type)
+                t->getTypeInfo(sc);
+            if (Type *t = sd->arg2type)
+                t->getTypeInfo(sc);
+        }
+    }
+}
+
+void TypeInfoClassDeclaration::semantic3(Scope* scope)
+{
+    TypeClass *tc = (TypeClass *)tinfo;
+    ClassDeclaration *cd = tc->sym;
+
+    // rebuild scope of sym, because the symbol is just added anyway
+	if (Scope* sc = cd->rtinfoScope)
+    {
+        cd->generateTypeInfoData(sc);
+    }
+}
+
+void TypeInfoTupleDeclaration::semantic3(Scope* sc)
+{
+    sc = sc ? sc : scope;
+    TypeTuple *tu = (TypeTuple *)tinfo;
+    size_t dim = tu->arguments->dim;
+    for (size_t i = 0; i < dim; i++)
+    {
+        Parameter *arg = (*tu->arguments)[i];
+        arg->type->getTypeInfo(sc);
+    }
 }
 
 /****************************************************
@@ -777,6 +997,39 @@ int TypeClass::builtinTypeInfo()
      * claim it is built in so it isn't regenerated by each module.
      */
     return mod ? 0 : 1;
+}
+
+int TypeStruct::builtinTypeInfo()
+{
+    /* If the struct has a non-zero initializer, the type info contains a reference
+     * to it, so we need to compile and link the module with the struct declaration anyway.
+     * As a result we can claim the TypeInfo is builtin
+     */
+#if DMDV2
+    return mod || isZeroInit(Loc()) ? 0 : 1;
+#else
+    return 1;
+#endif
+}
+
+int TypeTypedef::builtinTypeInfo()
+{
+    // see comment in TypeStruct::builtinTypeInfo()
+#if DMDV2
+    return mod || !sym->init || isZeroInit(Loc()) ? 0 : 1;
+#else
+    return 1;
+#endif
+}
+
+int TypeEnum::builtinTypeInfo()
+{
+    // see comment in TypeStruct::builtinTypeInfo()
+#if DMDV2
+    return mod || !sym->members || isZeroInit(Loc()) ? 0 : 1;
+#else
+    return 1;
+#endif
 }
 
 /* ========================================================================= */
