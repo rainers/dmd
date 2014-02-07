@@ -1630,6 +1630,14 @@ void VarDeclaration::semantic2(Scope *sc)
     sem = Semantic2Done;
 }
 
+void VarDeclaration::semantic3(Scope* sc)
+{
+	Declaration::semantic3(sc);
+    
+	if (type->ty != Terror && !aliassym && canTakeAddressOf() && isDataseg() && !(storage_class & STCextern) && type->hasPointers())
+		type->buildTypeInfo(sc); // ensure typeinfo generated before code gen
+}
+
 void VarDeclaration::setFieldOffset(AggregateDeclaration *ad, unsigned *poffset, bool isunion)
 {
     //printf("VarDeclaration::setFieldOffset(ad = %s) %s\n", ad->toChars(), toChars());

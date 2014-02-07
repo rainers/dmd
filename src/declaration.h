@@ -290,6 +290,7 @@ public:
     void semantic(Scope *sc);
     void setFieldOffset(AggregateDeclaration *ad, unsigned *poffset, bool isunion);
     void semantic2(Scope *sc);
+    void semantic3(Scope* sc);
     const char *kind();
     void toCBuffer(OutBuffer *buf, HdrGenState *hgs);
     Type *htype;
