@@ -971,7 +971,7 @@ void VarDeclaration::toObjFile(int multiobj)
                 objmod->export_symbol(s,0);
 
 #if TARGET_WINDOS
-            if (hasPointers())
+            if (type->hasPointers())
             {
                 if (!type->vtinfo)
                     type->getTypeInfo(NULL); // ensure typeinfo generated
