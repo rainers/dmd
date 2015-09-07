@@ -52,7 +52,7 @@ struct FileName
     static bool ensurePathExists(const char *path);
     static const char *canonicalName(const char *name);
 
-    static void free(const char *str);
+    static void xfree(const char *str);
     char *toChars();
 };
 

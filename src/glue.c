@@ -156,7 +156,7 @@ void obj_write_deferred(Library *library)
         for (char *p = s->toChars(); *p; p++)
             hash += *p;
         namebuf.printf("%s_%x_%x.%s", fname, count, hash, global.obj_ext);
-        FileName::free((char *)fname);
+        FileName::xfree((char *)fname);
         fname = namebuf.extractString();
 
         //printf("writing '%s'\n", fname);

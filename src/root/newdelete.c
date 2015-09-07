@@ -27,11 +27,18 @@ void *allocmemory(size_t m_size);
 
 void * operator new(size_t m_size)
 {
+#ifdef free
+    return malloc(m_size);
+#else
     return allocmemory(m_size);
+#endif
 }
 
 void operator delete(void *p)
 {
+#ifdef free
+//    free(p);
+#endif
 }
 
 #else
@@ -54,3 +61,35 @@ void operator delete(void *p)
 #endif
 
 #endif
+
+#ifdef free
+
+extern "C"
+{
+    void* __cdecl gc_malloc(size_t sz, unsigned int attr, void* ti);
+    void* __cdecl gc_calloc(size_t sz, unsigned int attr, void* ti);
+    void* __cdecl gc_realloc(void* p, size_t sz, unsigned int attr, void* ti);
+    void* __cdecl gc_free(void* p);
+
+    __declspec(noalias) __declspec(restrict) void* __cdecl _d_gc_malloc(size_t sz)
+    {
+        return gc_malloc(sz, 0, NULL);
+    }
+    __declspec(noalias) __declspec(restrict) void* __cdecl _d_gc_calloc(size_t cnt, size_t sz)
+    {
+        if (cnt * sz == 0)
+            return "";
+        return gc_calloc(cnt * sz, 0, NULL);
+    }
+    __declspec(noalias) __declspec(restrict) void* __cdecl _d_gc_realloc(void* p, size_t sz)
+    {
+        return gc_realloc(p, sz, 0, NULL);
+    }
+
+    __declspec(noalias) void __cdecl _d_gc_free(void *p)
+    {
+        gc_free(p);
+    }
+}
+#endif
+

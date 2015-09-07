@@ -665,7 +665,7 @@ struct FileName
     /********************************
      * Free memory allocated by FileName routines
      */
-    extern (C++) static void free(const(char)* str)
+    extern (C++) static void xfree(const(char)* str)
     {
         if (str)
         {
@@ -674,6 +674,8 @@ struct FileName
         }
         mem.xfree(cast(void*)str);
     }
+
+    alias free = xfree; // only for D code
 
     extern (C++) char* toChars()
     {
