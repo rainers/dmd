@@ -127,6 +127,7 @@ extern (C++) final class Nspace : ScopeDsymbol
         {
             printf("-Nspace::semantic('%s')\n", toChars());
         }
+        semanticRun = PASSsemanticdone;
     }
 
     override void semantic2(Scope* sc)

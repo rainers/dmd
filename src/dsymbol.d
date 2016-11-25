@@ -1696,6 +1696,21 @@ public:
     {
         v.visit(this);
     }
+
+    bool membersSemanticComplete()
+    {
+        for (size_t i = 0; i < members.dim; i++)
+        {
+            Dsymbol s = (*members)[i];
+            if (!s.isUnitTestDeclaration() && s.semanticRun < PASSsemanticdone)
+                return false;
+            debug if (auto ss = s.isScopeDsymbol())
+                if (!ss.isTemplateDeclaration())
+                    if (!ss.membersSemanticComplete())
+                        assert(false);
+        }
+        return true;
+    }
 }
 
 /***********************************************************

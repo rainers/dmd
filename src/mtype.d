@@ -9060,6 +9060,10 @@ extern (C++) final class TypeClass : Type
         {
             return Type.getProperty(e.loc, ident, 0);
         }
+        if (ident == Id.stringof)
+        {
+            return Type.dotExp(sc, e, ident, flag);
+        }
 
         /* If e.tupleof
          */
@@ -9101,6 +9105,14 @@ extern (C++) final class TypeClass : Type
             e = e.semantic(sc2);
             sc2.pop();
             return e;
+        }
+
+        // if semantic on the class is incomplete, try it again
+        if (sym.semanticRun < PASSsemanticdone)
+        {
+            sym.semantic(null);
+            //if (sym.semanticRun < PASSsemanticdone)
+            //    error(e.loc, "class incomplete, forward reference problem");
         }
 
         Dsymbol searchSym()

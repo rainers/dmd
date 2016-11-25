@@ -229,6 +229,7 @@ extern (C++) final class Import : Dsymbol
     override void semantic(Scope* sc)
     {
         //printf("Import::semantic('%s') %s\n", toPrettyChars(), id.toChars());
+        semanticRun = PASSsemantic;
         if (_scope)
         {
             sc = _scope;
@@ -387,6 +388,7 @@ extern (C++) final class Import : Dsymbol
                 ob.printf(" -> %s", aliasId.toChars());
             ob.writenl();
         }
+        semanticRun = PASSsemanticdone;
         //printf("-Import::semantic('%s'), pkg = %p\n", toChars(), pkg);
     }
 

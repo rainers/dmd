@@ -74,6 +74,8 @@ extern (C++) final class AliasThis : Dsymbol
             return;
         }
 
+        semanticRun = PASSsemantic;
+
         /* disable the alias this conversion so the implicit conversion check
          * doesn't use it.
          */
@@ -94,6 +96,7 @@ extern (C++) final class AliasThis : Dsymbol
         }
 
         ad.aliasthis = s;
+        semanticRun = PASSsemanticdone;
     }
 
     override const(char)* kind() const

@@ -502,7 +502,7 @@ extern (C++) class ClassDeclaration : AggregateDeclaration
         }
         else if (symtab && !scx)
         {
-            semanticRun = PASSsemanticdone;
+            //semanticRun = PASSsemanticdone;
             return;
         }
         semanticRun = PASSsemantic;
@@ -784,6 +784,8 @@ extern (C++) class ClassDeclaration : AggregateDeclaration
             assert(tb.ty == Tclass);
             TypeClass tc = cast(TypeClass)tb;
             if (tc.sym.semanticRun < PASSsemanticdone)
+                tc.sym.semantic(null);
+            if (tc.sym.semanticRun < PASSsemanticdone)
             {
                 // Forward referencee of one or more bases, try again later
                 _scope = scx ? scx : sc.copy();
@@ -868,6 +870,17 @@ extern (C++) class ClassDeclaration : AggregateDeclaration
         {
             auto s = (*members)[i];
             s.semantic(sc2);
+        }
+
+        if (!membersSemanticComplete())
+        {
+            sc2.pop();
+
+            _scope = scx ? scx : sc.copy();
+            _scope.setNoFree();
+            _scope._module.addDeferredSemantic(this);
+            //printf("\tdeferring %s\n", toChars());
+            return;
         }
 
         if (!determineFields())

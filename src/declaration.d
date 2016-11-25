@@ -167,6 +167,7 @@ extern (C++) abstract class Declaration : Dsymbol
 
     override void semantic(Scope* sc)
     {
+        semanticRun = PASSsemanticdone;
     }
 
     override const(char)* kind() const
@@ -541,6 +542,7 @@ extern (C++) final class AliasDeclaration : Declaration
         //printf("AliasDeclaration::semantic() %s\n", toChars());
         if (aliassym)
         {
+            semanticRun = PASSsemanticdone;
             auto fd = aliassym.isFuncLiteralDeclaration();
             auto td = aliassym.isTemplateDeclaration();
             if (fd || td && td.literal)
@@ -922,6 +924,7 @@ extern (C++) final class OverDeclaration : Declaration
 
     override void semantic(Scope* sc)
     {
+        semanticRun = PASSsemanticdone;
     }
 
     override bool equals(RootObject o)

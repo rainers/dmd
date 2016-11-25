@@ -609,6 +609,7 @@ extern (C++) final class TemplateDeclaration : ScopeDsymbol
             }
         }
 
+        semanticRun = PASSsemanticdone;
         /* BUG: should check:
          *  o no virtual functions or non-static data members of classes
          */
@@ -6355,6 +6356,7 @@ extern (C++) class TemplateInstance : ScopeDsymbol
         if (global.errors != errorsave)
             goto Laftersemantic;
 
+        version(none)
         /* If any of the instantiation members didn't get semantic() run
          * on them due to forward references, we cannot run semantic2()
          * or semantic3() yet.
@@ -6380,7 +6382,11 @@ extern (C++) class TemplateInstance : ScopeDsymbol
             if (found_deferred_ad || Module.deferred.dim)
                 goto Laftersemantic;
         }
-
+        else
+        {
+            if (!membersSemanticComplete())
+                goto Laftersemantic;
+        }
         /* The problem is when to parse the initializer for a variable.
          * Perhaps VarDeclaration.semantic() should do it like it does
          * for initializers inside a function.
@@ -8644,6 +8650,23 @@ extern (C++) final class TemplateMixin : TemplateInstance
         }
 
         nest--;
+
+        if (!membersSemanticComplete())
+        {
+            sc2.pop();
+            argscope.pop();
+            scy.pop();
+
+            _scope = scx ? scx : sc.copy();
+            _scope.setNoFree();
+            _scope._module.addDeferredSemantic(this);
+            //printf("\tdeferring %s\n", toChars());
+
+            semanticRun = PASSinit;
+            return;
+        }
+
+        semanticRun = PASSsemanticdone;
 
         /* In DeclDefs scope, TemplateMixin does not have to handle deferred symbols.
          * Because the members would already call Module.addDeferredSemantic() for themselves.

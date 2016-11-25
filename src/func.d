@@ -874,6 +874,17 @@ extern (C++) class FuncDeclaration : Declaration
                 error("return type inference is not supported if may override base class function");
             }
 
+            // if semantic on the vtbls is incomplete, try it again
+            if (cd.baseClass && !cd.baseClass.membersSemanticComplete())
+            {
+                cd.baseClass.semantic(null);
+                if (!cd.baseClass.membersSemanticComplete())
+                {
+                    error("recursive definition while trying to fill vtable");
+                    goto Ldone;
+                }
+            }
+
             /* Find index of existing function in base class's vtbl[] to override
              * (the index will be the same as in cd's current vtbl[])
              */

@@ -165,6 +165,8 @@ extern (C++) abstract class AttribDeclaration : Dsymbol
 
     override void semantic(Scope* sc)
     {
+        semanticRun = PASSsemantic;
+
         Dsymbols* d = include(sc, null);
         //printf("\tAttribDeclaration::semantic '%s', d = %p\n",toChars(), d);
         if (d)
@@ -178,6 +180,8 @@ extern (C++) abstract class AttribDeclaration : Dsymbol
             if (sc2 != sc)
                 sc2.pop();
         }
+
+        semanticRun = PASSsemanticdone;
     }
 
     override void semantic2(Scope* sc)
@@ -749,6 +753,8 @@ extern (C++) final class AnonDeclaration : AttribDeclaration
 
     override void semantic(Scope* sc)
     {
+        semanticRun = PASSsemantic;
+
         //printf("\tAnonDeclaration::semantic %s %p\n", isunion ? "union" : "struct", this);
         assert(sc.parent);
         auto p = sc.parent.pastMixin();
@@ -772,6 +778,7 @@ extern (C++) final class AnonDeclaration : AttribDeclaration
             }
             sc = sc.pop();
         }
+        semanticRun = PASSsemanticdone;
     }
 
     override void setFieldOffset(AggregateDeclaration ad, uint* poffset, bool isunion)
@@ -922,6 +929,7 @@ extern (C++) final class PragmaDeclaration : AttribDeclaration
 
     override void semantic(Scope* sc)
     {
+        semanticRun = PASSsemantic;
         // Should be merged with PragmaStatement
         //printf("\tPragmaDeclaration::semantic '%s'\n",toChars());
         if (ident == Id.msg)
@@ -940,6 +948,7 @@ extern (C++) final class PragmaDeclaration : AttribDeclaration
                     if (e.op == TOKerror)
                     {
                         errorSupplemental(loc, "while evaluating pragma(msg, %s)", (*args)[i].toChars());
+                        semanticRun = PASSsemanticdone;
                         return;
                     }
                     StringExp se = e.toStringExp();
@@ -1132,6 +1141,7 @@ extern (C++) final class PragmaDeclaration : AttribDeclaration
             if (sc2 != sc)
                 sc2.pop();
         }
+        semanticRun = PASSsemanticdone;
         return;
     Lnodecl:
         if (decl)
