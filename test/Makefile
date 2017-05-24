@@ -84,10 +84,12 @@ export OS
 
 ifeq (freebsd,$(OS))
     SHELL=/usr/local/bin/bash
-else ifeq (netbsd,$(OS))
+else
+ifeq (netbsd,$(OS))
     SHELL=/usr/pkg/bin/bash
 else
     SHELL=/bin/bash
+endif
 endif
 QUIET=@
 export RESULTS_DIR=test_results
@@ -179,29 +181,33 @@ $(RESULTS_DIR)/.created:
 	$(QUIET)if [ ! -d $(RESULTS_DIR)/fail_compilation ]; then mkdir $(RESULTS_DIR)/fail_compilation; fi
 	$(QUIET)touch $(RESULTS_DIR)/.created
 
-run_tests: start_runnable_tests start_compilable_tests start_fail_compilation_tests
+# start_runnable_tests start_compilable_tests start_fail_compilation_tests
+run_tests: $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test$(EXE)
+	$(RESULTS_DIR)/d_do_test$(EXE) "*" "*" "*"
 
 run_runnable_tests: $(runnable_test_results)
 
 start_runnable_tests: $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test$(EXE)
 	@echo "Running runnable tests"
-	$(QUIET)$(MAKE) --no-print-directory run_runnable_tests
+	$(RESULTS_DIR)/d_do_test$(EXE) runnable "*" d
 
 run_compilable_tests: $(compilable_test_results)
 
 start_compilable_tests: $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test$(EXE)
 	@echo "Running compilable tests"
-	$(QUIET)$(MAKE) --no-print-directory run_compilable_tests
+	$(RESULTS_DIR)/d_do_test$(EXE) compilable "*" d
+#	$(QUIET)$(MAKE) --no-print-directory run_compilable_tests
 
 run_fail_compilation_tests: $(fail_compilation_test_results)
 
 start_fail_compilation_tests: $(RESULTS_DIR)/.created $(RESULTS_DIR)/d_do_test$(EXE)
 	@echo "Running fail compilation tests"
-	$(QUIET)$(MAKE) --no-print-directory run_fail_compilation_tests
+	$(RESULTS_DIR)/d_do_test$(EXE) fail_compilation "*" d
+#	$(QUIET)$(MAKE) --no-print-directory run_fail_compilation_tests
 
 $(RESULTS_DIR)/d_do_test$(EXE): d_do_test.d $(RESULTS_DIR)/.created
 	@echo "Building d_do_test tool"
 	@echo "OS: $(OS)"
 	$(QUIET)$(DMD) -conf= $(MODEL_FLAG) -unittest -run d_do_test.d -unittest
-	$(QUIET)$(DMD) -conf= $(MODEL_FLAG) -od$(RESULTS_DIR) -of$(RESULTS_DIR)$(DSEP)d_do_test$(EXE) d_do_test.d
+	$(QUIET)$(DMD) -conf= $(MODEL_FLAG) -od$(RESULTS_DIR) -g -of$(RESULTS_DIR)$(DSEP)d_do_test$(EXE) d_do_test.d
 

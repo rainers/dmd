@@ -4,14 +4,19 @@ module d_do_test;
 import std.algorithm;
 import std.array;
 import std.conv;
+import std.datetime;
 import std.exception;
 import std.file;
 import std.format;
+import std.parallelism;
+import std.path;
 import std.process;
 import std.random;
 import std.regex;
 import std.stdio;
 import std.string;
+import core.atomic;
+import core.thread;
 import core.sys.posix.sys.wait;
 
 void usage()
@@ -273,14 +278,14 @@ string[] combinations(string argstr)
 
 string genTempFilename(string result_path)
 {
+    static shared int count;
     auto a = appender!string();
     a.put(result_path);
-    foreach (ref e; 0 .. 8)
-    {
-        formattedWrite(a, "%x", rndGen.front);
-        rndGen.popFront();
-    }
-
+    formattedWrite(a, "%08x", rndGen.front);
+    rndGen.popFront();
+    int id = atomicOp!"+="(count, 1);
+    formattedWrite(a, "%06x", id);
+    assert(!std.file.exists(a.data));
     return a.data;
 }
 
@@ -306,10 +311,33 @@ version(Windows)
     }
 }
 
-void removeIfExists(in char[] filename)
+shared(string[]) removeLater;
+
+void removeIfExists(string filename)
 {
     if (std.file.exists(filename))
-        std.file.remove(filename);
+    {
+        try
+        {
+            std.file.remove(filename);
+        }
+        catch(FileException)
+        {
+            synchronized
+            {
+                // when run in parallel, removing temporary files sometime fails on Windows
+                //  so try removal again later
+                removeLater ~= filename;
+            }
+        }
+    }
+}
+
+shared static ~this()
+{
+    foreach(filename; removeLater)
+        if (std.file.exists(filename))
+            std.file.remove(filename);
 }
 
 string execute(ref File f, string command, bool expectpass, string result_path)
@@ -401,6 +429,19 @@ bool collectExtraSources (in string input_dir, in string output_dir, in string[]
     return true;
 }
 
+bool needsRetest(string outfile, string inputfile, string compiler)
+{
+    if (!std.file.exists(outfile))
+        return true;
+
+    SysTime atime, otime, itime, ctime;
+    getTimes(outfile, atime, otime);
+    getTimes(inputfile, atime, itime);
+    getTimes(compiler, atime, ctime);
+
+    return otime <= itime || otime <= ctime;
+}
+
 // compare output string to reference string, but ignore places
 // marked by $n$ that contain compiler generated unique numbers
 bool compareOutput(string output, string refoutput)
@@ -450,28 +491,6 @@ int main(string[] args)
     envData.dobjc         = environment.get("D_OBJC") == "1";
     envData.coverage_build   = environment.get("DMD_TEST_COVERAGE") == "1";
 
-    string result_path    = envData.results_dir ~ envData.sep;
-    string input_file     = input_dir ~ envData.sep ~ test_name ~ "." ~ test_extension;
-    string output_dir     = result_path ~ input_dir;
-    string output_file    = result_path ~ input_dir ~ envData.sep ~ test_name ~ "." ~ test_extension ~ ".out";
-    string test_app_dmd_base = output_dir ~ envData.sep ~ test_name ~ "_";
-
-    TestArgs testArgs;
-
-    switch (input_dir)
-    {
-        case "compilable":              testArgs.mode = TestMode.COMPILE;      break;
-        case "fail_compilation":        testArgs.mode = TestMode.FAIL_COMPILE; break;
-        case "runnable":                testArgs.mode = TestMode.RUN;          break;
-        default:
-            writeln("input_dir must be one of 'compilable', 'fail_compilation', or 'runnable'");
-            return 1;
-    }
-
-    // running & linking costs time - for coverage builds we can save this
-    if (envData.coverage_build && testArgs.mode == TestMode.RUN)
-        testArgs.mode = TestMode.COMPILE;
-
     if (envData.ccompiler.empty)
     {
         switch (envData.os)
@@ -481,10 +500,94 @@ int main(string[] args)
             default:      envData.ccompiler = "g++"; break;
         }
     }
-    bool msc = envData.ccompiler.toLower.endsWith("cl.exe");
+    //defaultPoolThreads = 0;
+
+    if (test_extension == "*")
+    {
+        string[] exts = [ "d", "html" /*, "sh"*/ ];
+        foreach(ext; parallel(exts, 1))
+        {
+            int rc = testExtension(input_dir, test_name, ext, envData);
+            if (rc != 0)
+                return rc;
+        }
+        return 0;
+    }
+    return testExtension(input_dir, test_name, test_extension, envData);
+}
+
+int testExtension(string input_dir, string test_name, string test_extension, const ref EnvData envData)
+{
+    if (input_dir == "*")
+    {
+        string[] dirs = [ "runnable", "compilable", "fail_compilation" ];
+        foreach(dir; parallel(dirs, 1))
+        {
+            int rc = testMultiple(dir, test_name, test_extension, envData);
+            if (rc != 0)
+                return rc;
+        }
+        return 0;
+    }
+    return testMultiple(input_dir, test_name, test_extension, envData);
+}
+
+int testMultiple(string input_dir, string test_name, string test_extension, const ref EnvData envData)
+{
+    int cnt = 0;
+    auto files = dirEntries(input_dir, test_name ~ "." ~ test_extension, SpanMode.shallow).array();
+    foreach(file; parallel(files, 1))
+    {
+        string name = stripExtension(baseName(file));
+        int rc = testOne(input_dir, name, test_extension, envData);
+        if (rc != 0)
+            return rc;
+        cnt++;
+    }
+    if (cnt == 0)
+        writeln("test ", input_dir, "/", test_name, ".", test_extension, " not found");
+    return cnt == 0 ? 1 : 0;
+}
+
+shared(bool) cancelAll;
+
+int bailOut(int rc)
+{
+    cancelAll = true;
+    return rc;
+}
+
+int testOne(string input_dir, string test_name, string test_extension, const ref EnvData envData)
+{
+    TestArgs testArgs;
+
+    switch (input_dir)
+    {
+        case "compilable":              testArgs.mode = TestMode.COMPILE;      break;
+        case "fail_compilation":        testArgs.mode = TestMode.FAIL_COMPILE; break;
+        case "runnable":                testArgs.mode = TestMode.RUN;          break;
+        default:
+            writeln("input_dir must be one of 'compilable', 'fail_compilation', or 'runnable'");
+            return bailOut(1);
+    }
+
+    // running & linking costs time - for coverage builds we can save this
+    if (envData.coverage_build && testArgs.mode == TestMode.RUN)
+        testArgs.mode = TestMode.COMPILE;
+
+    string result_path    = envData.results_dir ~ envData.sep;
+    string input_file     = input_dir ~ envData.sep ~ test_name ~ "." ~ test_extension;
+    string output_dir     = result_path ~ input_dir;
+    string output_file    = result_path ~ input_dir ~ envData.sep ~ test_name ~ "." ~ test_extension ~ ".out";
+    string test_app_dmd_base = output_dir ~ envData.sep ~ test_name ~ "_";
+
+    if (!needsRetest(output_file, input_file, envData.dmd))
+        return 0;
 
     if (!gatherTestParameters(testArgs, input_dir, input_file, envData))
         return 0;
+
+    bool msc = envData.ccompiler.toLower.endsWith("cl.exe");
 
     //prepare cpp extra sources
     if (testArgs.cppSources.length)
@@ -503,32 +606,33 @@ int main(string[] args)
                 break;
             default:
                 writeln("unknown compiler: "~envData.compiler);
-                return 1;
+                return bailOut(1);
         }
         if (!collectExtraSources(input_dir, output_dir, testArgs.cppSources, testArgs.sources, msc, envData, envData.ccompiler))
-            return 1;
+            return bailOut(1);
     }
     //prepare objc extra sources
     if (!collectExtraSources(input_dir, output_dir, testArgs.objcSources, testArgs.sources, msc, envData, "clang"))
-        return 1;
+        return bailOut(1);
 
-    writef(" ... %-30s %s%s(%s)",
-            input_file,
-            testArgs.requiredArgs,
-            (!testArgs.requiredArgs.empty ? " " : ""),
-            testArgs.permuteArgs);
-
-    if (testArgs.disabledPlatforms.canFind(envData.os, envData.os ~ envData.model))
+    synchronized
     {
-        testArgs.disabled = true;
-        writefln("!!! [DISABLED on %s]", envData.os);
+        writef(" ... %-30s %s%s(%s)",
+                input_file,
+                testArgs.requiredArgs,
+                (!testArgs.requiredArgs.empty ? " " : ""),
+                testArgs.permuteArgs);
+
+        if (testArgs.disabledPlatforms.canFind(envData.os, envData.os ~ envData.model))
+        {
+            testArgs.disabled = true;
+            writefln("!!! [DISABLED on %s]", envData.os);
+        }
+        else
+            write("\n");
     }
-    else
-        write("\n");
 
-    removeIfExists(output_file);
-
-    auto f = File(output_file, "a");
+    auto f = File(output_file, "w");
 
     foreach (i, c; combinations(testArgs.permuteArgs))
     {
@@ -536,6 +640,9 @@ int main(string[] args)
 
         try
         {
+            if (cancelAll)
+                throw new Exception("cancelled");
+
             string[] toCleanup;
 
             auto thisRunName = genTempFilename(result_path);
@@ -647,7 +754,7 @@ int main(string[] args)
                 execute(f, prefix ~ testArgs.postScript ~ " " ~ thisRunName, true, result_path);
             }
 
-            foreach (file; toCleanup) collectException(std.file.remove(file));
+            foreach (file; toCleanup) removeIfExists(file);
         }
         catch(Exception e)
         {
@@ -663,7 +770,7 @@ int main(string[] args)
             writeln("Test failed.  The logged output:");
             writeln(cast(string)std.file.read(output_file));
             std.file.remove(output_file);
-            return 1;
+            return bailOut(1);
         }
     }
 
