@@ -1693,6 +1693,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         }
         if (e.type)
         {
+            e.verifyTypeInfo(sc);
             result = e;
             return;
         }
@@ -7038,6 +7039,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             Type tn = ale.e1.type.toBasetype().nextOf();
             checkDefCtor(ale.loc, tn);
             semanticTypeInfo(sc, tn);
+            ale.e1.type.toBasetype().genTypeInfo(sc);
         }
         else if (exp.e1.op == TOK.slice)
         {
@@ -7481,6 +7483,9 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         }
         if (exp.e2.checkValue())
             return setError();
+
+        if (tb1.ty == Tarray)
+            tb1.genTypeInfo(sc);
 
         exp.type = exp.e1.type;
         auto res = exp.reorderSettingAAElem(sc);
