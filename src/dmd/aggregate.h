@@ -161,7 +161,7 @@ struct StructFlags
 class StructDeclaration : public AggregateDeclaration
 {
 public:
-    int zeroInit;               // !=0 if initialize with 0 fill
+    int zeroInit;               // -1 if still unknown, 1 if initialize with 0 fill, 0 otherwise
     bool hasIdentityAssign;     // true if has identity opAssign
     bool hasIdentityEquals;     // true if has identity opEquals
     FuncDeclarations postblits; // Array of postblit functions
@@ -193,6 +193,8 @@ public:
     void finalizeSize();
     bool fit(Loc loc, Scope *sc, Expressions *elements, Type *stype);
     bool isPOD();
+    bool isZeroInit();
+    int calcZeroInit();
 
     StructDeclaration *isStructDeclaration() { return this; }
     void accept(Visitor *v) { v->visit(this); }

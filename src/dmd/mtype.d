@@ -7574,9 +7574,9 @@ extern (C++) final class TypeStruct : Type
         return structinit;
     }
 
-    override bool isZeroInit(const ref Loc loc) const
+    override bool isZeroInit(const ref Loc loc)
     {
-        return sym.zeroInit != 0;
+        return sym.isZeroInit();
     }
 
     override bool isAssignable()
