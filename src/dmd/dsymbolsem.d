@@ -3924,6 +3924,10 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
             }
         }
 
+        if (!sc.nofree)
+            sc.setNoFree();                // may need it even after semantic() finishes
+        sd.rtInfoScope = sc;
+
         if (global.errors != errors)
         {
             // The type is no good.
@@ -4500,7 +4504,11 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
         //printf("-ClassDeclaration.dsymbolSemantic(%s), type = %p\n", toChars(), type);
         //members.print();
 
-        sc2.pop();
+        sc2 = sc2.pop();
+
+        if (!sc2.nofree)
+            sc2.setNoFree();                // may need it even after semantic() finishes
+        cldec.rtInfoScope = sc2;
 
         /* isAbstract() is undecidable in some cases because of circular dependencies.
          * Now that semantic is finished, get a definitive result, and error if it is not the same.
@@ -4857,7 +4865,11 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
         //printf("-InterfaceDeclaration.dsymbolSemantic(%s), type = %p\n", toChars(), type);
         //members.print();
 
-        sc2.pop();
+        sc2 = sc2.pop();
+
+        if (!sc2.nofree)
+            sc2.setNoFree();                // may need it even after semantic() finishes
+        idec.rtInfoScope = sc2;
 
         if (global.errors != errors)
         {
