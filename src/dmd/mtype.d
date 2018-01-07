@@ -4802,7 +4802,7 @@ extern (C++) final class TypeSArray : TypeArray
             (*elements)[i] = null;
         auto ae = new ArrayLiteralExp(Loc.initial, elementinit, elements);
         ae.type = this;
-		ae.verifyTypeInfo(null); // no Scope available here, will use rootModule
+        ae.verifyTypeInfo(null); // no Scope available here, will use rootModule
         return ae;
     }
 
