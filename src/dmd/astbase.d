@@ -260,6 +260,13 @@ struct ASTBase
         fwd,   // POD not yet computed
     }
 
+    enum ZeroInit : int
+    {
+        unknown = -1,  // not computed yet
+        no = 0,        // struct is not all zeroes
+        yes = 1,       // struct is all zeroes
+    };
+
     enum TRUST : int
     {
         default_   = 0,
@@ -1450,13 +1457,13 @@ struct ASTBase
 
     extern (C++) class StructDeclaration : AggregateDeclaration
     {
-        int zeroInit;
+        ZeroInit zeroInit;
         StructPOD ispod;
 
         final extern (D) this(Loc loc, Identifier id, bool inObject)
         {
             super(loc, id);
-            zeroInit = 0;
+            zeroInit = ZeroInit.unknown;
             ispod = StructPOD.fwd;
             type = new TypeStruct(this);
             if (inObject)

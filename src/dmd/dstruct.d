@@ -219,12 +219,19 @@ enum StructPOD : int
     fwd,   // POD not yet computed
 }
 
+enum ZeroInit : int
+{
+    unknown = -1,  // not computed yet
+    no = 0,        // struct is not all zeroes
+    yes = 1,       // struct is all zeroes
+};
+
 /***********************************************************
  * All `struct` declarations are an instance of this.
  */
 extern (C++) class StructDeclaration : AggregateDeclaration
 {
-    int zeroInit;               // -1 if still unknown, 1 if initialize with 0 fill, 0 otherwise
+    ZeroInit zeroInit;          // if struct is initialized to all zeroes
     bool hasIdentityAssign;     // true if has identity opAssign
     bool hasIdentityEquals;     // true if has identity opEquals
     FuncDeclarations postblits; // Array of postblit functions
@@ -251,7 +258,7 @@ extern (C++) class StructDeclaration : AggregateDeclaration
     extern (D) this(const ref Loc loc, Identifier id, bool inObject)
     {
         super(loc, id);
-        zeroInit = -1; // mark as unknown, calculate lazily in isZeroInit
+        zeroInit = ZeroInit.unknown;
         ispod = StructPOD.fwd;
         // For forward references
         type = new TypeStruct(this);
@@ -397,7 +404,7 @@ extern (C++) class StructDeclaration : AggregateDeclaration
             return;
         }
 
-        if (zeroInit == -1)
+        if (zeroInit == ZeroInit.unknown)
             zeroInit = calcZeroInit();
 
         auto tt = Target.toArgTypes(type);
@@ -556,31 +563,30 @@ extern (C++) class StructDeclaration : AggregateDeclaration
 
     final bool isZeroInit()
     {
-        if (zeroInit == -1)
+        if (zeroInit == ZeroInit.unknown)
             if (semanticRun < PASS.semanticdone && _scope)
                 dsymbolSemantic(this, null);
-        if (zeroInit == -1)
+        if (zeroInit == ZeroInit.unknown)
             zeroInit = calcZeroInit();
-        return zeroInit == 1;
+        return zeroInit == ZeroInit.yes;
     }
 
-    final int calcZeroInit()
+    final ZeroInit calcZeroInit()
     {
         // Determine if struct is all zeros or not
-        zeroInit = 1;
         foreach (vd; fields)
         {
             if (vd._init)
             {
                 // Should examine init to see if it is really all 0's
-                return 0;
+                return ZeroInit.no;
             }
             else if (!vd.type.isZeroInit(loc))
             {
-                return 0;
+                return ZeroInit.no;
             }
         }
-        return 1;
+        return ZeroInit.yes;
     }
 
     override final inout(StructDeclaration) isStructDeclaration() inout

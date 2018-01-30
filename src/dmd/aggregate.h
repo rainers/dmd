@@ -64,6 +64,13 @@ enum Abstract
     ABSno,              // is not abstract class
 };
 
+enum ZeroInit
+{
+    ZEROINITunknown = -1,  // not computed yet
+    ZEROINITno = 0,        // struct is not all zeroes
+    ZEROINITyes = 1        // struct is all zeroes
+};
+
 FuncDeclaration *hasIdentityOpAssign(AggregateDeclaration *ad, Scope *sc);
 FuncDeclaration *buildOpAssign(StructDeclaration *sd, Scope *sc);
 bool needOpEquals(StructDeclaration *sd);
@@ -162,7 +169,7 @@ struct StructFlags
 class StructDeclaration : public AggregateDeclaration
 {
 public:
-    int zeroInit;               // -1 if still unknown, 1 if initialize with 0 fill, 0 otherwise
+    ZeroInit zeroInit;          // if struct is initialized to all zeroes
     bool hasIdentityAssign;     // true if has identity opAssign
     bool hasIdentityEquals;     // true if has identity opEquals
     FuncDeclarations postblits; // Array of postblit functions
@@ -195,7 +202,7 @@ public:
     bool fit(Loc loc, Scope *sc, Expressions *elements, Type *stype);
     bool isPOD();
     bool isZeroInit();
-    int calcZeroInit();
+    ZeroInit calcZeroInit();
 
     StructDeclaration *isStructDeclaration() { return this; }
     void accept(Visitor *v) { v->visit(this); }

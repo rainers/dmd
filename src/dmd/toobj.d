@@ -521,9 +521,6 @@ void toObjFile(Dsymbol ds, bool multiobj)
                 dtb.size(0);
 
             // m_RTInfo
-            if(!cd.getRTInfo)
-                error(cd.loc, "ICE: RTInfo not evaluated for %s", cd.toChars());
-
             if (cd.getRTInfo)
                 Expression_toDt(cd.getRTInfo, dtb);
             else if (flags & ClassFlags.noPointers)
@@ -775,9 +772,6 @@ void toObjFile(Dsymbol ds, bool multiobj)
             //dtb.size(0);
 
             // m_RTInfo
-            if(!id.getRTInfo)
-                error(id.loc, "ICE: RTInfo not evaluated for %s", id.toChars());
-
             if (id.getRTInfo)
                 Expression_toDt(id.getRTInfo, dtb);
             else
