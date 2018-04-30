@@ -648,6 +648,7 @@ extern (C++) abstract class Expression : ASTNode
         //printf("Expression::Expression(op = %d) this = %p\n", op, this);
         this.loc = loc;
         this.op = op;
+        assert(size < 0x100);
         this.size = cast(ubyte)size;
     }
 
@@ -1930,7 +1931,9 @@ extern (C++) final class IntegerExp : Expression
  */
 extern (C++) final class ErrorExp : Expression
 {
-    extern (D) this()
+    Expression errExp; // the expression that caused the error and was replaced by the ErrorExp
+
+    extern (D) this(Expression exp = null)
     {
         if (global.errors == 0 && global.gaggedErrors == 0)
         {
@@ -1943,6 +1946,7 @@ extern (C++) final class ErrorExp : Expression
 
         super(Loc.initial, TOK.error, __traits(classInstanceSize, ErrorExp));
         type = Type.terror;
+        errExp = exp;
     }
 
     override Expression toLvalue(Scope* sc, Expression e)
@@ -1954,8 +1958,6 @@ extern (C++) final class ErrorExp : Expression
     {
         v.visit(this);
     }
-
-    extern (C++) __gshared ErrorExp errorexp; // handy shared value
 }
 
 
@@ -3336,6 +3338,7 @@ extern (C++) final class TemplateExp : Expression
 {
     TemplateDeclaration td;
     FuncDeclaration fd;
+    Loc identloc;       // location of the identifier at the invocation
 
     extern (D) this(const ref Loc loc, TemplateDeclaration td, FuncDeclaration fd = null)
     {
@@ -3343,6 +3346,11 @@ extern (C++) final class TemplateExp : Expression
         //printf("TemplateExp(): %s\n", td.toChars());
         this.td = td;
         this.fd = fd;
+    }
+    extern (D) this(const ref Loc loc, TemplateDeclaration td, FuncDeclaration fd, const ref Loc identloc)
+    {
+        this(loc, td, fd);
+        this.identloc = identloc;
     }
 
     override bool isLvalue()
@@ -4558,16 +4566,23 @@ extern (C++) final class DotIdExp : UnaExp
     Identifier ident;
     bool noderef;       // true if the result of the expression will never be dereferenced
     bool wantsym;       // do not replace Symbol with its initializer during semantic()
+    Loc identloc;       // location of the identifier after the dot
 
-    extern (D) this(const ref Loc loc, Expression e, Identifier ident)
+    extern (D) this(const ref Loc loc, Expression e, Identifier ident, const ref Loc identloc)
     {
         super(loc, TOK.dotIdentifier, __traits(classInstanceSize, DotIdExp), e);
         this.ident = ident;
+        this.identloc = identloc;
     }
 
-    static DotIdExp create(Loc loc, Expression e, Identifier ident)
+    extern (D) this(const ref Loc loc, Expression e, Identifier ident)
     {
-        return new DotIdExp(loc, e, ident);
+        this(loc, e, ident, Loc.initial);
+    }
+
+    static DotIdExp create(Loc loc, Expression e, Identifier ident, Loc endloc)
+    {
+        return new DotIdExp(loc, e, ident, endloc);
     }
 
     override void accept(Visitor v)
@@ -4582,11 +4597,17 @@ extern (C++) final class DotIdExp : UnaExp
 extern (C++) final class DotTemplateExp : UnaExp
 {
     TemplateDeclaration td;
+    Loc identloc;       // location of the identifier at the invocation
 
     extern (D) this(const ref Loc loc, Expression e, TemplateDeclaration td)
     {
         super(loc, TOK.dotTemplateDeclaration, __traits(classInstanceSize, DotTemplateExp), e);
         this.td = td;
+    }
+    extern (D) this(const ref Loc loc, Expression e, TemplateDeclaration td, const ref Loc identloc)
+    {
+        this(loc, e, td);
+        this.identloc = identloc;
     }
 
     override void accept(Visitor v)
@@ -4601,9 +4622,12 @@ extern (C++) final class DotVarExp : UnaExp
 {
     Declaration var;
     bool hasOverloads;
+    Loc varloc;       // location of the identifier after the dot
 
     extern (D) this(const ref Loc loc, Expression e, Declaration var, bool hasOverloads = true)
     {
+        if (var.ident.toString() == "message")
+            var = var;
         if (var.isVarDeclaration())
             hasOverloads = false;
 
@@ -4611,6 +4635,11 @@ extern (C++) final class DotVarExp : UnaExp
         //printf("DotVarExp()\n");
         this.var = var;
         this.hasOverloads = hasOverloads;
+    }
+    extern (D) this(const ref Loc loc, Expression e, const ref Loc varloc, Declaration var, bool hasOverloads = true)
+    {
+        this(loc, e, var, hasOverloads);
+        this.varloc = varloc;
     }
 
     override Modifiable checkModifiable(Scope* sc, int flag)
@@ -6358,9 +6387,12 @@ extern (C++) final class CmpExp : BinExp
  */
 extern (C++) final class InExp : BinExp
 {
-    extern (D) this(const ref Loc loc, Expression e1, Expression e2)
+    Loc oploc; // used to distinguish between operator "in" and keyword "in" by source location
+
+    extern (D) this(const ref Loc loc, Expression e1, Expression e2, const ref Loc oploc)
     {
         super(loc, TOK.in_, __traits(classInstanceSize, InExp), e1, e2);
+        this.oploc = oploc;
     }
 
     override void accept(Visitor v)
@@ -6416,10 +6448,13 @@ extern (C++) final class EqualExp : BinExp
  */
 extern (C++) final class IdentityExp : BinExp
 {
-    extern (D) this(TOK op, const ref Loc loc, Expression e1, Expression e2)
+    Loc oploc; // used to distinguish between operator "is" and keyword "is" by source location
+
+    extern (D) this(TOK op, const ref Loc loc, Expression e1, Expression e2, const ref Loc oploc)
     {
         super(loc, op, __traits(classInstanceSize, IdentityExp), e1, e2);
         assert(op == TOK.identity || op == TOK.notIdentity);
+        this.oploc = oploc;
     }
 
     override void accept(Visitor v)

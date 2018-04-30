@@ -443,7 +443,7 @@ private extern(C++) final class Semantic3Visitor : Visitor
                         stc |= STC.temp;
                     }
                     Type vtype = fparam.type;
-                    auto v = new VarDeclaration(funcdecl.loc, vtype, id, null);
+                    auto v = new VarDeclaration(fparam.identloc, vtype, id, null);
                     //printf("declaring parameter %s of type %s\n", v.toChars(), v.type.toChars());
                     stc |= STC.parameter;
                     if (f.parameterList.varargs == VarArg.typesafe && i + 1 == nparams)
@@ -601,7 +601,7 @@ private extern(C++) final class Semantic3Visitor : Visitor
                     if (!f.next)
                         f.next = Type.tvoid;
                     if (f.checkRetType(funcdecl.loc))
-                        funcdecl.fbody = new ErrorStatement();
+                        funcdecl.fbody = new ErrorStatement(funcdecl.fbody);
                 }
                 if (global.params.vcomplex && f.next !is null)
                     f.next.checkComplexTransition(funcdecl.loc, sc);

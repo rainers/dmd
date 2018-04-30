@@ -1779,18 +1779,24 @@ struct ASTBase
         StorageClass storageClass;
         Type type;
         Identifier ident;
+        Loc identloc;
         Expression defaultArg;
         UserAttributeDeclaration userAttribDecl; // user defined attributes
 
         extern (D) alias ForeachDg = int delegate(size_t idx, Parameter param);
 
-        final extern (D) this(StorageClass storageClass, Type type, Identifier ident, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
+        final extern (D) this(StorageClass storageClass, Type type, Identifier ident, const ref Loc identloc, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
         {
             this.storageClass = storageClass;
             this.type = type;
             this.ident = ident;
             this.defaultArg = defaultArg;
             this.userAttribDecl = userAttribDecl;
+        }
+
+        extern (D) this(StorageClass storageClass, Type type)
+        {
+            this(storageClass, type, null, Loc.initial, null, null);
         }
 
         static size_t dim(Parameters* parameters)
@@ -1857,7 +1863,7 @@ struct ASTBase
 
         Parameter syntaxCopy()
         {
-            return new Parameter(storageClass, type ? type.syntaxCopy() : null, ident, defaultArg ? defaultArg.syntaxCopy() : null, userAttribDecl ? cast(UserAttributeDeclaration) userAttribDecl.syntaxCopy(null) : null);
+            return new Parameter(storageClass, type ? type.syntaxCopy() : null, ident, identloc, defaultArg ? defaultArg.syntaxCopy() : null, userAttribDecl ? cast(UserAttributeDeclaration) userAttribDecl.syntaxCopy(null) : null);
         }
 
         override void accept(Visitor v)
@@ -3685,7 +3691,7 @@ struct ASTBase
                     Expression e = (*exps)[i];
                     if (e.type.ty == Ttuple)
                         e.error("cannot form tuple of tuples");
-                    auto arg = new Parameter(STC.undefined_, e.type, null, null, null);
+                    auto arg = new Parameter(STC.undefined_, e.type);
                     (*arguments)[i] = arg;
                 }
             }
@@ -5245,11 +5251,18 @@ struct ASTBase
     extern (C++) final class DotIdExp : UnaExp
     {
         Identifier ident;
+        Loc identloc;       // location of the identifier after the dot
 
-        extern (D) this(const ref Loc loc, Expression e, Identifier ident)
+        extern (D) this(const ref Loc loc, Expression e, Identifier ident, const ref Loc identloc)
         {
             super(loc, TOK.dotIdentifier, __traits(classInstanceSize, DotIdExp), e);
             this.ident = ident;
+            this.identloc = identloc;
+        }
+
+        extern (D) this(const ref Loc loc, Expression e, Identifier ident)
+        {
+            this(loc, e, ident, Loc.initial);
         }
 
         override void accept(Visitor v)
@@ -5589,9 +5602,12 @@ struct ASTBase
 
     extern (C++) final class InExp : BinExp
     {
-        extern (D) this(const ref Loc loc, Expression e1, Expression e2)
+        Loc oploc;
+
+        extern (D) this(const ref Loc loc, Expression e1, Expression e2, const ref Loc oploc)
         {
             super(loc, TOK.in_, __traits(classInstanceSize, InExp), e1, e2);
+            this.oploc = oploc;
         }
 
         override void accept(Visitor v)
@@ -5602,9 +5618,12 @@ struct ASTBase
 
     extern (C++) final class IdentityExp : BinExp
     {
-        extern (D) this(TOK op, Loc loc, Expression e1, Expression e2)
+        Loc oploc;
+
+        extern (D) this(TOK op, Loc loc, Expression e1, Expression e2, const ref Loc oploc)
         {
             super(loc, op, __traits(classInstanceSize, IdentityExp), e1, e2);
+            this.oploc = oploc;
         }
 
         override void accept(Visitor v)
@@ -6054,9 +6073,9 @@ struct ASTBase
         Identifier ident;
         Module mod;
 
-        final extern (D) this(Module mod, uint level, Identifier ident)
+        final extern (D) this(const ref Loc loc, Module mod, uint level, Identifier ident)
         {
-            super(Loc.initial);
+            super(loc);
             this.mod = mod;
             this.ident = ident;
         }
@@ -6069,9 +6088,9 @@ struct ASTBase
 
     extern (C++) final class DebugCondition : DVCondition
     {
-        extern (D) this(Module mod, uint level, Identifier ident)
+        extern (D) this(const ref Loc loc, Module mod, uint level, Identifier ident)
         {
-            super(mod, level, ident);
+            super(loc, mod, level, ident);
         }
 
         override void accept(Visitor v)
@@ -6082,9 +6101,9 @@ struct ASTBase
 
     extern (C++) final class VersionCondition : DVCondition
     {
-        extern (D) this(Module mod, uint level, Identifier ident)
+        extern (D) this(const ref Loc loc, Module mod, uint level, Identifier ident)
         {
-            super(mod, level, ident);
+            super(loc, mod, level, ident);
         }
 
         override void accept(Visitor v)

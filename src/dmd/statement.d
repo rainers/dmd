@@ -355,20 +355,27 @@ extern (C++) abstract class Statement : ASTNode
      * Returns:
      *    the downcast statement if it can be downcasted, otherwise `null`
      */
-    inout(ErrorStatement)       isErrorStatement()       inout { return null; }
-    inout(ScopeStatement)       isScopeStatement()       inout { return null; }
-    inout(ExpStatement)         isExpStatement()         inout { return null; }
-    inout(CompoundStatement)    isCompoundStatement()    inout { return null; }
-    inout(ReturnStatement)      isReturnStatement()      inout { return null; }
-    inout(IfStatement)          isIfStatement()          inout { return null; }
-    inout(CaseStatement)        isCaseStatement()        inout { return null; }
-    inout(DefaultStatement)     isDefaultStatement()     inout { return null; }
-    inout(LabelStatement)       isLabelStatement()       inout { return null; }
-    inout(GotoDefaultStatement) isGotoDefaultStatement() inout { return null; }
-    inout(GotoCaseStatement)    isGotoCaseStatement()    inout { return null; }
-    inout(BreakStatement)       isBreakStatement()       inout { return null; }
-    inout(DtorExpStatement)     isDtorExpStatement()     inout { return null; }
-    inout(ForwardingStatement)  isForwardingStatement()  inout { return null; }
+    inout(ErrorStatement)        isErrorStatement()        { return stmt == STMT.Error        ? cast(typeof(return))this : null; }
+    inout(ScopeStatement)        isScopeStatement()        { return stmt == STMT.Scope        ? cast(typeof(return))this : null; }
+    inout(ExpStatement)          isExpStatement()          { return stmt == STMT.Exp          ? cast(typeof(return))this : null; }
+    inout(CompoundStatement)     isCompoundStatement()     { return stmt == STMT.Compound     ? cast(typeof(return))this : null; }
+    inout(ReturnStatement)       isReturnStatement()       { return stmt == STMT.Return       ? cast(typeof(return))this : null; }
+    inout(IfStatement)           isIfStatement()           { return stmt == STMT.If           ? cast(typeof(return))this : null; }
+    inout(CaseStatement)         isCaseStatement()         { return stmt == STMT.Case         ? cast(typeof(return))this : null; }
+    inout(DefaultStatement)      isDefaultStatement()      { return stmt == STMT.Default      ? cast(typeof(return))this : null; }
+    inout(LabelStatement)        isLabelStatement()        { return stmt == STMT.Label        ? cast(typeof(return))this : null; }
+    inout(GotoStatement)         isGotoStatement()         { return stmt == STMT.Goto         ? cast(typeof(return))this : null; }
+    inout(GotoDefaultStatement)  isGotoDefaultStatement()  { return stmt == STMT.GotoDefault  ? cast(typeof(return))this : null; }
+    inout(GotoCaseStatement)     isGotoCaseStatement()     { return stmt == STMT.GotoCase     ? cast(typeof(return))this : null; }
+    inout(BreakStatement)        isBreakStatement()        { return stmt == STMT.Break        ? cast(typeof(return))this : null; }
+    inout(DtorExpStatement)      isDtorExpStatement()      { return stmt == STMT.DtorExp      ? cast(typeof(return))this : null; }
+    inout(ForwardingStatement)   isForwardingStatement()   { return stmt == STMT.Forwarding   ? cast(typeof(return))this : null; }
+    inout(WithStatement)         isWithStatement()         { return stmt == STMT.With         ? cast(typeof(return))this : null; }
+    inout(ForStatement)          isForStatement()          { return stmt == STMT.For          ? cast(typeof(return))this : null; }
+    inout(ForeachStatement)      isForeachStatement()      { return stmt == STMT.Foreach      ? cast(typeof(return))this : null; }
+    inout(ForeachRangeStatement) isForeachRangeStatement() { return stmt == STMT.ForeachRange ? cast(typeof(return))this : null; }
+    inout(WhileStatement)        isWhileStatement()        { return stmt == STMT.While        ? cast(typeof(return))this : null; }
+    inout(DoStatement)           isDoStatement()           { return stmt == STMT.Do           ? cast(typeof(return))this : null; }
 }
 
 /***********************************************************
@@ -377,10 +384,13 @@ extern (C++) abstract class Statement : ASTNode
  */
 extern (C++) final class ErrorStatement : Statement
 {
-    extern (D) this()
+    Statement errStmt; // the statement that caused the error and was replaced by the ErrorStatement
+
+    extern (D) this(Statement stmt)
     {
         super(Loc.initial);
         assert(global.gaggedErrors || global.errors);
+        errStmt = stmt;
     }
 
     override Statement syntaxCopy()
@@ -444,7 +454,7 @@ private Statement toStatement(Dsymbol s)
         override void visit(Dsymbol s)
         {
             .error(Loc.initial, "Internal Compiler Error: cannot mixin %s `%s`\n", s.kind(), s.toChars());
-            result = new ErrorStatement();
+            result = new ErrorStatement(null);
         }
 
         override void visit(TemplateMixin tm)
@@ -639,7 +649,7 @@ extern (C++) class ExpStatement : Statement
                 if (e.op == TOK.error || tm.errors)
                 {
                     auto a = new Statements();
-                    a.push(new ErrorStatement());
+                    a.push(new ErrorStatement(this));
                     return a;
                 }
                 assert(tm.members);
@@ -734,7 +744,7 @@ extern (C++) final class CompileStatement : Statement
         auto errorStatements()
         {
             auto a = new Statements();
-            a.push(new ErrorStatement());
+            a.push(new ErrorStatement(this));
             return a;
         }
 
@@ -1445,7 +1455,7 @@ extern (C++) final class StaticForeachStatement : Statement
         else
         {
             auto result = new Statements();
-            result.push(new ErrorStatement());
+            result.push(new ErrorStatement(this));
             return result;
         }
     }

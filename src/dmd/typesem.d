@@ -451,7 +451,7 @@ private Type stripDefaultArgs(Type t)
         {
             Type t = stripDefaultArgs(p.type);
             return (t != p.type || p.defaultArg || p.ident || p.userAttribDecl)
-                ? new Parameter(p.storageClass, t, null, null, null)
+                ? new Parameter(p.storageClass, t)
                 : null;
         }
 
@@ -1438,7 +1438,7 @@ extern(C++) Type typeSemantic(Type t, Loc loc, Scope* sc)
                                 paramDefaultArg = (*te.exps)[j];
 
                             (*newparams)[j] = new Parameter(
-                                stc, narg.type, narg.ident, paramDefaultArg, narg.userAttribDecl);
+                                stc, narg.type, narg.ident, narg.identloc, paramDefaultArg, narg.userAttribDecl);
                         }
                         fparam.type = new TypeTuple(newparams);
                     }
@@ -2973,8 +2973,10 @@ void resolve(Type mt, const ref Loc loc, Scope* sc, Expression* pe, Type* pt, Ds
  * Returns:
  *  resulting expression with e.ident resolved
  */
-Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
+Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
 {
+    Identifier ident = die.ident;
+
     Expression visitType(Type mt)
     {
         VarDeclaration v = null;
@@ -3185,7 +3187,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
             // stringof should not add a cast to the output
             return visitType(mt);
         }
-        return mt.basetype.dotExp(sc, e.castTo(sc, mt.basetype), ident, flag);
+        return mt.basetype.dotExp(sc, e.castTo(sc, mt.basetype), die, flag);
     }
 
     Expression visitArray(TypeArray mt)
@@ -3294,7 +3296,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
             if (fd_aaLen is null)
             {
                 auto fparams = new Parameters();
-                fparams.push(new Parameter(STC.in_, mt, null, null, null));
+                fparams.push(new Parameter(STC.in_, mt));
                 fd_aaLen = FuncDeclaration.genCfunc(fparams, Type.tsize_t, Id.aaLen);
                 TypeFunction tf = fd_aaLen.type.toTypeFunction();
                 tf.purity = PURE.const_;
@@ -3319,7 +3321,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
             printf("TypeReference::dotExp(e = '%s', ident = '%s')\n", e.toChars(), ident.toChars());
         }
         // References just forward things along
-        return mt.next.dotExp(sc, e, ident, flag);
+        return mt.next.dotExp(sc, e, die, flag);
     }
 
     Expression visitDelegate(TypeDelegate mt)
@@ -3600,9 +3602,9 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
         if (td)
         {
             if (e.op == TOK.type)
-                e = new TemplateExp(e.loc, td);
+                e = new TemplateExp(e.loc, td, null, die.loc);
             else
-                e = new DotTemplateExp(e.loc, e, td);
+                e = new DotTemplateExp(e.loc, e, td, die.loc);
             return e.expressionSemantic(sc);
         }
 
@@ -3714,7 +3716,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
             {
                 /* Special enums forward to the base type
                  */
-                e = mt.sym.memtype.dotExp(sc, e, ident, flag);
+                e = mt.sym.memtype.dotExp(sc, e, die, flag);
             }
             else if (!(flag & 1))
             {
@@ -3734,7 +3736,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
                 return mt.getProperty(e.loc, ident, flag & 1);
             }
 
-            Expression res = mt.sym.getMemtype(Loc.initial).dotExp(sc, e, ident, 1);
+            Expression res = mt.sym.getMemtype(Loc.initial).dotExp(sc, e, die, 1);
             if (!(flag & 1) && !res)
             {
                 if (auto ns = mt.sym.search_correct(ident))
@@ -4027,9 +4029,9 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
         if (td)
         {
             if (e.op == TOK.type)
-                e = new TemplateExp(e.loc, td);
+                e = new TemplateExp(e.loc, td, null, die.loc);
             else
-                e = new DotTemplateExp(e.loc, e, td);
+                e = new DotTemplateExp(e.loc, e, td, die.loc);
             e = e.expressionSemantic(sc);
             return e;
         }
@@ -4139,7 +4141,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
                     if (cd && tcd && (tcd == cd || cd.isBaseOf(tcd, null)))
                     {
                         e = new DotTypeExp(e1.loc, e1, cd);
-                        e = new DotVarExp(e.loc, e, d);
+                        e = new DotVarExp(e.loc, e, die.identloc, d);
                         e = e.expressionSemantic(sc);
                         return e;
                     }
@@ -4198,7 +4200,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
             return e;
         }
 
-        e = new DotVarExp(e.loc, e, d);
+        e = new DotVarExp(e.loc, e, die.identloc, d);
         e = e.expressionSemantic(sc);
         return e;
     }

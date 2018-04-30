@@ -166,6 +166,11 @@ struct CompiledCtfeFunctionPimpl
     private alias pimpl this;
 }
 
+void dinterpret_init()
+{
+    ctfeStack = ctfeStack.init;
+}
+
 /* ================================================ Implementation ======================================= */
 
 private:

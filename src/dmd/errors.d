@@ -23,6 +23,17 @@ import dmd.console;
 
 nothrow:
 
+/// The type of the diagnostic handler
+alias DiagnosticHandler = void delegate(const ref Loc location, Color headerColor, const(char)* header,
+                                        const(char)* messageFormat, va_list args, const(char)* prefix1, const(char)* prefix2);
+
+/**
+ * The diagnostic handler.
+ * This will be called for every diagnostic message issued by the compiler.
+ * By default it will print the location and the message to stderr.
+*/
+__gshared DiagnosticHandler diagnosticHandler;
+
 /// Interface for diagnostic reporting.
 abstract class DiagnosticReporter
 {
@@ -415,6 +426,9 @@ extern (C++) void message(const(char)* format, ...)
 private void verrorPrint(const ref Loc loc, Color headerColor, const(char)* header,
         const(char)* format, va_list ap, const(char)* p1 = null, const(char)* p2 = null)
 {
+    if (diagnosticHandler)
+        return diagnosticHandler(loc, headerColor, header, format, ap, p1, p2);
+
     Console* con = cast(Console*)global.console;
     const p = loc.toChars();
     if (con)
@@ -630,7 +644,7 @@ extern (C++) void vdeprecationSupplemental(const ref Loc loc, const(char)* forma
  */
 extern (C++) void fatal()
 {
-    version (none)
+    version (NoBackend)
     {
         halt();
     }
@@ -643,7 +657,11 @@ extern (C++) void fatal()
  */
 extern (C++) void halt()
 {
-    assert(0);
+    import core.exception;
+    version (NoBackend)
+        onAssertErrorMsg(__FILE__, __LINE__, "fatal error");
+    else
+        assert(0);
 }
 
 /**

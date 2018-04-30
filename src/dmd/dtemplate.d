@@ -766,7 +766,7 @@ extern (C++) final class TemplateDeclaration : ScopeDsymbol
                 if (!fparam.ident)
                     continue;
                 // don't add it, if it has no name
-                auto v = new VarDeclaration(loc, fparam.type, fparam.ident, null);
+                auto v = new VarDeclaration(fparam.identloc, fparam.type, fparam.ident, null);
                 v.storage_class = fparam.storageClass;
                 v.dsymbolSemantic(scx);
                 if (!ti.symtab)

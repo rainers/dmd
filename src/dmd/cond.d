@@ -300,7 +300,7 @@ extern (C++) final class StaticForeach : RootObject
             foreach (params; pparams)
             {
                 auto p = aggrfe ? (*aggrfe.parameters)[i] : rangefe.prm;
-                params.push(new Parameter(p.storageClass, p.type, p.ident, null, null));
+                params.push(new Parameter(p.storageClass, p.type, p.ident, p.identloc, null, null));
             }
         }
         Expression[2] res;
@@ -434,9 +434,9 @@ extern (C++) class DVCondition : Condition
     Identifier ident;
     Module mod;
 
-    extern (D) this(Module mod, uint level, Identifier ident)
+    extern (D) this(const ref Loc loc, Module mod, uint level, Identifier ident)
     {
-        super(Loc.initial);
+        super(loc);
         this.mod = mod;
         this.level = level;
         this.ident = ident;
@@ -500,9 +500,9 @@ extern (C++) final class DebugCondition : DVCondition
      *   ident = Identifier required for this condition to pass.
      *           If `null`, this conditiion will use an integer level.
      */
-    extern (D) this(Module mod, uint level, Identifier ident)
+    extern (D) this(const ref Loc loc, Module mod, uint level, Identifier ident)
     {
-        super(mod, level, ident);
+        super(loc, mod, level, ident);
     }
 
     override int include(Scope* sc)
@@ -574,7 +574,7 @@ extern (C++) final class VersionCondition : DVCondition
      * Returns:
      *   `true` if it is reserved, `false` otherwise
      */
-    extern(D) private static bool isReserved(const(char)[] ident)
+    extern(D) static bool isReserved(const(char)[] ident)
     {
         // This list doesn't include "D_*" versions, see the last return
         switch (ident)
@@ -771,9 +771,9 @@ extern (C++) final class VersionCondition : DVCondition
      *   ident = Identifier required for this condition to pass.
      *           If `null`, this conditiion will use an integer level.
      */
-    extern (D) this(Module mod, uint level, Identifier ident)
+    extern (D) this(const ref Loc loc, Module mod, uint level, Identifier ident)
     {
-        super(mod, level, ident);
+        super(loc, mod, level, ident);
     }
 
     override int include(Scope* sc)

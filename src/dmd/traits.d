@@ -83,7 +83,7 @@ private Dsymbol getDsymbolWithoutExpCtx(RootObject oarg)
     return getDsymbol(oarg);
 }
 
-private __gshared StringTable traitsStringTable;
+private static const StringTable traitsStringTable;
 
 shared static this()
 {
@@ -142,13 +142,15 @@ shared static this()
         "getTargetInfo"
     ];
 
-    traitsStringTable._init(48);
+    StringTable stringTable;
+    stringTable._init(names.length);
 
     foreach (s; names)
     {
-        auto sv = traitsStringTable.insert(s, cast(void*)s.ptr);
+        auto sv = stringTable.insert(s, cast(void*)s.ptr);
         assert(sv);
     }
+    traitsStringTable = stringTable;
 }
 
 /**
@@ -1817,7 +1819,7 @@ Lnext:
         if (!seed.length)
             return null;
         cost = 0;
-        StringValue* sv = traitsStringTable.lookup(seed);
+        const sv = traitsStringTable.lookup(seed);
         return sv ? cast(const(char)*)sv.ptrvalue : null;
     }
 

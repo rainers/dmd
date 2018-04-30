@@ -65,6 +65,12 @@ bool initFPU()
     return true;
 }
 
+version(unittest) version(CRuntime_Microsoft)
+shared static this()
+{
+    initFPU(); // otherwise not guaranteed to be run before pure unittest below
+}
+
 void ld_clearfpu()
 {
     version(AsmX86)

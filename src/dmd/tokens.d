@@ -451,7 +451,7 @@ extern (C++) struct Token
         Identifier ident;
     }
 
-    extern (D) private __gshared immutable string[TOK.max_] tochars =
+    extern (D) private static immutable string[TOK.max_] tochars =
     [
         // Keywords
         TOK.this_: "this",
@@ -708,7 +708,6 @@ extern (C++) struct Token
     }());
 
 nothrow:
-
     shared static this()
     {
         Identifier.initTable();

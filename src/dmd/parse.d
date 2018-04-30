@@ -45,7 +45,7 @@ private enum CARRAYDECL = 1;
 /**********************************
  * Set operator precedence for each operator.
  */
-__gshared PREC[TOK.max_] precedence =
+extern(D) immutable PREC[TOK.max_] precedence =
 [
     TOK.type : PREC.expr,
     TOK.error : PREC.expr,
@@ -2334,11 +2334,12 @@ final class Parser(AST) : Lexer
     {
         uint level = 1;
         Identifier id = null;
+        Loc idloc;
 
         if (token.value == TOK.leftParentheses)
         {
             nextToken();
-
+            idloc = token.loc;
             if (token.value == TOK.identifier)
                 id = token.ident;
             else if (token.value == TOK.int32Literal || token.value == TOK.int64Literal)
@@ -2348,7 +2349,7 @@ final class Parser(AST) : Lexer
             nextToken();
             check(TOK.rightParentheses);
         }
-        return new AST.DebugCondition(mod, level, id);
+        return new AST.DebugCondition(idloc, mod, level, id);
     }
 
     /**************************************
@@ -2358,6 +2359,7 @@ final class Parser(AST) : Lexer
     {
         uint level = 1;
         Identifier id = null;
+        Loc idloc;
 
         if (token.value == TOK.leftParentheses)
         {
@@ -2367,6 +2369,7 @@ final class Parser(AST) : Lexer
              *    version (assert)
              * even though they are keywords
              */
+            idloc = token.loc;
             if (token.value == TOK.identifier)
                 id = token.ident;
             else if (token.value == TOK.int32Literal || token.value == TOK.int64Literal)
@@ -2382,7 +2385,7 @@ final class Parser(AST) : Lexer
         }
         else
             error("(condition) expected following `version`");
-        return new AST.VersionCondition(mod, level, id);
+        return new AST.VersionCondition(idloc, mod, level, id);
     }
 
     /***********************************************
@@ -2409,7 +2412,7 @@ final class Parser(AST) : Lexer
         else
         {
             error("(expression) expected following `static if`");
-            exp = null;
+            exp = new AST.ErrorExp();
         }
         condition = new AST.StaticIfCondition(loc, exp);
         return condition;
@@ -2981,6 +2984,7 @@ final class Parser(AST) : Lexer
                         //if ((storageClass & STC.scope_) && (storageClass & (STC.ref_ | STC.out_)))
                             //error("scope cannot be ref or out");
 
+                        Loc identloc;
                         if (tpl && token.value == TOK.identifier)
                         {
                             Token* t = peek(&token);
@@ -2995,6 +2999,7 @@ final class Parser(AST) : Lexer
                                 (*tpl).push(tp);
 
                                 ai = token.ident;
+                                identloc = token.loc;
                                 nextToken();
                             }
                             else goto _else;
@@ -3002,7 +3007,7 @@ final class Parser(AST) : Lexer
                         else
                         {
                         _else:
-                            at = parseType(&ai);
+                            at = parseType(&ai, &identloc);
                         }
                         ae = null;
                         if (token.value == TOK.assign) // = defaultArg
@@ -3016,7 +3021,7 @@ final class Parser(AST) : Lexer
                             if (hasdefault)
                                 error("default argument expected for `%s`", ai ? ai.toChars() : at.toChars());
                         }
-                        auto param = new AST.Parameter(storageClass, at, ai, ae, null);
+                        auto param = new AST.Parameter(storageClass, at, ai, identloc, ae, null);
                         if (udas)
                         {
                             auto a = new AST.Dsymbols();
@@ -3087,6 +3092,7 @@ final class Parser(AST) : Lexer
         if (token.value == TOK.identifier)
         {
             id = token.ident;
+            loc = token.loc;
             nextToken();
         }
 
@@ -3257,7 +3263,7 @@ final class Parser(AST) : Lexer
     {
         AST.TemplateParameters* tpl = null;
         AST.Expression constraint;
-        const loc = token.loc;
+        Loc loc = token.loc;
         TOK tok = token.value;
 
         //printf("Parser::parseAggregate()\n");
@@ -3270,6 +3276,7 @@ final class Parser(AST) : Lexer
         else
         {
             id = token.ident;
+            loc = token.loc;
             nextToken();
 
             if (token.value == TOK.leftParentheses)
@@ -3511,7 +3518,7 @@ final class Parser(AST) : Lexer
         return decldefs;
     }
 
-    private AST.Type parseType(Identifier* pident = null, AST.TemplateParameters** ptpl = null)
+    AST.Type parseType(Identifier* pident = null, Loc* pidentloc = null, AST.TemplateParameters** ptpl = null)
     {
         /* Take care of the storage class prefixes that
          * serve as type attributes:
@@ -3569,7 +3576,7 @@ final class Parser(AST) : Lexer
         t = parseBasicType();
 
         int alt = 0;
-        t = parseDeclarator(t, &alt, pident, ptpl);
+        t = parseDeclarator(t, &alt, pident, pidentloc, ptpl);
         checkCstyleTypeSyntax(typeLoc, t, alt, pident ? *pident : null);
 
         t = t.addSTC(stc);
@@ -4005,7 +4012,7 @@ final class Parser(AST) : Lexer
         assert(0);
     }
 
-    private AST.Type parseDeclarator(AST.Type t, int* palt, Identifier* pident, AST.TemplateParameters** tpl = null, StorageClass storageClass = 0, int* pdisable = null, AST.Expressions** pudas = null)
+    private AST.Type parseDeclarator(AST.Type t, int* palt, Identifier* pident, Loc* pidentloc = null, AST.TemplateParameters** tpl = null, StorageClass storageClass = 0, int* pdisable = null, AST.Expressions** pudas = null)
     {
         //printf("parseDeclarator(tpl = %p)\n", tpl);
         t = parseBasicType2(t);
@@ -4017,6 +4024,8 @@ final class Parser(AST) : Lexer
                 *pident = token.ident;
             else
                 error("unexpected identifier `%s` in declarator", token.ident.toChars());
+            if (pidentloc)
+                *pidentloc = token.loc;
             ts = t;
             nextToken();
             break;
@@ -4664,7 +4673,7 @@ final class Parser(AST) : Lexer
             const loc = token.loc;
             Identifier ident = null;
 
-            auto t = parseDeclarator(ts, &alt, &ident, &tpl, storage_class, &disable, &udas);
+            auto t = parseDeclarator(ts, &alt, &ident, null, &tpl, storage_class, &disable, &udas);
             assert(t);
             if (!tfirst)
                 tfirst = t;
@@ -4935,7 +4944,7 @@ final class Parser(AST) : Lexer
                 parameters = new AST.Parameters();
                 Identifier id = Identifier.generateId("__T");
                 AST.Type t = new AST.TypeIdentifier(loc, id);
-                parameters.push(new AST.Parameter(0, t, token.ident, null, null));
+                parameters.push(new AST.Parameter(0, t, token.ident, token.loc, null, null));
 
                 tpl = new AST.TemplateParameters();
                 AST.TemplateParameter tp = new AST.TemplateTypeParameter(loc, id, null, null);
@@ -5286,6 +5295,7 @@ final class Parser(AST) : Lexer
                 default:
                     break;
             }
+            Loc identloc;
             if (token.value == TOK.identifier)
             {
                 Token* t = peek(&token);
@@ -5293,15 +5303,16 @@ final class Parser(AST) : Lexer
                 {
                     ai = token.ident;
                     at = null; // infer argument type
+                    identloc = token.loc;
                     nextToken();
                     goto Larg;
                 }
             }
-            at = parseType(&ai);
+            at = parseType(&ai, &identloc);
             if (!ai)
                 error("no identifier for declarator `%s`", at.toChars());
         Larg:
-            auto p = new AST.Parameter(storageClass, at, ai, null, null);
+            auto p = new AST.Parameter(storageClass, at, ai, identloc, null, null);
             parameters.push(p);
             if (token.value == TOK.comma)
             {
@@ -5850,14 +5861,15 @@ final class Parser(AST) : Lexer
                     AST.Type at = null; // infer parameter type
                     nextToken();
                     check(TOK.assign);
-                    param = new AST.Parameter(storageClass, at, ai, null, null);
+                    param = new AST.Parameter(storageClass, at, ai, token.loc, null, null);
                 }
                 else if (isDeclaration(&token, NeedDeclaratorId.must, TOK.assign, null))
                 {
                     Identifier ai;
-                    AST.Type at = parseType(&ai);
+                    Loc identloc;
+                    AST.Type at = parseType(&ai, &identloc);
                     check(TOK.assign);
-                    param = new AST.Parameter(storageClass, at, ai, null, null);
+                    param = new AST.Parameter(storageClass, at, ai, identloc, null, null);
                 }
 
                 condition = parseExpression();
@@ -7904,7 +7916,7 @@ final class Parser(AST) : Lexer
                 error("found `%s` when expecting identifier following `%s`.", token.toChars(), t.toChars());
                 goto Lerr;
             }
-            e = new AST.DotIdExp(loc, new AST.TypeExp(loc, t), token.ident);
+            e = new AST.DotIdExp(loc, new AST.TypeExp(loc, t), token.ident, token.loc);
             nextToken();
             break;
 
@@ -8308,7 +8320,7 @@ final class Parser(AST) : Lexer
                         error("identifier expected following `(type)`.");
                         return null;
                     }
-                    e = new AST.DotIdExp(loc, new AST.TypeExp(loc, t), token.ident);
+                    e = new AST.DotIdExp(loc, new AST.TypeExp(loc, t), token.ident, token.loc);
                     nextToken();
                     e = parsePostExp(e);
                 }
@@ -8477,6 +8489,7 @@ final class Parser(AST) : Lexer
                 if (token.value == TOK.identifier)
                 {
                     Identifier id = token.ident;
+                    Loc identloc = token.loc;
 
                     nextToken();
                     if (token.value == TOK.not && peekNext() != TOK.is_ && peekNext() != TOK.in_)
@@ -8485,7 +8498,9 @@ final class Parser(AST) : Lexer
                         e = new AST.DotTemplateInstanceExp(loc, e, id, tiargs);
                     }
                     else
-                        e = new AST.DotIdExp(loc, e, id);
+                    {
+                        e = new AST.DotIdExp(loc, e, id, identloc);
+                    }
                     continue;
                 }
                 if (token.value == TOK.new_)
@@ -8659,6 +8674,7 @@ final class Parser(AST) : Lexer
 
         auto e = parseShiftExp();
         TOK op = token.value;
+        Loc oploc = token.loc;
 
         switch (op)
         {
@@ -8679,23 +8695,25 @@ final class Parser(AST) : Lexer
             auto t = peek(&token);
             if (t.value == TOK.in_)
             {
+                oploc = token.loc;
                 nextToken();
                 nextToken();
                 auto e2 = parseShiftExp();
-                e = new AST.InExp(loc, e, e2);
+                e = new AST.InExp(loc, e, e2, oploc);
                 e = new AST.NotExp(loc, e);
                 break;
             }
             if (t.value != TOK.is_)
                 break;
             nextToken();
+            oploc = token.loc;
             op = TOK.notIdentity;
             goto L1;
         }
         L1:
             nextToken();
             auto e2 = parseShiftExp();
-            e = new AST.IdentityExp(op, loc, e, e2);
+            e = new AST.IdentityExp(op, loc, e, e2, oploc);
             break;
 
         case TOK.lessThan:
@@ -8710,7 +8728,7 @@ final class Parser(AST) : Lexer
         case TOK.in_:
             nextToken();
             auto e2 = parseShiftExp();
-            e = new AST.InExp(loc, e, e2);
+            e = new AST.InExp(loc, e, e2, oploc);
             break;
 
         default:

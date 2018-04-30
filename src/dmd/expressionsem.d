@@ -2287,7 +2287,7 @@ private bool functionParameters(const ref Loc loc, Scope* sc,
         auto args = new Parameters(arguments.dim - nparams);
         for (size_t i = 0; i < arguments.dim - nparams; i++)
         {
-            auto arg = new Parameter(STC.in_, (*arguments)[nparams + i].type, null, null, null);
+            auto arg = new Parameter(STC.in_, (*arguments)[nparams + i].type);
             (*args)[i] = arg;
         }
         auto tup = new TypeTuple(args);
@@ -2402,6 +2402,11 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         result = new ErrorExp();
     }
 
+    private void setError(Expression errExp)
+    {
+        result = new ErrorExp(errExp);
+    }
+
     /**************************
      * Semantically analyze Expression.
      * Determine types, fold constants, etc.
@@ -2465,7 +2470,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         if (s)
         {
             if (s.errors)
-                return setError();
+                return setError(exp);
 
             Expression e;
 
@@ -2491,7 +2496,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                     if (scx.scopesym && scx.scopesym.symtab && (s2 = scx.scopesym.symtab.lookup(s.ident)) !is null && s != s2)
                     {
                         exp.error("with symbol `%s` is shadowing local symbol `%s`", s.toPrettyChars(), s2.toPrettyChars());
-                        return setError();
+                        return setError(exp);
                     }
                 }
                 s = s.toAlias();
@@ -2499,8 +2504,8 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                 // Same as wthis.ident
                 //  TODO: DotIdExp.semantic will find 'ident' from 'wthis' again.
                 //  The redudancy should be removed.
-                e = new VarExp(exp.loc, withsym.withstate.wthis);
-                e = new DotIdExp(exp.loc, e, exp.ident);
+                e = new VarExp(loweredLoc(exp.loc), withsym.withstate.wthis);
+                e = new DotIdExp(exp.loc, e, exp.ident, exp.loc);
                 e = e.expressionSemantic(sc);
             }
             else
@@ -2509,8 +2514,8 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                 {
                     if (auto t = withsym.withstate.exp.isTypeExp())
                     {
-                        e = new TypeExp(exp.loc, t.type);
-                        e = new DotIdExp(exp.loc, e, exp.ident);
+                        e = new TypeExp(loweredLoc(exp.loc), t.type);
+                        e = new DotIdExp(exp.loc, e, exp.ident, exp.loc);
                         result = e.expressionSemantic(sc);
                         return;
                     }
@@ -2584,7 +2589,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             if (sc.flags & SCOPE.ctfe)
             {
                 exp.error("variable `__ctfe` cannot be read at compile time");
-                return setError();
+                return setError(exp);
             }
 
             // Create the magic __ctfe bool variable
@@ -2637,7 +2642,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         else
             exp.error("undefined identifier `%s`", exp.ident.toChars());
 
-        result = new ErrorExp();
+        result = new ErrorExp(exp);
     }
 
     override void visit(DsymbolExp e)
@@ -4502,7 +4507,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                 }
                 else
                 {
-                    exp.e1 = new DotVarExp(exp.loc, dte.e1, exp.f, false);
+                    exp.e1 = new DotVarExp(exp.loc, dte.e1, dte.identloc, exp.f, false);
                     exp.e1 = exp.e1.expressionSemantic(sc);
                     if (exp.e1.op == TOK.error)
                         return setError();
@@ -5275,7 +5280,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                     for (size_t i = 0; i < cd.baseclasses.dim; i++)
                     {
                         BaseClass* b = (*cd.baseclasses)[i];
-                        args.push(new Parameter(STC.in_, b.type, null, null, null));
+                        args.push(new Parameter(STC.in_, b.type));
                     }
                     tded = new TypeTuple(args);
                 }
@@ -5322,7 +5327,10 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                          */
                         if (e.tok2 == TOK.parameters && arg.defaultArg && arg.defaultArg.op == TOK.error)
                             return setError();
-                        args.push(new Parameter(arg.storageClass, arg.type, (e.tok2 == TOK.parameters) ? arg.ident : null, (e.tok2 == TOK.parameters) ? arg.defaultArg : null, arg.userAttribDecl));
+                        if (e.tok2 == TOK.parameters)
+                            args.push(new Parameter(arg.storageClass, arg.type, arg.ident, arg.identloc, arg.defaultArg, arg.userAttribDecl));
+                        else
+                            args.push(new Parameter(arg.storageClass, arg.type, null, Loc.initial, null, arg.userAttribDecl));
                     }
                     tded = new TypeTuple(args);
                     break;
@@ -8576,7 +8584,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                                 ex = new CastExp(ex.loc, ex, Type.tvoid);
                                 ey = new CastExp(ey.loc, ey, Type.tvoid);
                             }
-                            e = new CondExp(exp.loc, new InExp(exp.loc, ek, ea), ex, ey);
+                            e = new CondExp(exp.loc, new InExp(exp.loc, ek, ea, Loc.initial), ex, ey);
                         }
                         e = Expression.combine(e0, e);
                         e = e.expressionSemantic(sc);
@@ -11151,7 +11159,7 @@ Expression semanticX(DotIdExp exp, Scope* sc)
     if (exp.e1.op == TOK.variable && exp.e1.type.toBasetype().ty == Tsarray && exp.ident == Id.length)
     {
         // bypass checkPurity
-        return exp.e1.type.dotExp(sc, exp.e1, exp.ident, exp.noderef ? DotExpFlag.noDeref : 0);
+        return exp.e1.type.dotExp(sc, exp.e1, exp, exp.noderef ? DotExpFlag.noDeref : 0);
     }
 
     if (exp.e1.op == TOK.dot)
@@ -11485,13 +11493,13 @@ Expression semanticY(DotIdExp exp, Scope* sc, int flag)
             return null;
         e = new PtrExp(exp.loc, exp.e1);
         e = e.expressionSemantic(sc);
-        return e.type.dotExp(sc, e, exp.ident, flag | (exp.noderef ? DotExpFlag.noDeref : 0));
+        return e.type.dotExp(sc, e, exp, flag | (exp.noderef ? DotExpFlag.noDeref : 0));
     }
     else
     {
         if (exp.e1.op == TOK.type || exp.e1.op == TOK.template_)
             flag = 0;
-        e = exp.e1.type.dotExp(sc, exp.e1, exp.ident, flag | (exp.noderef ? DotExpFlag.noDeref : 0));
+        e = exp.e1.type.dotExp(sc, exp.e1, exp, flag | (exp.noderef ? DotExpFlag.noDeref : 0));
         if (e)
             e = e.expressionSemantic(sc);
         return e;

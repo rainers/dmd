@@ -1195,11 +1195,11 @@ extern (C++) class ScopeDsymbol : Dsymbol
     DsymbolTable symtab;        // members[] sorted into table
     uint endlinnum;             // the linnumber of the statement after the scope (0 if unknown)
 
-private:
     /// symbols whose members have been imported, i.e. imported modules and template mixins
     Dsymbols* importedScopes;
     Prot.Kind* prots;            // array of Prot.Kind, one for each import
 
+private:
     import dmd.root.array : BitArray;
     BitArray accessiblePackages, privateAccessiblePackages;// whitelists of accessible (imported) packages
 
@@ -1504,7 +1504,7 @@ public:
             {
                 Scope sc;
                 auto parameters = new Parameters();
-                Parameters* p = new Parameter(STC.in_, Type.tchar.constOf().arrayOf(), null, null);
+                Parameters* p = new Parameter(STC.in_, Type.tchar.constOf().arrayOf());
                 parameters.push(p);
                 Type tret = null;
                 tfgetmembers = new TypeFunction(parameters, tret, VarArg.none, LINK.d);
