@@ -708,8 +708,7 @@ extern (C++) struct Token
     }());
 
 nothrow:
-
-    shared static this()
+    static void _init()
     {
         Identifier.initTable();
         foreach (kw; keywords)
@@ -717,6 +716,11 @@ nothrow:
             //printf("keyword[%d] = '%s'\n",kw, tochars[kw].ptr);
             Identifier.idPool(tochars[kw].ptr, tochars[kw].length, cast(uint)kw);
         }
+    }
+
+    shared static this()
+    {
+        _init();
     }
 
     int isKeyword() const

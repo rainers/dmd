@@ -189,7 +189,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
             s.exp = s.exp.optimize(WANTvalue);
             s.exp = checkGC(sc, s.exp);
             if (s.exp.op == TOK.error)
-                return setError();
+                return setError(s);
         }
         result = s;
     }
@@ -513,7 +513,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
         ds.condition = ds.condition.toBoolean(sc);
 
         if (ds.condition.op == TOK.error)
-            return setError();
+            return setError(ds);
         if (ds._body && ds._body.isErrorStatement())
         {
             result = ds._body;
@@ -606,7 +606,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
         if (fs.condition && fs.condition.op == TOK.error ||
             fs.increment && fs.increment.op == TOK.error ||
             fs._body && fs._body.isErrorStatement())
-            return setError();
+            return setError(fs);
         result = fs;
     }
 
@@ -681,7 +681,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
         if (!skipCheck && (dim < 1 || dim > 2))
         {
             fs.error("only one (value) or two (key,value) arguments for tuple `foreach`");
-            setError();
+            setError(fs);
             return returnEarly();
         }
 
@@ -691,7 +691,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
             paramtype = paramtype.typeSemantic(loc, sc);
             if (paramtype.ty == Terror)
             {
-                setError();
+                setError(fs);
                 return returnEarly();
             }
         }
@@ -747,7 +747,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                 if (p.storageClass & (STC.out_ | STC.ref_ | STC.lazy_))
                 {
                     fs.error("no storage class for key `%s`", p.ident.toChars());
-                    setError();
+                    setError(fs);
                     return returnEarly();
                 }
                 static if(isStatic)
@@ -766,14 +766,14 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                         if (keyty != Tint64 && keyty != Tuns64)
                         {
                             fs.error("`foreach`: key type must be `int` or `uint`, `long` or `ulong`, not `%s`", p.type.toChars());
-                            setError();
+                            setError(fs);
                             return returnEarly();
                         }
                     }
                     else
                     {
                         fs.error("`foreach`: key type must be `int` or `uint`, not `%s`", p.type.toChars());
-                        setError();
+                        setError(fs);
                         return returnEarly();
                     }
                 }
@@ -809,7 +809,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                     storageClass & STC.ref_ && !te)
                 {
                     fs.error("no storage class for value `%s`", ident.toChars());
-                    setError();
+                    setError(fs);
                     return false;
                 }
                 Declaration var;
@@ -836,7 +836,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                     else if (storageClass & STC.alias_)
                     {
                         fs.error("`foreach` loop variable cannot be both `enum` and `alias`");
-                        setError();
+                        setError(fs);
                         return false;
                     }
 
@@ -846,13 +846,13 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                         if (storageClass & STC.ref_)
                         {
                             fs.error("symbol `%s` cannot be `ref`", ds.toChars());
-                            setError();
+                            setError(fs);
                             return false;
                         }
                         if (paramtype)
                         {
                             fs.error("cannot specify element type for symbol `%s`", ds.toChars());
-                            setError();
+                            setError(fs);
                             return false;
                         }
                     }
@@ -862,7 +862,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                         if (paramtype)
                         {
                             fs.error("cannot specify element type for type `%s`", e.type.toChars());
-                            setError();
+                            setError(fs);
                             return false;
                         }
                     }
@@ -898,7 +898,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                                         fs.error("constant value `%s` cannot be `ref`", ident.toChars());
                                     }
                                 }
-                                setError();
+                                setError(fs);
                                 return false;
                             }
                             else
@@ -913,7 +913,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                     if (paramtype)
                     {
                         fs.error("cannot specify element type for symbol `%s`", s.toChars());
-                        setError();
+                        setError(fs);
                         return false;
                     }
                 }
@@ -1076,7 +1076,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
         fs.aggr = resolveProperties(sc, fs.aggr);
         fs.aggr = fs.aggr.optimize(WANTvalue);
         if (fs.aggr.op == TOK.error)
-            return setError();
+            return setError(fs);
         Expression oaggr = fs.aggr;
         if (fs.aggr.type && fs.aggr.type.toBasetype().ty == Tstruct &&
             (cast(TypeStruct)(fs.aggr.type.toBasetype())).sym.dtor &&
@@ -1099,7 +1099,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                 msg = ", define `opApply()`, range primitives, or use `.tupleof`";
             }
             fs.error("invalid `foreach` aggregate `%s`%s", oaggr.toChars(), msg);
-            return setError();
+            return setError(fs);
         }
 
         Dsymbol sapplyOld = sapply; // 'sapply' will be NULL if and after 'inferApplyArgTypes' errors
@@ -1146,7 +1146,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
             else
                 fs.error("cannot uniquely infer `foreach` argument types");
 
-            return setError();
+            return setError(fs);
         }
 
         Type tab = fs.aggr.type.toBasetype();
@@ -2018,7 +2018,7 @@ else
         if (!fs.lwr.type)
         {
             fs.error("invalid range lower bound `%s`", fs.lwr.toChars());
-            return setError();
+            return setError(fs);
         }
 
         fs.upr = fs.upr.expressionSemantic(sc);
@@ -2027,7 +2027,7 @@ else
         if (!fs.upr.type)
         {
             fs.error("invalid range upper bound `%s`", fs.upr.toChars());
-            return setError();
+            return setError(fs);
         }
 
         if (fs.prm.type)
@@ -2073,7 +2073,7 @@ else
             {
                 scope AddExp ea = new AddExp(loc, fs.lwr, fs.upr);
                 if (typeCombine(ea, sc))
-                    return setError();
+                    return setError(fs);
                 fs.prm.type = ea.type;
                 fs.lwr = ea.e1;
                 fs.upr = ea.e2;
@@ -2082,7 +2082,7 @@ else
         }
         if (fs.prm.type.ty == Terror || fs.lwr.op == TOK.error || fs.upr.op == TOK.error)
         {
-            return setError();
+            return setError(fs);
         }
 
         /* Convert to a for loop:
@@ -2181,7 +2181,7 @@ else
             if (fs.key.type.constConv(fs.prm.type) <= MATCH.nomatch)
             {
                 fs.error("argument type mismatch, `%s` to `ref %s`", fs.key.type.toChars(), fs.prm.type.toChars());
-                return setError();
+                return setError(fs);
             }
         }
 
@@ -2278,7 +2278,7 @@ else
             (ifs.ifbody && ifs.ifbody.isErrorStatement()) ||
             (ifs.elsebody && ifs.elsebody.isErrorStatement()))
         {
-            return setError();
+            return setError(ifs);
         }
         result = ifs;
     }
@@ -2336,7 +2336,7 @@ else
                     if (e.op == TOK.error)
                     {
                         errorSupplemental(ps.loc, "while evaluating `pragma(msg, %s)`", arg.toChars());
-                        return setError();
+                        return setError(ps);
                     }
                     StringExp se = e.toStringExp();
                     if (se)
@@ -2357,7 +2357,7 @@ else
                 /* Should this be allowed?
                  */
                 ps.error("`pragma(lib)` not allowed as statement");
-                return setError();
+                return setError(ps);
             }
             else
             {
@@ -2404,7 +2404,7 @@ else
                 if (!sa || !sa.isFuncDeclaration())
                 {
                     ps.error("function name expected for start address, not `%s`", e.toChars());
-                    return setError();
+                    return setError(ps);
                 }
                 if (ps._body)
                 {
@@ -2427,7 +2427,7 @@ else
             else if (!ps.args || ps.args.dim != 1)
             {
                 ps.error("boolean expression expected for `pragma(inline)`");
-                return setError();
+                return setError(ps);
             }
             else
             {
@@ -2435,7 +2435,7 @@ else
                 if (e.op != TOK.int64 || !e.type.equals(Type.tbool))
                 {
                     ps.error("pragma(inline, true or false) expected, not `%s`", e.toChars());
-                    return setError();
+                    return setError(ps);
                 }
 
                 if (e.isBool(true))
@@ -2447,7 +2447,7 @@ else
                 if (!fd)
                 {
                     ps.error("`pragma(inline)` is not inside a function");
-                    return setError();
+                    return setError(ps);
                 }
                 fd.inlining = inlining;
             }
@@ -2455,7 +2455,7 @@ else
         else if (!global.params.ignoreUnsupportedPragmas)
         {
             ps.error("unrecognized `pragma(%s)`", ps.ident.toChars());
-            return setError();
+            return setError(ps);
         }
 
         if (ps._body)
@@ -2557,7 +2557,7 @@ else
         if (conditionError || (ss._body && ss._body.isErrorStatement()))
         {
             sc.pop();
-            return setError();
+            return setError(ss);
         }
 
         // Resolve any goto case's with exp
@@ -2568,7 +2568,7 @@ else
             {
                 gcs.error("no `case` statement following `goto case;`");
                 sc.pop();
-                return setError();
+                return setError(ss);
             }
 
             for (Scope* scx = sc; scx; scx = scx.enclosing)
@@ -2586,7 +2586,7 @@ else
             }
             gcs.error("`case %s` not found", gcs.exp.toChars());
             sc.pop();
-            return setError();
+            return setError(ss);
         }
 
         if (ss.isFinal)
@@ -2613,7 +2613,7 @@ else
                         }
                         ss.error("`enum` member `%s` not represented in `final switch`", em.toChars());
                         sc.pop();
-                        return setError();
+                        return setError(ss);
                     }
                 }
             }
@@ -2678,7 +2678,7 @@ else
         if (ss.checkLabel())
         {
             sc.pop();
-            return setError();
+            return setError(ss);
         }
 
 
@@ -2893,7 +2893,7 @@ else
             return;
         }
         if (errors || cs.exp.op == TOK.error)
-            return setError();
+            return setError(cs);
 
         cs.lastVar = sc.lastVar;
         result = cs;
@@ -2905,7 +2905,7 @@ else
         if (sw is null)
         {
             crs.error("case range not in `switch` statement");
-            return setError();
+            return setError(crs);
         }
 
         //printf("CaseRangeStatement::semantic() %s\n", toChars());
@@ -2934,7 +2934,7 @@ else
         {
             if (crs.statement)
                 crs.statement.statementSemantic(sc);
-            return setError();
+            return setError(crs);
         }
 
         uinteger_t fval = crs.first.toInteger();
@@ -2954,7 +2954,7 @@ else
         }
 
         if (errors)
-            return setError();
+            return setError(crs);
 
         /* This works by replacing the CaseRange with an array of Case's.
          *
@@ -3015,7 +3015,7 @@ else
         sc.ctorflow.orCSX(CSX.label);
         ds.statement = ds.statement.statementSemantic(sc);
         if (errors || ds.statement.isErrorStatement())
-            return setError();
+            return setError(ds);
 
         ds.lastVar = sc.lastVar;
         result = ds;
@@ -3030,12 +3030,12 @@ else
         if (!gds.sw)
         {
             gds.error("`goto default` not in `switch` statement");
-            return setError();
+            return setError(gds);
         }
         if (gds.sw.isFinal)
         {
             gds.error("`goto default` not allowed in `final switch` statement");
-            return setError();
+            return setError(gds);
         }
         result = gds;
     }
@@ -3048,7 +3048,7 @@ else
         if (!sc.sw)
         {
             gcs.error("`goto case` not in `switch` statement");
-            return setError();
+            return setError(gcs);
         }
 
         if (gcs.exp)
@@ -3057,7 +3057,7 @@ else
             gcs.exp = gcs.exp.implicitCastTo(sc, sc.sw.condition.type);
             gcs.exp = gcs.exp.optimize(WANTvalue);
             if (gcs.exp.op == TOK.error)
-                return setError();
+                return setError(gcs);
         }
 
         sc.sw.gotoCases.push(gcs);
@@ -3367,7 +3367,7 @@ else
         sc.ctorflow.orCSX(CSX.return_);
 
         if (errors)
-            return setError();
+            return setError(rs);
 
         if (sc.fes)
         {
@@ -3477,11 +3477,11 @@ else
                         result = bs;
                         return;
                     }
-                    return setError();
+                    return setError(bs);
                 }
             }
             bs.error("enclosing label `%s` for `break` not found", bs.ident.toChars());
-            return setError();
+            return setError(bs);
         }
         else if (!sc.sbreak)
         {
@@ -3497,7 +3497,7 @@ else
             }
             else
                 bs.error("`break` is not inside a loop or `switch`");
-            return setError();
+            return setError(bs);
         }
         else if (sc.sbreak.isForwardingStatement())
         {
@@ -3564,11 +3564,11 @@ else
                         result = cs;
                         return;
                     }
-                    return setError();
+                    return setError(cs);
                 }
             }
             cs.error("enclosing label `%s` for `continue` not found", cs.ident.toChars());
-            return setError();
+            return setError(cs);
         }
         else if (!sc.scontinue)
         {
@@ -3584,7 +3584,7 @@ else
             }
             else
                 cs.error("`continue` is not inside a loop");
-            return setError();
+            return setError(cs);
         }
         else if (sc.scontinue.isForwardingStatement())
         {
@@ -3608,14 +3608,14 @@ else
             {
                 if (ss._body)
                     ss._body = ss._body.statementSemantic(sc);
-                return setError();
+                return setError(ss);
             }
 
             ClassDeclaration cd = ss.exp.type.isClassHandle();
             if (!cd)
             {
                 ss.error("can only `synchronize` on class objects, not `%s`", ss.exp.type.toChars());
-                return setError();
+                return setError(ss);
             }
             else if (cd.isInterfaceDeclaration())
             {
@@ -3732,7 +3732,7 @@ else
         ws.exp = ws.exp.optimize(WANTvalue);
         ws.exp = checkGC(sc, ws.exp);
         if (ws.exp.op == TOK.error)
-            return setError();
+            return setError(ws);
         if (ws.exp.op == TOK.scope_)
         {
             sym = new WithScopeSymbol(ws);
@@ -3745,7 +3745,7 @@ else
             if (!s || !s.isScopeDsymbol())
             {
                 ws.error("`with` type `%s` has no members", ws.exp.toChars());
-                return setError();
+                return setError(ws);
             }
             sym = new WithScopeSymbol(ws);
             sym.parent = sc.scopesym;
@@ -3809,7 +3809,7 @@ else
             else
             {
                 ws.error("`with` expressions must be aggregate types or pointers to them, not `%s`", olde.type.toChars());
-                return setError();
+                return setError(ws);
             }
         }
 
@@ -3838,13 +3838,13 @@ else
         if (!global.params.useExceptions)
         {
             tcs.error("Cannot use try-catch statements with -betterC");
-            return setError();
+            return setError(tcs);
         }
 
         if (!ClassDeclaration.throwable)
         {
             tcs.error("Cannot use try-catch statements because `object.Throwable` was not declared");
-            return setError();
+            return setError(tcs);
         }
 
         uint flags;
@@ -3893,7 +3893,7 @@ else
         }
 
         if (catchErrors)
-            return setError();
+            return setError(tcs);
 
         if (tcs._body.isErrorStatement())
         {
@@ -3983,12 +3983,12 @@ else
             {
                 // If enclosing is scope(success) or scope(exit), this will be placed in finally block.
                 oss.error("cannot put `%s` statement inside `%s`", Token.toChars(oss.tok), Token.toChars(sc.os.tok));
-                return setError();
+                return setError(oss);
             }
             if (sc.tf)
             {
                 oss.error("cannot put `%s` statement inside `finally` block", Token.toChars(oss.tok));
-                return setError();
+                return setError(oss);
             }
         }
 
@@ -4022,13 +4022,13 @@ else
         if (!global.params.useExceptions)
         {
             ts.error("Cannot use `throw` statements with -betterC");
-            return setError();
+            return setError(ts);
         }
 
         if (!ClassDeclaration.throwable)
         {
             ts.error("Cannot use `throw` statements because `object.Throwable` was not declared");
-            return setError();
+            return setError(ts);
         }
 
         FuncDeclaration fd = sc.parent.isFuncDeclaration();
@@ -4044,7 +4044,7 @@ else
         ts.exp = resolveProperties(sc, ts.exp);
         ts.exp = checkGC(sc, ts.exp);
         if (ts.exp.op == TOK.error)
-            return setError();
+            return setError(ts);
 
         checkThrowEscape(sc, ts.exp, false);
 
@@ -4052,7 +4052,7 @@ else
         if (!cd || ((cd != ClassDeclaration.throwable) && !ClassDeclaration.throwable.isBaseOf(cd, null)))
         {
             ts.error("can only throw class objects derived from `Throwable`, not type `%s`", ts.exp.type.toChars());
-            return setError();
+            return setError(ts);
         }
 
         result = ts;
@@ -4106,7 +4106,7 @@ else
             fd.gotos.push(gs);
         }
         else if (gs.checkLabel())
-            return setError();
+            return setError(gs);
 
         result = gs;
     }
@@ -4125,7 +4125,7 @@ else
         if (ls2.statement)
         {
             ls.error("label `%s` already defined", ls2.toChars());
-            return setError();
+            return setError(ls);
         }
         else
             ls2.statement = ls;
