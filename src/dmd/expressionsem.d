@@ -1180,6 +1180,11 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         result = new ErrorExp();
     }
 
+    private void setError(Expression errExp)
+    {
+        result = new ErrorExp(errExp);
+    }
+
     /**************************
      * Semantically analyze Expression.
      * Determine types, fold constants, etc.
@@ -1243,7 +1248,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         if (s)
         {
             if (s.errors)
-                return setError();
+                return setError(exp);
 
             Expression e;
 
@@ -1269,7 +1274,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                     if (scx.scopesym && scx.scopesym.symtab && (s2 = scx.scopesym.symtab.lookup(s.ident)) !is null && s != s2)
                     {
                         exp.error("with symbol `%s` is shadowing local symbol `%s`", s.toPrettyChars(), s2.toPrettyChars());
-                        return setError();
+                        return setError(exp);
                     }
                 }
                 s = s.toAlias();
@@ -1337,7 +1342,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             if (sc.flags & SCOPE.ctfe)
             {
                 exp.error("variable `__ctfe` cannot be read at compile time");
-                return setError();
+                return setError(exp);
             }
 
             // Create the magic __ctfe bool variable

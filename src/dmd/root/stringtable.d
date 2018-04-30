@@ -30,8 +30,13 @@ enum loadFactor = 0.8;
 
 struct StringEntry
 {
+    version(GC)
+        alias vptr_t = const(void)*;
+    else
+        alias vptr_t = uint;
+
     uint hash;
-    uint vptr;
+    vptr_t vptr;
 }
 
 // StringValue is a variable-length structure. It has neither proper c'tors nor a
@@ -175,32 +180,45 @@ public:
 
 private:
 nothrow:
-    uint allocValue(const(char)* s, size_t length, void* ptrvalue)
+    StringEntry.vptr_t allocValue(const(char)* s, size_t length, void* ptrvalue)
     {
-        const(size_t) nbytes = StringValue.sizeof + length + 1;
-        if (!npools || nfill + nbytes > POOL_SIZE)
+        version(GC)
         {
-            pools = cast(ubyte**)mem.xrealloc(pools, ++npools * (pools[0]).sizeof);
-            pools[npools - 1] = cast(ubyte*)mem.xmalloc(nbytes > POOL_SIZE ? nbytes : POOL_SIZE);
-            nfill = 0;
+            auto vptr = mem.xmalloc(StringValue.sizeof + length + 1);
+            auto sv = cast(StringValue*)vptr;
         }
-        StringValue* sv = cast(StringValue*)&pools[npools - 1][nfill];
+        else
+        {
+            const(size_t) nbytes = StringValue.sizeof + length + 1;
+            if (!npools || nfill + nbytes > POOL_SIZE)
+            {
+                pools = cast(ubyte**)mem.xrealloc(pools, ++npools * (pools[0]).sizeof);
+                pools[npools - 1] = cast(ubyte*)mem.xmalloc(nbytes > POOL_SIZE ? nbytes : POOL_SIZE);
+                nfill = 0;
+            }
+            StringValue* sv = cast(StringValue*)&pools[npools - 1][nfill];
+            const(uint) vptr = cast(uint)(npools << POOL_BITS | nfill);
+            nfill += nbytes + (-nbytes & 7); // align to 8 bytes
+        }
         sv.ptrvalue = ptrvalue;
         sv.length = length;
         .memcpy(sv.lstring(), s, length);
         sv.lstring()[length] = 0;
-        const(uint) vptr = cast(uint)(npools << POOL_BITS | nfill);
-        nfill += nbytes + (-nbytes & 7); // align to 8 bytes
         return vptr;
     }
 
-    StringValue* getValue(uint vptr) pure
+    StringValue* getValue(StringEntry.vptr_t vptr) pure
     {
-        if (!vptr)
-            return null;
-        const(size_t) idx = (vptr >> POOL_BITS) - 1;
-        const(size_t) off = vptr & POOL_SIZE - 1;
-        return cast(StringValue*)&pools[idx][off];
+        version(GC)
+            return cast(StringValue*) vptr;
+        else
+        {
+            if (!vptr)
+                return null;
+            const(size_t) idx = (vptr >> POOL_BITS) - 1;
+            const(size_t) off = vptr & POOL_SIZE - 1;
+            return cast(StringValue*)&pools[idx][off];
+        }
     }
 
     size_t findSlot(hash_t hash, const(char)* s, size_t length) pure

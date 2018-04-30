@@ -140,9 +140,9 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
         this.sc = sc;
     }
 
-    private void setError()
+    private void setError(Statement errStmt)
     {
-        result = new ErrorStatement();
+        result = new ErrorStatement(errStmt);
     }
 
     override void visit(Statement s)
@@ -635,7 +635,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
             }
             else
             {
-                result = new ErrorStatement();
+                result = new ErrorStatement(fs);
                 return;
             }
         }
@@ -1847,7 +1847,7 @@ else
             assert(0);
 
         case Terror:
-            s = new ErrorStatement();
+            s = new ErrorStatement(fs);
             break;
 
         default:
