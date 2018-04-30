@@ -703,7 +703,7 @@ extern (C++) struct Token
         return true;
     }());
 
-    shared static this()
+    static void _init()
     {
         Identifier.initTable();
         foreach (kw; keywords)
@@ -711,6 +711,11 @@ extern (C++) struct Token
             //printf("keyword[%d] = '%s'\n",kw, tochars[kw].ptr);
             Identifier.idPool(tochars[kw].ptr, tochars[kw].length, cast(uint)kw);
         }
+    }
+
+    shared static this()
+    {
+        _init();
     }
 
     __gshared Token* freelist = null;
@@ -729,6 +734,16 @@ extern (C++) struct Token
 
     void free()
     {
+        version(GC)
+        {
+            ptr = null;
+            blockComment = null;
+            lineComment = null;
+            ident = null; // overlaps with ustring
+            loc = Loc();
+            value = TOK.reserved;
+        }
+
         next = freelist;
         freelist = &this;
     }
