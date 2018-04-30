@@ -439,10 +439,13 @@ extern (C++) abstract class Statement : ASTNode
  */
 extern (C++) final class ErrorStatement : Statement
 {
-    extern (D) this()
+    Statement errStmt; // the statement that caused the error and was replaced by the ErrorStatement
+
+    extern (D) this(Statement stmt)
     {
         super(Loc.initial, STMT.Error);
         assert(global.gaggedErrors || global.errors);
+        errStmt = stmt;
     }
 
     override Statement syntaxCopy()
@@ -501,7 +504,7 @@ private Statement toStatement(Dsymbol s)
         override void visit(Dsymbol s)
         {
             .error(Loc.initial, "Internal Compiler Error: cannot mixin %s `%s`\n", s.kind(), s.toChars());
-            result = new ErrorStatement();
+            result = new ErrorStatement(null);
         }
 
         override void visit(TemplateMixin tm)
@@ -702,7 +705,7 @@ extern (C++) class ExpStatement : Statement
                 if (e.op == TOK.error || tm.errors)
                 {
                     auto a = new Statements();
-                    a.push(new ErrorStatement());
+                    a.push(new ErrorStatement(this));
                     return a;
                 }
                 assert(tm.members);
@@ -787,7 +790,7 @@ extern (C++) final class CompileStatement : Statement
         auto errorStatements()
         {
             auto a = new Statements();
-            a.push(new ErrorStatement());
+            a.push(new ErrorStatement(this));
             return a;
         }
 
@@ -1482,7 +1485,7 @@ extern (C++) final class StaticForeachStatement : Statement
         else
         {
             auto result = new Statements();
-            result.push(new ErrorStatement());
+            result.push(new ErrorStatement(this));
             return result;
         }
     }

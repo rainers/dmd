@@ -1841,7 +1841,9 @@ extern (C++) final class IntegerExp : Expression
  */
 extern (C++) final class ErrorExp : Expression
 {
-    extern (D) this()
+    Expression errExp; // the expression that caused the error and was replaced by the ErrorExp
+
+    extern (D) this(Expression exp = null)
     {
         if (global.errors == 0 && global.gaggedErrors == 0)
         {
@@ -1854,6 +1856,7 @@ extern (C++) final class ErrorExp : Expression
 
         super(Loc.initial, TOK.error, __traits(classInstanceSize, ErrorExp));
         type = Type.terror;
+        errExp = exp;
     }
 
     override Expression toLvalue(Scope* sc, Expression e)
