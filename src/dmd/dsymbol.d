@@ -1556,6 +1556,35 @@ public:
         return false;
     }
 
+    static bool membersSemanticComplete(Dsymbols* ds)
+    {
+        if (!ds)
+            return true;
+
+        for (size_t i = 0; i < ds.dim; i++)
+        {
+            Dsymbol s = (*ds)[i];
+            if (s.isUnitTestDeclaration())
+                continue;
+            if (s.isAliasDeclaration())
+                continue;
+            if (s.isAggregateDeclaration())
+                continue;
+            if (s.semanticRun < PASS.semanticdone)
+                return false;
+            debug if (auto ss = s.isScopeDsymbol())
+                if (!ss.isTemplateDeclaration())
+                    if (!ss.membersSemanticComplete())
+                        assert(false);
+        }
+        return true;
+    }
+
+    bool membersSemanticComplete()
+    {
+        return membersSemanticComplete(members);
+    }
+
     extern (D) alias ForeachDg = int delegate(size_t idx, Dsymbol s);
 
     /***************************************

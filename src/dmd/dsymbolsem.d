@@ -645,7 +645,11 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
     }
 
     override void visit(ScopeDsymbol) { }
-    override void visit(Declaration) { }
+    override void visit(Declaration d)
+    {
+        if (d.semanticRun < PASS.semanticdone)
+            d.semanticRun = PASS.semanticdone;
+    }
 
     override void visit(AliasThis dsym)
     {
@@ -1760,7 +1764,9 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
             if (sc2 != sc)
                 sc2.pop();
         }
-        ad.semanticRun = PASS.semanticdone;
+
+        if (ScopeDsymbol.membersSemanticComplete(d))
+            ad.semanticRun = PASS.semanticdone;
     }
 
     override void visit(AttribDeclaration atd)
@@ -1770,6 +1776,8 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
 
     override void visit(AnonDeclaration scd)
     {
+        scd.semanticRun = PASS.semantic;
+
         //printf("\tAnonDeclaration::semantic %s %p\n", isunion ? "union" : "struct", this);
         assert(sc.parent);
         auto p = sc.parent.pastMixin();
@@ -1794,10 +1802,19 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
             }
             sc = sc.pop();
         }
+
+        if (ScopeDsymbol.membersSemanticComplete(scd.decl))
+            scd.semanticRun = PASS.semanticdone;
     }
 
     override void visit(PragmaDeclaration pd)
     {
+        if (pd.semanticRun >= PASS.semanticdone)
+            return;
+        if (pd.semanticRun >= PASS.semantic)
+            goto Ldecl;
+        pd.semanticRun = PASS.semantic; // never run pragma part twice
+
         // Should be merged with PragmaStatement
         //printf("\tPragmaDeclaration::semantic '%s'\n", pd.toChars());
         if (global.params.mscoff)
@@ -1833,13 +1850,13 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
                     if (e.type && e.type.ty == Tvoid)
                     {
                         error(pd.loc, "Cannot pass argument `%s` to `pragma msg` because it is `void`", e.toChars());
-                        return;
+                        goto Ldone;
                     }
                     e = ctfeInterpretForPragmaMsg(e);
                     if (e.op == TOK.error)
                     {
                         errorSupplemental(pd.loc, "while evaluating `pragma(msg, %s)`", (*pd.args)[i].toChars());
-                        return;
+                        goto Ldone;
                     }
                     StringExp se = e.toStringExp();
                     if (se)
@@ -2034,6 +2051,8 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
             if (sc2 != sc)
                 sc2.pop();
         }
+        if (ScopeDsymbol.membersSemanticComplete(pd.decl))
+            pd.semanticRun = PASS.semanticdone;
         return;
     Lnodecl:
         if (pd.decl)
@@ -2042,6 +2061,8 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
             goto Ldecl;
             // do them anyway, to avoid segfaults.
         }
+    Ldone:
+        pd.semanticRun = PASS.semanticdone;
     }
 
     override void visit(StaticIfDeclaration sid)
@@ -2921,6 +2942,23 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
 
         nest--;
 
+        if (!tm.membersSemanticComplete())
+        {
+            sc2.pop();
+            argscope.pop();
+            scy.pop();
+
+            tm._scope = scx ? scx : sc.copy();
+            tm._scope.setNoFree();
+            tm._scope._module.addDeferredSemantic(tm);
+            //printf("\tdeferring %s\n", toChars());
+
+            tm.semanticRun = PASS.init;
+            return;
+        }
+
+        tm.semanticRun = PASS.semanticdone;
+
         /* In DeclDefs scope, TemplateMixin does not have to handle deferred symbols.
          * Because the members would already call Module.addDeferredSemantic() for themselves.
          * See Struct, Class, Interface, and EnumDeclaration.dsymbolSemantic().
@@ -3441,6 +3479,17 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
                  * cannot find index of base class's vtbl[] to override.
                  */
                 funcdecl.error("return type inference is not supported if may override base class function");
+            }
+
+            // if semantic on the vtbls is incomplete, try it again
+            if (cd.baseClass && !cd.baseClass.membersSemanticComplete())
+            {
+                cd.baseClass.dsymbolSemantic(null);
+                if (!cd.baseClass.membersSemanticComplete())
+                {
+                    cd.error("recursive definition while trying to fill vtable");
+                    goto Ldone;
+                }
             }
 
             /* Find index of existing function in base class's vtbl[] to override
@@ -5174,6 +5223,17 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
         // Note that members.dim can grow due to tuple expansion during semantic()
         cldec.members.foreachDsymbol( s => s.dsymbolSemantic(sc2) );
 
+        if (!cldec.membersSemanticComplete())
+        {
+            sc2.pop();
+
+            cldec._scope = scx ? scx : sc.copy();
+            cldec._scope.setNoFree();
+            Module.addDeferredSemantic(cldec);
+            //printf("\tdeferring %s\n", toChars());
+            return;
+        }
+
         if (!cldec.determineFields())
         {
             assert(cldec.type == Type.terror);
@@ -5988,8 +6048,6 @@ void templateInstanceSemantic(TemplateInstance tempinst, Scope* sc, Expressions*
     sc2.minst = tempinst.minst;
     tempinst.tryExpandMembers(sc2);
 
-    tempinst.semanticRun = PASS.semanticdone;
-
     /* ConditionalDeclaration may introduce eponymous declaration,
      * so we should find it once again after semantic.
      */
@@ -6009,6 +6067,18 @@ void templateInstanceSemantic(TemplateInstance tempinst, Scope* sc, Expressions*
 
     if (global.errors != errorsave)
         goto Laftersemantic;
+
+    if (!tempinst.membersSemanticComplete())
+    {
+        // forward referenced, so try again later
+        tempinst._scope = _scope;
+        tempinst._scope.setNoFree();
+        Module.addDeferredSemantic(tempinst);
+
+        goto Laftersemantic;
+    }
+
+    tempinst.semanticRun = PASS.semanticdone;
 
     /* If any of the instantiation members didn't get semantic() run
      * on them due to forward references, we cannot run semantic2()
@@ -6245,6 +6315,7 @@ void aliasSemantic(AliasDeclaration ds, Scope* sc)
     }
     if (ds.aliassym)
     {
+        ds.semanticRun = PASS.semanticdone;
         auto fd = ds.aliassym.isFuncLiteralDeclaration();
         auto td = ds.aliassym.isTemplateDeclaration();
         if (fd || td && td.literal)
