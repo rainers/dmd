@@ -7915,7 +7915,7 @@ final class Parser(AST) : Lexer
                 error("found `%s` when expecting identifier following `%s`.", token.toChars(), t.toChars());
                 goto Lerr;
             }
-            e = new AST.DotIdExp(loc, new AST.TypeExp(loc, t), token.ident);
+            e = new AST.DotIdExp(loc, new AST.TypeExp(loc, t), token.ident, token.loc);
             nextToken();
             break;
 
@@ -8309,7 +8309,7 @@ final class Parser(AST) : Lexer
                         error("identifier expected following `(type)`.");
                         return null;
                     }
-                    e = new AST.DotIdExp(loc, new AST.TypeExp(loc, t), token.ident);
+                    e = new AST.DotIdExp(loc, new AST.TypeExp(loc, t), token.ident, token.loc);
                     nextToken();
                     e = parsePostExp(e);
                 }
@@ -8478,6 +8478,7 @@ final class Parser(AST) : Lexer
                 if (token.value == TOK.identifier)
                 {
                     Identifier id = token.ident;
+                    Loc identloc = token.loc;
 
                     nextToken();
                     if (token.value == TOK.not && peekNext() != TOK.is_ && peekNext() != TOK.in_)
@@ -8486,7 +8487,9 @@ final class Parser(AST) : Lexer
                         e = new AST.DotTemplateInstanceExp(loc, e, id, tiargs);
                     }
                     else
-                        e = new AST.DotIdExp(loc, e, id);
+                    {
+                        e = new AST.DotIdExp(loc, e, id, identloc);
+                    }
                     continue;
                 }
                 if (token.value == TOK.new_)

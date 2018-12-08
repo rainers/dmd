@@ -5320,11 +5320,18 @@ struct ASTBase
     extern (C++) final class DotIdExp : UnaExp
     {
         Identifier ident;
+        Loc identloc;       // location of the identifier after the dot
 
-        extern (D) this(const ref Loc loc, Expression e, Identifier ident)
+        extern (D) this(const ref Loc loc, Expression e, Identifier ident, const ref Loc identloc)
         {
             super(loc, TOK.dotIdentifier, __traits(classInstanceSize, DotIdExp), e);
             this.ident = ident;
+            this.identloc = identloc;
+        }
+
+        extern (D) this(const ref Loc loc, Expression e, Identifier ident)
+        {
+            this(loc, e, ident, Loc.initial);
         }
 
         override void accept(Visitor v)
