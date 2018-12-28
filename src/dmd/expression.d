@@ -3255,6 +3255,7 @@ extern (C++) final class TemplateExp : Expression
 {
     TemplateDeclaration td;
     FuncDeclaration fd;
+    Loc identloc;       // location of the identifier at the invocation
 
     extern (D) this(const ref Loc loc, TemplateDeclaration td, FuncDeclaration fd = null)
     {
@@ -3262,6 +3263,11 @@ extern (C++) final class TemplateExp : Expression
         //printf("TemplateExp(): %s\n", td.toChars());
         this.td = td;
         this.fd = fd;
+    }
+    extern (D) this(const ref Loc loc, TemplateDeclaration td, FuncDeclaration fd, const ref Loc identloc)
+    {
+        this(loc, td, fd);
+        this.identloc = identloc;
     }
 
     override bool isLvalue()
@@ -4515,11 +4521,17 @@ extern (C++) final class DotIdExp : UnaExp
 extern (C++) final class DotTemplateExp : UnaExp
 {
     TemplateDeclaration td;
+    Loc identloc;       // location of the identifier at the invocation
 
     extern (D) this(const ref Loc loc, Expression e, TemplateDeclaration td)
     {
         super(loc, TOK.dotTemplateDeclaration, __traits(classInstanceSize, DotTemplateExp), e);
         this.td = td;
+    }
+    extern (D) this(const ref Loc loc, Expression e, TemplateDeclaration td, const ref Loc identloc)
+    {
+        this(loc, e, td);
+        this.identloc = identloc;
     }
 
     override void accept(Visitor v)
@@ -4534,9 +4546,12 @@ extern (C++) final class DotVarExp : UnaExp
 {
     Declaration var;
     bool hasOverloads;
+    Loc varloc;       // location of the identifier after the dot
 
     extern (D) this(const ref Loc loc, Expression e, Declaration var, bool hasOverloads = true)
     {
+        if (var.ident.toString() == "rawRead")
+            var = var;
         if (var.isVarDeclaration())
             hasOverloads = false;
 
@@ -4544,6 +4559,11 @@ extern (C++) final class DotVarExp : UnaExp
         //printf("DotVarExp()\n");
         this.var = var;
         this.hasOverloads = hasOverloads;
+    }
+    extern (D) this(const ref Loc loc, Expression e, const ref Loc varloc, Declaration var, bool hasOverloads = true)
+    {
+        this(loc, e, var, hasOverloads);
+        this.varloc = varloc;
     }
 
     override Modifiable checkModifiable(Scope* sc, int flag)

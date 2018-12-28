@@ -243,7 +243,7 @@ public:
 
 private:
 nothrow:
-    uint allocValue(const(char)[] str, void* ptrvalue)
+    StringEntry.vptr_t allocValue(const(char)[] str, void* ptrvalue)
     {
         version(GC)
         {

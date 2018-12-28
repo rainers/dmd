@@ -2384,7 +2384,7 @@ else
             /* Should this be allowed?
              */
             ps.error("`pragma(linkerDirective)` not allowed as statement");
-            return setError();
+            return setError(ps);
         }
         else if (ps.ident == Id.startaddress)
         {
@@ -2463,7 +2463,7 @@ else
             if (ps.ident == Id.msg || ps.ident == Id.startaddress)
             {
                 ps.error("`pragma(%s)` is missing a terminating `;`", ps.ident.toChars());
-                return setError();
+                return setError(ps);
             }
             ps._body = ps._body.statementSemantic(sc);
         }
