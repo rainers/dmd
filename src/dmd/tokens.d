@@ -718,6 +718,7 @@ nothrow:
         }
     }
 
+    version(NoBackend) {} else
     shared static this()
     {
         _init();

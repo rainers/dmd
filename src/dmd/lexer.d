@@ -315,6 +315,8 @@ class Lexer
     /// Frees the given token by returning it to the freelist.
     private void releaseToken(Token* token) pure nothrow @nogc @safe
     {
+        version(GC)
+            *token = Token.init;
         token.next = tokenFreelist;
         tokenFreelist = token;
     }
