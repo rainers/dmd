@@ -2646,7 +2646,7 @@ else
                 else
                 {
                     if (!verifyHookExist(ss.loc, *sc, Id.__switch_error, "generating assert messages"))
-                        return setError();
+                        return setError(ss);
 
                     Expression sl = new IdentifierExp(ss.loc, Id.empty);
                     sl = new DotIdExp(ss.loc, sl, Id.object);
@@ -2696,7 +2696,7 @@ else
             // without modifying the order of the case blocks here in the compiler.
 
             if (!verifyHookExist(ss.loc, *sc, Id.__switch, "switch cases on strings"))
-                return setError();
+                return setError(ss);
 
             size_t numcases = 0;
             if (ss.cases)
