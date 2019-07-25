@@ -222,6 +222,8 @@ struct Scope
         Scope* enc = enclosing;
         if (!nofree)
         {
+            version(GC)
+                this = this.init;
             enclosing = freelist;
             freelist = &this;
             flags |= SCOPE.free;

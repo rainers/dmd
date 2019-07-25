@@ -32,7 +32,7 @@ alias DiagnosticHandler = void delegate(const ref Loc location, Color headerColo
  * This will be called for every diagnostic message issued by the compiler.
  * By default it will print the location and the message to stderr.
 */
-DiagnosticHandler diagnosticHandler;
+__gshared DiagnosticHandler diagnosticHandler;
 
 /// Interface for diagnostic reporting.
 abstract class DiagnosticReporter
@@ -693,7 +693,11 @@ extern (C++) void fatal()
  */
 extern (C++) void halt()
 {
-    assert(0);
+    import core.exception;
+    version (NoBackend)
+        onAssertError();
+    else
+        assert(0);
 }
 
 /**

@@ -807,39 +807,39 @@ extern (C++) abstract class Type : ASTNode
         return buf.extractChars();
     }
 
+    // Set basic types
+    private extern(D) static const TY* basetab =
+    [
+        Tvoid,
+        Tint8,
+        Tuns8,
+        Tint16,
+        Tuns16,
+        Tint32,
+        Tuns32,
+        Tint64,
+        Tuns64,
+        Tint128,
+        Tuns128,
+        Tfloat32,
+        Tfloat64,
+        Tfloat80,
+        Timaginary32,
+        Timaginary64,
+        Timaginary80,
+        Tcomplex32,
+        Tcomplex64,
+        Tcomplex80,
+        Tbool,
+        Tchar,
+        Twchar,
+        Tdchar,
+        Terror
+    ];
+
     static void _init()
     {
         stringtable._init(14000);
-
-        // Set basic types
-        __gshared TY* basetab =
-        [
-            Tvoid,
-            Tint8,
-            Tuns8,
-            Tint16,
-            Tuns16,
-            Tint32,
-            Tuns32,
-            Tint64,
-            Tuns64,
-            Tint128,
-            Tuns128,
-            Tfloat32,
-            Tfloat64,
-            Tfloat80,
-            Timaginary32,
-            Timaginary64,
-            Timaginary80,
-            Tcomplex32,
-            Tcomplex64,
-            Tcomplex80,
-            Tbool,
-            Tchar,
-            Twchar,
-            Tdchar,
-            Terror
-        ];
 
         for (size_t i = 0; basetab[i] != Terror; i++)
         {
@@ -883,6 +883,11 @@ extern (C++) abstract class Type : ASTNode
         tnull = new TypeNull();
         tnull.deco = tnull.merge().deco;
 
+        _initTargetSpecific();
+    }
+
+    static void _initTargetSpecific()
+    {
         tvoidptr = tvoid.pointerTo();
         tstring = tchar.immutableOf().arrayOf();
         twstring = twchar.immutableOf().arrayOf();
@@ -894,6 +899,37 @@ extern (C++) abstract class Type : ASTNode
         tsize_t    = basic[isLP64 ? Tuns64 : Tuns32];
         tptrdiff_t = basic[isLP64 ? Tint64 : Tint32];
         thash_t = tsize_t;
+    }
+
+    static void _reinit()
+    {
+        // re-initialize, but keep basic types that might have been used by the parser
+        stringtable._init(14000);
+
+        for (size_t i = 0; basetab[i] != Terror; i++)
+        {
+            if (Type t = basic[basetab[i]])
+            {
+                t.arrayof = null;
+                t.pto = null;
+                t.rto = null;
+                t.cto = null;
+                t.ito = null;
+                t.sto = null;
+                t.scto = null;
+                t.wto = null;
+                t.wcto = null;
+                t.swto = null;
+                t.swcto = null;
+                t.vtinfo = null;
+                t.ctype = null;
+
+                assert(t.deco);
+                stringtable.insert(t.deco, strlen(t.deco), cast(void*)t);
+            }
+        }
+
+        _initTargetSpecific();
     }
 
     /**

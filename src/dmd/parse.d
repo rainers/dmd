@@ -45,7 +45,7 @@ private enum CARRAYDECL = 1;
 /**********************************
  * Set operator precedence for each operator.
  */
-__gshared PREC[TOK.max_] precedence =
+extern(D) immutable PREC[TOK.max_] precedence =
 [
     TOK.type : PREC.expr,
     TOK.error : PREC.expr,

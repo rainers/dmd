@@ -648,6 +648,7 @@ extern (C++) abstract class Expression : ASTNode
         //printf("Expression::Expression(op = %d) this = %p\n", op, this);
         this.loc = loc;
         this.op = op;
+        assert(size < 0x100);
         this.size = cast(ubyte)size;
     }
 
@@ -1868,8 +1869,6 @@ extern (C++) final class ErrorExp : Expression
     {
         v.visit(this);
     }
-
-    extern (C++) __gshared ErrorExp errorexp; // handy shared value
 }
 
 

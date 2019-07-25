@@ -574,6 +574,7 @@ extern (C++) final class Module : Package
             message("import    %s", buf.peekChars());
         }
         m = m.parse();
+        m = m.resolvePackage();
 
         // Call onImport here because if the module is going to be compiled then we
         // need to determine it early because it affects semantic analysis. This is
@@ -1001,6 +1002,11 @@ extern (C++) final class Module : Package
         srcBuffer = null;
         /* The symbol table into which the module is to be inserted.
          */
+        return this;
+    }
+
+    Module resolvePackage()
+    {
         DsymbolTable dst;
         if (md)
         {
@@ -1066,6 +1072,7 @@ extern (C++) final class Module : Package
              */
             Dsymbol prev = dst.lookup(ident);
             assert(prev);
+            const(char)* srcname = srcfile.toChars();
             if (Module mprev = prev.isModule())
             {
                 if (!FileName.equals(srcname, mprev.srcfile.toChars()))
