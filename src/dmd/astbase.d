@@ -6136,9 +6136,9 @@ struct ASTBase
         Identifier ident;
         Module mod;
 
-        final extern (D) this(Module mod, uint level, Identifier ident)
+        final extern (D) this(const ref Loc loc, Module mod, uint level, Identifier ident)
         {
-            super(Loc.initial);
+            super(loc);
             this.mod = mod;
             this.ident = ident;
         }
@@ -6151,9 +6151,9 @@ struct ASTBase
 
     extern (C++) final class DebugCondition : DVCondition
     {
-        extern (D) this(Module mod, uint level, Identifier ident)
+        extern (D) this(const ref Loc loc, Module mod, uint level, Identifier ident)
         {
-            super(mod, level, ident);
+            super(loc, mod, level, ident);
         }
 
         override void accept(Visitor v)
@@ -6164,9 +6164,9 @@ struct ASTBase
 
     extern (C++) final class VersionCondition : DVCondition
     {
-        extern (D) this(Module mod, uint level, Identifier ident)
+        extern (D) this(const ref Loc loc, Module mod, uint level, Identifier ident)
         {
-            super(mod, level, ident);
+            super(loc, mod, level, ident);
         }
 
         override void accept(Visitor v)
