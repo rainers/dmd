@@ -44,6 +44,7 @@ enum Abstract : int
 struct BaseClass
 {
     Type type;          // (before semantic processing)
+    Type originalType;
 
     ClassDeclaration sym;
     uint offset;        // 'this' pointer offset
@@ -59,6 +60,7 @@ struct BaseClass
     {
         //printf("BaseClass(this = %p, '%s')\n", this, type.toChars());
         this.type = type;
+        originalType = type;
     }
 
     /****************************************
