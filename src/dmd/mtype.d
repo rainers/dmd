@@ -4619,7 +4619,7 @@ extern (C++) final class TypeFunction : TypeNext
                 continue;
             if (params == parameterList.parameters)
                 params = parameterList.parameters.copy();
-            (*params)[i] = new Parameter(p.storageClass, t, null, null, null);
+            (*params)[i] = new Parameter(p.storageClass, t);
         }
         if (next == tret && params == parameterList.parameters)
             return this;
@@ -6236,7 +6236,7 @@ extern (C++) final class TypeTuple : Type
                 Expression e = (*exps)[i];
                 if (e.type.ty == Ttuple)
                     e.error("cannot form tuple of tuples");
-                auto arg = new Parameter(STC.undefined_, e.type, null, null, null);
+                auto arg = new Parameter(STC.undefined_, e.type);
                 (*arguments)[i] = arg;
             }
         }
@@ -6262,15 +6262,15 @@ extern (C++) final class TypeTuple : Type
     {
         super(Ttuple);
         arguments = new Parameters();
-        arguments.push(new Parameter(0, t1, null, null, null));
+        arguments.push(new Parameter(0, t1));
     }
 
     extern (D) this(Type t1, Type t2)
     {
         super(Ttuple);
         arguments = new Parameters();
-        arguments.push(new Parameter(0, t1, null, null, null));
-        arguments.push(new Parameter(0, t2, null, null, null));
+        arguments.push(new Parameter(0, t1));
+        arguments.push(new Parameter(0, t2));
     }
 
     static TypeTuple create()
@@ -6461,26 +6461,33 @@ extern (C++) final class Parameter : ASTNode
     StorageClass storageClass;
     Type type;
     Identifier ident;
+    Loc identloc;       // location of the identifier
     Expression defaultArg;
     UserAttributeDeclaration userAttribDecl; // user defined attributes
 
-    extern (D) this(StorageClass storageClass, Type type, Identifier ident, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
+    extern (D) this(StorageClass storageClass, Type type, Identifier ident, const ref Loc identloc, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
     {
         this.type = type;
         this.ident = ident;
+        this.identloc = identloc;
         this.storageClass = storageClass;
         this.defaultArg = defaultArg;
         this.userAttribDecl = userAttribDecl;
     }
 
-    static Parameter create(StorageClass storageClass, Type type, Identifier ident, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
+    extern (D) this(StorageClass storageClass, Type type)
     {
-        return new Parameter(storageClass, type, ident, defaultArg, userAttribDecl);
+        this(storageClass, type, null, Loc.initial, null, null);
+    }
+
+    static Parameter create(StorageClass storageClass, Type type, Identifier ident, const ref Loc identloc, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
+    {
+        return new Parameter(storageClass, type, ident, identloc, defaultArg, userAttribDecl);
     }
 
     Parameter syntaxCopy()
     {
-        return new Parameter(storageClass, type ? type.syntaxCopy() : null, ident, defaultArg ? defaultArg.syntaxCopy() : null, userAttribDecl ? cast(UserAttributeDeclaration) userAttribDecl.syntaxCopy(null) : null);
+        return new Parameter(storageClass, type ? type.syntaxCopy() : null, ident, identloc, defaultArg ? defaultArg.syntaxCopy() : null, userAttribDecl ? cast(UserAttributeDeclaration) userAttribDecl.syntaxCopy(null) : null);
     }
 
     /****************************************************

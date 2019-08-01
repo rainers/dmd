@@ -2290,7 +2290,7 @@ private bool functionParameters(const ref Loc loc, Scope* sc,
         auto args = new Parameters(arguments.dim - nparams);
         for (size_t i = 0; i < arguments.dim - nparams; i++)
         {
-            auto arg = new Parameter(STC.in_, (*arguments)[nparams + i].type, null, null, null);
+            auto arg = new Parameter(STC.in_, (*arguments)[nparams + i].type);
             (*args)[i] = arg;
         }
         auto tup = new TypeTuple(args);
@@ -5302,7 +5302,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                     for (size_t i = 0; i < cd.baseclasses.dim; i++)
                     {
                         BaseClass* b = (*cd.baseclasses)[i];
-                        args.push(new Parameter(STC.in_, b.type, null, null, null));
+                        args.push(new Parameter(STC.in_, b.type));
                     }
                     tded = new TypeTuple(args);
                 }
@@ -5349,7 +5349,10 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                          */
                         if (e.tok2 == TOK.parameters && arg.defaultArg && arg.defaultArg.op == TOK.error)
                             return setError();
-                        args.push(new Parameter(arg.storageClass, arg.type, (e.tok2 == TOK.parameters) ? arg.ident : null, (e.tok2 == TOK.parameters) ? arg.defaultArg : null, arg.userAttribDecl));
+                        if (e.tok2 == TOK.parameters)
+                            args.push(new Parameter(arg.storageClass, arg.type, arg.ident, arg.identloc, arg.defaultArg, arg.userAttribDecl));
+                        else
+                            args.push(new Parameter(arg.storageClass, arg.type, null, Loc.initial, null, arg.userAttribDecl));
                     }
                     tded = new TypeTuple(args);
                     break;

@@ -294,7 +294,7 @@ FuncDeclaration buildOpAssign(StructDeclaration sd, Scope* sc)
     }
 
     auto fparams = new Parameters();
-    fparams.push(new Parameter(STC.nodtor, sd.type, Id.p, null, null));
+    fparams.push(new Parameter(STC.nodtor, sd.type, Id.p, Loc.initial, null, null));
     auto tf = new TypeFunction(ParameterList(fparams), sd.handleType(), LINK.d, stc | STC.ref_);
     auto fop = new FuncDeclaration(declLoc, Loc.initial, Id.assign, stc, tf);
     fop.storage_class |= STC.inference;
@@ -542,7 +542,7 @@ FuncDeclaration buildXopEquals(StructDeclaration sd, Scope* sc)
                 /* const bool opEquals(ref const S s);
                  */
                 auto parameters = new Parameters();
-                parameters.push(new Parameter(STC.ref_ | STC.const_, sd.type, null, null, null));
+                parameters.push(new Parameter(STC.ref_ | STC.const_, sd.type));
                 tfeqptr = new TypeFunction(ParameterList(parameters), Type.tbool, LINK.d);
                 tfeqptr.mod = MODFlags.const_;
                 tfeqptr = cast(TypeFunction)tfeqptr.typeSemantic(Loc.initial, &scx);
@@ -567,8 +567,8 @@ FuncDeclaration buildXopEquals(StructDeclaration sd, Scope* sc)
     Loc declLoc; // loc is unnecessary so __xopEquals is never called directly
     Loc loc; // loc is unnecessary so errors are gagged
     auto parameters = new Parameters();
-    parameters.push(new Parameter(STC.ref_ | STC.const_, sd.type, Id.p, null, null))
-              .push(new Parameter(STC.ref_ | STC.const_, sd.type, Id.q, null, null));
+    parameters.push(new Parameter(STC.ref_ | STC.const_, sd.type, Id.p, Loc.initial, null, null))
+              .push(new Parameter(STC.ref_ | STC.const_, sd.type, Id.q, Loc.initial, null, null));
     auto tf = new TypeFunction(ParameterList(parameters), Type.tbool, LINK.d);
     Identifier id = Id.xopEquals;
     auto fop = new FuncDeclaration(declLoc, Loc.initial, id, STC.static_, tf);
@@ -612,7 +612,7 @@ FuncDeclaration buildXopCmp(StructDeclaration sd, Scope* sc)
                 /* const int opCmp(ref const S s);
                  */
                 auto parameters = new Parameters();
-                parameters.push(new Parameter(STC.ref_ | STC.const_, sd.type, null, null, null));
+                parameters.push(new Parameter(STC.ref_ | STC.const_, sd.type));
                 tfcmpptr = new TypeFunction(ParameterList(parameters), Type.tint32, LINK.d);
                 tfcmpptr.mod = MODFlags.const_;
                 tfcmpptr = cast(TypeFunction)tfcmpptr.typeSemantic(Loc.initial, &scx);
@@ -687,8 +687,8 @@ FuncDeclaration buildXopCmp(StructDeclaration sd, Scope* sc)
     Loc declLoc; // loc is unnecessary so __xopCmp is never called directly
     Loc loc; // loc is unnecessary so errors are gagged
     auto parameters = new Parameters();
-    parameters.push(new Parameter(STC.ref_ | STC.const_, sd.type, Id.p, null, null));
-    parameters.push(new Parameter(STC.ref_ | STC.const_, sd.type, Id.q, null, null));
+    parameters.push(new Parameter(STC.ref_ | STC.const_, sd.type, Id.p, Loc.initial, null, null));
+    parameters.push(new Parameter(STC.ref_ | STC.const_, sd.type, Id.q, Loc.initial, null, null));
     auto tf = new TypeFunction(ParameterList(parameters), Type.tint32, LINK.d);
     Identifier id = Id.xopCmp;
     auto fop = new FuncDeclaration(declLoc, Loc.initial, id, STC.static_, tf);
@@ -795,7 +795,7 @@ FuncDeclaration buildXtoHash(StructDeclaration sd, Scope* sc)
     Loc declLoc; // loc is unnecessary so __xtoHash is never called directly
     Loc loc; // internal code should have no loc to prevent coverage
     auto parameters = new Parameters();
-    parameters.push(new Parameter(STC.ref_ | STC.const_, sd.type, Id.p, null, null));
+    parameters.push(new Parameter(STC.ref_ | STC.const_, sd.type, Id.p, Loc.initial, null, null));
     auto tf = new TypeFunction(ParameterList(parameters), Type.thash_t, LINK.d, STC.nothrow_ | STC.trusted);
     Identifier id = Id.xtoHash;
     auto fop = new FuncDeclaration(declLoc, Loc.initial, id, STC.static_, tf);
@@ -1048,7 +1048,7 @@ private DtorDeclaration buildWindowsCppDtor(AggregateDeclaration ad, DtorDeclara
     //   // TODO: if (del) delete (char*)this;
     //   return (void*) this;
     // }
-    Parameter delparam = new Parameter(STC.undefined_, Type.tuns32, Identifier.idPool("del"), new IntegerExp(dtor.loc, 0, Type.tuns32), null);
+    Parameter delparam = new Parameter(STC.undefined_, Type.tuns32, Identifier.idPool("del"), Loc.initial, new IntegerExp(dtor.loc, 0, Type.tuns32), null);
     Parameters* params = new Parameters;
     params.push(delparam);
     auto ftype = new TypeFunction(ParameterList(params), Type.tvoidptr, LINK.cpp, dtor.storage_class);
