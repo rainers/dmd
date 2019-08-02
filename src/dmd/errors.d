@@ -695,7 +695,7 @@ extern (C++) void halt()
 {
     import core.exception;
     version (NoBackend)
-        onAssertError();
+        onAssertErrorMsg(__FILE__, __LINE__, "fatal error");
     else
         assert(0);
 }

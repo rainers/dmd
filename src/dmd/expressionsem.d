@@ -2510,8 +2510,8 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                 // Same as wthis.ident
                 //  TODO: DotIdExp.semantic will find 'ident' from 'wthis' again.
                 //  The redudancy should be removed.
-                e = new VarExp(exp.loc, withsym.withstate.wthis);
-                e = new DotIdExp(exp.loc, e, exp.ident);
+                e = new VarExp(loweredLoc(exp.loc), withsym.withstate.wthis);
+                e = new DotIdExp(exp.loc, e, exp.ident, exp.loc);
                 e = e.expressionSemantic(sc);
             }
             else
@@ -2520,8 +2520,8 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                 {
                     if (auto t = withsym.withstate.exp.isTypeExp())
                     {
-                        e = new TypeExp(exp.loc, t.type);
-                        e = new DotIdExp(exp.loc, e, exp.ident);
+                        e = new TypeExp(loweredLoc(exp.loc), t.type);
+                        e = new DotIdExp(exp.loc, e, exp.ident, exp.loc);
                         result = e.expressionSemantic(sc);
                         return;
                     }

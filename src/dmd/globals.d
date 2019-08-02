@@ -607,6 +607,14 @@ nothrow:
     }
 }
 
+ref const(Loc) loweredLoc(ref const Loc loc)
+{
+    version(NoBackend)
+        return Loc.initial;
+    else
+        return loc;
+}
+
 enum LINK : int
 {
     default_,
