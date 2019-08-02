@@ -6310,9 +6310,12 @@ extern (C++) final class CmpExp : BinExp
  */
 extern (C++) final class InExp : BinExp
 {
-    extern (D) this(const ref Loc loc, Expression e1, Expression e2)
+    Loc oploc; // used to distinguish between operator "in" and keyword "in" by source location
+
+    extern (D) this(const ref Loc loc, Expression e1, Expression e2, const ref Loc oploc)
     {
         super(loc, TOK.in_, __traits(classInstanceSize, InExp), e1, e2);
+        this.oploc = oploc;
     }
 
     override void accept(Visitor v)
@@ -6368,10 +6371,13 @@ extern (C++) final class EqualExp : BinExp
  */
 extern (C++) final class IdentityExp : BinExp
 {
-    extern (D) this(TOK op, const ref Loc loc, Expression e1, Expression e2)
+    Loc oploc; // used to distinguish between operator "is" and keyword "is" by source location
+
+    extern (D) this(TOK op, const ref Loc loc, Expression e1, Expression e2, const ref Loc oploc)
     {
         super(loc, op, __traits(classInstanceSize, IdentityExp), e1, e2);
         assert(op == TOK.identity || op == TOK.notIdentity);
+        this.oploc = oploc;
     }
 
     override void accept(Visitor v)

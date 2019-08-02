@@ -1264,7 +1264,7 @@ Expression op_overload(Expression e, Scope* sc, TOK* pop = null)
                  * as the backend input.
                  */
                 auto op2 = e.op == TOK.equal ? TOK.identity : TOK.notIdentity;
-                result = new IdentityExp(op2, e.loc, e.e1, e.e2);
+                result = new IdentityExp(op2, e.loc, e.e1, e.e2, Loc.initial);
                 result = result.expressionSemantic(sc);
                 return;
             }
@@ -1282,7 +1282,7 @@ Expression op_overload(Expression e, Scope* sc, TOK* pop = null)
                 {
                     // Use bitwise equality.
                     auto op2 = e.op == TOK.equal ? TOK.identity : TOK.notIdentity;
-                    result = new IdentityExp(op2, e.loc, e.e1, e.e2);
+                    result = new IdentityExp(op2, e.loc, e.e1, e.e2, Loc.initial);
                     result = result.expressionSemantic(sc);
                     return;
                 }

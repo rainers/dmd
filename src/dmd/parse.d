@@ -2411,7 +2411,7 @@ final class Parser(AST) : Lexer
         else
         {
             error("(expression) expected following `static if`");
-            exp = null;
+            exp = new AST.ErrorExp();
         }
         condition = new AST.StaticIfCondition(loc, exp);
         return condition;
@@ -8675,6 +8675,7 @@ final class Parser(AST) : Lexer
 
         auto e = parseShiftExp();
         TOK op = token.value;
+        Loc oploc = token.loc;
 
         switch (op)
         {
@@ -8695,23 +8696,25 @@ final class Parser(AST) : Lexer
             auto t = peek(&token);
             if (t.value == TOK.in_)
             {
+                oploc = token.loc;
                 nextToken();
                 nextToken();
                 auto e2 = parseShiftExp();
-                e = new AST.InExp(loc, e, e2);
+                e = new AST.InExp(loc, e, e2, oploc);
                 e = new AST.NotExp(loc, e);
                 break;
             }
             if (t.value != TOK.is_)
                 break;
             nextToken();
+            oploc = token.loc;
             op = TOK.notIdentity;
             goto L1;
         }
         L1:
             nextToken();
             auto e2 = parseShiftExp();
-            e = new AST.IdentityExp(op, loc, e, e2);
+            e = new AST.IdentityExp(op, loc, e, e2, oploc);
             break;
 
         case TOK.lessThan:
@@ -8726,7 +8729,7 @@ final class Parser(AST) : Lexer
         case TOK.in_:
             nextToken();
             auto e2 = parseShiftExp();
-            e = new AST.InExp(loc, e, e2);
+            e = new AST.InExp(loc, e, e2, oploc);
             break;
 
         default:

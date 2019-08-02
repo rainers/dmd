@@ -5677,9 +5677,12 @@ struct ASTBase
 
     extern (C++) final class InExp : BinExp
     {
-        extern (D) this(const ref Loc loc, Expression e1, Expression e2)
+        Loc oploc;
+
+        extern (D) this(const ref Loc loc, Expression e1, Expression e2, const ref Loc oploc)
         {
             super(loc, TOK.in_, __traits(classInstanceSize, InExp), e1, e2);
+            this.oploc = oploc;
         }
 
         override void accept(Visitor v)
@@ -5690,9 +5693,12 @@ struct ASTBase
 
     extern (C++) final class IdentityExp : BinExp
     {
-        extern (D) this(TOK op, Loc loc, Expression e1, Expression e2)
+        Loc oploc;
+
+        extern (D) this(TOK op, Loc loc, Expression e1, Expression e2, const ref Loc oploc)
         {
             super(loc, op, __traits(classInstanceSize, IdentityExp), e1, e2);
+            this.oploc = oploc;
         }
 
         override void accept(Visitor v)
