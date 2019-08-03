@@ -940,64 +940,6 @@ extern (C++) abstract class Type : ASTNode
      */
     static void deinitialize()
     {
-        tvoid = null;
-        tint8 = null;
-        tuns8 = null;
-        tint16 = null;
-        tuns16 = null;
-        tint32 = null;
-        tuns32 = null;
-        tint64 = null;
-        tuns64 = null;
-        tint128 = null;
-        tuns128 = null;
-        tfloat32 = null;
-        tfloat64 = null;
-        tfloat80 = null;
-        timaginary32 = null;
-        timaginary64 = null;
-        timaginary80 = null;
-        tcomplex32 = null;
-        tcomplex64 = null;
-        tcomplex80 = null;
-        tbool = null;
-        tchar = null;
-        twchar = null;
-        tdchar = null;
-
-        basic[] = null;
-
-        tshiftcnt = null;
-        tvoidptr = null;
-        tstring = null;
-        twstring = null;
-        tdstring = null;
-        tvalist = null;
-        terror = null;
-        tnull = null;
-
-        tsize_t = null;
-        tptrdiff_t = null;
-        thash_t = null;
-
-        dtypeinfo = null;
-        typeinfoclass = null;
-        typeinfointerface = null;
-        typeinfostruct = null;
-        typeinfopointer = null;
-        typeinfoarray = null;
-        typeinfostaticarray = null;
-        typeinfoassociativearray = null;
-        typeinfovector = null;
-        typeinfoenum = null;
-        typeinfofunction = null;
-        typeinfodelegate = null;
-        typeinfotypelist = null;
-        typeinfoconst = null;
-        typeinfoinvariant = null;
-        typeinfoshared = null;
-        typeinfowild = null;
-
         stringtable = stringtable.init;
     }
 
