@@ -416,21 +416,27 @@ extern (C++) abstract class Statement : ASTNode
      * Returns:
      *    the downcast statement if it can be downcasted, otherwise `null`
      */
-    inout(ErrorStatement)       isErrorStatement()       { return stmt == STMT.Error       ? cast(typeof(return))this : null; }
-    inout(ScopeStatement)       isScopeStatement()       { return stmt == STMT.Scope       ? cast(typeof(return))this : null; }
-    inout(ExpStatement)         isExpStatement()         { return stmt == STMT.Exp         ? cast(typeof(return))this : null; }
-    inout(CompoundStatement)    isCompoundStatement()    { return stmt == STMT.Compound    ? cast(typeof(return))this : null; }
-    inout(ReturnStatement)      isReturnStatement()      { return stmt == STMT.Return      ? cast(typeof(return))this : null; }
-    inout(IfStatement)          isIfStatement()          { return stmt == STMT.If          ? cast(typeof(return))this : null; }
-    inout(CaseStatement)        isCaseStatement()        { return stmt == STMT.Case        ? cast(typeof(return))this : null; }
-    inout(DefaultStatement)     isDefaultStatement()     { return stmt == STMT.Default     ? cast(typeof(return))this : null; }
-    inout(LabelStatement)       isLabelStatement()       { return stmt == STMT.Label       ? cast(typeof(return))this : null; }
-    inout(GotoStatement)        isGotoStatement()        { return stmt == STMT.Goto        ? cast(typeof(return))this : null; }
-    inout(GotoDefaultStatement) isGotoDefaultStatement() { return stmt == STMT.GotoDefault ? cast(typeof(return))this : null; }
-    inout(GotoCaseStatement)    isGotoCaseStatement()    { return stmt == STMT.GotoCase    ? cast(typeof(return))this : null; }
-    inout(BreakStatement)       isBreakStatement()       { return stmt == STMT.Break       ? cast(typeof(return))this : null; }
-    inout(DtorExpStatement)     isDtorExpStatement()     { return stmt == STMT.DtorExp     ? cast(typeof(return))this : null; }
-    inout(ForwardingStatement)  isForwardingStatement()  { return stmt == STMT.Forwarding  ? cast(typeof(return))this : null; }
+    inout(ErrorStatement)        isErrorStatement()        { return stmt == STMT.Error        ? cast(typeof(return))this : null; }
+    inout(ScopeStatement)        isScopeStatement()        { return stmt == STMT.Scope        ? cast(typeof(return))this : null; }
+    inout(ExpStatement)          isExpStatement()          { return stmt == STMT.Exp          ? cast(typeof(return))this : null; }
+    inout(CompoundStatement)     isCompoundStatement()     { return stmt == STMT.Compound     ? cast(typeof(return))this : null; }
+    inout(ReturnStatement)       isReturnStatement()       { return stmt == STMT.Return       ? cast(typeof(return))this : null; }
+    inout(IfStatement)           isIfStatement()           { return stmt == STMT.If           ? cast(typeof(return))this : null; }
+    inout(CaseStatement)         isCaseStatement()         { return stmt == STMT.Case         ? cast(typeof(return))this : null; }
+    inout(DefaultStatement)      isDefaultStatement()      { return stmt == STMT.Default      ? cast(typeof(return))this : null; }
+    inout(LabelStatement)        isLabelStatement()        { return stmt == STMT.Label        ? cast(typeof(return))this : null; }
+    inout(GotoStatement)         isGotoStatement()         { return stmt == STMT.Goto         ? cast(typeof(return))this : null; }
+    inout(GotoDefaultStatement)  isGotoDefaultStatement()  { return stmt == STMT.GotoDefault  ? cast(typeof(return))this : null; }
+    inout(GotoCaseStatement)     isGotoCaseStatement()     { return stmt == STMT.GotoCase     ? cast(typeof(return))this : null; }
+    inout(BreakStatement)        isBreakStatement()        { return stmt == STMT.Break        ? cast(typeof(return))this : null; }
+    inout(DtorExpStatement)      isDtorExpStatement()      { return stmt == STMT.DtorExp      ? cast(typeof(return))this : null; }
+    inout(ForwardingStatement)   isForwardingStatement()   { return stmt == STMT.Forwarding   ? cast(typeof(return))this : null; }
+    inout(WithStatement)         isWithStatement()         { return stmt == STMT.With         ? cast(typeof(return))this : null; }
+    inout(ForStatement)          isForStatement()          { return stmt == STMT.For          ? cast(typeof(return))this : null; }
+    inout(ForeachStatement)      isForeachStatement()      { return stmt == STMT.Foreach      ? cast(typeof(return))this : null; }
+    inout(ForeachRangeStatement) isForeachRangeStatement() { return stmt == STMT.ForeachRange ? cast(typeof(return))this : null; }
+    inout(WhileStatement)        isWhileStatement()        { return stmt == STMT.While        ? cast(typeof(return))this : null; }
+    inout(DoStatement)           isDoStatement()           { return stmt == STMT.Do           ? cast(typeof(return))this : null; }
 }
 
 /***********************************************************
