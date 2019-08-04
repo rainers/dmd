@@ -348,34 +348,34 @@ extern (C++) abstract class Statement : ASTNode
         v.visit(this);
     }
 
-  pure nothrow @nogc:
+  pure nothrow @nogc inout:
 
     /********************
      * A cheaper method of doing downcasting of Statements.
      * Returns:
      *    the downcast statement if it can be downcasted, otherwise `null`
      */
-    inout(ErrorStatement)        isErrorStatement()        { return stmt == STMT.Error        ? cast(typeof(return))this : null; }
-    inout(ScopeStatement)        isScopeStatement()        { return stmt == STMT.Scope        ? cast(typeof(return))this : null; }
-    inout(ExpStatement)          isExpStatement()          { return stmt == STMT.Exp          ? cast(typeof(return))this : null; }
-    inout(CompoundStatement)     isCompoundStatement()     { return stmt == STMT.Compound     ? cast(typeof(return))this : null; }
-    inout(ReturnStatement)       isReturnStatement()       { return stmt == STMT.Return       ? cast(typeof(return))this : null; }
-    inout(IfStatement)           isIfStatement()           { return stmt == STMT.If           ? cast(typeof(return))this : null; }
-    inout(CaseStatement)         isCaseStatement()         { return stmt == STMT.Case         ? cast(typeof(return))this : null; }
-    inout(DefaultStatement)      isDefaultStatement()      { return stmt == STMT.Default      ? cast(typeof(return))this : null; }
-    inout(LabelStatement)        isLabelStatement()        { return stmt == STMT.Label        ? cast(typeof(return))this : null; }
-    inout(GotoStatement)         isGotoStatement()         { return stmt == STMT.Goto         ? cast(typeof(return))this : null; }
-    inout(GotoDefaultStatement)  isGotoDefaultStatement()  { return stmt == STMT.GotoDefault  ? cast(typeof(return))this : null; }
-    inout(GotoCaseStatement)     isGotoCaseStatement()     { return stmt == STMT.GotoCase     ? cast(typeof(return))this : null; }
-    inout(BreakStatement)        isBreakStatement()        { return stmt == STMT.Break        ? cast(typeof(return))this : null; }
-    inout(DtorExpStatement)      isDtorExpStatement()      { return stmt == STMT.DtorExp      ? cast(typeof(return))this : null; }
-    inout(ForwardingStatement)   isForwardingStatement()   { return stmt == STMT.Forwarding   ? cast(typeof(return))this : null; }
-    inout(WithStatement)         isWithStatement()         { return stmt == STMT.With         ? cast(typeof(return))this : null; }
-    inout(ForStatement)          isForStatement()          { return stmt == STMT.For          ? cast(typeof(return))this : null; }
-    inout(ForeachStatement)      isForeachStatement()      { return stmt == STMT.Foreach      ? cast(typeof(return))this : null; }
-    inout(ForeachRangeStatement) isForeachRangeStatement() { return stmt == STMT.ForeachRange ? cast(typeof(return))this : null; }
-    inout(WhileStatement)        isWhileStatement()        { return stmt == STMT.While        ? cast(typeof(return))this : null; }
-    inout(DoStatement)           isDoStatement()           { return stmt == STMT.Do           ? cast(typeof(return))this : null; }
+    inout(ErrorStatement)        isErrorStatement()        { return null; }
+    inout(ScopeStatement)        isScopeStatement()        { return null; }
+    inout(ExpStatement)          isExpStatement()          { return null; }
+    inout(CompoundStatement)     isCompoundStatement()     { return null; }
+    inout(ReturnStatement)       isReturnStatement()       { return null; }
+    inout(IfStatement)           isIfStatement()           { return null; }
+    inout(CaseStatement)         isCaseStatement()         { return null; }
+    inout(DefaultStatement)      isDefaultStatement()      { return null; }
+    inout(LabelStatement)        isLabelStatement()        { return null; }
+    inout(GotoStatement)         isGotoStatement()         { return null; }
+    inout(GotoDefaultStatement)  isGotoDefaultStatement()  { return null; }
+    inout(GotoCaseStatement)     isGotoCaseStatement()     { return null; }
+    inout(BreakStatement)        isBreakStatement()        { return null; }
+    inout(DtorExpStatement)      isDtorExpStatement()      { return null; }
+    inout(ForwardingStatement)   isForwardingStatement()   { return null; }
+    inout(WithStatement)         isWithStatement()         { return null; }
+    inout(ForStatement)          isForStatement()          { return null; }
+    inout(ForeachStatement)      isForeachStatement()      { return null; }
+    inout(ForeachRangeStatement) isForeachRangeStatement() { return null; }
+    inout(WhileStatement)        isWhileStatement()        { return null; }
+    inout(DoStatement)           isDoStatement()           { return null; }
 }
 
 /***********************************************************
@@ -1088,6 +1088,8 @@ extern (C++) final class WhileStatement : Statement
         this.endloc = endloc;
     }
 
+    override inout(WhileStatement)        isWhileStatement()        inout { return this; }
+
     override Statement syntaxCopy()
     {
         return new WhileStatement(loc,
@@ -1128,6 +1130,8 @@ extern (C++) final class DoStatement : Statement
         this.condition = condition;
         this.endloc = endloc;
     }
+
+    override inout(DoStatement)           isDoStatement()           inout { return this; }
 
     override Statement syntaxCopy()
     {
@@ -1178,6 +1182,8 @@ extern (C++) final class ForStatement : Statement
         this._body = _body;
         this.endloc = endloc;
     }
+
+    override inout(ForStatement)          isForStatement()          inout { return this; }
 
     override Statement syntaxCopy()
     {
@@ -1247,6 +1253,8 @@ extern (C++) final class ForeachStatement : Statement
         this.endloc = endloc;
     }
 
+    override inout(ForeachStatement)      isForeachStatement()      inout { return this; }
+
     override Statement syntaxCopy()
     {
         return new ForeachStatement(loc, op,
@@ -1296,6 +1304,8 @@ extern (C++) final class ForeachRangeStatement : Statement
         this._body = _body;
         this.endloc = endloc;
     }
+
+    override inout(ForeachRangeStatement) isForeachRangeStatement() inout { return this; }
 
     override Statement syntaxCopy()
     {
@@ -1910,6 +1920,8 @@ extern (C++) final class WithStatement : Statement
         this._body = _body;
         this.endloc = endloc;
     }
+
+    override inout(WithStatement)         isWithStatement()         inout { return this; }
 
     override Statement syntaxCopy()
     {
