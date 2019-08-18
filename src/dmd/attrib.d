@@ -542,7 +542,7 @@ extern (C++) final class CPPNamespaceDeclaration : AttribDeclaration
 extern (C++) final class ProtDeclaration : AttribDeclaration
 {
     Prot protection;
-    Identifiers* pkg_identifiers;
+    IdentifiersAtLoc* pkg_identifiers;
 
     /**
      * Params:
@@ -563,7 +563,7 @@ extern (C++) final class ProtDeclaration : AttribDeclaration
      *  pkg_identifiers = list of identifiers for a qualified package name
      *  decl = declarations which are affected by this protection attribute
      */
-    extern (D) this(const ref Loc loc, Identifiers* pkg_identifiers, Dsymbols* decl)
+    extern (D) this(const ref Loc loc, IdentifiersAtLoc* pkg_identifiers, Dsymbols* decl)
     {
         super(loc, null, decl);
         this.protection.kind = Prot.Kind.package_;

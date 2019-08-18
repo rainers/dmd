@@ -643,6 +643,9 @@ extern (C++) abstract class Expression : ASTNode
     Type type;      // !=null means that semantic() has been run
     Loc loc;        // file location
 
+    Expression original; // if this is the result of an optimizing or loweringstep:
+                         //  the original expression that this was derived from
+
     extern (D) this(const ref Loc loc, TOK op, int size)
     {
         //printf("Expression::Expression(op = %d) this = %p\n", op, this);
@@ -1931,8 +1934,6 @@ extern (C++) final class IntegerExp : Expression
  */
 extern (C++) final class ErrorExp : Expression
 {
-    Expression errExp; // the expression that caused the error and was replaced by the ErrorExp
-
     extern (D) this(Expression exp = null)
     {
         if (global.errors == 0 && global.gaggedErrors == 0)
@@ -1946,7 +1947,7 @@ extern (C++) final class ErrorExp : Expression
 
         super(Loc.initial, TOK.error, __traits(classInstanceSize, ErrorExp));
         type = Type.terror;
-        errExp = exp;
+        original = exp;
     }
 
     override Expression toLvalue(Scope* sc, Expression e)
@@ -3364,7 +3365,7 @@ extern (C++) final class TemplateExp : Expression
             return Expression.toLvalue(sc, e);
 
         assert(sc);
-        return symbolToExp(fd, loc, sc, true);
+        return symbolToExp(fd, this, sc, true);
     }
 
     override bool checkType()
@@ -4053,6 +4054,7 @@ extern (C++) final class IsExp : Expression
     TemplateParameters* parameters;
     TOK tok;            // ':' or '=='
     TOK tok2;           // 'struct', 'union', etc.
+    Type originaltarg;  // before semantic
 
     extern (D) this(const ref Loc loc, Type targ, Identifier id, TOK tok, Type tspec, TOK tok2, TemplateParameters* parameters)
     {
@@ -4063,6 +4065,7 @@ extern (C++) final class IsExp : Expression
         this.tspec = tspec;
         this.tok2 = tok2;
         this.parameters = parameters;
+        this.originaltarg = targ;
     }
 
     override Expression syntaxCopy()

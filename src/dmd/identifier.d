@@ -305,3 +305,27 @@ nothrow:
         stringtable._init(28_000);
     }
 }
+
+// attach location to identifier
+// not needed in the core compiler, but for code discovery when used as an IDE library
+version(NoBackend)
+{
+    struct IdentifierAtLoc
+    {
+        Identifier ident;
+        alias ident this;
+        Loc loc;
+    }
+    IdentifierAtLoc makeIdentifierAtLoc(Identifier ident, ref const Loc loc = Loc.initial)
+    {
+        return IdentifierAtLoc(ident, loc);
+    }
+}
+else
+{
+    alias IdentifierAtLoc = Identifier;
+    IdentifierAtLoc makeIdentifierAtLoc(Identifier ident, ref const Loc loc = Loc.initial)
+    {
+        return ident;
+    }
+}

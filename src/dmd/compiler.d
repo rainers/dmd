@@ -198,7 +198,7 @@ struct Compiler
     {
         if (includeImports)
         {
-            Identifiers empty;
+            IdentifiersAtLoc empty;
             if (includeImportedModuleCheck(ModuleComponentRange(
                 (m.md && m.md.packages) ? m.md.packages : &empty, m.ident, m.isPackageFile)))
             {
@@ -218,7 +218,7 @@ struct Compiler
 // A range of component identifiers for a module
 private struct ModuleComponentRange
 {
-    Identifiers* packages;
+    IdentifiersAtLoc* packages;
     Identifier name;
     bool isPackageFile;
     size_t index;

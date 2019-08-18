@@ -289,6 +289,8 @@ Expression Expression_optimize(Expression e, int result, bool keepLvalue)
             if (!e)
                 return false;
             Expression ex = Expression_optimize(e, flags, keepLvalue);
+            if (ex != e)
+                ex.original = e;
             if (ex.op == TOK.error)
             {
                 ret = ex; // store error result
