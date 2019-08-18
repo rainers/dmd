@@ -1397,6 +1397,9 @@ extern (C++) final class ConditionalStatement : Statement
     {
         Statement s;
 
+        version(NoBackend)
+            return null;
+
         //printf("ConditionalStatement::flatten()\n");
         if (condition.include(sc))
         {

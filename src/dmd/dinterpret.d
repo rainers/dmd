@@ -717,6 +717,18 @@ public:
         // we can't compile asm statements
     }
 
+    override void visit(ConditionalStatement s)
+    {
+        debug (LOGCOMPILE)
+        {
+            printf("%s ConditionalStatement::ctfeCompile\n", s.loc.toChars());
+        }
+        if (s.condition.include(null))
+            ctfeCompile(s.ifbody);
+        else if (s.elsebody)
+            ctfeCompile(s.elsebody);
+    }
+
     void ctfeCompile(Statement s)
     {
         s.accept(this);
@@ -1243,6 +1255,18 @@ public:
             // no error, or assert(0)?
             result = CTFEExp.cantexp;
         }
+    }
+
+    override void visit(ConditionalStatement s)
+    {
+        debug (LOGCOMPILE)
+        {
+            printf("%s ConditionalStatement::interpret(%s)\n", s.loc.toChars(), s.condition.toChars());
+        }
+        if (s.condition.include(null))
+            result = interpret(pue, s.ifbody, istate);
+        else
+            result = interpret(pue, s.elsebody, istate);
     }
 
     override void visit(ScopeStatement s)

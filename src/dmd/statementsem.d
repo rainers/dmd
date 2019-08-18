@@ -426,10 +426,13 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
             sym.endlinnum = ss.endloc.linnum;
             sc = sc.push(sym);
 
-            Statements* a = ss.statement.flatten(sc);
-            if (a)
+            version(NoBackend) {} else
             {
-                ss.statement = new CompoundStatement(ss.loc, a);
+                Statements* a = ss.statement.flatten(sc);
+                if (a)
+                {
+                    ss.statement = new CompoundStatement(ss.loc, a);
+                }
             }
 
             ss.statement = ss.statement.statementSemantic(sc);
@@ -442,17 +445,20 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                     return;
                 }
 
-                Statement sentry;
-                Statement sexception;
-                Statement sfinally;
-                ss.statement = ss.statement.scopeCode(sc, &sentry, &sexception, &sfinally);
-                assert(!sentry);
-                assert(!sexception);
-                if (sfinally)
+                version(NoBackend) {} else
                 {
-                    //printf("adding sfinally\n");
-                    sfinally = sfinally.statementSemantic(sc);
-                    ss.statement = new CompoundStatement(ss.loc, ss.statement, sfinally);
+                    Statement sentry;
+                    Statement sexception;
+                    Statement sfinally;
+                    ss.statement = ss.statement.scopeCode(sc, &sentry, &sexception, &sfinally);
+                    assert(!sentry);
+                    assert(!sexception);
+                    if (sfinally)
+                    {
+                        //printf("adding sfinally\n");
+                        sfinally = sfinally.statementSemantic(sc);
+                        ss.statement = new CompoundStatement(ss.loc, ss.statement, sfinally);
+                    }
                 }
             }
 
@@ -2303,13 +2309,19 @@ else
             }
             else
                 cs.ifbody = cs.ifbody.statementSemantic(sc);
-            result = cs.ifbody;
+            version(NoBackend)
+                result = cs;
+            else
+                result = cs.ifbody;
         }
         else
         {
             if (cs.elsebody)
                 cs.elsebody = cs.elsebody.statementSemantic(sc);
-            result = cs.elsebody;
+            version(NoBackend)
+                result = cs;
+            else
+                result = cs.elsebody;
         }
     }
 
