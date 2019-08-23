@@ -3668,7 +3668,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
                  */
                 if (hasThis(sc))
                 {
-                    e = new DotVarExp(e.loc, new ThisExp(e.loc), die.ident.loc, d);
+                    e = new DotVarExp(e.loc, new ThisExp(e.loc), identLoc(e.loc, die.ident), d);
                     return e.expressionSemantic(sc);
                 }
             }
@@ -3691,7 +3691,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
             return e.expressionSemantic(sc);
         }
 
-        e = new DotVarExp(e.loc, e, die.ident.loc, d);
+        e = new DotVarExp(e.loc, e, identLoc(e.loc, die.ident), d);
         return e.expressionSemantic(sc);
     }
 
