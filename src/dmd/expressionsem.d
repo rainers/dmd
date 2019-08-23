@@ -803,6 +803,18 @@ Expression resolvePropertiesOnly(Scope* sc, Expression e1)
  * Returns:
  *      `s` turned into an expression, `ErrorExp` if an error occurred
  */
+Expression symbolToExp(Dsymbol s, Expression origexp, Scope *sc, bool hasOverloads)
+{
+	Expression e = symbolToExp(s, origexp.loc, sc, hasOverloads);
+	if (e && e != origexp)
+	{
+		if (!origexp.type)
+			origexp.type = e.type;
+		e.original = origexp;
+	}
+	return e;
+}
+
 Expression symbolToExp(Dsymbol s, const ref Loc loc, Scope *sc, bool hasOverloads)
 {
     static if (LOGSEMANTIC)
@@ -2367,9 +2379,9 @@ private Module loadStdMath()
     __gshared Import impStdMath = null;
     if (!impStdMath)
     {
-        auto a = new Identifiers();
-        a.push(Id.std);
-        auto s = new Import(Loc.initial, a, Id.math, null, false);
+        auto a = new IdentifiersAtLoc();
+        a.push(makeIdentifierAtLoc(Id.std));
+        auto s = new Import(Loc.initial, a, Id.math, makeIdentifierAtLoc(null), false);
         // Module.load will call fatal() if there's no std.math available.
         // Gag the error here, pushing the error handling to the caller.
         uint errors = global.startGagging();
@@ -2550,7 +2562,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                     }
                 }
                 // Haven't done overload resolution yet, so pass 1
-                e = symbolToExp(s, exp.loc, sc, true);
+                e = symbolToExp(s, exp, sc, true);
             }
             result = e;
             return;
@@ -2647,7 +2659,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
 
     override void visit(DsymbolExp e)
     {
-        result = symbolToExp(e.s, e.loc, sc, e.hasOverloads);
+        result = symbolToExp(e.s, e, sc, e.hasOverloads);
     }
 
     override void visit(ThisExp e)
@@ -3107,7 +3119,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         else if (s)
         {
             //printf("s = %s %s\n", s.kind(), s.toChars());
-            e = symbolToExp(s, exp.loc, sc, true);
+            e = symbolToExp(s, exp, sc, true);
         }
         else
             assert(0);
@@ -3234,7 +3246,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             }
 
             //printf("s = %s, '%s'\n", s.kind(), s.toChars());
-            auto e = symbolToExp(s, exp.loc, sc, true);
+            auto e = symbolToExp(s, exp, sc, true);
             //printf("-1ScopeExp::semantic()\n");
             result = e;
             return;
@@ -5085,7 +5097,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         if (ea)
         {
             if (auto sym = getDsymbol(ea))
-                ea = symbolToExp(sym, exp.loc, sc, false);
+                ea = symbolToExp(sym, exp, sc, false);
             else
                 ea = ea.expressionSemantic(sc);
             ea = resolveProperties(sc, ea);
@@ -5328,9 +5340,9 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                         if (e.tok2 == TOK.parameters && arg.defaultArg && arg.defaultArg.op == TOK.error)
                             return setError();
                         if (e.tok2 == TOK.parameters)
-                            args.push(new Parameter(arg.storageClass, arg.type, arg.ident, arg.identloc, arg.defaultArg, arg.userAttribDecl));
+                            args.push(new Parameter(arg.storageClass, arg.type, arg.ident, arg.defaultArg, arg.userAttribDecl));
                         else
-                            args.push(new Parameter(arg.storageClass, arg.type, null, Loc.initial, null, arg.userAttribDecl));
+                            args.push(new Parameter(arg.storageClass, arg.type, makeIdentifierAtLoc(null), null, arg.userAttribDecl));
                     }
                     tded = new TypeTuple(args);
                     break;
@@ -5994,7 +6006,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             if ((fd.isNested() && !fd.isThis()) || fd.isFuncLiteralDeclaration())
             {
                 // (e1, fd)
-                auto e = symbolToExp(fd, exp.loc, sc, false);
+                auto e = symbolToExp(fd, exp, sc, false);
                 result = Expression.combine(exp.e1, e);
                 return;
             }

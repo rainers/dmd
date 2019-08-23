@@ -1437,8 +1437,7 @@ extern(C++) Type typeSemantic(Type t, Loc loc, Scope* sc)
                             if (te && te.exps && te.exps.length)
                                 paramDefaultArg = (*te.exps)[j];
 
-                            (*newparams)[j] = new Parameter(
-                                stc, narg.type, narg.ident, narg.identloc, paramDefaultArg, narg.userAttribDecl);
+                            (*newparams)[j] = new Parameter(stc, narg.type, narg.ident, paramDefaultArg, narg.userAttribDecl);
                         }
                         fparam.type = new TypeTuple(newparams);
                     }
@@ -2967,7 +2966,7 @@ void resolve(Type mt, const ref Loc loc, Scope* sc, Expression* pe, Type* pt, Ds
  *  mt = type for which the dot expression is used
  *  sc = instantiating scope
  *  e = expression to convert
- *  ident = identifier being used
+ *  die = the DotIdExp with identifier and loc being used
  *  flag = DotExpFlag bit flags
  *
  * Returns:
@@ -3631,7 +3630,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
 
         if (s.isImport() || s.isModule() || s.isPackage())
         {
-            return symbolToExp(s, e.loc, sc, false);
+            return symbolToExp(s, e, sc, false);
         }
 
         OverloadSet o = s.isOverloadSet();
@@ -3669,7 +3668,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
                  */
                 if (hasThis(sc))
                 {
-                    e = new DotVarExp(e.loc, new ThisExp(e.loc), d);
+                    e = new DotVarExp(e.loc, new ThisExp(e.loc), die.ident.loc, d);
                     return e.expressionSemantic(sc);
                 }
             }
@@ -3692,7 +3691,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
             return e.expressionSemantic(sc);
         }
 
-        e = new DotVarExp(e.loc, e, d);
+        e = new DotVarExp(e.loc, e, die.ident.loc, d);
         return e.expressionSemantic(sc);
     }
 
@@ -3751,7 +3750,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
             return res;
         }
         EnumMember m = s.isEnumMember();
-        return m.getVarExp(e.loc, sc);
+        return m.getVarExp(die.identloc, sc);
     }
 
     Expression visitClass(TypeClass mt)
@@ -4059,7 +4058,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
 
         if (s.isImport() || s.isModule() || s.isPackage())
         {
-            e = symbolToExp(s, e.loc, sc, false);
+            e = symbolToExp(s, e, sc, false);
             return e;
         }
 
@@ -4205,6 +4204,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
         return e;
     }
 
+    Expression ex = (){
     switch (mt.ty)
     {
         case Tvector:    return visitVector   (cast(TypeVector)mt);
@@ -4222,6 +4222,10 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
                                 ? visitBasic(cast(TypeBasic)mt)
                                 : visitType(mt);
     }
+    }();
+    if (ex && ex != die)
+        ex.original = die;
+    return ex;
 }
 
 

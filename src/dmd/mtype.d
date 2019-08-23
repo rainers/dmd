@@ -6350,16 +6350,14 @@ extern (C++) final class Parameter : ASTNode
 
     StorageClass storageClass;
     Type type;
-    Identifier ident;
-    Loc identloc;       // location of the identifier
+    IdentifierAtLoc ident;
     Expression defaultArg;
     UserAttributeDeclaration userAttribDecl; // user defined attributes
 
-    extern (D) this(StorageClass storageClass, Type type, Identifier ident, const ref Loc identloc, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
+    extern (D) this(StorageClass storageClass, Type type, IdentifierAtLoc ident, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
     {
         this.type = type;
         this.ident = ident;
-        this.identloc = identloc;
         this.storageClass = storageClass;
         this.defaultArg = defaultArg;
         this.userAttribDecl = userAttribDecl;
@@ -6367,17 +6365,17 @@ extern (C++) final class Parameter : ASTNode
 
     extern (D) this(StorageClass storageClass, Type type)
     {
-        this(storageClass, type, null, Loc.initial, null, null);
+        this(storageClass, type, makeIdentifierAtLoc(null), null, null);
     }
 
-    static Parameter create(StorageClass storageClass, Type type, Identifier ident, const ref Loc identloc, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
+    static Parameter create(StorageClass storageClass, Type type, IdentifierAtLoc ident, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
     {
-        return new Parameter(storageClass, type, ident, identloc, defaultArg, userAttribDecl);
+        return new Parameter(storageClass, type, ident, defaultArg, userAttribDecl);
     }
 
     Parameter syntaxCopy()
     {
-        return new Parameter(storageClass, type ? type.syntaxCopy() : null, ident, identloc, defaultArg ? defaultArg.syntaxCopy() : null, userAttribDecl ? cast(UserAttributeDeclaration) userAttribDecl.syntaxCopy(null) : null);
+        return new Parameter(storageClass, type ? type.syntaxCopy() : null, ident, defaultArg ? defaultArg.syntaxCopy() : null, userAttribDecl ? cast(UserAttributeDeclaration) userAttribDecl.syntaxCopy(null) : null);
     }
 
     /****************************************************

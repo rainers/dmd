@@ -1994,7 +1994,7 @@ else
                 Statement s = new ExpStatement(fs.loc, v);
                 fs._body = new CompoundStatement(fs.loc, s, fs._body);
             }
-            params.push(new Parameter(stc, p.type, id, Loc.initial, null, null));
+            params.push(new Parameter(stc, p.type, makeIdentifierAtLoc(id), null, null));
         }
         // https://issues.dlang.org/show_bug.cgi?id=13840
         // Throwable nested function inside nothrow function is acceptable.

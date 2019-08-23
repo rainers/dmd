@@ -392,8 +392,6 @@ final class Parser(AST) : Lexer
         // ModuleDeclation leads off
         if (token.value == TOK.module_)
         {
-            const loc = token.loc;
-
             nextToken();
             if (token.value != TOK.identifier)
             {
@@ -401,14 +399,15 @@ final class Parser(AST) : Lexer
                 goto Lerr;
             }
 
-            AST.Identifiers* a = null;
+            AST.IdentifiersAtLoc* a = null;
             Identifier id = token.ident;
+            auto loc = token.loc;
 
             while (nextToken() == TOK.dot)
             {
                 if (!a)
-                    a = new AST.Identifiers();
-                a.push(id);
+                    a = new AST.IdentifiersAtLoc();
+                a.push(makeIdentifierAtLoc(id, loc));
                 nextToken();
                 if (token.value != TOK.identifier)
                 {
@@ -416,6 +415,7 @@ final class Parser(AST) : Lexer
                     goto Lerr;
                 }
                 id = token.ident;
+                loc = token.loc;
             }
 
             md = new AST.ModuleDeclaration(loc, a, id, msg, isdeprecated);
@@ -1023,7 +1023,7 @@ final class Parser(AST) : Lexer
 
                     // optional qualified package identifier to bind
                     // protection to
-                    AST.Identifiers* pkg_prot_idents = null;
+                    AST.IdentifiersAtLoc* pkg_prot_idents = null;
                     if (pAttrs.protection.kind == AST.Prot.Kind.package_ && token.value == TOK.leftParentheses)
                     {
                         pkg_prot_idents = parseQualifiedIdentifier("protection package");
@@ -2302,9 +2302,9 @@ final class Parser(AST) : Lexer
      * Returns:
      *     array of identifiers with actual qualified one stored last
      */
-    private AST.Identifiers* parseQualifiedIdentifier(const(char)* entity)
+    private AST.IdentifiersAtLoc* parseQualifiedIdentifier(const(char)* entity)
     {
-        AST.Identifiers* qualified = null;
+        AST.IdentifiersAtLoc* qualified = null;
 
         do
         {
@@ -2317,8 +2317,8 @@ final class Parser(AST) : Lexer
 
             Identifier id = token.ident;
             if (!qualified)
-                qualified = new AST.Identifiers();
-            qualified.push(id);
+                qualified = new AST.IdentifiersAtLoc();
+            qualified.push(makeIdentifierAtLoc(id, token.loc));
 
             nextToken();
         }
@@ -3021,7 +3021,7 @@ final class Parser(AST) : Lexer
                             if (hasdefault)
                                 error("default argument expected for `%s`", ai ? ai.toChars() : at.toChars());
                         }
-                        auto param = new AST.Parameter(storageClass, at, ai, identloc, ae, null);
+                        auto param = new AST.Parameter(storageClass, at, makeIdentifierAtLoc(ai, identloc), ae, null);
                         if (udas)
                         {
                             auto a = new AST.Dsymbols();
@@ -3421,7 +3421,7 @@ final class Parser(AST) : Lexer
     private AST.Dsymbols* parseImport()
     {
         auto decldefs = new AST.Dsymbols();
-        Identifier aliasid = null;
+        IdentifierAtLoc aliasid;
 
         int isstatic = token.value == TOK.static_;
         if (isstatic)
@@ -3438,20 +3438,20 @@ final class Parser(AST) : Lexer
                 break;
             }
 
-            const loc = token.loc;
+            auto loc = token.loc;
             Identifier id = token.ident;
-            AST.Identifiers* a = null;
+            AST.IdentifiersAtLoc* a = null;
             nextToken();
             if (!aliasid && token.value == TOK.assign)
             {
-                aliasid = id;
+                aliasid = makeIdentifierAtLoc(id, loc);
                 goto L1;
             }
             while (token.value == TOK.dot)
             {
                 if (!a)
-                    a = new AST.Identifiers();
-                a.push(id);
+                    a = new AST.IdentifiersAtLoc();
+                a.push(makeIdentifierAtLoc(id, loc));
                 nextToken();
                 if (token.value != TOK.identifier)
                 {
@@ -3459,6 +3459,7 @@ final class Parser(AST) : Lexer
                     break;
                 }
                 id = token.ident;
+                loc = token.loc;
                 nextToken();
             }
 
@@ -3481,6 +3482,8 @@ final class Parser(AST) : Lexer
                     }
                     Identifier _alias = token.ident;
                     Identifier name;
+                    Loc aliasloc = token.loc;
+                    Loc nameloc;
                     nextToken();
                     if (token.value == TOK.assign)
                     {
@@ -3491,14 +3494,17 @@ final class Parser(AST) : Lexer
                             break;
                         }
                         name = token.ident;
+                        nameloc = token.loc;
                         nextToken();
                     }
                     else
                     {
                         name = _alias;
+                        nameloc = aliasloc;
                         _alias = null;
+                        aliasloc = Loc.initial;
                     }
-                    s.addAlias(name, _alias);
+                    s.addAlias(makeIdentifierAtLoc(name, nameloc), makeIdentifierAtLoc(_alias, aliasloc));
                 }
                 while (token.value == TOK.comma);
                 break; // no comma-separated imports of this form
@@ -4944,7 +4950,7 @@ final class Parser(AST) : Lexer
                 parameters = new AST.Parameters();
                 Identifier id = Identifier.generateId("__T");
                 AST.Type t = new AST.TypeIdentifier(loc, id);
-                parameters.push(new AST.Parameter(0, t, token.ident, token.loc, null, null));
+                parameters.push(new AST.Parameter(0, t, makeIdentifierAtLoc(token.ident, token.loc), null, null));
 
                 tpl = new AST.TemplateParameters();
                 AST.TemplateParameter tp = new AST.TemplateTypeParameter(loc, id, null, null);
@@ -5312,7 +5318,7 @@ final class Parser(AST) : Lexer
             if (!ai)
                 error("no identifier for declarator `%s`", at.toChars());
         Larg:
-            auto p = new AST.Parameter(storageClass, at, ai, identloc, null, null);
+            auto p = new AST.Parameter(storageClass, at, makeIdentifierAtLoc(ai, identloc), null, null);
             parameters.push(p);
             if (token.value == TOK.comma)
             {
@@ -5861,7 +5867,7 @@ final class Parser(AST) : Lexer
                     AST.Type at = null; // infer parameter type
                     nextToken();
                     check(TOK.assign);
-                    param = new AST.Parameter(storageClass, at, ai, token.loc, null, null);
+                    param = new AST.Parameter(storageClass, at, makeIdentifierAtLoc(ai, token.loc), null, null);
                 }
                 else if (isDeclaration(&token, NeedDeclaratorId.must, TOK.assign, null))
                 {
@@ -5869,7 +5875,7 @@ final class Parser(AST) : Lexer
                     Loc identloc;
                     AST.Type at = parseType(&ai, &identloc);
                     check(TOK.assign);
-                    param = new AST.Parameter(storageClass, at, ai, identloc, null, null);
+                    param = new AST.Parameter(storageClass, at, makeIdentifierAtLoc(ai, identloc), null, null);
                 }
 
                 condition = parseExpression();

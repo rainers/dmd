@@ -4566,16 +4566,16 @@ extern (C++) final class AssertExp : UnaExp
  */
 extern (C++) final class DotIdExp : UnaExp
 {
-    Identifier ident;
+    IdentifierAtLoc ident;
+    ref const(Loc) identloc() { return identLoc(loc, ident); }
+
     bool noderef;       // true if the result of the expression will never be dereferenced
     bool wantsym;       // do not replace Symbol with its initializer during semantic()
-    Loc identloc;       // location of the identifier after the dot
 
     extern (D) this(const ref Loc loc, Expression e, Identifier ident, const ref Loc identloc)
     {
         super(loc, TOK.dotIdentifier, __traits(classInstanceSize, DotIdExp), e);
-        this.ident = ident;
-        this.identloc = identloc;
+        this.ident = makeIdentifierAtLoc(ident, identloc);
     }
 
     extern (D) this(const ref Loc loc, Expression e, Identifier ident)

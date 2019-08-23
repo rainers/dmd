@@ -320,6 +320,7 @@ version(NoBackend)
     {
         return IdentifierAtLoc(ident, loc);
     }
+    ref const(Loc) identLoc(const ref Loc loc, const ref IdentifierAtLoc idloc) { return idloc.loc; }
 }
 else
 {
@@ -328,4 +329,5 @@ else
     {
         return ident;
     }
+    ref const(Loc) identLoc(const ref Loc loc, const ref IdentifierAtLoc idloc) { return loc; }
 }
