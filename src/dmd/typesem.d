@@ -323,7 +323,7 @@ private void resolveHelper(TypeQualified mt, const ref Loc loc, Scope* sc, Dsymb
                         else
                             error(loc, "identifier `%s` of `%s` is not defined", id.toChars(), mt.toChars());
                     }
-                    *pe = new ErrorExp();
+                    *pe = new ErrorExp(null);
                     return;
                 }
             }
@@ -1998,7 +1998,7 @@ Expression getProperty(Type t, const ref Loc loc, Identifier ident, int flag)
         {
             d_uns64 sz = mt.size(loc);
             if (sz == SIZE_INVALID)
-                return new ErrorExp();
+                return new ErrorExp(null);
             e = new IntegerExp(loc, sz, Type.tsize_t);
         }
         else if (ident == Id.__xalignof)
@@ -2022,7 +2022,7 @@ Expression getProperty(Type t, const ref Loc loc, Identifier ident, int flag)
             if (!mt.deco)
             {
                 error(loc, "forward reference of type `%s.mangleof`", mt.toChars());
-                e = new ErrorExp();
+                e = new ErrorExp(null);
             }
             else
             {
@@ -2061,14 +2061,14 @@ Expression getProperty(Type t, const ref Loc loc, Identifier ident, int flag)
                         error(loc, "no property `%s` for type `%s`", ident.toChars(), mt.toChars());
                 }
             }
-            e = new ErrorExp();
+            e = new ErrorExp(null);
         }
         return e;
     }
 
     Expression visitError(TypeError)
     {
-        return new ErrorExp();
+        return new ErrorExp(null);
     }
 
     Expression visitBasic(TypeBasic mt)
@@ -2360,7 +2360,7 @@ Expression getProperty(Type t, const ref Loc loc, Identifier ident, int flag)
         else
         {
             error(loc, "no property `%s` for tuple `%s`", ident.toChars(), mt.toChars());
-            e = new ErrorExp();
+            e = new ErrorExp(null);
         }
         return e;
     }
@@ -3006,7 +3006,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
                     objc.checkOffsetof(e, ad);
                     ad.size(e.loc);
                     if (ad.sizeok != Sizeok.done)
-                        return new ErrorExp();
+                        return new ErrorExp(e);
                     return new IntegerExp(e.loc, v.offset, Type.tsize_t);
                 }
             }
@@ -3041,7 +3041,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
 
     Expression visitError(TypeError)
     {
-        return new ErrorExp();
+        return new ErrorExp(e);
     }
 
     Expression visitBasic(TypeBasic mt)
@@ -3220,12 +3220,12 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
             if (e.op == TOK.type)
             {
                 e.error("`%s` is not an expression", e.toChars());
-                return new ErrorExp();
+                return new ErrorExp(e);
             }
             else if (!(flag & DotExpFlag.noDeref) && sc.func && !sc.intypeof && sc.func.setUnsafe() && !(sc.flags & SCOPE.debug_))
             {
                 e.error("`%s.ptr` cannot be used in `@safe` code, use `&%s[0]` instead", e.toChars(), e.toChars());
-                return new ErrorExp();
+                return new ErrorExp(e);
             }
             e = e.castTo(sc, e.type.nextOf().pointerTo());
         }
@@ -3247,7 +3247,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
         if (e.op == TOK.type && (ident == Id.length || ident == Id.ptr))
         {
             e.error("`%s` is not an expression", e.toChars());
-            return new ErrorExp();
+            return new ErrorExp(e);
         }
         if (ident == Id.length)
         {
@@ -3262,7 +3262,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
             }
             if (checkNonAssignmentArrayOp(e))
             {
-                return new ErrorExp();
+                return new ErrorExp(e);
             }
             e = new ArrayLengthExp(e.loc, e);
             e.type = Type.tsize_t;
@@ -3273,7 +3273,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
             if (!(flag & DotExpFlag.noDeref) && sc.func && !sc.intypeof && sc.func.setUnsafe() && !(sc.flags & SCOPE.debug_))
             {
                 e.error("`%s.ptr` cannot be used in `@safe` code, use `&%s[0]` instead", e.toChars(), e.toChars());
-                return new ErrorExp();
+                return new ErrorExp(e);
             }
             return e.castTo(sc, mt.next.pointerTo());
         }
@@ -3339,7 +3339,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
             if (!(flag & DotExpFlag.noDeref) && sc.func && !sc.intypeof && sc.func.setUnsafe() && !(sc.flags & SCOPE.debug_))
             {
                 e.error("`%s.funcptr` cannot be used in `@safe` code", e.toChars());
-                return new ErrorExp();
+                return new ErrorExp(e);
             }
             e = new DelegateFuncptrExp(e.loc, e);
             e = e.expressionSemantic(sc);
@@ -3374,7 +3374,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
         if (++nest > 500)
         {
             .error(e.loc, "cannot resolve identifier `%s`", ident.toChars());
-            return returnExp(gagError ? null : new ErrorExp());
+            return returnExp(gagError ? null : new ErrorExp(e));
         }
 
 
@@ -3422,7 +3422,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
                 if (!td)
                 {
                     fd.error("must be a template `opDispatch(string s)`, not a %s", fd.kind());
-                    return returnExp(new ErrorExp());
+                    return returnExp(new ErrorExp(e));
                 }
                 auto se = new StringExp(e.loc, cast(char*)ident.toChars());
                 auto tiargs = new Objects();
@@ -3560,11 +3560,11 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
                     e.error("circular reference to %s `%s`", v.kind(), v.toPrettyChars());
                 else
                     e.error("forward reference to %s `%s`", v.kind(), v.toPrettyChars());
-                return new ErrorExp();
+                return new ErrorExp(e);
             }
             if (v.type.ty == Terror)
             {
-                return new ErrorExp();
+                return new ErrorExp(e);
             }
 
             if ((v.storage_class & STC.manifest) && v._init)
@@ -3572,7 +3572,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
                 if (v.inuse)
                 {
                     e.error("circular initialization of %s `%s`", v.kind(), v.toPrettyChars());
-                    return new ErrorExp();
+                    return new ErrorExp(e);
                 }
                 checkAccess(e.loc, sc, null, v);
                 Expression ve = new VarExp(e.loc, v);
@@ -3615,7 +3615,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
                 ti.dsymbolSemantic(sc);
                 if (!ti.inst || ti.errors) // if template failed to expand
                 {
-                    return new ErrorExp();
+                    return new ErrorExp(e);
                 }
             }
             s = ti.inst.toAlias();
@@ -3648,7 +3648,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
         if (!d)
         {
             e.error("`%s.%s` is not a declaration", e.toChars(), ident.toChars());
-            return new ErrorExp();
+            return new ErrorExp(e);
         }
 
         if (e.op == TOK.type)
@@ -3720,7 +3720,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
             else if (!(flag & 1))
             {
                 mt.sym.error("is forward referenced when looking for `%s`", ident.toChars());
-                e = new ErrorExp();
+                e = new ErrorExp(e);
             }
             else
                 e = null;
@@ -3745,7 +3745,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
                     e.error("no property `%s` for type `%s`", ident.toChars(),
                         mt.toChars());
 
-                return new ErrorExp();
+                return new ErrorExp(e);
             }
             return res;
         }
@@ -3848,7 +3848,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
                 if (!Type.typeinfoclass)
                 {
                     error(e.loc, "`object.TypeInfo_Class` could not be found, but is implicitly used");
-                    return new ErrorExp();
+                    return new ErrorExp(e);
                 }
 
                 Type t = Type.typeinfoclass.type;
@@ -3990,11 +3990,11 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
                     e.error("circular reference to %s `%s`", v.kind(), v.toPrettyChars());
                 else
                     e.error("forward reference to %s `%s`", v.kind(), v.toPrettyChars());
-                return new ErrorExp();
+                return new ErrorExp(e);
             }
             if (v.type.ty == Terror)
             {
-                return new ErrorExp();
+                return new ErrorExp(e);
             }
 
             if ((v.storage_class & STC.manifest) && v._init)
@@ -4002,7 +4002,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
                 if (v.inuse)
                 {
                     e.error("circular initialization of %s `%s`", v.kind(), v.toPrettyChars());
-                    return new ErrorExp();
+                    return new ErrorExp(e);
                 }
                 checkAccess(e.loc, sc, null, v);
                 Expression ve = new VarExp(e.loc, v);
@@ -4043,7 +4043,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
                 ti.dsymbolSemantic(sc);
                 if (!ti.inst || ti.errors) // if template failed to expand
                 {
-                    return new ErrorExp();
+                    return new ErrorExp(e);
                 }
             }
             s = ti.inst.toAlias();
@@ -4077,7 +4077,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
         if (!d)
         {
             e.error("`%s.%s` is not a declaration", e.toChars(), ident.toChars());
-            return new ErrorExp();
+            return new ErrorExp(e);
         }
 
         if (e.op == TOK.type)
@@ -4278,7 +4278,7 @@ Expression defaultInit(Type mt, const ref Loc loc)
 
         case Tvoid:
             error(loc, "`void` does not have a default initializer");
-            return new ErrorExp();
+            return new ErrorExp(null);
 
         default:
             break;
@@ -4312,7 +4312,7 @@ Expression defaultInit(Type mt, const ref Loc loc)
     Expression visitFunction(TypeFunction mt)
     {
         error(loc, "`function` does not have a default initializer");
-        return new ErrorExp();
+        return new ErrorExp(null);
     }
 
     Expression visitStruct(TypeStruct mt)
@@ -4374,7 +4374,7 @@ Expression defaultInit(Type mt, const ref Loc loc)
 
         case Tnull:     return new NullExp(Loc.initial, Type.tnull);
 
-        case Terror:    return new ErrorExp();
+        case Terror:    return new ErrorExp(null);
 
         case Tarray:
         case Taarray:

@@ -2736,7 +2736,7 @@ extern (C++) final class TypeError : Type
 
     override Expression defaultInitLiteral(const ref Loc loc)
     {
-        return new ErrorExp();
+        return new ErrorExp(null);
     }
 
     override void accept(Visitor v)
@@ -5502,7 +5502,7 @@ extern (C++) final class TypeStruct : Type
         }
         sym.size(loc);
         if (sym.sizeok != Sizeok.done)
-            return new ErrorExp();
+            return new ErrorExp(null);
 
         auto structelems = new Expressions(sym.nonHiddenFields());
         uint offset = 0;
@@ -5513,7 +5513,7 @@ extern (C++) final class TypeStruct : Type
             if (vd.inuse)
             {
                 error(loc, "circular reference to `%s`", vd.toPrettyChars());
-                return new ErrorExp();
+                return new ErrorExp(null);
             }
             if (vd.offset < offset || vd.type.size() == 0)
                 e = null;

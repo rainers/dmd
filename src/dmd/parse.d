@@ -2412,7 +2412,7 @@ final class Parser(AST) : Lexer
         else
         {
             error("(expression) expected following `static if`");
-            exp = new AST.ErrorExp();
+            exp = new AST.ErrorExp(null);
         }
         condition = new AST.StaticIfCondition(loc, exp);
         return condition;
@@ -6225,6 +6225,7 @@ final class Parser(AST) : Lexer
                     AST.Type t;
                     Identifier id;
                     const catchloc = token.loc;
+                    Loc idloc;
 
                     nextToken();
                     if (token.value == TOK.leftCurly || token.value != TOK.leftParentheses)
@@ -6236,11 +6237,11 @@ final class Parser(AST) : Lexer
                     {
                         check(TOK.leftParentheses);
                         id = null;
-                        t = parseType(&id);
+                        t = parseType(&id, &idloc);
                         check(TOK.rightParentheses);
                     }
                     handler = parseStatement(0);
-                    c = new AST.Catch(catchloc, t, id, handler);
+                    c = new AST.Catch(catchloc, t, makeIdentifierAtLoc(id, idloc), handler);
                     if (!catches)
                         catches = new AST.Catches();
                     catches.push(c);

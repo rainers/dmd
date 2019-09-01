@@ -194,7 +194,7 @@ extern (C++) final class EnumDeclaration : ScopeDsymbol
 
         Expression errorReturn()
         {
-            *pval = new ErrorExp();
+            *pval = new ErrorExp(null);
             return *pval;
         }
 
@@ -288,7 +288,7 @@ extern (C++) final class EnumDeclaration : ScopeDsymbol
     Expression getDefaultValue(const ref Loc loc)
     {
         Expression handleErrors(){
-            defaultval = new ErrorExp();
+            defaultval = new ErrorExp(null);
             return defaultval;
         }
         //printf("EnumDeclaration::getDefaultValue() %p %s\n", this, toChars());
@@ -429,7 +429,7 @@ extern (C++) final class EnumMember : VarDeclaration
     {
         dsymbolSemantic(this, sc);
         if (errors)
-            return new ErrorExp();
+            return new ErrorExp(null);
         checkDisabled(loc, sc);
 
         if (depdecl && !depdecl._scope)
@@ -437,7 +437,7 @@ extern (C++) final class EnumMember : VarDeclaration
         checkDeprecated(loc, sc);
 
         if (errors)
-            return new ErrorExp();
+            return new ErrorExp(null);
         Expression e = new VarExp(loc, this);
         return e.expressionSemantic(sc);
     }

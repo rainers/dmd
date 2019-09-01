@@ -223,7 +223,7 @@ Expression checkGC(Scope* sc, Expression e)
         scope NOGCVisitor gcv = new NOGCVisitor(f);
         walkPostorder(e, gcv);
         if (gcv.err)
-            return new ErrorExp();
+            return new ErrorExp(e);
     }
     return e;
 }

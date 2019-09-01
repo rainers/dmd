@@ -909,7 +909,7 @@ extern (C++) abstract class Expression : ASTNode
         else
             error("`%s` is not an lvalue and cannot be modified", e.toChars());
 
-        return new ErrorExp();
+        return new ErrorExp(e);
     }
 
     Expression modifiableLvalue(Scope* sc, Expression e)
@@ -932,18 +932,18 @@ extern (C++) abstract class Expression : ASTNode
                         if (!ff.type.isMutable)
                         {
                             error("cannot modify `%s` in `%s` function", toChars(), MODtoChars(type.mod));
-                            return new ErrorExp();
+                            return new ErrorExp(e);
                         }
                     }
                 }
                 error("cannot modify `%s` expression `%s`", MODtoChars(type.mod), toChars());
-                return new ErrorExp();
+                return new ErrorExp(e);
             }
             else if (!type.isAssignable())
             {
                 error("cannot modify struct instance `%s` of type `%s` because it contains `const` or `immutable` members",
                     toChars(), type.toChars());
-                return new ErrorExp();
+                return new ErrorExp(e);
             }
         }
         return toLvalue(sc, e);
@@ -1518,7 +1518,7 @@ extern (C++) abstract class Expression : ASTNode
         {
             if (tb != Type.terror)
                 error("expression `%s` of type `%s` does not have a boolean value", toChars(), t.toChars());
-            return new ErrorExp();
+            return new ErrorExp(e);
         }
         return e;
     }
@@ -1826,7 +1826,7 @@ extern (C++) final class IntegerExp : Expression
         else if (!loc.isValid())
             loc = e.loc;
         e.error("cannot modify constant `%s`", e.toChars());
-        return new ErrorExp();
+        return new ErrorExp(e);
     }
 
     override void accept(Visitor v)
@@ -1934,7 +1934,7 @@ extern (C++) final class IntegerExp : Expression
  */
 extern (C++) final class ErrorExp : Expression
 {
-    extern (D) this(Expression exp = null)
+    extern (D) this(Expression exp /*= null*/)
     {
         if (global.errors == 0 && global.gaggedErrors == 0)
         {
@@ -2657,7 +2657,7 @@ extern (C++) final class StringExp : Expression
     override Expression modifiableLvalue(Scope* sc, Expression e)
     {
         error("cannot modify string literal `%s`", toChars());
-        return new ErrorExp();
+        return new ErrorExp(e);
     }
 
     uint charAt(uinteger_t i) const
@@ -3569,22 +3569,22 @@ extern (C++) final class VarExp : SymbolExp
         if (var.storage_class & STC.manifest)
         {
             error("manifest constant `%s` cannot be modified", var.toChars());
-            return new ErrorExp();
+            return new ErrorExp(e);
         }
         if (var.storage_class & STC.lazy_)
         {
             error("lazy variable `%s` cannot be modified", var.toChars());
-            return new ErrorExp();
+            return new ErrorExp(e);
         }
         if (var.ident == Id.ctfe)
         {
             error("cannot modify compiler-generated variable `__ctfe`");
-            return new ErrorExp();
+            return new ErrorExp(e);
         }
         if (var.ident == Id.dollar) // https://issues.dlang.org/show_bug.cgi?id=13574
         {
             error("cannot modify operator `$`");
-            return new ErrorExp();
+            return new ErrorExp(e);
         }
         return this;
     }
@@ -3595,7 +3595,7 @@ extern (C++) final class VarExp : SymbolExp
         if (var.storage_class & STC.manifest)
         {
             error("cannot modify manifest constant `%s`", toChars());
-            return new ErrorExp();
+            return new ErrorExp(e);
         }
         // See if this expression is a modifiable lvalue (i.e. not const)
         return Expression.modifiableLvalue(sc, e);
@@ -4127,7 +4127,7 @@ extern (C++) abstract class UnaExp : Expression
         {
             error("incompatible type for `%s(%s)`: `%s`", Token.toChars(op), e1.toChars(), e1.type.toChars());
         }
-        return new ErrorExp();
+        return new ErrorExp(this);
     }
 
     /*********************
@@ -4213,7 +4213,7 @@ extern (C++) abstract class BinExp : Expression
             error("incompatible types for `(%s) %s (%s)`: `%s` and `%s`",
                 e1.toChars(), Token.toChars(thisOp), e2.toChars(), ts[0], ts[1]);
         }
-        return new ErrorExp();
+        return new ErrorExp(this);
     }
 
     extern (D) final Expression checkOpAssignTypes(Scope* sc)
@@ -4244,17 +4244,17 @@ extern (C++) abstract class BinExp : Expression
             if (t1.isreal() && t2.iscomplex())
             {
                 error("`%s %s %s` is undefined. Did you mean `%s %s %s.re`?", t1.toChars(), opstr, t2.toChars(), t1.toChars(), opstr, t2.toChars());
-                return new ErrorExp();
+                return new ErrorExp(this);
             }
             else if (t1.isimaginary() && t2.iscomplex())
             {
                 error("`%s %s %s` is undefined. Did you mean `%s %s %s.im`?", t1.toChars(), opstr, t2.toChars(), t1.toChars(), opstr, t2.toChars());
-                return new ErrorExp();
+                return new ErrorExp(this);
             }
             else if ((t1.isreal() || t1.isimaginary()) && t2.isimaginary())
             {
                 error("`%s %s %s` is an undefined operation", t1.toChars(), opstr, t2.toChars());
-                return new ErrorExp();
+                return new ErrorExp(this);
             }
         }
 
@@ -4266,7 +4266,7 @@ extern (C++) abstract class BinExp : Expression
             if ((t1.isreal() && (t2.isimaginary() || t2.iscomplex())) || (t1.isimaginary() && (t2.isreal() || t2.iscomplex())))
             {
                 error("`%s %s %s` is undefined (result is complex)", t1.toChars(), Token.toChars(op), t2.toChars());
-                return new ErrorExp();
+                return new ErrorExp(this);
             }
             if (type.isreal() || type.isimaginary())
             {
@@ -4357,7 +4357,7 @@ extern (C++) abstract class BinExp : Expression
             if (t2.iscomplex())
             {
                 error("cannot perform modulo complex arithmetic");
-                return new ErrorExp();
+                return new ErrorExp(this);
             }
         }
         return this;
@@ -5192,7 +5192,7 @@ extern (C++) final class DeleteExp : UnaExp
     override Expression toBoolean(Scope* sc)
     {
         error("`delete` does not give a boolean result");
-        return new ErrorExp();
+        return new ErrorExp(this);
     }
 
     override void accept(Visitor v)
@@ -5608,7 +5608,7 @@ extern (C++) final class DelegatePtrExp : UnaExp
         if (sc.func.setUnsafe())
         {
             error("cannot modify delegate pointer in `@safe` code `%s`", toChars());
-            return new ErrorExp();
+            return new ErrorExp(this);
         }
         return Expression.modifiableLvalue(sc, e);
     }
@@ -5644,7 +5644,7 @@ extern (C++) final class DelegateFuncptrExp : UnaExp
         if (sc.func.setUnsafe())
         {
             error("cannot modify delegate function pointer in `@safe` code `%s`", toChars());
-            return new ErrorExp();
+            return new ErrorExp(this);
         }
         return Expression.modifiableLvalue(sc, e);
     }
@@ -5717,7 +5717,7 @@ extern (C++) final class IndexExp : BinExp
             if (t2b.ty == Tarray && t2b.nextOf().isMutable())
             {
                 error("associative arrays can only be assigned values with immutable keys, not `%s`", e2.type.toChars());
-                return new ErrorExp();
+                return new ErrorExp(this);
             }
             modifiable = true;
 
@@ -5828,7 +5828,7 @@ extern (C++) class AssignExp : BinExp
         // are usually mistakes.
 
         error("assignment cannot be used as a condition, perhaps `==` was meant?");
-        return new ErrorExp();
+        return new ErrorExp(this);
     }
 
     override void accept(Visitor v)

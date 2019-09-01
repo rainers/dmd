@@ -124,9 +124,12 @@ extern (C++) final class VoidInitializer : Initializer
  */
 extern (C++) final class ErrorInitializer : Initializer
 {
-    extern (D) this()
+    Initializer original;
+
+    extern (D) this(Initializer original)
     {
         super(Loc.initial, InitKind.error);
+        this.original = original;
     }
 
     override void accept(Visitor v)

@@ -324,7 +324,7 @@ public Statement gccAsmSemantic(GccAsmStatement s, Scope *sc)
             if (i < s.outputargs)
                 e = e.modifiableLvalue(sc, null);
             else if (e.checkValue())
-                e = new ErrorExp();
+                e = new ErrorExp(e);
             (*s.args)[i] = e;
 
             e = (*s.constraints)[i];

@@ -992,7 +992,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
                 {
                     error(dsym.loc, "tuple of %d elements cannot be assigned to tuple of %d elements", cast(int)tedim, cast(int)nelems);
                     for (size_t u = tedim; u < nelems; u++) // fill dummy expression
-                        te.exps.push(new ErrorExp());
+                        te.exps.push(new ErrorExp(null));
                 }
             }
 
@@ -1341,7 +1341,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
                             if (!e)
                             {
                                 dsym.error("is not a static and cannot have static initializer");
-                                e = new ErrorExp();
+                                e = new ErrorExp(null);
                             }
                         }
                         ei = new ExpInitializer(dsym._init.loc, e);
@@ -1360,7 +1360,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
                     exp = exp.optimize(WANTvalue);
                     if (exp.op == TOK.error)
                     {
-                        dsym._init = new ErrorInitializer();
+                        dsym._init = new ErrorInitializer(ei);
                         ei = null;
                     }
                     else
@@ -1473,7 +1473,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
                     dsym.inuse--;
                     if (global.errors > errors)
                     {
-                        dsym._init = new ErrorInitializer();
+                        dsym._init = new ErrorInitializer(dsym._init);
                         dsym.type = Type.terror;
                     }
                 }
@@ -1918,7 +1918,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
             {
                 pd.error("string expected for mangled name");
                 pd.args.setDim(1);
-                (*pd.args)[0] = new ErrorExp(); // error recovery
+                (*pd.args)[0] = new ErrorExp(null); // error recovery
                 goto Ldecl;
             }
 

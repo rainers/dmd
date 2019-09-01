@@ -74,7 +74,7 @@ Expression toAssocArrayLiteral(ArrayInitializer ai)
     return e;
 Lno:
     error(ai.loc, "not an associative array initializer");
-    return new ErrorExp();
+    return new ErrorExp(null);
 }
 
 /******************************************
@@ -114,12 +114,12 @@ extern(C++) Initializer initializerSemantic(Initializer init, Scope* sc, Type t,
             if (sd.ctor)
             {
                 error(i.loc, "%s `%s` has constructors, cannot use `{ initializers }`, use `%s( initializers )` instead", sd.kind(), sd.toChars(), sd.toChars());
-                return new ErrorInitializer();
+                return new ErrorInitializer(i);
             }
             sd.size(i.loc);
             if (sd.sizeok != Sizeok.done)
             {
-                return new ErrorInitializer();
+                return new ErrorInitializer(i);
             }
             const nfields = sd.nonHiddenFields();
             //expandTuples for non-identity arguments?
@@ -142,7 +142,7 @@ extern(C++) Initializer initializerSemantic(Initializer init, Scope* sc, Type t,
                             error(initLoc, "`%s` is not a member of `%s`, did you mean %s `%s`?", id.toChars(), sd.toChars(), s.kind(), s.toChars());
                         else
                             error(initLoc, "`%s` is not a member of `%s`", id.toChars(), sd.toChars());
-                        return new ErrorInitializer();
+                        return new ErrorInitializer(i);
                     }
                     s = s.toAlias();
                     // Find out which field index it is
@@ -151,7 +151,7 @@ extern(C++) Initializer initializerSemantic(Initializer init, Scope* sc, Type t,
                         if (fieldi >= nfields)
                         {
                             error(i.loc, "`%s.%s` is not a per-instance initializable field", sd.toChars(), s.toChars());
-                            return new ErrorInitializer();
+                            return new ErrorInitializer(i);
                         }
                         if (s == sd.fields[fieldi])
                             break;
@@ -160,7 +160,7 @@ extern(C++) Initializer initializerSemantic(Initializer init, Scope* sc, Type t,
                 else if (fieldi >= nfields)
                 {
                     error(i.loc, "too many initializers for `%s`", sd.toChars());
-                    return new ErrorInitializer();
+                    return new ErrorInitializer(i);
                 }
                 VarDeclaration vd = sd.fields[fieldi];
                 if ((*elements)[fieldi])
@@ -205,12 +205,12 @@ extern(C++) Initializer initializerSemantic(Initializer init, Scope* sc, Type t,
             }
             if (errors)
             {
-                return new ErrorInitializer();
+                return new ErrorInitializer(i);
             }
             auto sle = new StructLiteralExp(i.loc, sd, elements, t);
             if (!sd.fill(i.loc, elements, false))
             {
-                return new ErrorInitializer();
+                return new ErrorInitializer(i);
             }
             sle.type = t;
             auto ie = new ExpInitializer(i.loc, sle);
@@ -230,7 +230,7 @@ extern(C++) Initializer initializerSemantic(Initializer init, Scope* sc, Type t,
             return ie.initializerSemantic(sc, t, needInterpret);
         }
         error(i.loc, "a struct is not a valid initializer for a `%s`", t.toChars());
-        return new ErrorInitializer();
+        return new ErrorInitializer(i);
     }
 
     Initializer visitArray(ArrayInitializer i)
@@ -360,7 +360,7 @@ extern(C++) Initializer initializerSemantic(Initializer init, Scope* sc, Type t,
             return i;
         }
     Lerr:
-        return new ErrorInitializer();
+        return new ErrorInitializer(i);
     }
 
     Initializer visitExp(ExpInitializer i)
@@ -374,7 +374,7 @@ extern(C++) Initializer initializerSemantic(Initializer init, Scope* sc, Type t,
             sc = sc.endCTFE();
         if (i.exp.op == TOK.error)
         {
-            return new ErrorInitializer();
+            return new ErrorInitializer(i);
         }
         uint olderrors = global.errors;
         if (needInterpret)
@@ -411,13 +411,13 @@ extern(C++) Initializer initializerSemantic(Initializer init, Scope* sc, Type t,
         if (i.exp.op == TOK.type)
         {
             i.exp.error("initializer must be an expression, not `%s`", i.exp.toChars());
-            return new ErrorInitializer();
+            return new ErrorInitializer(i);
         }
         // Make sure all pointers are constants
         if (needInterpret && hasNonConstPointers(i.exp))
         {
             i.exp.error("cannot use non-constant CTFE pointer in an initializer `%s`", i.exp.toChars());
-            return new ErrorInitializer();
+            return new ErrorInitializer(i);
         }
         Type tb = t.toBasetype();
         Type ti = i.exp.type.toBasetype();
@@ -498,7 +498,7 @@ extern(C++) Initializer initializerSemantic(Initializer init, Scope* sc, Type t,
                 if (dim1 != dim2)
                 {
                     i.exp.error("mismatched array lengths, %d and %d", cast(int)dim1, cast(int)dim2);
-                    i.exp = new ErrorExp();
+                    i.exp = new ErrorExp(i.exp);
                 }
             }
             i.exp = i.exp.implicitCastTo(sc, t);
@@ -539,7 +539,7 @@ Initializer inferType(Initializer init, Scope* sc)
     Initializer visitVoid(VoidInitializer i)
     {
         error(i.loc, "cannot infer type from void initializer");
-        return new ErrorInitializer();
+        return new ErrorInitializer(i);
     }
 
     Initializer visitError(ErrorInitializer i)
@@ -550,7 +550,7 @@ Initializer inferType(Initializer init, Scope* sc)
     Initializer visitStruct(StructInitializer i)
     {
         error(i.loc, "cannot infer type from struct initializer");
-        return new ErrorInitializer();
+        return new ErrorInitializer(i);
     }
 
     Initializer visitArray(ArrayInitializer init)
@@ -616,7 +616,7 @@ Initializer inferType(Initializer init, Scope* sc)
         {
             error(init.loc, "cannot infer type from array initializer");
         }
-        return new ErrorInitializer();
+        return new ErrorInitializer(init);
     }
 
     Initializer visitExp(ExpInitializer init)
@@ -637,7 +637,7 @@ Initializer inferType(Initializer init, Scope* sc)
                 se.error("cannot infer type from %s `%s`, possible circular dependency", se.sds.kind(), se.toChars());
             else
                 se.error("cannot infer type from %s `%s`", se.sds.kind(), se.toChars());
-            return new ErrorInitializer();
+            return new ErrorInitializer(init);
         }
 
         // Give error for overloaded function addresses
@@ -646,12 +646,12 @@ Initializer inferType(Initializer init, Scope* sc)
         {
             if (f.checkForwardRef(init.loc))
             {
-                return new ErrorInitializer();
+                return new ErrorInitializer(init);
             }
             if (hasOverloads && !f.isUnique())
             {
                 init.exp.error("cannot infer type from overloaded function symbol `%s`", init.exp.toChars());
-                return new ErrorInitializer();
+                return new ErrorInitializer(init);
             }
         }
         if (init.exp.op == TOK.address)
@@ -660,16 +660,16 @@ Initializer inferType(Initializer init, Scope* sc)
             if (ae.e1.op == TOK.overloadSet)
             {
                 init.exp.error("cannot infer type from overloaded function symbol `%s`", init.exp.toChars());
-                return new ErrorInitializer();
+                return new ErrorInitializer(init);
             }
         }
         if (init.exp.op == TOK.error)
         {
-            return new ErrorInitializer();
+            return new ErrorInitializer(init);
         }
         if (!init.exp.type)
         {
-            return new ErrorInitializer();
+            return new ErrorInitializer(init);
         }
         return init;
     }
@@ -699,9 +699,12 @@ extern (C++) Expression initializerToExpression(Initializer init, Type itype = n
         return null;
     }
 
-    Expression visitError(ErrorInitializer)
+    Expression visitError(ErrorInitializer ei)
     {
-        return new ErrorExp();
+        if (ei.original)
+            if (auto expi = ei.original.isExpInitializer)
+                return new ErrorExp(expi.exp);
+        return new ErrorExp(null);
     }
 
     /***************************************
@@ -731,7 +734,7 @@ extern (C++) Expression initializerToExpression(Initializer init, Type itype = n
         {
             if (init.type == Type.terror)
             {
-                return new ErrorExp();
+                return new ErrorExp(null);
             }
             t = init.type.toBasetype();
             switch (t.ty)

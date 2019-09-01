@@ -62,7 +62,7 @@ public Expression ctfeInterpret(Expression e)
         case TOK.null_:
         case TOK.string_:
             if (e.type.ty == Terror)
-                return new ErrorExp();
+                return new ErrorExp(e);
             goto case TOK.error;
 
         case TOK.error:
@@ -75,7 +75,7 @@ public Expression ctfeInterpret(Expression e)
     assert(e.type); // https://issues.dlang.org/show_bug.cgi?id=14642
     //assert(e.type.ty != Terror);    // FIXME
     if (e.type.ty == Terror)
-        return new ErrorExp();
+        return new ErrorExp(e);
 
     // This code is outside a function, but still needs to be compiled
     // (there are compiler-generated temporary variables such as __dollar).
@@ -89,7 +89,7 @@ public Expression ctfeInterpret(Expression e)
     if (!CTFEExp.isCantExp(result))
         result = scrubReturnValue(e.loc, result);
     if (CTFEExp.isCantExp(result))
-        result = new ErrorExp();
+        result = new ErrorExp(e);
 
     return result;
 }
@@ -6738,7 +6738,7 @@ private Expression scrubReturnValue(const ref Loc loc, Expression e)
     else if (auto vie = e.isVoidInitExp())
     {
         error(loc, "uninitialized variable `%s` cannot be returned from CTFE", vie.var.toChars());
-        return new ErrorExp();
+        return new ErrorExp(e);
     }
 
     e = resolveSlice(e);

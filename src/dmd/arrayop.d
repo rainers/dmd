@@ -115,7 +115,7 @@ Expression arrayOp(BinExp e, Scope* sc)
     if (tbn.ty == Tvoid)
     {
         e.error("cannot perform array operations on `void[]` arrays");
-        return new ErrorExp();
+        return new ErrorExp(e);
     }
     if (!isArrayOpValid(e))
         return arrayOpInvalidError(e);
@@ -139,7 +139,7 @@ Expression arrayOp(BinExp e, Scope* sc)
 
     auto fd = resolveFuncCall(e.loc, sc, arrayOp, tiargs, null, args, FuncResolveFlag.standard);
     if (!fd || fd.errors)
-        return new ErrorExp();
+        return new ErrorExp(e);
     return new CallExp(e.loc, new VarExp(e.loc, fd, false), args).expressionSemantic(sc);
 }
 
@@ -155,7 +155,7 @@ Expression arrayOp(BinAssignExp e, Scope* sc)
     if (tn && (!tn.isMutable() || !tn.isAssignable()))
     {
         e.error("slice `%s` is not mutable", e.e1.toChars());
-        return new ErrorExp();
+        return new ErrorExp(e);
     }
     if (e.e1.op == TOK.arrayLiteral)
     {
@@ -342,5 +342,5 @@ bool isArrayOpOperand(Expression e)
 ErrorExp arrayOpInvalidError(Expression e)
 {
     e.error("invalid array operation `%s` (possible missing [])", e.toChars());
-    return new ErrorExp();
+    return new ErrorExp(e);
 }

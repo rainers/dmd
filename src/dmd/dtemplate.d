@@ -5417,7 +5417,7 @@ extern (C++) final class TemplateValueParameter : TemplateParameter
             e = e.resolveLoc(instLoc, sc); // use the instantiated loc
             e = e.optimize(WANTvalue);
             if (global.errors != olderrs)
-                e = new ErrorExp();
+                e = new ErrorExp(e);
         }
         return e;
     }
@@ -6738,11 +6738,11 @@ extern (C++) class TemplateInstance : ScopeDsymbol
                     else if (definitelyValueParameter(ea))
                     {
                         if (ea.checkValue()) // check void expression
-                            ea = new ErrorExp();
+                            ea = new ErrorExp(ea);
                         uint olderrs = global.errors;
                         ea = ea.ctfeInterpret();
                         if (global.errors != olderrs)
-                            ea = new ErrorExp();
+                            ea = new ErrorExp(ea);
                     }
                 }
                 //printf("-[%d] ea = %s %s\n", j, Token.toChars(ea.op), ea.toChars());

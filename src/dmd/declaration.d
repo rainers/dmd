@@ -1517,7 +1517,7 @@ extern (C++) class VarDeclaration : Declaration
         if (!e)
         {
             .error(loc, "cannot make expression out of initializer for `%s`", toChars());
-            return new ErrorExp();
+            return new ErrorExp(e);
         }
 
         e = e.copy();

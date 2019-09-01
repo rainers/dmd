@@ -1327,7 +1327,7 @@ private extern(C++) final class Semantic3Visitor : Visitor
                 auto handler = new CompoundStatement(ctor.loc, ss, ts);
 
                 auto catches = new Catches();
-                auto ctch = new Catch(ctor.loc, getException(), id, handler);
+                auto ctch = new Catch(ctor.loc, getException(), makeIdentifierAtLoc(id), handler);
                 catches.push(ctch);
 
                 ctor.fbody = new TryCatchStatement(ctor.loc, ctor.fbody, catches);

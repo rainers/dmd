@@ -98,7 +98,7 @@ public Expression inlineCopy(Expression e, Scope* sc)
     if (cost >= COST_MAX)
     {
         e.error("cannot inline default argument `%s`", e.toChars());
-        return new ErrorExp();
+        return new ErrorExp(e);
     }
     scope ids = new InlineDoState(sc.parent, null);
     return doInlineAs!Expression(e, ids);

@@ -163,7 +163,7 @@ extern (C++) final class StaticForeach : RootObject
         }
         else
         {
-            aggrfe.aggr = new ErrorExp();
+            aggrfe.aggr = new ErrorExp(el);
         }
     }
 
