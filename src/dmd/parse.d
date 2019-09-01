@@ -6717,7 +6717,11 @@ final class Parser(AST) : Lexer
     private void check(Loc loc, TOK value)
     {
         if (token.value != value)
+        {
             error(loc, "found `%s` when expecting `%s`", token.toChars(), Token.toChars(value));
+            if (token.value == TOK.rightCurly)
+                return;
+        }
         nextToken();
     }
 
@@ -6729,7 +6733,11 @@ final class Parser(AST) : Lexer
     private void check(TOK value, const(char)* string)
     {
         if (token.value != value)
+        {
             error("found `%s` when expecting `%s` following %s", token.toChars(), Token.toChars(value), string);
+            if (token.value == TOK.rightCurly)
+                return;
+        }
         nextToken();
     }
 
@@ -8515,8 +8523,9 @@ final class Parser(AST) : Lexer
                     e = parseNewExp(e);
                     continue;
                 }
+                e = new AST.DotExp(loc, e, new AST.ErrorExp(null));
                 error("identifier or `new` expected following `.`, not `%s`", token.toChars());
-                break;
+                continue;
 
             case TOK.plusPlus:
                 e = new AST.PostExp(TOK.plusPlus, loc, e);

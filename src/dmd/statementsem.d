@@ -421,10 +421,12 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
         //printf("ScopeStatement::semantic(sc = %p)\n", sc);
         if (ss.statement)
         {
-            ScopeDsymbol sym = new ScopeDsymbol();
-            sym.parent = sc.scopesym;
-            sym.endlinnum = ss.endloc.linnum;
-            sc = sc.push(sym);
+            if (!ss.scopesym)
+                ss.scopesym = new ScopeDsymbol();
+            ss.scopesym.parent = sc.scopesym;
+            ss.scopesym.endlinnum = ss.endloc.linnum;
+            sc = sc.push(ss.scopesym);
+            sc.setNoFree();
 
             version(NoBackend) {} else
             {

@@ -563,6 +563,8 @@ private extern(C++) final class Semantic3Visitor : Visitor
                 sym.parent = sc2.scopesym;
                 sym.endlinnum = funcdecl.endloc.linnum;
                 sc2 = sc2.push(sym);
+                funcdecl.scopesym = sym;
+                sc2.setNoFree();
 
                 auto ad2 = funcdecl.isMemberLocal();
 

@@ -4629,8 +4629,6 @@ extern (C++) final class DotVarExp : UnaExp
 
     extern (D) this(const ref Loc loc, Expression e, Declaration var, bool hasOverloads = true)
     {
-        if (var.ident.toString() == "message")
-            var = var;
         if (var.isVarDeclaration())
             hasOverloads = false;
 
