@@ -2730,14 +2730,20 @@ bool stcToBuffer(OutBuffer* buf, StorageClass stc)
  */
 string stcToString(ref StorageClass stc)
 {
-    struct SCstring
+    static struct SCstring
     {
+        this(StorageClass stc_, TOK tok_, string id_ = null)
+        {
+            stc = stc_;
+            tok = tok_;
+            id = id ? id : Token.toString(tok_);
+        }
         StorageClass stc;
         TOK tok;
         string id;
     }
 
-    __gshared SCstring* table =
+    static const SCstring* table =
     [
         SCstring(STC.auto_, TOK.auto_),
         SCstring(STC.scope_, TOK.scope_),
@@ -2761,7 +2767,7 @@ string stcToString(ref StorageClass stc)
         SCstring(STC.pure_, TOK.pure_),
         SCstring(STC.ref_, TOK.ref_),
         SCstring(STC.return_, TOK.return_),
-        SCstring(STC.tls),
+        SCstring(STC.tls, TOK.reserved, "__thread"), // TOKtls was removed
         SCstring(STC.gshared, TOK.gshared),
         SCstring(STC.nogc, TOK.at, "@nogc"),
         SCstring(STC.property, TOK.at, "@property"),
@@ -2780,11 +2786,6 @@ string stcToString(ref StorageClass stc)
         if (stc & tbl)
         {
             stc &= ~tbl;
-            if (tbl == STC.tls) // TOKtls was removed
-                return "__thread";
-            TOK tok = table[i].tok;
-            if (tok != TOK.at && !table[i].id.length)
-                table[i].id = Token.toString(tok); // lazilly initialize table
             return table[i].id;
         }
     }

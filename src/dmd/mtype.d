@@ -825,7 +825,7 @@ extern (C++) abstract class Type : ASTNode
         stringtable._init(14_000);
 
         // Set basic types
-        __gshared TY* basetab =
+        static const TY* basetab =
         [
             Tvoid,
             Tint8,

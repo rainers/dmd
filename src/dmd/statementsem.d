@@ -1779,7 +1779,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                     /* Call:
                      *      _aApply(aggr, flde)
                      */
-                    __gshared const(char)** fntab =
+                    static const char** fntab =
                     [
                         "cc", "cw", "cd",
                         "wc", "cc", "wd",
