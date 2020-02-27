@@ -6568,7 +6568,7 @@ void aliasSemantic(AliasDeclaration ds, Scope* sc)
     // toAlias() will return aliasssym.
 
     uint errors = global.errors;
-    Type oldtype = ds.type;
+    ds.originalType = ds.type;
 
     // Ungag errors when not instantiated DeclDefs scope alias
     auto ungag = Ungag(global.gag);

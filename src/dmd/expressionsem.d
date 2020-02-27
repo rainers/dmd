@@ -7274,6 +7274,9 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             result = ex;
             return;
         }
+        version (LanguageServer)
+            if (auto ce = ex.isCastExp())
+                ce.parsedTo = exp.parsedTo;
 
         // Check for unsafe casts
         if (!sc.intypeof &&

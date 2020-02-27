@@ -2104,6 +2104,8 @@ extern (C++) final class Catch : RootObject
 {
     const Loc loc;
     Type type;
+    version (LanguageServer)
+        Type parsedType;
     IdentifierAtLoc ident;
     Statement handler;
 
@@ -2118,6 +2120,8 @@ extern (C++) final class Catch : RootObject
         //printf("Catch(%s, loc = %s)\n", id.toChars(), loc.toChars());
         this.loc = loc;
         this.type = type;
+        version (LanguageServer)
+            this.parsedType = type ? type.syntaxCopy() : null;
         this.ident = ident;
         this.handler = handler;
     }

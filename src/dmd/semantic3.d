@@ -435,6 +435,8 @@ private extern(C++) final class Semantic3Visitor : Visitor
                     }
                     Type vtype = fparam.type;
                     auto v = new VarDeclaration(identLoc(funcdecl.loc, fparam.ident), vtype, id, null);
+                    version (LanguageServer)
+                        v.parsedType = fparam.parsedType;
                     //printf("declaring parameter %s of type %s\n", v.toChars(), v.type.toChars());
                     stc |= STC.parameter;
                     if (f.parameterList.varargs == VarArg.typesafe && i + 1 == nparams)

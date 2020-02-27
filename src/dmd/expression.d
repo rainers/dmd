@@ -1654,6 +1654,11 @@ extern (C++) abstract class Expression : ASTNode
             if (!orig || orig == this)
                 return;
 
+            if (auto ie = orig.isIdentifierExp())
+                ie.resolvedTo = this;
+            else if (auto die = orig.isDotIdExp())
+                die.resolvedTo = this;
+
             if (!original)
             {
                 original = orig;
@@ -2272,6 +2277,8 @@ extern (C++) final class ComplexExp : Expression
 extern (C++) class IdentifierExp : Expression
 {
     Identifier ident;
+    version (LanguageServer)
+        Expression resolvedTo;
 
     extern (D) this(const ref Loc loc, Identifier ident)
     {
@@ -3572,6 +3579,8 @@ extern (C++) final class NewExp : Expression
     Expression thisexp;         // if !=null, 'this' for class being allocated
     Expressions* newargs;       // Array of Expression's to call new operator
     Type newtype;
+    version (LanguageServer)
+        Type parsedType;
     Expressions* arguments;     // Array of Expression's
 
     Expression argprefix;       // expression to be evaluated just before arguments[]
@@ -3586,6 +3595,8 @@ extern (C++) final class NewExp : Expression
         this.thisexp = thisexp;
         this.newargs = newargs;
         this.newtype = newtype;
+        version (LanguageServer)
+            this.parsedType = newtype ? newtype.syntaxCopy() : null;
         this.arguments = arguments;
     }
 
@@ -4233,6 +4244,8 @@ extern (C++) final class IsExp : Expression
     TemplateParameters* parameters;
     TOK tok;            // ':' or '=='
     TOK tok2;           // 'struct', 'union', etc.
+    version (LanguageServer)
+        Type originaltarg;  // before semantic
 
     extern (D) this(const ref Loc loc, Type targ, Identifier id, TOK tok, Type tspec, TOK tok2, TemplateParameters* parameters)
     {
@@ -4243,6 +4256,8 @@ extern (C++) final class IsExp : Expression
         this.tspec = tspec;
         this.tok2 = tok2;
         this.parameters = parameters;
+        version (LanguageServer)
+            this.originaltarg = targ;
     }
 
     override Expression syntaxCopy()
@@ -4751,6 +4766,9 @@ extern (C++) final class AssertExp : UnaExp
 extern (C++) final class DotIdExp : UnaExp
 {
     IdentifierAtLoc ident;
+    version (LanguageServer)
+        Expression resolvedTo;
+
     bool noderef;       // true if the result of the expression will never be dereferenced
     bool wantsym;       // do not replace Symbol with its initializer during semantic()
 
@@ -5393,12 +5411,16 @@ extern (C++) final class DeleteExp : UnaExp
 extern (C++) final class CastExp : UnaExp
 {
     Type to;                    // type to cast to
+    version (LanguageServer)
+        Type parsedTo;
     ubyte mod = cast(ubyte)~0;  // MODxxxxx
 
     extern (D) this(const ref Loc loc, Expression e, Type t)
     {
         super(loc, TOK.cast_, __traits(classInstanceSize, CastExp), e);
         this.to = t;
+        version (LanguageServer)
+            this.parsedTo = t ? t.syntaxCopy() : null;
     }
 
     /* For cast(const) and cast(immutable)

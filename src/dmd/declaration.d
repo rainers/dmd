@@ -1127,6 +1127,9 @@ extern (C++) class VarDeclaration : Declaration
 
     VarDeclarations* maybes;        // STC.maybescope variables that are assigned to this STC.maybescope variable
 
+    version (LanguageServer)
+        Type parsedType;                // before semantic analysis
+
     final extern (D) this(const ref Loc loc, Type type, Identifier ident, Initializer _init, StorageClass storage_class = STC.undefined_)
     in
     {
@@ -1147,6 +1150,8 @@ extern (C++) class VarDeclaration : Declaration
 
         assert(type || _init);
         this.type = type;
+        version (LanguageServer)
+            this.parsedType = type ? type.syntaxCopy() : null;
         this._init = _init;
         ctfeAdrOnStack = AdrOnStackNone;
         this.storage_class = storage_class;

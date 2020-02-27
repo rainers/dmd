@@ -227,6 +227,8 @@ private void resolveHelper(TypeQualified mt, Loc loc, Scope* sc, Dsymbol s, Dsym
     //printf("\t2: s = '%s' %p, kind = '%s'\n",s.toChars(), s, s.kind());
     for (size_t i = 0; i < mt.idents.dim; i++)
     {
+        version(LanguageServer)
+            mt.addParentScope(s);
         Loc idloc = identLoc(loc, mt.idents[i]);
         RootObject id = mt.idents[i];
         if (id.dyncast() == DYNCAST.expression ||
@@ -352,6 +354,8 @@ private void resolveHelper(TypeQualified mt, Loc loc, Scope* sc, Dsymbol s, Dsym
         s = sm.toAlias();
         loc = idloc;
     }
+    version(LanguageServer)
+        mt.addParentScope(s);
 
     if (auto em = s.isEnumMember())
     {
@@ -915,6 +919,8 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
                 // It was an expression -
                 // Rewrite as a static array
                 auto tsa = new TypeSArray(mtype.next, e);
+                version(LanguageServer)
+                    mtype.resolvedTo = tsa;
                 return tsa.typeSemantic(idxloc, sc);
             }
             else if (t)

@@ -5790,6 +5790,10 @@ extern (C++) class TemplateInstance : ScopeDsymbol
     // instance arguments [int*, char, 10*10]
     Objects* tiargs;
 
+    // same as tiargs after parsing
+    version(LanguageServer)
+        Objects* parsedArgs;
+
     // Array of Types/Expressions corresponding
     // to TemplateDeclaration.parameters
     // [int, char, 100]
@@ -5864,6 +5868,7 @@ extern (C++) class TemplateInstance : ScopeDsymbol
         }
         this.name = ident;
         this.tiargs = tiargs;
+        version(LanguageServer) copyTiToParsedArgs();
     }
 
     /*****************
@@ -5880,6 +5885,7 @@ extern (C++) class TemplateInstance : ScopeDsymbol
         this.name = td.ident;
         this.tiargs = tiargs;
         this.tempdecl = td;
+        version(LanguageServer) copyTiToParsedArgs();
         this.semantictiargsdone = true;
         this.havetempdecl = true;
         assert(tempdecl._scope);
@@ -5897,10 +5903,21 @@ extern (C++) class TemplateInstance : ScopeDsymbol
         return a;
     }
 
+    version(LanguageServer)
+    private final void copyTiToParsedArgs()
+    {
+        if (tiargs)
+        {
+            parsedArgs = new Objects();
+            parsedArgs.append(tiargs);
+        }
+    }
+
     override Dsymbol syntaxCopy(Dsymbol s)
     {
         TemplateInstance ti = s ? cast(TemplateInstance)s : Pool!TemplateInstance.make(loc, name, null);
         ti.tiargs = arraySyntaxCopy(tiargs);
+        version(LanguageServer) ti.copyTiToParsedArgs();
         TemplateDeclaration td;
         if (inst && tempdecl && (td = tempdecl.isTemplateDeclaration()) !is null)
             td.ScopeDsymbol.syntaxCopy(ti);

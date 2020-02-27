@@ -3868,6 +3868,8 @@ extern (C++) final class TypeAArray : TypeArray
 {
     Type index;     // key type
     Loc loc;
+    version(LanguageServer)
+        TypeSArray resolvedTo;
 
     extern (D) this(Type t, Type index)
     {
@@ -5444,6 +5446,10 @@ extern (C++) abstract class TypeQualified : Type
     //Objects idents;
     IdentifiersAtLoc idents; // slightly abusive, not necessarily identifier
 
+    version(LanguageServer)
+    {
+        Objects parentScopes; // scope in which the identifier was looked up (i.e. what the previous ident resolved to)
+    }
 
     final extern (D) this(TY ty, Loc loc)
     {
@@ -5503,6 +5509,13 @@ extern (C++) abstract class TypeQualified : Type
         idents.push(makeIdentifierAtLoc(cast(Identifier)e));
     }
 
+    version(LanguageServer)
+    {
+        final void addParentScope(RootObject sc)
+        {
+            parentScopes.push(sc);
+        }
+    }
     override d_uns64 size(const ref Loc loc)
     {
         error(this.loc, "size of type `%s` is not known", toChars());
@@ -5520,6 +5533,8 @@ extern (C++) abstract class TypeQualified : Type
 extern (C++) final class TypeIdentifier : TypeQualified
 {
     Identifier ident;
+    version(LanguageServer)
+        TypeIdentifier copiedFrom; // semntic analysis might be found here instead
 
     // The symbol representing this identifier, before alias resolution
     Dsymbol originalSymbol;
@@ -5538,6 +5553,8 @@ extern (C++) final class TypeIdentifier : TypeQualified
     override Type syntaxCopy()
     {
         auto t = Pool!TypeIdentifier.make(loc, ident);
+        version(LanguageServer)
+            t.copiedFrom = this;
         t.syntaxCopyHelper(this);
         t.mod = mod;
         return t;
@@ -5577,6 +5594,8 @@ extern (C++) final class TypeIdentifier : TypeQualified
 extern (C++) final class TypeInstance : TypeQualified
 {
     TemplateInstance tempinst;
+    version(LanguageServer)
+        TypeInstance copiedFrom; // semntic analysis might be found here instead
 
     extern (D) this(const ref Loc loc, TemplateInstance tempinst)
     {
@@ -5593,6 +5612,8 @@ extern (C++) final class TypeInstance : TypeQualified
     {
         //printf("TypeInstance::syntaxCopy() %s, %d\n", toChars(), idents.dim);
         auto t = new TypeInstance(loc, cast(TemplateInstance)tempinst.syntaxCopy(null));
+        version(LanguageServer)
+            t.copiedFrom = this;
         t.syntaxCopyHelper(this);
         t.mod = mod;
         return t;
@@ -6688,6 +6709,8 @@ extern (C++) final class Parameter : ASTNode
 
     StorageClass storageClass;
     Type type;
+    version (LanguageServer)
+        Type parsedType;
     IdentifierAtLoc ident;
     Expression defaultArg;
     UserAttributeDeclaration userAttribDecl; // user defined attributes
@@ -6695,6 +6718,8 @@ extern (C++) final class Parameter : ASTNode
     extern (D) this(StorageClass storageClass, Type type, IdentifierAtLoc ident, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
     {
         this.type = type;
+        version (LanguageServer)
+            this.parsedType = type && !type.deco ? type.syntaxCopy() : type;
         this.ident = ident;
         this.storageClass = storageClass;
         this.defaultArg = defaultArg;

@@ -4291,6 +4291,7 @@ void catchSemantic(Catch c, Scope* sc)
         // reference .object.Throwable
         c.type = getThrowable();
     }
+    auto originalType = c.type;
     c.type = c.type.typeSemantic(c.loc, sc);
     if (c.type == Type.terror)
         c.errors = true;
@@ -4343,6 +4344,7 @@ void catchSemantic(Catch c, Scope* sc)
             c.var = new VarDeclaration(identLoc(c.loc, ident), c.type, ident, null, stc);
             c.var.iscatchvar = true;
             c.var.dsymbolSemantic(sc);
+            c.var.originalType = originalType;
             sc.insert(c.var);
 
             if (global.params.ehnogc && stc & STC.scope_)

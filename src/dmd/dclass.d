@@ -46,6 +46,8 @@ enum Abstract : int
 extern (C++) struct BaseClass
 {
     Type type;          // (before semantic processing)
+    version (LanguageServer)
+        Type parsedType;
 
     ClassDeclaration sym;
     uint offset;        // 'this' pointer offset
@@ -61,6 +63,8 @@ extern (C++) struct BaseClass
     {
         //printf("BaseClass(this = %p, '%s')\n", this, type.toChars());
         this.type = type;
+        version (LanguageServer)
+            parsedType = type ? type.syntaxCopy() : null;
     }
 
     /****************************************
