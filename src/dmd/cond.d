@@ -191,11 +191,12 @@ extern (C++) final class StaticForeach : RootObject
      */
     private extern(D) Expression wrapAndCall(const ref Loc loc, Statement s)
     {
+        Loc lloc = loweredLoc(loc);
         auto tf = new TypeFunction(ParameterList(), null, LINK.default_, 0);
-        auto fd = new FuncLiteralDeclaration(loc, loc, tf, TOK.reserved, null);
+        auto fd = new FuncLiteralDeclaration(lloc, lloc, tf, TOK.reserved, null);
         fd.fbody = s;
-        auto fe = new FuncExp(loc, fd);
-        auto ce = new CallExp(loc, fe, new Expressions());
+        auto fe = new FuncExp(lloc, fd);
+        auto ce = new CallExp(lloc, fe, new Expressions());
         return ce;
     }
 

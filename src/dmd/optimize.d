@@ -452,7 +452,7 @@ Expression Expression_optimize(Expression e, int result, bool keepLvalue)
                 VarExp ve = cast(VarExp)e.e1;
                 if (!ve.var.isOut() && !ve.var.isRef() && !ve.var.isImportedSymbol())
                 {
-                    ret = new SymOffExp(e.loc, ve.var, 0, ve.hasOverloads);
+                    ret = new SymOffExp(ve.loc, ve.var, 0, ve.hasOverloads);
                     ret.type = e.type;
                     return;
                 }
@@ -484,7 +484,7 @@ Expression Expression_optimize(Expression e, int result, bool keepLvalue)
                             return error();
                         }
 
-                        ret = new SymOffExp(e.loc, ve.var, offset);
+                        ret = new SymOffExp(ve.loc, ve.var, offset);
                         ret.type = e.type;
                         return;
                     }

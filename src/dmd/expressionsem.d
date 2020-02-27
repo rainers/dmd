@@ -2607,7 +2607,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                 // Same as wthis.ident
                 //  TODO: DotIdExp.semantic will find 'ident' from 'wthis' again.
                 //  The redudancy should be removed.
-                e = new VarExp(exp.loc, withsym.withstate.wthis);
+                e = new VarExp(loweredLoc(exp.loc), withsym.withstate.wthis);
                 e = new DotIdExp(exp.loc, e, makeIdentifierAtLoc(exp.ident, exp.loc));
                 e = e.expressionSemantic(sc);
             }
@@ -2617,7 +2617,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                 {
                     if (auto t = withsym.withstate.exp.isTypeExp())
                     {
-                        e = new TypeExp(exp.loc, t.type);
+                        e = new TypeExp(loweredLoc(exp.loc), t.type);
                         e = new DotIdExp(exp.loc, e, makeIdentifierAtLoc(exp.ident, exp.loc));
                         result = e.expressionSemantic(sc);
                         return;
@@ -5004,7 +5004,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                 {
                     // Supply an implicit 'this', as in
                     //    this.ident
-                    exp.e1 = new DotVarExp(exp.loc, (new ThisExp(exp.loc)).expressionSemantic(sc), ve.var);
+                    auto dve = new DotVarExp(ve.loc, (new ThisExp(ve.loc)).expressionSemantic(sc), ve.var);
                     // Note: we cannot use f directly, because further overload resolution
                     // through the supplied 'this' may cause different result.
                     goto Lagain;
@@ -11742,7 +11742,7 @@ Expression semanticY(DotIdExp exp, Scope* sc, int flag)
             // if 's' is a tuple variable, the tuple is returned.
             s = s.toAlias();
 
-            exp.checkDeprecated(sc, s);
+            s.checkDeprecated(identLoc(exp.loc, exp.ident), sc);
             exp.checkDisabled(sc, s);
 
             EnumMember em = s.isEnumMember();

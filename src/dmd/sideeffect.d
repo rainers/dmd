@@ -365,9 +365,10 @@ bool discardValue(Expression e)
 VarDeclaration copyToTemp(StorageClass stc, const char[] name, Expression e)
 {
     assert(name[0] == '_' && name[1] == '_');
-    auto vd = new VarDeclaration(e.loc, e.type,
+    auto loc = loweredLoc(e.loc);
+    auto vd = new VarDeclaration(loc, e.type,
         Identifier.generateId(name),
-        new ExpInitializer(e.loc, e));
+        new ExpInitializer(loc, e));
     vd.storage_class = stc | STC.temp | STC.ctfe; // temporary is always CTFEable
     return vd;
 }

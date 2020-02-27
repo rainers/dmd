@@ -45,7 +45,7 @@ import dmd.visitor;
 Expression toDelegate(Expression e, Type t, Scope* sc)
 {
     //printf("Expression::toDelegate(t = %s) %s\n", t.toChars(), e.toChars());
-    Loc loc = e.loc;
+    Loc loc = loweredLoc(e.loc);
     auto tf = new TypeFunction(ParameterList(), t, LINK.d);
     if (t.hasWild())
         tf.mod = MODFlags.wild;

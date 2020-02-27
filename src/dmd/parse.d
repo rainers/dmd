@@ -1269,7 +1269,7 @@ final class Parser(AST) : Lexer
             {
                 auto a2 = new AST.Dsymbols();
                 a2.push(v);
-                auto tempdecl = new AST.TemplateDeclaration(loc, ident, tpl, null, a2, 0);
+                auto tempdecl = new AST.TemplateDeclaration(loweredLoc(loc), ident, tpl, null, a2, 0);
                 s = tempdecl;
             }
             a.push(s);
@@ -1614,9 +1614,9 @@ final class Parser(AST) : Lexer
         AST.TemplateParameters* tpl;
         AST.Dsymbols* decldefs;
         AST.Expression constraint = null;
-        const loc = token.loc;
 
         nextToken();
+        const loc = token.loc;
         if (token.value != TOK.identifier)
         {
             error("identifier expected following `template`");
@@ -2550,7 +2550,7 @@ final class Parser(AST) : Lexer
             // Wrap a template around it
             auto decldefs = new AST.Dsymbols();
             decldefs.push(s);
-            s = new AST.TemplateDeclaration(loc, f.ident, tpl, constraint, decldefs);
+            s = new AST.TemplateDeclaration(loweredLoc(loc), f.ident, tpl, constraint, decldefs);
         }
 
         return s;
@@ -3117,6 +3117,7 @@ final class Parser(AST) : Lexer
         if (token.value == TOK.identifier)
         {
             id = token.ident;
+            loc = token.loc;
             nextToken();
         }
 
@@ -3312,7 +3313,7 @@ final class Parser(AST) : Lexer
     {
         AST.TemplateParameters* tpl = null;
         AST.Expression constraint;
-        const loc = token.loc;
+        Loc loc = token.loc;
         TOK tok = token.value;
 
         //printf("Parser::parseAggregate()\n");
@@ -3325,6 +3326,7 @@ final class Parser(AST) : Lexer
         else
         {
             id = token.ident;
+            loc = token.loc;
             nextToken();
 
             if (token.value == TOK.leftParentheses)
@@ -3444,7 +3446,7 @@ final class Parser(AST) : Lexer
             // Wrap a template around the aggregate declaration
             auto decldefs = new AST.Dsymbols();
             decldefs.push(a);
-            auto tempdecl = new AST.TemplateDeclaration(loc, id, tpl, constraint, decldefs);
+            auto tempdecl = new AST.TemplateDeclaration(loweredLoc(loc), id, tpl, constraint, decldefs);
             return tempdecl;
         }
         return a;
@@ -4472,6 +4474,7 @@ final class Parser(AST) : Lexer
                 while (1)
                 {
                     auto ident = token.ident;
+                    auto identloc = token.loc;
                     nextToken();
                     AST.TemplateParameters* tpl = null;
                     if (token.value == TOK.leftParentheses)
@@ -4519,7 +4522,7 @@ final class Parser(AST) : Lexer
                         attributesAppended = true;
                         storage_class = appendStorageClass(storage_class, funcStc);
                         AST.Type tf = new AST.TypeFunction(parameterList, tret, link, storage_class);
-                        v = new AST.AliasDeclaration(loc, ident, tf);
+                        v = new AST.AliasDeclaration(identloc, ident, tf);
                     }
                     else if (token.value == TOK.function_ ||
                         token.value == TOK.delegate_ ||
@@ -4559,7 +4562,7 @@ final class Parser(AST) : Lexer
                             (*tf.parameterList.parameters)[0].userAttribDecl = new AST.UserAttributeDeclaration(udas, as);
                         }
 
-                        v = new AST.AliasDeclaration(loc, ident, s);
+                        v = new AST.AliasDeclaration(identloc, ident, s);
                     }
                     else
                     {
@@ -4589,7 +4592,7 @@ final class Parser(AST) : Lexer
                             }
                         }
 
-                        v = new AST.AliasDeclaration(loc, ident, t);
+                        v = new AST.AliasDeclaration(identloc, ident, t);
                     }
                     if (!attributesAppended)
                         storage_class = appendStorageClass(storage_class, funcStc);
@@ -4600,7 +4603,7 @@ final class Parser(AST) : Lexer
                     {
                         auto a2 = new AST.Dsymbols();
                         a2.push(s);
-                        auto tempdecl = new AST.TemplateDeclaration(loc, ident, tpl, null, a2);
+                        auto tempdecl = new AST.TemplateDeclaration(loweredLoc(identloc), ident, tpl, null, a2);
                         s = tempdecl;
                     }
                     if (link != linkage)
@@ -4879,7 +4882,7 @@ final class Parser(AST) : Lexer
                     // Wrap a template around the function declaration
                     auto decldefs = new AST.Dsymbols();
                     decldefs.push(s);
-                    auto tempdecl = new AST.TemplateDeclaration(loc, tplIdent, tpl, constraint, decldefs);
+                    auto tempdecl = new AST.TemplateDeclaration(loweredLoc(loc), tplIdent, tpl, constraint, decldefs);
                     s = tempdecl;
 
                     if (storage_class & STC.static_)
@@ -4914,7 +4917,7 @@ final class Parser(AST) : Lexer
                 {
                     auto a2 = new AST.Dsymbols();
                     a2.push(s);
-                    auto tempdecl = new AST.TemplateDeclaration(loc, ident, tpl, null, a2, 0);
+                    auto tempdecl = new AST.TemplateDeclaration(loweredLoc(loc), ident, tpl, null, a2, 0);
                     s = tempdecl;
                 }
                 if (setAlignment)
@@ -5073,7 +5076,7 @@ final class Parser(AST) : Lexer
             // Wrap a template around function fd
             auto decldefs = new AST.Dsymbols();
             decldefs.push(fd);
-            return new AST.TemplateDeclaration(fd.loc, fd.ident, tpl, null, decldefs, false, true);
+            return new AST.TemplateDeclaration(loweredLoc(fd.loc), fd.ident, tpl, null, decldefs, false, true);
         }
         return fd;
     }

@@ -1556,7 +1556,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                 if (dim == 1)
                 {
                     auto p = (*fs.parameters)[0];
-                    auto ve = new VarDeclaration(loc, p.type, p.ident, new ExpInitializer(loc, einit));
+                    auto ve = new VarDeclaration(identLoc(loc, p.ident), p.type, p.ident, new ExpInitializer(loc, einit));
                     ve.storage_class |= STC.foreach_;
                     ve.storage_class |= p.storageClass & (STC.IOR | STC.TYPECTOR);
 
@@ -1613,7 +1613,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                         if (!exp.implicitConvTo(p.type))
                             goto Lrangeerr;
 
-                        auto var = new VarDeclaration(loc, p.type, p.ident, new ExpInitializer(loc, exp));
+                        auto var = new VarDeclaration(identLoc(loc, p.ident), p.type, p.ident, new ExpInitializer(loc, exp));
                         var.storage_class |= STC.ctfe | STC.ref_ | STC.foreach_;
                         makeargs = new CompoundStatement(loc, makeargs, new ExpStatement(loc, var));
                     }
@@ -1984,7 +1984,7 @@ else
                 id = Identifier.generateId("__applyArg", cast(int)i);
 
                 Initializer ie = new ExpInitializer(fs.loc, new IdentifierExp(fs.loc, id));
-                auto v = new VarDeclaration(fs.loc, p.type, p.ident, ie);
+                auto v = new VarDeclaration(identLoc(fs.loc, p.ident), p.type, p.ident, ie);
                 v.storage_class |= STC.temp;
                 Statement s = new ExpStatement(fs.loc, v);
                 fs._body = new CompoundStatement(fs.loc, s, fs._body);
@@ -1997,9 +1997,9 @@ else
         auto tf = new TypeFunction(ParameterList(params), Type.tint32, LINK.d, stc);
         fs.cases = new Statements();
         fs.gotos = new ScopeStatements();
-        auto fld = new FuncLiteralDeclaration(fs.loc, fs.endloc, tf, TOK.delegate_, fs);
+        auto fld = new FuncLiteralDeclaration(loweredLoc(fs.loc), loweredLoc(fs.endloc), tf, TOK.delegate_, fs);
         fld.fbody = fs._body;
-        Expression flde = new FuncExp(fs.loc, fld);
+        Expression flde = new FuncExp(loweredLoc(fs.loc), fld);
         flde = flde.expressionSemantic(sc);
         fld.tookAddressOf = 0;
         if (flde.op == TOK.error)
@@ -2168,7 +2168,7 @@ else
         else
         {
             ie = new ExpInitializer(loc, new CastExp(loc, new VarExp(loc, fs.key), fs.prm.type));
-            auto v = new VarDeclaration(loc, fs.prm.type, fs.prm.ident, ie);
+            auto v = new VarDeclaration(identLoc(loc, fs.prm.ident), fs.prm.type, fs.prm.ident, ie);
             v.storage_class |= STC.temp | STC.foreach_ | (fs.prm.storageClass & STC.ref_);
             fs._body = new CompoundStatement(loc, new ExpStatement(loc, v), fs._body);
             if (fs.key.range && !fs.prm.type.isMutable())
@@ -2210,14 +2210,15 @@ else
             /* Declare prm, which we will set to be the
              * result of condition.
              */
+            auto varloc = identLoc(ifs.loc, ifs.prm.ident);
             auto ei = new ExpInitializer(ifs.loc, ifs.condition);
-            ifs.match = new VarDeclaration(ifs.loc, ifs.prm.type, ifs.prm.ident, ei);
+            ifs.match = new VarDeclaration(varloc, ifs.prm.type, ifs.prm.ident, ei);
             ifs.match.parent = scd.func;
             ifs.match.storage_class |= ifs.prm.storageClass;
             ifs.match.dsymbolSemantic(scd);
 
             auto de = new DeclarationExp(ifs.loc, ifs.match);
-            auto ve = new VarExp(ifs.loc, ifs.match);
+            auto ve = new VarExp(varloc, ifs.match);
             ifs.condition = new CommaExp(ifs.loc, de, ve);
             ifs.condition = ifs.condition.expressionSemantic(scd);
 
@@ -3578,7 +3579,7 @@ else
     {
         /* https://dlang.org/spec/statement.html#synchronized-statement
          */
-
+        Loc loc = loweredLoc(ss.loc);
         if (ss.exp)
         {
             ss.exp = ss.exp.expressionSemantic(sc);
@@ -3613,7 +3614,7 @@ else
                 t = t.typeSemantic(Loc.initial, sc).toBasetype();
                 assert(t.ty == Tclass);
 
-                ss.exp = new CastExp(ss.loc, ss.exp, t);
+                ss.exp = new CastExp(loc, ss.exp, t);
                 ss.exp = ss.exp.expressionSemantic(sc);
             }
             version (all)
@@ -3627,24 +3628,24 @@ else
                 tmp.dsymbolSemantic(sc);
 
                 auto cs = new Statements();
-                cs.push(new ExpStatement(ss.loc, tmp));
+                cs.push(new ExpStatement(loc, tmp));
 
                 auto args = new Parameters();
                 args.push(new Parameter(0, ClassDeclaration.object.type));
 
                 FuncDeclaration fdenter = FuncDeclaration.genCfunc(args, Type.tvoid, Id.monitorenter);
-                Expression e = new CallExp(ss.loc, fdenter, new VarExp(ss.loc, tmp));
+                Expression e = new CallExp(loc, fdenter, new VarExp(loc, tmp));
                 e.type = Type.tvoid; // do not run semantic on e
 
-                cs.push(new ExpStatement(ss.loc, e));
+                cs.push(new ExpStatement(loc, e));
                 FuncDeclaration fdexit = FuncDeclaration.genCfunc(args, Type.tvoid, Id.monitorexit);
-                e = new CallExp(ss.loc, fdexit, new VarExp(ss.loc, tmp));
+                e = new CallExp(loc, fdexit, new VarExp(loc, tmp));
                 e.type = Type.tvoid; // do not run semantic on e
-                Statement s = new ExpStatement(ss.loc, e);
-                s = new TryFinallyStatement(ss.loc, ss._body, s);
+                Statement s = new ExpStatement(loc, e);
+                s = new TryFinallyStatement(loc, ss._body, s);
                 cs.push(s);
 
-                s = new CompoundStatement(ss.loc, cs);
+                s = new CompoundStatement(loc, cs);
                 result = s.statementSemantic(sc);
             }
         }
@@ -3657,41 +3658,41 @@ else
              */
             auto id = Identifier.generateId("__critsec");
             auto t = Type.tint8.sarrayOf(target.ptrsize + target.critsecsize());
-            auto tmp = new VarDeclaration(ss.loc, t, id, null);
+            auto tmp = new VarDeclaration(loc, t, id, null);
             tmp.storage_class |= STC.temp | STC.shared_ | STC.static_;
-            Expression tmpExp = new VarExp(ss.loc, tmp);
+            Expression tmpExp = new VarExp(loc, tmp);
 
             auto cs = new Statements();
-            cs.push(new ExpStatement(ss.loc, tmp));
+            cs.push(new ExpStatement(loc, tmp));
 
             /* This is just a dummy variable for "goto skips declaration" error.
              * Backend optimizer could remove this unused variable.
              */
-            auto v = new VarDeclaration(ss.loc, Type.tvoidptr, Identifier.generateId("__sync"), null);
+            auto v = new VarDeclaration(loc, Type.tvoidptr, Identifier.generateId("__sync"), null);
             v.dsymbolSemantic(sc);
-            cs.push(new ExpStatement(ss.loc, v));
+            cs.push(new ExpStatement(loc, v));
 
             auto args = new Parameters();
             args.push(new Parameter(0, t.pointerTo()));
 
             FuncDeclaration fdenter = FuncDeclaration.genCfunc(args, Type.tvoid, Id.criticalenter, STC.nothrow_);
-            Expression int0 = new IntegerExp(ss.loc, dinteger_t(0), Type.tint8);
-            Expression e = new AddrExp(ss.loc, new IndexExp(ss.loc, tmpExp, int0));
+            Expression int0 = new IntegerExp(loc, dinteger_t(0), Type.tint8);
+            Expression e = new AddrExp(loc, new IndexExp(loc, tmpExp, int0));
             e = e.expressionSemantic(sc);
-            e = new CallExp(ss.loc, fdenter, e);
+            e = new CallExp(loc, fdenter, e);
             e.type = Type.tvoid; // do not run semantic on e
-            cs.push(new ExpStatement(ss.loc, e));
+            cs.push(new ExpStatement(loc, e));
 
             FuncDeclaration fdexit = FuncDeclaration.genCfunc(args, Type.tvoid, Id.criticalexit, STC.nothrow_);
-            e = new AddrExp(ss.loc, new IndexExp(ss.loc, tmpExp, int0));
+            e = new AddrExp(loc, new IndexExp(loc, tmpExp, int0));
             e = e.expressionSemantic(sc);
-            e = new CallExp(ss.loc, fdexit, e);
+            e = new CallExp(loc, fdexit, e);
             e.type = Type.tvoid; // do not run semantic on e
-            Statement s = new ExpStatement(ss.loc, e);
-            s = new TryFinallyStatement(ss.loc, ss._body, s);
+            Statement s = new ExpStatement(loc, e);
+            s = new TryFinallyStatement(loc, ss._body, s);
             cs.push(s);
 
-            s = new CompoundStatement(ss.loc, cs);
+            s = new CompoundStatement(loc, cs);
             result = s.statementSemantic(sc);
 
             // set the explicit __critsec alignment after semantic()
@@ -3744,12 +3745,13 @@ else
                 t = ws.exp.type.toBasetype();
             }
 
+            Loc loc = loweredLoc(ws.loc);
             assert(t);
             t = t.toBasetype();
             if (t.isClassHandle())
             {
-                _init = new ExpInitializer(ws.loc, ws.exp);
-                ws.wthis = new VarDeclaration(ws.loc, ws.exp.type, Id.withSym, _init);
+                _init = new ExpInitializer(loc, ws.exp);
+                ws.wthis = new VarDeclaration(loc, ws.exp.type, Id.withSym, _init);
                 ws.wthis.dsymbolSemantic(sc);
 
                 sym = new WithScopeSymbol(ws);
@@ -3771,15 +3773,15 @@ else
                      */
                     auto tmp = copyToTemp(0, "__withtmp", ws.exp);
                     tmp.dsymbolSemantic(sc);
-                    auto es = new ExpStatement(ws.loc, tmp);
-                    ws.exp = new VarExp(ws.loc, tmp);
-                    Statement ss = new ScopeStatement(ws.loc, new CompoundStatement(ws.loc, es, ws), ws.endloc);
+                    auto es = new ExpStatement(loc, tmp);
+                    ws.exp = new VarExp(loc, tmp);
+                    Statement ss = new ScopeStatement(loc, new CompoundStatement(loc, es, ws), ws.endloc);
                     result = ss.statementSemantic(sc);
                     return;
                 }
                 Expression e = ws.exp.addressOf();
-                _init = new ExpInitializer(ws.loc, e);
-                ws.wthis = new VarDeclaration(ws.loc, e.type, Id.withSym, _init);
+                _init = new ExpInitializer(loc, e);
+                ws.wthis = new VarDeclaration(loc, e.type, Id.withSym, _init);
                 ws.wthis.dsymbolSemantic(sc);
                 sym = new WithScopeSymbol(ws);
                 // Need to set the scope to make use of resolveAliasThis
@@ -4312,7 +4314,7 @@ void catchSemantic(Catch c, Scope* sc)
 
         if (ident)
         {
-            c.var = new VarDeclaration(c.loc, c.type, ident, null, stc);
+            c.var = new VarDeclaration(identLoc(c.loc, ident), c.type, ident, null, stc);
             c.var.iscatchvar = true;
             c.var.dsymbolSemantic(sc);
             sc.insert(c.var);

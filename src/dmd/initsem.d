@@ -218,15 +218,16 @@ extern(C++) Initializer initializerSemantic(Initializer init, Scope* sc, Type t,
         }
         else if ((t.ty == Tdelegate || t.ty == Tpointer && t.nextOf().ty == Tfunction) && i.value.dim == 0)
         {
+            Loc lloc = loweredLoc(i.loc);
             TOK tok = (t.ty == Tdelegate) ? TOK.delegate_ : TOK.function_;
             /* Rewrite as empty delegate literal { }
              */
             Type tf = new TypeFunction(ParameterList(), null, LINK.d);
-            auto fd = new FuncLiteralDeclaration(i.loc, Loc.initial, tf, tok, null);
-            fd.fbody = new CompoundStatement(i.loc, new Statements());
+            auto fd = new FuncLiteralDeclaration(lloc, Loc.initial, tf, tok, null);
+            fd.fbody = new CompoundStatement(lloc, new Statements());
             fd.endloc = i.loc;
-            Expression e = new FuncExp(i.loc, fd);
-            auto ie = new ExpInitializer(i.loc, e);
+            Expression e = new FuncExp(lloc, fd);
+            auto ie = new ExpInitializer(lloc, e);
             return ie.initializerSemantic(sc, t, needInterpret);
         }
         if (t.ty != Terror)

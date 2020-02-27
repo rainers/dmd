@@ -893,16 +893,18 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
         // in reality it was an expression.
         if (mtype.index.ty == Tident || mtype.index.ty == Tinstance || mtype.index.ty == Tsarray || mtype.index.ty == Ttypeof || mtype.index.ty == Treturn || mtype.index.ty == Tmixin)
         {
+            Loc idxloc = mtype.index.ty == Tsarray ? (cast(TypeSArray) mtype.index).dim.loc
+                                                   : (cast(TypeQualified) mtype.index).loc;
             Expression e;
             Type t;
             Dsymbol s;
-            mtype.index.resolve(loc, sc, &e, &t, &s);
+            mtype.index.resolve(idxloc, sc, &e, &t, &s);
 
             //https://issues.dlang.org/show_bug.cgi?id=15478
             if (s)
             {
                 if (FuncDeclaration fd = s.toAlias().isFuncDeclaration())
-                    e = new CallExp(loc, fd, null);
+                    e = new CallExp(idxloc, fd, null);
             }
 
             if (e)
@@ -910,13 +912,13 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
                 // It was an expression -
                 // Rewrite as a static array
                 auto tsa = new TypeSArray(mtype.next, e);
-                return tsa.typeSemantic(loc, sc);
+                return tsa.typeSemantic(idxloc, sc);
             }
             else if (t)
-                mtype.index = t.typeSemantic(loc, sc);
+                mtype.index = t.typeSemantic(idxloc, sc);
             else
             {
-                .error(loc, "index is not a type or an expression");
+                .error(idxloc, "index is not a type or an expression");
                 return error();
             }
         }
@@ -3480,8 +3482,9 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
                 tf.isnothrow = true;
                 tf.isnogc = false;
             }
-            Expression ev = new VarExp(e.loc, fd_aaLen, false);
-            e = new CallExp(e.loc, ev, e);
+            Loc loc = loweredLoc(e.loc);
+            Expression ev = new VarExp(loc, fd_aaLen, false);
+            e = new CallExp(loc, ev, e);
             e.type = fd_aaLen.type.toTypeFunction().next;
             return e;
         }

@@ -658,6 +658,16 @@ nothrow:
     }
 }
 
+// for a language server, lowered expresseion should not reuse the original source location
+//  as internal names might get exposed to the user
+ref const(Loc) loweredLoc(ref const Loc loc)
+{
+    version(LanguageServer)
+        return Loc.initial;
+    else
+        return loc;
+}
+
 enum LINK : int
 {
     default_,

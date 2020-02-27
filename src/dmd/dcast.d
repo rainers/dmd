@@ -2068,7 +2068,7 @@ Expression castTo(Expression e, Scope* sc, Type t)
                 if (f)
                 {
                     f.tookAddressOf++;
-                    auto se = new SymOffExp(e.loc, f, 0, false);
+                    auto se = new SymOffExp(e.e1.loc, f, 0, false);
                     se.expressionSemantic(sc);
                     // Let SymOffExp::castTo() do the heavy lifting
                     visit(se);
