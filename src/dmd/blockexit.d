@@ -288,8 +288,9 @@ int blockExit(Statement s, FuncDeclaration func, bool mustNotThrow)
 
         override void visit(ConditionalStatement s)
         {
-            result = blockExit(s.ifbody, func, mustNotThrow);
-            if (s.elsebody)
+            if (s.condition.include(null))
+                result = blockExit(s.ifbody, func, mustNotThrow);
+            else if (s.elsebody)
                 result |= blockExit(s.elsebody, func, mustNotThrow);
         }
 

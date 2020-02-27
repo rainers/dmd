@@ -892,6 +892,18 @@ public:
         }
     }
 
+    override void visit(ConditionalStatement s)
+    {
+        debug (LOGCOMPILE)
+        {
+            printf("%s ConditionalStatement::interpret(%s)\n", s.loc.toChars(), s.condition.toChars());
+        }
+        if (s.condition.include(null))
+            result = interpret(pue, s.ifbody, istate);
+        else
+            result = interpret(pue, s.elsebody, istate);
+    }
+
     override void visit(ScopeStatement s)
     {
         debug (LOG)
