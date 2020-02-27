@@ -309,7 +309,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                             }
 
                             auto catches = new Catches();
-                            auto ctch = new Catch(Loc.initial, getThrowable(), id, handler);
+                            auto ctch = new Catch(Loc.initial, getThrowable(), makeIdentifierAtLoc(id), handler);
                             ctch.internalCatch = true;
                             catches.push(ctch);
 
@@ -965,7 +965,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                     declareVariable(0, e.type, ident, e, null);
                     import dmd.cond: StaticForeach;
                     auto field = Identifier.idPool(StaticForeach.tupleFieldName.ptr,StaticForeach.tupleFieldName.length);
-                    Expression access = new DotIdExp(loc, e, field);
+                    Expression access = new DotIdExp(loc, e, makeIdentifierAtLoc(field));
                     access = expressionSemantic(access, sc);
                     if (!tuple) return returnEarly();
                     //printf("%s\n",tuple.toChars());
@@ -1352,7 +1352,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                     tmp = new VarDeclaration(loc, tab.nextOf().arrayOf(), id, ie);
                 tmp.storage_class |= STC.temp;
 
-                Expression tmp_length = new DotIdExp(loc, new VarExp(loc, tmp), Id.length);
+                Expression tmp_length = new DotIdExp(loc, new VarExp(loc, tmp), makeIdentifierAtLoc(Id.length));
 
                 if (!fs.key)
                 {
@@ -1502,18 +1502,18 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
 
                 // !__r.empty
                 Expression e = new VarExp(loc, r);
-                e = new DotIdExp(loc, e, Id.Fempty);
+                e = new DotIdExp(loc, e, makeIdentifierAtLoc(Id.Fempty));
                 Expression condition = new NotExp(loc, e);
 
                 // __r.idpopFront()
                 e = new VarExp(loc, r);
-                Expression increment = new CallExp(loc, new DotIdExp(loc, e, idpopFront));
+                Expression increment = new CallExp(loc, new DotIdExp(loc, e, makeIdentifierAtLoc(idpopFront)));
 
                 /* Declaration statement for e:
                  *    auto e = __r.idfront;
                  */
                 e = new VarExp(loc, r);
-                Expression einit = new DotIdExp(loc, e, idfront);
+                Expression einit = new DotIdExp(loc, e, makeIdentifierAtLoc(idfront));
                 Statement makeargs, forbody;
                 bool ignoreRef = false; // If a range returns a non-ref front we ignore ref on foreach
 
@@ -1746,11 +1746,11 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                         params.push(new Parameter(0, Type.tvoid.pointerTo(), null, null, null));
                         params.push(new Parameter(STC.const_, Type.tsize_t, null, null, null));
                         auto dgparams = new Parameters();
-                        dgparams.push(new Parameter(0, Type.tvoidptr, null, null, null));
+                        dgparams.push(new Parameter(0, Type.tvoidptr));
                         if (dim == 2)
-                            dgparams.push(new Parameter(0, Type.tvoidptr, null, null, null));
+                            dgparams.push(new Parameter(0, Type.tvoidptr));
                         fldeTy[i] = new TypeDelegate(new TypeFunction(ParameterList(dgparams), Type.tint32, LINK.d));
-                        params.push(new Parameter(0, fldeTy[i], null, null, null));
+                        params.push(new Parameter(0, fldeTy[i]));
                         fdapply[i] = FuncDeclaration.genCfunc(params, Type.tint32, i ? Id._aaApply2 : Id._aaApply);
                     }
 
@@ -1813,13 +1813,13 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                     FuncDeclaration fdapply;
                     TypeDelegate dgty;
                     auto params = new Parameters();
-                    params.push(new Parameter(STC.in_, tn.arrayOf(), null, null, null));
+                    params.push(new Parameter(STC.in_, tn.arrayOf()));
                     auto dgparams = new Parameters();
-                    dgparams.push(new Parameter(0, Type.tvoidptr, null, null, null));
+                    dgparams.push(new Parameter(0, Type.tvoidptr));
                     if (dim == 2)
-                        dgparams.push(new Parameter(0, Type.tvoidptr, null, null, null));
+                        dgparams.push(new Parameter(0, Type.tvoidptr));
                     dgty = new TypeDelegate(new TypeFunction(ParameterList(dgparams), Type.tint32, LINK.d));
-                    params.push(new Parameter(0, dgty, null, null, null));
+                    params.push(new Parameter(0, dgty));
                     fdapply = FuncDeclaration.genCfunc(params, Type.tint32, fdname.ptr);
 
                     if (tab.ty == Tsarray)
@@ -1875,7 +1875,7 @@ else
                     /* Call:
                      *  aggr.apply(flde)
                      */
-                    ec = new DotIdExp(loc, fs.aggr, sapply.ident);
+                    ec = new DotIdExp(loc, fs.aggr, makeIdentifierAtLoc(sapply.ident));
                     ec = new CallExp(loc, ec, flde);
                     ec = ec.expressionSemantic(sc2);
                     if (ec.op == TOK.error)
@@ -1950,7 +1950,7 @@ else
         {
             Parameter p = (*fs.parameters)[i];
             StorageClass stc = STC.ref_;
-            Identifier id;
+            IdentifierAtLoc id;
 
             p.type = p.type.typeSemantic(fs.loc, sc);
             p.type = p.type.addStorageClass(p.storageClass);
@@ -2651,8 +2651,8 @@ else
                         return setError();
 
                     Expression sl = new IdentifierExp(ss.loc, Id.empty);
-                    sl = new DotIdExp(ss.loc, sl, Id.object);
-                    sl = new DotIdExp(ss.loc, sl, Id.__switch_error);
+                    sl = new DotIdExp(ss.loc, sl, makeIdentifierAtLoc(Id.object));
+                    sl = new DotIdExp(ss.loc, sl, makeIdentifierAtLoc(Id.__switch_error));
 
                     Expressions* args = new Expressions(2);
                     (*args)[0] = new StringExp(ss.loc, ss.loc.filename.toDString());
@@ -2742,7 +2742,7 @@ else
             }
 
             Expression sl = new IdentifierExp(ss.loc, Id.empty);
-            sl = new DotIdExp(ss.loc, sl, Id.object);
+            sl = new DotIdExp(ss.loc, sl, makeIdentifierAtLoc(Id.object));
             sl = new DotTemplateInstanceExp(ss.loc, sl, Id.__switch, compileTimeArgs);
 
             sl = new CallExp(ss.loc, sl, arguments);
@@ -3630,7 +3630,7 @@ else
                 cs.push(new ExpStatement(ss.loc, tmp));
 
                 auto args = new Parameters();
-                args.push(new Parameter(0, ClassDeclaration.object.type, null, null, null));
+                args.push(new Parameter(0, ClassDeclaration.object.type));
 
                 FuncDeclaration fdenter = FuncDeclaration.genCfunc(args, Type.tvoid, Id.monitorenter);
                 Expression e = new CallExp(ss.loc, fdenter, new VarExp(ss.loc, tmp));
@@ -3672,7 +3672,7 @@ else
             cs.push(new ExpStatement(ss.loc, v));
 
             auto args = new Parameters();
-            args.push(new Parameter(0, t.pointerTo(), null, null, null));
+            args.push(new Parameter(0, t.pointerTo()));
 
             FuncDeclaration fdenter = FuncDeclaration.genCfunc(args, Type.tvoid, Id.criticalenter, STC.nothrow_);
             Expression int0 = new IntegerExp(ss.loc, dinteger_t(0), Type.tint8);

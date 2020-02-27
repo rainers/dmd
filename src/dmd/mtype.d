@@ -4593,7 +4593,7 @@ extern (C++) final class TypeFunction : TypeNext
                 continue;
             if (params == parameterList.parameters)
                 params = parameterList.parameters.copy();
-            (*params)[i] = new Parameter(p.storageClass, t, null, null, null);
+            (*params)[i] = new Parameter(p.storageClass, t);
         }
         if (next == tret && params == parameterList.parameters)
             return this;
@@ -4796,7 +4796,7 @@ extern (C++) final class TypeFunction : TypeNext
                             tmp.storage_class = STC.rvalue | STC.temp | STC.ctfe;
                             tmp.dsymbolSemantic(sc);
                             Expression ve = new VarExp(arg.loc, tmp);
-                            Expression e = new DotIdExp(arg.loc, ve, Id.ctor);
+                            Expression e = new DotIdExp(arg.loc, ve, makeIdentifierAtLoc(Id.ctor));
                             e = new CallExp(arg.loc, e, arg);
                             //printf("e = %s\n", e.toChars());
                             if(.trySemantic(e, sc))
@@ -6431,7 +6431,7 @@ extern (C++) final class TypeTuple : Type
                 Expression e = (*exps)[i];
                 if (e.type.ty == Ttuple)
                     e.error("cannot form tuple of tuples");
-                auto arg = new Parameter(STC.undefined_, e.type, null, null, null);
+                auto arg = new Parameter(STC.undefined_, e.type);
                 (*arguments)[i] = arg;
             }
         }
@@ -6457,15 +6457,15 @@ extern (C++) final class TypeTuple : Type
     {
         super(Ttuple);
         arguments = new Parameters();
-        arguments.push(new Parameter(0, t1, null, null, null));
+        arguments.push(new Parameter(0, t1));
     }
 
     extern (D) this(Type t1, Type t2)
     {
         super(Ttuple);
         arguments = new Parameters();
-        arguments.push(new Parameter(0, t1, null, null, null));
-        arguments.push(new Parameter(0, t2, null, null, null));
+        arguments.push(new Parameter(0, t1));
+        arguments.push(new Parameter(0, t2));
     }
 
     static TypeTuple create()
@@ -6686,11 +6686,11 @@ extern (C++) final class Parameter : ASTNode
 
     StorageClass storageClass;
     Type type;
-    Identifier ident;
+    IdentifierAtLoc ident;
     Expression defaultArg;
     UserAttributeDeclaration userAttribDecl; // user defined attributes
 
-    extern (D) this(StorageClass storageClass, Type type, Identifier ident, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
+    extern (D) this(StorageClass storageClass, Type type, IdentifierAtLoc ident, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
     {
         this.type = type;
         this.ident = ident;
@@ -6699,7 +6699,13 @@ extern (C++) final class Parameter : ASTNode
         this.userAttribDecl = userAttribDecl;
     }
 
-    static Parameter create(StorageClass storageClass, Type type, Identifier ident, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
+    // anonymous parameter
+    extern (D) this(StorageClass storageClass, Type type)
+    {
+        this(storageClass, type, makeIdentifierAtLoc(null), null, null);
+    }
+
+    static Parameter create(StorageClass storageClass, Type type, IdentifierAtLoc ident, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
     {
         return new Parameter(storageClass, type, ident, defaultArg, userAttribDecl);
     }

@@ -160,7 +160,7 @@ private FuncDeclaration buildPostBlit(StructDeclaration sd, Scope* sc)
                     ex = new DotVarExp(loc, ex, sf);
 
                     // This is a hack so we can call destructors on const/immutable objects.
-                    ex = new DotIdExp(loc, ex, Id.ptr);
+                    ex = new DotIdExp(loc, ex, makeIdentifierAtLoc(Id.ptr));
                     ex = new CastExp(loc, ex, sdv.type.pointerTo());
                     if (stc & STC.safe)
                         stc = (stc & ~STC.safe) | STC.trusted;
@@ -237,7 +237,7 @@ private FuncDeclaration buildPostBlit(StructDeclaration sd, Scope* sc)
             ex = new DotVarExp(loc, ex, structField);
 
             // This is a hack so we can call postblits on const/immutable objects.
-            ex = new DotIdExp(loc, ex, Id.ptr);
+            ex = new DotIdExp(loc, ex, makeIdentifierAtLoc(Id.ptr));
             ex = new CastExp(loc, ex, sdv.type.pointerTo());
             if (stc & STC.safe)
                 stc = (stc & ~STC.safe) | STC.trusted;
@@ -352,7 +352,7 @@ private CtorDeclaration generateCopyCtorDeclaration(StructDeclaration sd, const 
 {
     auto fparams = new Parameters();
     auto structType = sd.type;
-    fparams.push(new Parameter(paramStc | STC.ref_ | STC.return_ | STC.scope_, structType, Id.p, null, null));
+    fparams.push(new Parameter(paramStc | STC.ref_ | STC.return_ | STC.scope_, structType, makeIdentifierAtLoc(Id.p), null, null));
     ParameterList pList = ParameterList(fparams);
     auto tf = new TypeFunction(pList, structType, LINK.d, STC.ref_);
     auto ccd = new CtorDeclaration(sd.loc, Loc.initial, STC.ref_, tf, true);

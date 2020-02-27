@@ -575,7 +575,7 @@ bool RealIdentical(real_t x1, real_t x2)
  *      (foo).size
  *      cast(foo).size
  */
-DotIdExp typeDotIdExp(const ref Loc loc, Type type, Identifier ident)
+DotIdExp typeDotIdExp(const ref Loc loc, Type type, IdentifierAtLoc ident)
 {
     return new DotIdExp(loc, new TypeExp(loc, type), ident);
 }
@@ -4700,17 +4700,17 @@ extern (C++) final class AssertExp : UnaExp
  */
 extern (C++) final class DotIdExp : UnaExp
 {
-    Identifier ident;
+    IdentifierAtLoc ident;
     bool noderef;       // true if the result of the expression will never be dereferenced
     bool wantsym;       // do not replace Symbol with its initializer during semantic()
 
-    extern (D) this(const ref Loc loc, Expression e, Identifier ident)
+    extern (D) this(const ref Loc loc, Expression e, IdentifierAtLoc ident)
     {
         super(loc, TOK.dotIdentifier, __traits(classInstanceSize, DotIdExp), e);
         this.ident = ident;
     }
 
-    static DotIdExp create(Loc loc, Expression e, Identifier ident)
+    static DotIdExp create(Loc loc, Expression e, IdentifierAtLoc ident)
     {
         return new DotIdExp(loc, e, ident);
     }
@@ -4898,7 +4898,7 @@ extern (C++) final class DotTemplateInstanceExp : UnaExp
         if (ti.tempdecl)
             return true;
 
-        Expression e = new DotIdExp(loc, e1, ti.name);
+        Expression e = new DotIdExp(loc, e1, makeIdentifierAtLoc(ti.name, loc));
         e = e.expressionSemantic(sc);
         if (e.op == TOK.dot)
             e = (cast(DotExp)e).e2;

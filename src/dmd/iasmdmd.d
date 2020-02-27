@@ -4473,7 +4473,7 @@ void asm_primary_exp(out OPND o1)
                         asm_token();
                         if (asmstate.tokValue == TOK.identifier)
                         {
-                            e = DotIdExp.create(asmstate.loc, e, asmstate.tok.ident);
+                            e = DotIdExp.create(asmstate.loc, e, makeIdentifierAtLoc(asmstate.tok.ident, asmstate.tok.loc));
                             asm_token();
                             if (asmstate.tokValue != TOK.dot)
                                 break;

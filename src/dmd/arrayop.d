@@ -137,8 +137,8 @@ Expression arrayOp(BinExp e, Scope* sc)
         // Create .object._arrayOp
         Identifier idArrayOp = Identifier.idPool("_arrayOp");
         Expression id = new IdentifierExp(e.loc, Id.empty);
-        id = new DotIdExp(e.loc, id, Id.object);
-        id = new DotIdExp(e.loc, id, idArrayOp);
+        id = new DotIdExp(e.loc, id, makeIdentifierAtLoc(Id.object));
+        id = new DotIdExp(e.loc, id, makeIdentifierAtLoc(idArrayOp));
 
         id = id.expressionSemantic(sc);
         if (auto te = id.isTemplateExp())

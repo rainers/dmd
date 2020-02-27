@@ -500,7 +500,7 @@ Expression op_overload(Expression e, Scope* sc, TOK* pop = null)
                      *      e1.opIndex(arguments)
                      */
                     Expressions* a = ae.arguments.copy();
-                    result = new DotIdExp(ae.loc, ae.e1, Id.index);
+                    result = new DotIdExp(ae.loc, ae.e1, makeIdentifierAtLoc(Id.index));
                     result = new CallExp(ae.loc, result, a);
                     if (maybeSlice) // a[] might be: a.opSlice()
                         result = result.trySemantic(sc);
@@ -535,7 +535,7 @@ Expression op_overload(Expression e, Scope* sc, TOK* pop = null)
                         a.push(ie.lwr);
                         a.push(ie.upr);
                     }
-                    result = new DotIdExp(ae.loc, ae.e1, Id.slice);
+                    result = new DotIdExp(ae.loc, ae.e1, makeIdentifierAtLoc(Id.slice));
                     result = new CallExp(ae.loc, result, a);
                     result = result.expressionSemantic(sc);
                     result = Expression.combine(e0, result);
@@ -969,8 +969,8 @@ Expression op_overload(Expression e, Scope* sc, TOK* pop = null)
                         e2x = new CastExp(e.loc, e.e2, t2.isMutable() ? to : to.constOf());
 
                     result = new IdentifierExp(e.loc, Id.empty);
-                    result = new DotIdExp(e.loc, result, Id.object);
-                    result = new DotIdExp(e.loc, result, Id.eq);
+                    result = new DotIdExp(e.loc, result, makeIdentifierAtLoc(Id.object));
+                    result = new DotIdExp(e.loc, result, makeIdentifierAtLoc(Id.eq));
                     result = new CallExp(e.loc, result, e1x, e2x);
                     if (e.op == TOK.notEqual)
                         result = new NotExp(e.loc, result);
@@ -1043,8 +1043,8 @@ Expression op_overload(Expression e, Scope* sc, TOK* pop = null)
                 e = cast(EqualExp)e.copy();
                 if (!e.att1) e.att1 = t1;
                 if (!e.att2) e.att2 = t2;
-                e.e1 = new DotIdExp(e.loc, e.e1, Id._tupleof);
-                e.e2 = new DotIdExp(e.loc, e.e2, Id._tupleof);
+                e.e1 = new DotIdExp(e.loc, e.e1, makeIdentifierAtLoc(Id._tupleof));
+                e.e2 = new DotIdExp(e.loc, e.e2, makeIdentifierAtLoc(Id._tupleof));
 
                 auto sc2 = sc.push();
                 sc2.flags = (sc2.flags & ~SCOPE.onlysafeaccess) | SCOPE.noaccesscheck;
@@ -1438,7 +1438,7 @@ Expression build_overload(const ref Loc loc, Scope* sc, Expression ethis, Expres
     if (decl)
         e = new DotVarExp(loc, ethis, decl, false);
     else
-        e = new DotIdExp(loc, ethis, d.ident);
+        e = new DotIdExp(loc, ethis, makeIdentifierAtLoc(d.ident));
     e = new CallExp(loc, e, earg);
     e = e.expressionSemantic(sc);
     return e;

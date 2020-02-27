@@ -27,6 +27,7 @@ import dmd.statement;
 
 alias Strings = Array!(const(char)*);
 alias Identifiers = Array!(Identifier);
+alias IdentifiersAtLoc = Array!(IdentifierAtLoc);
 alias TemplateParameters = Array!(TemplateParameter);
 alias Expressions = Array!(Expression);
 alias Statements = Array!(Statement);

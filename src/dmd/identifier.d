@@ -360,3 +360,33 @@ nothrow:
         stringtable._init(28_000);
     }
 }
+
+// attach location to identifier
+// not needed in the core compiler, but for code discovery when used as an IDE library
+version(LanguageServer)
+{
+    struct IdentifierAtLoc
+    {
+        Identifier ident;
+        Loc loc;
+        alias ident this;
+    }
+    // compiler generated identifiers should not receive a location in the source, otherwise
+    //  they will show up in code discovery
+    IdentifierAtLoc makeIdentifierAtLoc(Identifier ident, ref const Loc loc = Loc.initial)
+    {
+        return IdentifierAtLoc(ident, loc);
+    }
+    // for a language server, returns idloc.loc
+    // for the core compiler, returns loc (no location attached to identifier)
+    ref const(Loc) identLoc(const ref Loc loc, const ref IdentifierAtLoc idloc) { return idloc.loc; }
+}
+else
+{
+    alias IdentifierAtLoc = Identifier;
+    IdentifierAtLoc makeIdentifierAtLoc(Identifier ident, ref const Loc loc = Loc.initial)
+    {
+        return ident;
+    }
+    ref const(Loc) identLoc(const ref Loc loc, const ref IdentifierAtLoc idloc) { return loc; }
+}

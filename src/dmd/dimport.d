@@ -31,15 +31,15 @@ extern (C++) final class Import : Dsymbol
 {
     /* static import aliasId = pkg1.pkg2.id : alias1 = name1, alias2 = name2;
      */
-    Identifiers* packages;  // array of Identifier's representing packages
-    Identifier id;          // module Identifier
-    Identifier aliasId;
+    IdentifiersAtLoc* packages;  // array of Identifier's representing packages
+    Identifier id;          // module Identifier (at loc of Import)
+    IdentifierAtLoc aliasId;
     int isstatic;           // !=0 if static import
     Prot protection;
 
     // Pairs of alias=name to bind into current namespace
-    Identifiers names;
-    Identifiers aliases;
+    IdentifiersAtLoc names;
+    IdentifiersAtLoc aliases;
 
     Module mod;
     Package pkg;            // leftmost package/module
@@ -47,7 +47,7 @@ extern (C++) final class Import : Dsymbol
     // corresponding AliasDeclarations for alias=name pairs
     AliasDeclarations aliasdecls;
 
-    extern (D) this(const ref Loc loc, Identifiers* packages, Identifier id, Identifier aliasId, int isstatic)
+    extern (D) this(const ref Loc loc, IdentifiersAtLoc* packages, Identifier id, IdentifierAtLoc aliasId, int isstatic)
     {
         Identifier selectIdent()
         {
@@ -92,7 +92,7 @@ extern (C++) final class Import : Dsymbol
         this.protection = Prot.Kind.private_; // default to private
     }
 
-    extern (D) void addAlias(Identifier name, Identifier _alias)
+    extern (D) void addAlias(IdentifierAtLoc name, IdentifierAtLoc _alias)
     {
         if (isstatic)
             error("cannot have an import bind list");

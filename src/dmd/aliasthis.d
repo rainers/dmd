@@ -31,13 +31,13 @@ import dmd.visitor;
  */
 extern (C++) final class AliasThis : Dsymbol
 {
-    Identifier ident;
+    IdentifierAtLoc ident;
     /// The symbol this `alias this` resolves to
     Dsymbol sym;
     /// Whether this `alias this` is deprecated or not
     bool isDeprecated_;
 
-    extern (D) this(const ref Loc loc, Identifier ident)
+    extern (D) this(const ref Loc loc, IdentifierAtLoc ident)
     {
         super(loc, null);    // it's anonymous (no identifier)
         this.ident = ident;

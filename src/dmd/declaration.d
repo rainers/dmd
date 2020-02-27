@@ -641,7 +641,7 @@ extern (C++) final class TupleDeclaration : Declaration
                 }
                 else
                 {
-                    auto arg = new Parameter(0, t, null, null, null);
+                    auto arg = new Parameter(0, t);
                 }
                 (*args)[i] = arg;
                 if (!t.deco)

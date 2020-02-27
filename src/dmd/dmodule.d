@@ -169,7 +169,7 @@ void removeHdrFilesAndFail(ref Param params, ref Modules modules)
  * Returns:
  *  the filename of the child package or module
  */
-private const(char)[] getFilename(Identifiers* packages, Identifier ident)
+private const(char)[] getFilename(IdentifiersAtLoc* packages, Identifier ident)
 {
     const(char)[] filename = ident.toString();
 
@@ -269,7 +269,7 @@ extern (C++) class Package : ScopeDsymbol
      *      *pparent        the rightmost package, i.e. pkg2, or NULL if no packages
      *      *ppkg           the leftmost package, i.e. pkg1, or NULL if no packages
      */
-    extern (D) static DsymbolTable resolve(Identifiers* packages, Dsymbol* pparent, Package* ppkg)
+    extern (D) static DsymbolTable resolve(IdentifiersAtLoc* packages, Dsymbol* pparent, Package* ppkg)
     {
         DsymbolTable dst = Module.modules;
         Dsymbol parent = null;
@@ -388,9 +388,9 @@ extern (C++) class Package : ScopeDsymbol
         if (isPkgMod != PKG.unknown)
             return;
 
-        Identifiers packages;
+        IdentifiersAtLoc packages;
         for (Dsymbol s = this.parent; s; s = s.parent)
-            packages.insert(0, s.ident);
+            packages.insert(0, makeIdentifierAtLoc(s.ident));
 
         if (lookForSourceFile(getFilename(&packages, ident)))
             Module.load(Loc(), &packages, this.ident);
@@ -574,7 +574,7 @@ extern (C++) final class Module : Package
         return new Module(Loc.initial, filename, ident, doDocComment, doHdrGen);
     }
 
-    static Module load(Loc loc, Identifiers* packages, Identifier ident)
+    static Module load(Loc loc, IdentifiersAtLoc* packages, Identifier ident)
     {
         //printf("Module::load(ident = '%s')\n", ident.toChars());
         // Build module filename by turning:
@@ -1167,7 +1167,7 @@ extern (C++) final class Module : Package
         if (members.dim == 0 || (*members)[0].ident != Id.object ||
             (*members)[0].isImport() is null)
         {
-            auto im = new Import(Loc.initial, null, Id.object, null, 0);
+            auto im = new Import(Loc.initial, null, Id.object, makeIdentifierAtLoc(null), 0);
             members.shift(im);
         }
         if (!symtab)
@@ -1508,11 +1508,11 @@ extern (C++) struct ModuleDeclaration
 {
     Loc loc;
     Identifier id;
-    Identifiers* packages;  // array of Identifier's representing packages
+    IdentifiersAtLoc* packages;  // array of Identifier's representing packages
     bool isdeprecated;      // if it is a deprecated module
     Expression msg;
 
-    extern (D) this(const ref Loc loc, Identifiers* packages, Identifier id, Expression msg, bool isdeprecated)
+    extern (D) this(const ref Loc loc, IdentifiersAtLoc* packages, Identifier id, Expression msg, bool isdeprecated)
     {
         this.loc = loc;
         this.packages = packages;

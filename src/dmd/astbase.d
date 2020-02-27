@@ -1796,19 +1796,24 @@ struct ASTBase
     {
         StorageClass storageClass;
         Type type;
-        Identifier ident;
+        IdentifierAtLoc ident;
         Expression defaultArg;
         UserAttributeDeclaration userAttribDecl; // user defined attributes
 
         extern (D) alias ForeachDg = int delegate(size_t idx, Parameter param);
 
-        final extern (D) this(StorageClass storageClass, Type type, Identifier ident, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
+        final extern (D) this(StorageClass storageClass, Type type, IdentifierAtLoc ident, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
         {
             this.storageClass = storageClass;
             this.type = type;
             this.ident = ident;
             this.defaultArg = defaultArg;
             this.userAttribDecl = userAttribDecl;
+        }
+
+        extern (D) this(StorageClass storageClass, Type type)
+        {
+            this(storageClass, type, makeIdentifierAtLoc(null), null, null);
         }
 
         static size_t dim(Parameters* parameters)
@@ -3777,7 +3782,7 @@ struct ASTBase
                     Expression e = (*exps)[i];
                     if (e.type.ty == Ttuple)
                         e.error("cannot form tuple of tuples");
-                    auto arg = new Parameter(STC.undefined_, e.type, null, null, null);
+                    auto arg = new Parameter(STC.undefined_, e.type);
                     (*arguments)[i] = arg;
                 }
             }
@@ -5530,9 +5535,9 @@ struct ASTBase
 
     extern (C++) final class DotIdExp : UnaExp
     {
-        Identifier ident;
+        IdentifierAtLoc ident;
 
-        extern (D) this(const ref Loc loc, Expression e, Identifier ident)
+        extern (D) this(const ref Loc loc, Expression e, IdentifierAtLoc ident)
         {
             super(loc, TOK.dotIdentifier, __traits(classInstanceSize, DotIdExp), e);
             this.ident = ident;

@@ -1011,10 +1011,10 @@ Expression semanticTraits(TraitsExp e, Scope* sc)
                     return True();
             }
             ex = new DsymbolExp(e.loc, sym);
-            ex = new DotIdExp(e.loc, ex, id);
+            ex = new DotIdExp(e.loc, ex, makeIdentifierAtLoc(id));
         }
         else if (auto ex2 = isExpression(o))
-            ex = new DotIdExp(e.loc, ex2, id);
+            ex = new DotIdExp(e.loc, ex2, makeIdentifierAtLoc(id));
         else
         {
             e.error("invalid first argument");

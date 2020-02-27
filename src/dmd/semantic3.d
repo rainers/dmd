@@ -1034,7 +1034,7 @@ private extern(C++) final class Semantic3Visitor : Visitor
                      *  _arguments = v_arguments.elements;
                      */
                     Expression e = new VarExp(Loc.initial, funcdecl.v_arguments);
-                    e = new DotIdExp(Loc.initial, e, Id.elements);
+                    e = new DotIdExp(Loc.initial, e, makeIdentifierAtLoc(Id.elements));
                     e = new ConstructExp(Loc.initial, _arguments, e);
                     e = e.expressionSemantic(sc2);
 
@@ -1145,7 +1145,7 @@ private extern(C++) final class Semantic3Visitor : Visitor
                             if (funcdecl.isStatic())
                             {
                                 // The monitor is in the ClassInfo
-                                vsync = new DotIdExp(funcdecl.loc, symbolToExp(cd, funcdecl.loc, sc2, false), Id.classinfo);
+                                vsync = new DotIdExp(funcdecl.loc, symbolToExp(cd, funcdecl.loc, sc2, false), makeIdentifierAtLoc(Id.classinfo));
                             }
                             else
                             {
@@ -1384,7 +1384,7 @@ private extern(C++) final class Semantic3Visitor : Visitor
                 auto handler = new CompoundStatement(ctor.loc, ss, ts);
 
                 auto catches = new Catches();
-                auto ctch = new Catch(ctor.loc, getException(), id, handler);
+                auto ctch = new Catch(ctor.loc, getException(), makeIdentifierAtLoc(id), handler);
                 catches.push(ctch);
 
                 ctor.fbody = new TryCatchStatement(ctor.loc, ctor.fbody, catches);

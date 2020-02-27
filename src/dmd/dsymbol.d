@@ -1615,7 +1615,7 @@ public:
             {
                 Scope sc;
                 auto parameters = new Parameters();
-                Parameters* p = new Parameter(STC.in_, Type.tchar.constOf().arrayOf(), null, null);
+                Parameters* p = new Parameter(STC.in_, Type.tchar.constOf().arrayOf());
                 parameters.push(p);
                 Type tret = null;
                 tfgetmembers = new TypeFunction(parameters, tret, VarArg.none, LINK.d);

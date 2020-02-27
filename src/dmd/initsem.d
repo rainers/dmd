@@ -454,7 +454,7 @@ extern(C++) Initializer initializerSemantic(Initializer init, Scope* sc, Type t,
                 // Rewrite as S().ctor(exp)
                 Expression e;
                 e = new StructLiteralExp(i.loc, sd, null);
-                e = new DotIdExp(i.loc, e, Id.ctor);
+                e = new DotIdExp(i.loc, e, makeIdentifierAtLoc(Id.ctor));
                 e = new CallExp(i.loc, e, i.exp);
                 e = e.expressionSemantic(sc);
                 if (needInterpret)
@@ -472,7 +472,7 @@ extern(C++) Initializer initializerSemantic(Initializer init, Scope* sc, Type t,
                  *  i.exp = typeof(sd).opCall(arguments)
                  */
 
-                Expression e = typeDotIdExp(i.loc, sd.type, Id.call);
+                Expression e = typeDotIdExp(i.loc, sd.type, makeIdentifierAtLoc(Id.call));
                 e = new CallExp(i.loc, e, i.exp);
                 e = e.expressionSemantic(sc);
                 e = resolveProperties(sc, e);

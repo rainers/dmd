@@ -454,7 +454,7 @@ private Type stripDefaultArgs(Type t)
         {
             Type t = stripDefaultArgs(p.type);
             return (t != p.type || p.defaultArg || p.ident || p.userAttribDecl)
-                ? new Parameter(p.storageClass, t, null, null, null)
+                ? new Parameter(p.storageClass, t)
                 : null;
         }
 
@@ -599,7 +599,7 @@ Expression typeToExpressionHelper(TypeQualified t, Expression e, size_t i = 0)
         {
             // ... '. ident'
             case DYNCAST.identifier:
-                e = new DotIdExp(e.loc, e, cast(Identifier)id);
+                e = new DotIdExp(e.loc, e, makeIdentifierAtLoc(cast(Identifier)id));
                 break;
 
             // ... '. name!(tiargs)'
@@ -3584,7 +3584,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
                 e = build_overload(e.loc, sc, e, null, fd);
                 // @@@DEPRECATED_2.087@@@.
                 e.deprecation("`opDot` is deprecated. Use `alias this`");
-                e = new DotIdExp(e.loc, e, ident);
+                e = new DotIdExp(e.loc, e, makeIdentifierAtLoc(ident, e.loc));
                 return returnExp(e.expressionSemantic(sc));
             }
 
@@ -3626,7 +3626,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
                 /* Rewrite e.ident as:
                  *  e.aliasthis.ident
                  */
-                auto die = new DotIdExp(e.loc, alias_e, ident);
+                auto die = new DotIdExp(e.loc, alias_e, makeIdentifierAtLoc(ident, e.loc));
 
                 auto errors = gagError ? 0 : global.startGagging();
                 auto exp = die.semanticY(sc, gagError);

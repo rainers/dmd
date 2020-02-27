@@ -380,7 +380,7 @@ struct Scope
             return null;
         }
 
-        Dsymbol checkAliasThis(AggregateDeclaration ad, Identifier ident, int flags, Expression* exp)
+        Dsymbol checkAliasThis(AggregateDeclaration ad, IdentifierAtLoc ident, int flags, Expression* exp)
         {
             import dmd.mtype;
             if (!ad || !ad.aliasthis)
@@ -473,7 +473,7 @@ struct Scope
                 if (global.params.fixAliasThis)
                 {
                     Expression exp = new ThisExp(loc);
-                    Dsymbol aliasSym = checkAliasThis(sc.scopesym.isAggregateDeclaration(), ident, flags, &exp);
+                    Dsymbol aliasSym = checkAliasThis(sc.scopesym.isAggregateDeclaration(), makeIdentifierAtLoc(ident, loc), flags, &exp);
                     if (aliasSym)
                     {
                         //printf("found aliassym: %s\n", aliasSym.toChars());
