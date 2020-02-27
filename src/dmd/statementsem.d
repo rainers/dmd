@@ -477,17 +477,20 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                     return;
                 }
 
-                Statement sentry;
-                Statement sexception;
-                Statement sfinally;
-                ss.statement = ss.statement.scopeCode(sc, &sentry, &sexception, &sfinally);
-                assert(!sentry);
-                assert(!sexception);
-                if (sfinally)
+                version(LanguageServer) {} else
                 {
-                    //printf("adding sfinally\n");
-                    sfinally = sfinally.statementSemantic(sc);
-                    ss.statement = new CompoundStatement(ss.loc, ss.statement, sfinally);
+                    Statement sentry;
+                    Statement sexception;
+                    Statement sfinally;
+                    ss.statement = ss.statement.scopeCode(sc, &sentry, &sexception, &sfinally);
+                    assert(!sentry);
+                    assert(!sexception);
+                    if (sfinally)
+                    {
+                        //printf("adding sfinally\n");
+                        sfinally = sfinally.statementSemantic(sc);
+                        ss.statement = new CompoundStatement(ss.loc, ss.statement, sfinally);
+                    }
                 }
             }
 
@@ -2336,13 +2339,21 @@ else
             }
             else
                 cs.ifbody = cs.ifbody.statementSemantic(sc);
-            result = cs.ifbody;
+
+            version(LanguageServer)
+                result = cs;
+            else
+                result = cs.ifbody;
         }
         else
         {
             if (cs.elsebody)
                 cs.elsebody = cs.elsebody.statementSemantic(sc);
-            result = cs.elsebody;
+
+            version(LanguageServer)
+                result = cs;
+            else
+                result = cs.elsebody;
         }
     }
 
@@ -3935,7 +3946,12 @@ else
                     (!c.handler || !c.handler.comeFrom()))
                 {
                     // Remove c from the array of catches
-                    tcs.catches.remove(i);
+                    version(LanguageServer)
+                    {
+                        // todo: show hint that this catch is never matched
+                    }
+                    else
+                        tcs.catches.remove(i);
                 }
             }
         }
