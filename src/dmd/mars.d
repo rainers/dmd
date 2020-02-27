@@ -464,7 +464,8 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
         if (!params.oneobj || modi == 0 || m.isDocFile)
             m.deleteObjFile();
 
-        m.parse();
+        if (m.parse() == m)
+            m.resolvePackage();
         if (m.isHdrFile)
         {
             // Remove m's object file from list of object files

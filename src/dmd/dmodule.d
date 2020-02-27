@@ -574,7 +574,37 @@ extern (C++) final class Module : Package
         return new Module(Loc.initial, filename, ident, doDocComment, doHdrGen);
     }
 
+    alias LoadModuleHandler = Module delegate(const ref Loc location, IdentifiersAtLoc* packages, Identifier ident);
+    extern(D) __gshared LoadModuleHandler loadModuleHandler;
+
     static Module load(Loc loc, IdentifiersAtLoc* packages, Identifier ident)
+    {
+        Module m;
+        if (loadModuleHandler)
+            m = loadModuleHandler(loc, packages, ident);
+        else
+            m = loadFromFile(loc, packages, ident);
+
+        if (!m)
+            return null;
+
+        m = m.resolvePackage();
+
+        // Call onImport here because if the module is going to be compiled then we
+        // need to determine it early because it affects semantic analysis. This is
+        // being done after parsing the module so the full module name can be taken
+        // from whatever was declared in the file.
+        if (!m.isRoot() && Compiler.onImport(m))
+        {
+            m.importedFrom = m;
+            assert(m.isRoot());
+        }
+
+        Compiler.loadModule(m);
+        return m;
+    }
+
+    static Module loadFromFile(Loc loc, IdentifiersAtLoc* packages, Identifier ident)
     {
         //printf("Module::load(ident = '%s')\n", ident.toChars());
         // Build module filename by turning:
@@ -1030,6 +1060,11 @@ extern (C++) final class Module : Package
         srcBuffer = null;
         /* The symbol table into which the module is to be inserted.
          */
+        return this;
+    }
+
+    Module resolvePackage()
+    {
         DsymbolTable dst;
         if (md)
         {
@@ -1107,6 +1142,7 @@ extern (C++) final class Module : Package
              */
             Dsymbol prev = dst.lookup(ident);
             assert(prev);
+            const(char)* srcname = srcfile.toChars();
             if (Module mprev = prev.isModule())
             {
                 if (!FileName.equals(srcname, mprev.srcfile.toChars()))
