@@ -614,9 +614,10 @@ private void _vdeprecationSupplemental(const ref Loc loc, const(char)* format, v
  */
 extern (C++) void fatal()
 {
-    version (none)
+    version (LanguageServer)
     {
-        halt();
+        import core.exception;
+        onAssertErrorMsg(__FILE__, __LINE__, "fatal error");
     }
     exit(EXIT_FAILURE);
 }

@@ -688,11 +688,12 @@ Expression Expression_optimize(Expression e, int result, bool keepLvalue)
                 // Need to determine correct offset before optimizing away the cast.
                 // https://issues.dlang.org/show_bug.cgi?id=16980
                 cdfrom.size(e.loc);
-                assert(cdfrom.sizeok == Sizeok.done);
-                assert(cdto.sizeok == Sizeok.done || !cdto.isBaseOf(cdfrom, null));
                 int offset;
                 if (cdto.isBaseOf(cdfrom, &offset) && offset == 0)
                 {
+                    // the result might not be correct if the aggregate layout isn't done
+                    assert(cdfrom.sizeok == Sizeok.done);
+                    assert(cdto.sizeok == Sizeok.done);
                     //printf(" returning4 %s\n", e.e1.toChars());
                     goto L1;
                 }

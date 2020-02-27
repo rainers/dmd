@@ -658,8 +658,8 @@ private Expression interpretFunction(UnionExp* pue, FuncDeclaration fd, InterSta
         }
     }
     // If fell off the end of a void function, return void
-    if (!e && tf.next.ty == Tvoid)
-        e = CTFEExp.voidexp;
+    if (!e)
+        e = tf.next.ty == Tvoid ? CTFEExp.voidexp : CTFEExp.cantexp;
     if (tf.isref && e.op == TOK.variable && (cast(VarExp)e).var == fd.vthis)
         e = thisarg;
     if (tf.isref && fd.isThis2 && e.op == TOK.index)

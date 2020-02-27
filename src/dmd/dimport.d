@@ -295,7 +295,8 @@ extern (C++) final class Import : Dsymbol
         //printf("%s.Import.search(ident = '%s', flags = x%x)\n", toChars(), ident.toChars(), flags);
         if (!pkg)
         {
-            load(null);
+            if (load(null))
+                return null;
             mod.importAll(null);
             mod.dsymbolSemantic(null);
         }

@@ -743,6 +743,7 @@ extern (C++) final class Module : Package
             else
                 error(loc, "is in file '%s' which cannot be read", srcfile.toChars());
         }
+        version(LanguageServer) {} else
         if (!global.gag)
         {
             /* Print path

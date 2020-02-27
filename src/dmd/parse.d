@@ -440,7 +440,7 @@ final class Parser(AST) : Lexer
         while (token.value != TOK.semicolon && token.value != TOK.endOfFile)
             nextToken();
         nextToken();
-        return new AST.Dsymbols();
+        return decldefs;
     }
 
     /**
@@ -2453,7 +2453,7 @@ final class Parser(AST) : Lexer
         else
         {
             error("(expression) expected following `static if`");
-            exp = null;
+            exp = new AST.ErrorExp();
         }
         condition = new AST.StaticIfCondition(loc, exp);
         return condition;
@@ -6004,10 +6004,11 @@ final class Parser(AST) : Lexer
                 }
                 else
                     elsebody = null;
-                if (condition && ifbody)
-                    s = new AST.IfStatement(loc, param, condition, ifbody, elsebody, token.loc);
-                else
-                    s = null; // don't propagate parsing errors
+                if (!ifbody)
+                    ifbody = new AST.ErrorStatement; // remember condition even in broken AST
+                if (!condition)
+                    condition = new AST.ErrorExp();
+                s = new AST.IfStatement(loc, param, condition, ifbody, elsebody, token.loc);
                 break;
             }
 
@@ -6083,6 +6084,8 @@ final class Parser(AST) : Lexer
                 elsebody = parseStatement(0);
                 checkDanglingElse(elseloc);
             }
+            if (!ifbody)
+                ifbody = new AST.CompoundStatement(loc, cast(AST.Statement)null);
             s = new AST.ConditionalStatement(loc, cond, ifbody, elsebody);
             if (flags & ParseStatementFlags.scope_)
                 s = new AST.ScopeStatement(loc, s, token.loc);
@@ -6521,7 +6524,7 @@ final class Parser(AST) : Lexer
                 nextToken();
             if (token.value == TOK.semicolon)
                 nextToken();
-            s = null;
+            s = new AST.ErrorStatement();
             break;
         }
         if (pEndloc)
@@ -8657,8 +8660,9 @@ final class Parser(AST) : Lexer
                     e = parseNewExp(e);
                     continue;
                 }
+                e = new AST.DotExp(loc, e, new AST.ErrorExp());
                 error("identifier or `new` expected following `.`, not `%s`", token.toChars());
-                break;
+                continue;
 
             case TOK.plusPlus:
                 e = new AST.PostExp(TOK.plusPlus, loc, e);

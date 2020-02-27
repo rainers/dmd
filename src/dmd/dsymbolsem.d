@@ -1794,7 +1794,8 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
                 s.dsymbolSemantic(sc2);
                 errors |= s.errors;
             }
-            ad.errors |= errors;
+            version(LanguageServer) {} else
+                ad.errors |= errors;
             if (sc2 != sc)
                 sc2.pop();
         }
