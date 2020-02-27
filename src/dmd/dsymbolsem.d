@@ -1389,7 +1389,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
                     exp = exp.optimize(WANTvalue);
                     if (exp.op == TOK.error)
                     {
-                        dsym._init = new ErrorInitializer();
+                        dsym._init = new ErrorInitializer(ei);
                         ei = null;
                     }
                     else
@@ -1503,7 +1503,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
                     dsym.inuse--;
                     if (global.errors > errors)
                     {
-                        dsym._init = new ErrorInitializer();
+                        dsym._init = new ErrorInitializer(dsym._init);
                         dsym.type = Type.terror;
                     }
                 }

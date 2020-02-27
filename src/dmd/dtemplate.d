@@ -6695,11 +6695,11 @@ extern (C++) class TemplateInstance : ScopeDsymbol
                     else if (definitelyValueParameter(ea))
                     {
                         if (ea.checkValue()) // check void expression
-                            ea = ErrorExp.get();
+                            ea = ErrorExp.get(eq);
                         uint olderrs = global.errors;
                         ea = ea.ctfeInterpret();
                         if (global.errors != olderrs)
-                            ea = ErrorExp.get();
+                            ea = ErrorExp.get(ea);
                     }
                 }
                 //printf("-[%d] ea = %s %s\n", j, Token.toChars(ea.op), ea.toChars());

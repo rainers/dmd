@@ -588,7 +588,7 @@ private extern(C++) final class Semantic3Visitor : Visitor
                     if (!f.next)
                         f.next = Type.tvoid;
                     if (f.checkRetType(funcdecl.loc))
-                        funcdecl.fbody = new ErrorStatement();
+                        funcdecl.fbody = new ErrorStatement(funcdecl.fbody);
                 }
                 if (global.params.vcomplex && f.next !is null)
                     f.next.checkComplexTransition(funcdecl.loc, sc);

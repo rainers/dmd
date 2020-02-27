@@ -447,7 +447,12 @@ private Expression searchUFCS(Scope* sc, UnaExp ue, IdentifierAtLoc ident)
     }
 
     if (!s)
-        return ue.e1.type.Type.getProperty(sc, loc, ident, 0);
+    {
+        auto propexp = ue.e1.type.Type.getProperty(sc, loc, ident, 0);
+        if (propexp.op == TOK.error)
+            propexp.saveOriginal(ue);
+        return propexp;
+    }
 
     FuncDeclaration f = s.isFuncDeclaration();
     if (f)
@@ -541,6 +546,7 @@ private Expression resolveUFCS(Scope* sc, CallExp ce)
         {
             if (Expression ey = die.semanticY(sc, 1))
             {
+                ey.saveOriginal(die);
                 if (ey.op == TOK.error)
                     return ey;
                 ce.e1 = ey;
@@ -613,6 +619,7 @@ private Expression resolveUFCS(Scope* sc, CallExp ce)
         DotTemplateInstanceExp dti = cast(DotTemplateInstanceExp)ce.e1;
         if (Expression ey = dti.semanticY(sc, 1))
         {
+            ey.saveOriginal(dti);
             ce.e1 = ey;
             return null;
         }
@@ -1147,7 +1154,7 @@ private Expression resolvePropertiesX(Scope* sc, Expression e1, Expression e2 = 
         {
             e2 = e2.expressionSemantic(sc);
             if (e2.op == TOK.error)
-                return ErrorExp.get();
+                return e2;
             e2 = resolveProperties(sc, e2);
 
             Expressions a;
@@ -1262,7 +1269,7 @@ private Expression resolvePropertiesX(Scope* sc, Expression e1, Expression e2 = 
         {
             e2 = e2.expressionSemantic(sc);
             if (e2.op == TOK.error)
-                return ErrorExp.get();
+                return e2;
             e2 = resolveProperties(sc, e2);
 
             Expressions a;
@@ -1361,10 +1368,10 @@ Leprop:
 extern (C++) Expression resolveProperties(Scope* sc, Expression e)
 {
     //printf("resolveProperties(%s)\n", e.toChars());
-    e = resolvePropertiesX(sc, e);
-    if (e.checkRightThis(sc))
-        return ErrorExp.get();
-    return e;
+    auto ne = resolvePropertiesX(sc, e);
+    if (ne.checkRightThis(sc))
+        return ErrorExp.get(e);
+    return ne;
 }
 
 /****************************************
@@ -1593,8 +1600,8 @@ private bool preFunctionParameters(Scope* sc, Expressions* exps, const bool repo
 
         for (size_t i = 0; i < exps.dim; i++)
         {
-            Expression arg = (*exps)[i];
-            arg = resolveProperties(sc, arg);
+            Expression a = (*exps)[i];
+            Expression arg = resolveProperties(sc, a);
             if (arg.op == TOK.type)
             {
                 // for static alias this: https://issues.dlang.org/show_bug.cgi?id=17684
@@ -1624,6 +1631,7 @@ private bool preFunctionParameters(Scope* sc, Expressions* exps, const bool repo
                 arg = ErrorExp.get();
                 err = true;
             }
+            arg.saveOriginal(a);
             (*exps)[i] = arg;
         }
     }
@@ -4490,7 +4498,9 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                     {
                         if (!exp.att1 && exp.e1.type.checkAliasThisRec())
                             exp.att1 = exp.e1.type;
-                        exp.e1 = resolveAliasThis(sc, exp.e1);
+                        auto e1 = resolveAliasThis(sc, exp.e1);
+                        e1.saveOriginal(exp.e1);
+                        exp.e1 = e1;
                         goto Lagain;
                     }
                     exp.error("%s `%s` does not overload ()", sd.kind(), sd.toChars());
@@ -4805,10 +4815,13 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             exp.f = resolveOverloadSet(exp.loc, sc, os, tiargs, tthis, exp.arguments);
             if (!exp.f)
                 return setError();
+            Expression e1;
             if (ethis)
-                exp.e1 = new DotVarExp(exp.loc, ethis, exp.f, false);
+                e1 = new DotVarExp(exp.loc, ethis, exp.f, false);
             else
-                exp.e1 = new VarExp(exp.loc, exp.f, false);
+                e1 = new VarExp(exp.loc, exp.f, false);
+            e1.saveOriginal(exp.e1);
+            exp.e1 = e1;
             goto Lagain;
         }
         else if (!t1)
@@ -4885,7 +4898,9 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                     {
                         // Supply an implicit 'this', as in
                         //    this.ident
-                        exp.e1 = new DotVarExp(exp.loc, (new ThisExp(exp.loc)).expressionSemantic(sc), exp.f, false);
+                        auto e1 = new DotVarExp(exp.loc, (new ThisExp(exp.loc)).expressionSemantic(sc), exp.f, false);
+                        e1.saveOriginal(exp.e1);
+                        exp.e1 = e1;
                         goto Lagain;
                     }
                     else if (isNeedThisScope(sc, exp.f))
@@ -4894,7 +4909,9 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                         return setError();
                     }
                 }
-                exp.e1 = new VarExp(idloc, exp.f, false);
+                auto ve = new VarExp(idloc, exp.f, false);
+                ve.saveOriginal(exp.e1);
+                exp.e1 = ve;
                 goto Lagain;
             }
             else
@@ -5009,6 +5026,8 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                     // Supply an implicit 'this', as in
                     //    this.ident
                     auto dve = new DotVarExp(ve.loc, (new ThisExp(ve.loc)).expressionSemantic(sc), ve.var);
+                    dve.saveOriginal(dve);
+                    exp.e1 = dve;
                     // Note: we cannot use f directly, because further overload resolution
                     // through the supplied 'this' may cause different result.
                     goto Lagain;
@@ -5033,6 +5052,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             {
                 exp.e1 = new VarExp(ve.loc, exp.f, false);
                 exp.e1.type = exp.f.type;
+                exp.e1.saveOriginal(ve);
             }
             t1 = exp.f.type;
         }
@@ -11550,6 +11570,7 @@ extern (C++) Expression expressionSemantic(Expression e, Scope* sc)
 {
     scope v = new ExpressionSemanticVisitor(sc);
     e.accept(v);
+    v.result.saveOriginal(e);
     return v.result;
 }
 

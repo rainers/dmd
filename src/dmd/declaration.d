@@ -1537,6 +1537,8 @@ extern (C++) class VarDeclaration : Declaration
 
         e = e.copy();
         e.loc = loc;    // for better error message
+        version (LanguageServer)
+            e.saveOriginal(new VarExp(loc, this));
         return e;
     }
 

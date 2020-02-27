@@ -653,11 +653,16 @@ extern (C++) abstract class Expression : ASTNode
     Type type;      // !=null means that semantic() has been run
     Loc loc;        // file location
 
+    version (LanguageServer)
+        Expression original; // if this is the result of an optimizing or lowering step:
+                             //  the original expression that this was derived from
+
     extern (D) this(const ref Loc loc, TOK op, int size)
     {
         //printf("Expression::Expression(op = %d) this = %p\n", op, this);
         this.loc = loc;
         this.op = op;
+        assert(size < 0x100);
         this.size = cast(ubyte)size;
     }
 
@@ -1585,7 +1590,7 @@ extern (C++) abstract class Expression : ASTNode
         {
             if (tb != Type.terror)
                 error("expression `%s` of type `%s` does not have a boolean value", toChars(), t.toChars());
-            return ErrorExp.get();
+            return ErrorExp.get(this);
         }
         return e;
     }
@@ -1640,6 +1645,26 @@ extern (C++) abstract class Expression : ASTNode
     final Expression ctfeInterpret()
     {
         return .ctfeInterpret(this);
+    }
+
+    void saveOriginal(Expression orig)
+    {
+        version (LanguageServer)
+        {
+            if (!orig || orig == this)
+                return;
+
+            if (!original)
+            {
+                original = orig;
+                return;
+            }
+            // originals always chained via e2
+            for (CommaExp e = original.isCommaExp(); e; e = e.e2.isCommaExp())
+                if (e.e1 == orig || e.e2 == orig)
+                    return;
+            original = new CommaExp(Loc.initial, orig, original);
+        }
     }
 
     final int isConst()
@@ -1977,10 +2002,18 @@ extern (C++) final class IntegerExp : Expression
      */
     static IntegerExp literal(int v)()
     {
-        __gshared IntegerExp theConstant;
-        if (!theConstant)
-            theConstant = new IntegerExp(v);
-        return theConstant;
+        version(LanguageServer)
+        {
+            // must keep locs and original expressions per instance
+            return new IntegerExp(v);
+        }
+        else
+        {
+            __gshared IntegerExp theConstant;
+            if (!theConstant)
+                theConstant = new IntegerExp(v);
+            return theConstant;
+        }
     }
 
     /**
@@ -1993,13 +2026,21 @@ extern (C++) final class IntegerExp : Expression
      */
     static IntegerExp createBool(bool b)
     {
-        __gshared IntegerExp trueExp, falseExp;
-        if (!trueExp)
+        version(LanguageServer)
         {
-            trueExp = new IntegerExp(Loc.initial, 1, Type.tbool);
-            falseExp = new IntegerExp(Loc.initial, 0, Type.tbool);
+            // must keep locs and original expressions per instance
+            return new IntegerExp(Loc.initial, b ? 1 : 0, Type.tbool);
         }
-        return b ? trueExp : falseExp;
+        else
+        {
+            __gshared IntegerExp trueExp, falseExp;
+            if (!trueExp)
+            {
+                trueExp = new IntegerExp(Loc.initial, 1, Type.tbool);
+                falseExp = new IntegerExp(Loc.initial, 0, Type.tbool);
+            }
+            return b ? trueExp : falseExp;
+        }
     }
 }
 
@@ -2015,7 +2056,7 @@ extern (C++) final class ErrorExp : Expression
         type = Type.terror;
     }
 
-    static ErrorExp get ()
+    static ErrorExp get (Expression exp = null)
     {
         if (errorexp is null)
             errorexp = new ErrorExp();
@@ -2029,6 +2070,7 @@ extern (C++) final class ErrorExp : Expression
             .error(Loc.initial, "unknown, please file report on issues.dlang.org");
         }
 
+        saveOriginal(exp);
         return errorexp;
     }
 
@@ -2041,8 +2083,6 @@ extern (C++) final class ErrorExp : Expression
     {
         v.visit(this);
     }
-
-    extern (C++) __gshared ErrorExp errorexp; // handy shared value
 }
 
 

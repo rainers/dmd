@@ -130,6 +130,8 @@ extern(C++) Statement statementSemantic(Statement s, Scope* sc)
 
     scope v = new StatementSemanticVisitor(sc);
     s.accept(v);
+    if (v.result)
+        v.result.saveOriginal(s);
 
     version (CallbackAPI)
         Compiler.onStatementSemanticDone(s, sc);
@@ -188,14 +190,14 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
             s.exp = resolveProperties(sc, s.exp);
             s.exp = s.exp.addDtorHook(sc);
             if (checkNonAssignmentArrayOp(s.exp))
-                s.exp = ErrorExp.get();
+                s.exp = ErrorExp.get(s.exp);
             if (auto f = isFuncAddress(s.exp))
             {
                 if (f.checkForwardRef(s.exp.loc))
-                    s.exp = ErrorExp.get();
+                    s.exp = ErrorExp.get(s.exp);
             }
             if (discardValue(s.exp))
-                s.exp = ErrorExp.get();
+                s.exp = ErrorExp.get(s.exp);
 
             s.exp = s.exp.optimize(WANTvalue);
             s.exp = checkGC(sc, s.exp);
@@ -215,6 +217,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
         if (!a)
             return;
         Statement s = new CompoundStatement(cs.loc, a);
+        s.saveOriginal(cs);
         result = s.statementSemantic(sc);
     }
 
@@ -238,14 +241,15 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                 Statements* flt = s.flatten(sc);
                 if (flt)
                 {
+                    cs.saveOriginal(s);
                     cs.statements.remove(i);
                     cs.statements.insert(i, flt);
                     continue;
                 }
                 s = s.statementSemantic(sc);
-                (*cs.statements)[i] = s;
                 if (s)
                 {
+                    (*cs.statements)[i] = s;
                     Statement sentry;
                     Statement sexception;
                     Statement sfinally;
@@ -351,6 +355,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                 {
                     /* Remove NULL statements from the list.
                      */
+                    cs.saveOriginal((*cs.statements)[i]);
                     cs.statements.remove(i);
                     continue;
                 }
@@ -369,6 +374,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                 {
                     if (auto flt = s.flatten(sc))
                     {
+                        cs.saveOriginal(s);
                         statements.remove(i);
                         statements.insert(i, flt);
                         continue;
@@ -391,7 +397,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
 
             if (auto se = s.isErrorStatement())
             {
-                result = se;
+                result = new ErrorStatement(cs);
                 return;
             }
         }
@@ -399,6 +405,18 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
         if (cs.statements.length == 1)
         {
             result = (*cs.statements)[0];
+            version(LanguageServer)
+            {
+                if (result)
+                    result.saveOriginal(cs.original);
+                else if (cs.original)
+                {
+                    // This is a visible change during semantics: instead of returning null
+                    //  an empty CompoundStatement is returned that references removed statements
+                    cs.statements.remove(0);
+                    result = cs;
+                }
+            }
             return;
         }
         result = cs;
@@ -424,7 +442,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
         }
 
         scd.pop();
-        result = serror ? serror : uls;
+        result = serror ? new ErrorStatement(uls) : uls;
     }
 
     override void visit(ScopeStatement ss)
@@ -440,6 +458,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
             Statements* a = ss.statement.flatten(sc);
             if (a)
             {
+                ss.saveOriginal(ss.statement);
                 ss.statement = new CompoundStatement(ss.loc, a);
             }
 
@@ -517,7 +536,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
         ds.condition = ds.condition.expressionSemantic(sc);
         ds.condition = resolveProperties(sc, ds.condition);
         if (checkNonAssignmentArrayOp(ds.condition))
-            ds.condition = ErrorExp.get();
+            ds.condition = ErrorExp.get(ds.condition);
         ds.condition = ds.condition.optimize(WANTvalue);
         ds.condition = checkGC(sc, ds.condition);
 
@@ -590,7 +609,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
             fs.condition = fs.condition.expressionSemantic(sc);
             fs.condition = resolveProperties(sc, fs.condition);
             if (checkNonAssignmentArrayOp(fs.condition))
-                fs.condition = ErrorExp.get();
+                fs.condition = ErrorExp.get(fs.condition);
             fs.condition = fs.condition.optimize(WANTvalue);
             fs.condition = checkGC(sc, fs.condition);
 
@@ -602,7 +621,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
             fs.increment = fs.increment.expressionSemantic(sc);
             fs.increment = resolveProperties(sc, fs.increment);
             if (checkNonAssignmentArrayOp(fs.increment))
-                fs.increment = ErrorExp.get();
+                fs.increment = ErrorExp.get(fs.increment);
             fs.increment = fs.increment.optimize(WANTvalue);
             fs.increment = checkGC(sc, fs.increment);
         }
@@ -1425,8 +1444,9 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                     }
                 }
                 fs._body = new CompoundStatement(loc, ds, fs._body);
-
-                s = new ForStatement(loc, forinit, cond, increment, fs._body, fs.endloc);
+                auto forstmt = new ForStatement(loc, forinit, cond, increment, fs._body, fs.endloc);
+                forstmt.saveOriginal(fs);
+                s = forstmt;
                 if (auto ls = checkLabeledLoop(sc, fs))   // https://issues.dlang.org/show_bug.cgi?id=15450
                                                           // don't use sc2
                     ls.gotoTarget = s;
@@ -1621,7 +1641,11 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
 
                 forbody = new CompoundStatement(loc, makeargs, fs._body);
 
-                s = new ForStatement(loc, _init, condition, increment, forbody, fs.endloc);
+                { // goto skips declaration without scope
+                    auto forstmt = new ForStatement(loc, _init, condition, increment, forbody, fs.endloc);
+                    forstmt.saveOriginal(fs);
+                    s = forstmt;
+                }
                 if (auto ls = checkLabeledLoop(sc, fs))
                     ls.gotoTarget = s;
 
@@ -1887,6 +1911,7 @@ else
                     }
                 }
                 e = Expression.combine(e, ec);
+                e.saveOriginal(fs.aggr);
 
                 if (!fs.cases.dim)
                 {
@@ -2188,6 +2213,7 @@ else
         }
 
         auto s = new ForStatement(loc, forinit, cond, increment, fs._body, fs.endloc);
+        s.saveOriginal(fs);
         if (LabelStatement ls = checkLabeledLoop(sc, fs))
             ls.gotoTarget = s;
         result = s.statementSemantic(sc);
@@ -2248,7 +2274,7 @@ else
             ifs.condition = ifs.condition.addDtorHook(scd);
         }
         if (checkNonAssignmentArrayOp(ifs.condition))
-            ifs.condition = ErrorExp.get();
+            ifs.condition = ErrorExp.get(ifs.condition);
         ifs.condition = checkGC(scd, ifs.condition);
 
         // Convert to boolean after declaring prm so this works:
@@ -2537,7 +2563,7 @@ else
             }
         }
         if (checkNonAssignmentArrayOp(ss.condition))
-            ss.condition = ErrorExp.get();
+            ss.condition = ErrorExp.get(ss.condition);
         ss.condition = ss.condition.optimize(WANTvalue);
         ss.condition = checkGC(sc, ss.condition);
         if (ss.condition.op == TOK.error)
@@ -3172,14 +3198,14 @@ else
 
             rs.exp = resolveProperties(sc, rs.exp);
             if (rs.exp.checkType())
-                rs.exp = ErrorExp.get();
+                rs.exp = ErrorExp.get(rs.exp);
             if (auto f = isFuncAddress(rs.exp))
             {
                 if (fd.inferRetType && f.checkForwardRef(rs.exp.loc))
-                    rs.exp = ErrorExp.get();
+                    rs.exp = ErrorExp.get(rs.exp);
             }
             if (checkNonAssignmentArrayOp(rs.exp))
-                rs.exp = ErrorExp.get();
+                rs.exp = ErrorExp.get(rs.exp);
 
             // Extract side-effect part
             rs.exp = Expression.extractLast(rs.exp, e0);

@@ -1111,6 +1111,8 @@ Expression Expression_optimize(Expression e, int result, bool keepLvalue)
                 {
                     e.e1 = ce1.e1;
                     e.e2 = ex;
+                    version (LanguageServer)
+                        ex.original = e; // must not point to scope expr ex, so must explicitly overwrite the save original
                 }
             }
             // optimize "str"[] -> "str"
@@ -1163,5 +1165,6 @@ Expression Expression_optimize(Expression e, int result, bool keepLvalue)
         if (ex == v.ret)
             break;
     }
+    v.ret.saveOriginal(e);
     return v.ret;
 }

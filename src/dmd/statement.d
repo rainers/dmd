@@ -133,6 +133,10 @@ extern (C++) abstract class Statement : ASTNode
     const Loc loc;
     const STMT stmt;
 
+    version (LanguageServer)
+        Statement original; // if this is the result of an optimizing or lowering step:
+                            //  the original statement that this was derived from
+
     override final DYNCAST dyncast() const
     {
         return DYNCAST.statement;
@@ -441,6 +445,50 @@ extern (C++) abstract class Statement : ASTNode
     pure nothrow @nogc
     inout(ReturnStatement) endsWithReturnStatement() inout { return null; }
 
+    /************************************
+    * Save a statement that would otherwise be lost by a lowering or flattening
+    * of the AST.
+    * Params:
+    *  s = the statement to save.
+    */
+    final void saveOriginal(Statement s)
+    {
+        version(LanguageServer)
+        {
+            if (!s || s is this)
+                return;
+
+            if (!original)
+            {
+                if (s.isCompoundStatement())
+                {
+                    // avoid mistreating a CompoundStatement as the collection of original statements
+                    auto cs = new CompoundStatement(Loc.initial);
+                    cs.statements.push(s);
+                    original = cs;
+                }
+                else
+                    original = s;
+                return;
+            }
+            // save multiple original statements in a CompoundStatement
+            auto cs = original.isCompoundStatement();
+            if (!cs)
+            {
+                cs = new CompoundStatement(Loc.initial);
+                cs.statements.push(original);
+                original = cs;
+            }
+            else
+            {
+                foreach (os; *cs.statements)
+                    if (os is s)
+                        return;
+            }
+            cs.statements.push(s);
+        }
+    }
+
   final pure inout nothrow @nogc:
 
     /********************
@@ -485,10 +533,11 @@ extern (C++) abstract class Statement : ASTNode
  */
 extern (C++) final class ErrorStatement : Statement
 {
-    extern (D) this()
+    extern (D) this(Statement stmt = null)
     {
         super(Loc.initial, STMT.Error);
         assert(global.gaggedErrors || global.errors);
+        saveOriginal(stmt);
     }
 
     override Statement syntaxCopy()
@@ -752,7 +801,7 @@ extern (C++) class ExpStatement : Statement
                 if (e.op == TOK.error || tm.errors)
                 {
                     auto a = new Statements();
-                    a.push(new ErrorStatement());
+                    a.push(new ErrorStatement(this));
                     return a;
                 }
                 assert(tm.members);
@@ -837,7 +886,7 @@ extern (C++) final class CompileStatement : Statement
         auto errorStatements()
         {
             auto a = new Statements();
-            a.push(new ErrorStatement());
+            a.push(new ErrorStatement(this));
             return a;
         }
 
@@ -1260,12 +1309,15 @@ extern (C++) final class ForStatement : Statement
 
     override Statement syntaxCopy()
     {
-        return new ForStatement(loc,
+        auto fs = new ForStatement(loc,
             _init ? _init.syntaxCopy() : null,
             condition ? condition.syntaxCopy() : null,
             increment ? increment.syntaxCopy() : null,
             _body.syntaxCopy(),
             endloc);
+        version (LanguageServer)
+            fs.original = original;
+        return fs;
     }
 
     override Statement scopeCode(Scope* sc, Statement* sentry, Statement* sexception, Statement* sfinally)
@@ -1563,7 +1615,7 @@ extern (C++) final class StaticForeachStatement : Statement
         else
         {
             auto result = new Statements();
-            result.push(new ErrorStatement());
+            result.push(new ErrorStatement(this));
             return result;
         }
     }
@@ -2397,6 +2449,8 @@ extern (C++) final class LabelStatement : Statement
             a = statement.flatten(sc);
             if (a)
             {
+                saveOriginal(statement);
+
                 if (!a.dim)
                 {
                     a.push(new ExpStatement(loc, cast(Expression)null));

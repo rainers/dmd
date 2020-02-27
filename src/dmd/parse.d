@@ -6524,7 +6524,7 @@ final class Parser(AST) : Lexer
                 nextToken();
             if (token.value == TOK.semicolon)
                 nextToken();
-            s = new AST.ErrorStatement();
+            s = new AST.ErrorStatement(s);
             break;
         }
         if (pEndloc)

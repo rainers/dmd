@@ -1511,6 +1511,9 @@ Expression castTo(Expression e, Scope* sc, Type t)
                      * to the line where the manifest constant was declared
                      * so we need to update the location before trying to cast
                      */
+                    version(LanguageServer)
+                        if (result.loc != Loc.initial)
+                            result = result.copy();
                     result.loc = e.loc;
                     result = result.castTo(sc, t);
                     return;

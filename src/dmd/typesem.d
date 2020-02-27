@@ -4391,6 +4391,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
         return e;
     }
 
+    Expression ex = (){
     switch (mt.ty)
     {
         case Tvector:    return visitVector   (cast(TypeVector)mt);
@@ -4408,6 +4409,13 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
                                 ? visitBasic(cast(TypeBasic)mt)
                                 : visitType(mt);
     }
+    }();
+    if (ex && ex != die)
+    {
+        die.type = ex.type;
+        ex.saveOriginal(die);
+    }
+    return ex;
 }
 
 

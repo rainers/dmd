@@ -96,6 +96,7 @@ public Expression ctfeInterpret(Expression e)
         result = scrubReturnValue(e.loc, result);
     if (CTFEExp.isCantExp(result))
         result = ErrorExp.get();
+    result.saveOriginal(e);
 
     ctfeGlobals.region.release(rgnpos);
 
