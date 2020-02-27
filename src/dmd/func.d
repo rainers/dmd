@@ -381,6 +381,7 @@ extern (C++) class FuncDeclaration : Declaration
         f.frequires = frequires ? Statement.arraySyntaxCopy(frequires) : null;
         f.fensures = fensures ? Ensure.arraySyntaxCopy(fensures) : null;
         f.fbody = fbody ? fbody.syntaxCopy() : null;
+        f.comment = comment;
         return f;
     }
 
