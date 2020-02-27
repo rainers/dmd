@@ -5437,11 +5437,13 @@ extern (C++) final class TypeMixin : Type
  */
 extern (C++) abstract class TypeQualified : Type
 {
-    Loc loc;
+    Loc loc; // location of the first identifier or template instance
 
     // array of Identifier and TypeInstance,
     // representing ident.ident!tiargs.ident. ... etc.
-    Objects idents;
+    //Objects idents;
+    IdentifiersAtLoc idents; // slightly abusive, not necessarily identifier
+
 
     final extern (D) this(TY ty, Loc loc)
     {
@@ -5482,23 +5484,23 @@ extern (C++) abstract class TypeQualified : Type
             case condition:
             case templateparameter:
             }
-            idents[i] = id;
+            idents[i] = makeIdentifierAtLoc(cast(Identifier)id, identLoc(Loc.initial, t.idents[i]));
         }
     }
 
-    final void addIdent(Identifier ident)
+    final void addIdent(IdentifierAtLoc ident)
     {
         idents.push(ident);
     }
 
-    final void addInst(TemplateInstance inst)
+    final void addInst(TemplateInstance inst, Loc nameLoc)
     {
-        idents.push(inst);
+        idents.push(makeIdentifierAtLoc(cast(Identifier)inst, nameLoc));
     }
 
     final void addIndex(RootObject e)
     {
-        idents.push(e);
+        idents.push(makeIdentifierAtLoc(cast(Identifier)e));
     }
 
     override d_uns64 size(const ref Loc loc)

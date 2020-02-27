@@ -3473,6 +3473,10 @@ extern (C++) final class TemplateExp : Expression
 {
     TemplateDeclaration td;
     FuncDeclaration fd;
+    version (LanguageServer)
+        Loc identloc;       // location of the identifier at the invocation
+    else
+        ref const(Loc) identloc() const { return loc; }
 
     extern (D) this(const ref Loc loc, TemplateDeclaration td, FuncDeclaration fd = null)
     {
@@ -3480,6 +3484,12 @@ extern (C++) final class TemplateExp : Expression
         //printf("TemplateExp(): %s\n", td.toChars());
         this.td = td;
         this.fd = fd;
+    }
+    extern (D) this(const ref Loc loc, TemplateDeclaration td, FuncDeclaration fd, const ref Loc identloc)
+    {
+        this(loc, td, fd);
+        version (LanguageServer)
+            this.identloc = identloc;
     }
 
     override bool isLvalue()
@@ -4715,6 +4725,8 @@ extern (C++) final class DotIdExp : UnaExp
         return new DotIdExp(loc, e, ident);
     }
 
+    ref const(Loc) identloc() const { return identLoc(loc, ident); }
+
     override void accept(Visitor v)
     {
         v.visit(this);
@@ -4727,11 +4739,21 @@ extern (C++) final class DotIdExp : UnaExp
 extern (C++) final class DotTemplateExp : UnaExp
 {
     TemplateDeclaration td;
+    version (LanguageServer)
+        Loc identloc;       // location of the identifier at the invocation
+    else
+        ref const(Loc) identloc() const { return loc; }
 
     extern (D) this(const ref Loc loc, Expression e, TemplateDeclaration td)
     {
         super(loc, TOK.dotTemplateDeclaration, __traits(classInstanceSize, DotTemplateExp), e);
         this.td = td;
+    }
+    extern (D) this(const ref Loc loc, Expression e, TemplateDeclaration td, const ref Loc identloc)
+    {
+        this(loc, e, td);
+        version (LanguageServer)
+            this.identloc = identloc;
     }
 
     override void accept(Visitor v)
@@ -4746,6 +4768,10 @@ extern (C++) final class DotVarExp : UnaExp
 {
     Declaration var;
     bool hasOverloads;
+    version (LanguageServer)
+        Loc varloc;       // location of the identifier after the dot
+    else
+        ref const(Loc) varloc() const { return loc; }
 
     extern (D) this(const ref Loc loc, Expression e, Declaration var, bool hasOverloads = true)
     {
@@ -4756,6 +4782,12 @@ extern (C++) final class DotVarExp : UnaExp
         //printf("DotVarExp()\n");
         this.var = var;
         this.hasOverloads = hasOverloads;
+    }
+    extern (D) this(const ref Loc loc, Expression e, const ref Loc varloc, Declaration var, bool hasOverloads = true)
+    {
+        this(loc, e, var, hasOverloads);
+        version (LanguageServer)
+            this.varloc = varloc;
     }
 
     override Modifiable checkModifiable(Scope* sc, int flag)

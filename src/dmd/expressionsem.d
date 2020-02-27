@@ -1001,7 +1001,7 @@ Lagain:
             e = new DotTemplateExp(loc, new ThisExp(loc), td);
         }
         else
-            e = new TemplateExp(loc, td);
+            e = new TemplateExp(loc, td, null, loc);
         e = e.expressionSemantic(sc);
         return e;
     }
@@ -4659,7 +4659,8 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             checkAccess(exp.loc, sc, ue.e1, exp.f);
             if (!exp.f.needThis())
             {
-                exp.e1 = Expression.combine(ue.e1, new VarExp(exp.loc, exp.f, false));
+                auto varloc = dve ? dve.varloc : exp.loc;
+                exp.e1 = Expression.combine(ue.e1, new VarExp(varloc, exp.f, false));
             }
             else
             {
@@ -4672,7 +4673,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                 }
                 else
                 {
-                    exp.e1 = new DotVarExp(exp.loc, dte.e1, exp.f, false);
+                    exp.e1 = new DotVarExp(exp.loc, dte.e1, dte.identloc, exp.f, false);
                     exp.e1 = exp.e1.expressionSemantic(sc);
                     if (exp.e1.op == TOK.error)
                         return setError();
@@ -4824,6 +4825,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             TypeFunction tf;
             const(char)* p;
             Dsymbol s;
+            Loc idloc;
             exp.f = null;
             if (exp.e1.op == TOK.function_)
             {
@@ -4866,11 +4868,13 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             else if (exp.e1.op == TOK.variable && (cast(VarExp)exp.e1).var.isOverDeclaration())
             {
                 s = (cast(VarExp)exp.e1).var;
+                idloc = (cast(VarExp)exp.e1).loc;
                 goto L2;
             }
             else if (exp.e1.op == TOK.template_)
             {
                 s = (cast(TemplateExp)exp.e1).td;
+                idloc = (cast(TemplateExp)exp.e1).identloc;
             L2:
                 exp.f = resolveFuncCall(exp.loc, sc, s, tiargs, null, exp.arguments, FuncResolveFlag.standard);
                 if (!exp.f || exp.f.errors)
@@ -4890,7 +4894,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                         return setError();
                     }
                 }
-                exp.e1 = new VarExp(exp.e1.loc, exp.f, false);
+                exp.e1 = new VarExp(idloc, exp.f, false);
                 goto Lagain;
             }
             else
@@ -5016,9 +5020,10 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                 }
             }
 
-            checkFunctionAttributes(exp, sc, exp.f);
-            checkAccess(exp.loc, sc, null, exp.f);
-            if (exp.f.checkNestedReference(sc, exp.loc))
+            // use ve.loc for error reporting
+            checkFunctionAttributes(ve, sc, exp.f);
+            checkAccess(ve.loc, sc, null, exp.f);
+            if (exp.f.checkNestedReference(sc, ve.loc))
                 return setError();
 
             ethis = null;
@@ -11607,7 +11612,7 @@ Expression semanticX(DotIdExp exp, Scope* sc)
     if (exp.e1.op == TOK.variable && exp.e1.type.toBasetype().ty == Tsarray && exp.ident == Id.length)
     {
         // bypass checkPurity
-        return exp.e1.type.dotExp(sc, exp.e1, exp.ident, exp.noderef ? DotExpFlag.noDeref : 0);
+        return exp.e1.type.dotExp(sc, exp.e1, exp, exp.noderef ? DotExpFlag.noDeref : 0);
     }
 
     if (exp.e1.op == TOK.dot)
@@ -11788,12 +11793,12 @@ Expression semanticY(DotIdExp exp, Scope* sc, int flag)
                 {
                     if (!eleft)
                         eleft = new ThisExp(exp.loc);
-                    e = new DotVarExp(exp.loc, eleft, v);
+                    e = new DotVarExp(exp.loc, eleft, exp.identloc, v);
                     e = e.expressionSemantic(sc);
                 }
                 else
                 {
-                    e = new VarExp(exp.loc, v);
+                    e = new VarExp(exp.identloc, v);
                     if (eleft)
                     {
                         e = new CommaExp(exp.loc, eleft, e);
@@ -11814,12 +11819,12 @@ Expression semanticY(DotIdExp exp, Scope* sc, int flag)
                 {
                     if (!eleft)
                         eleft = new ThisExp(exp.loc);
-                    e = new DotVarExp(exp.loc, eleft, f, true);
+                    e = new DotVarExp(exp.loc, eleft, exp.identloc, f, true);
                     e = e.expressionSemantic(sc);
                 }
                 else
                 {
-                    e = new VarExp(exp.loc, f, true);
+                    e = new VarExp(exp.identloc, f, true);
                     if (eleft)
                     {
                         e = new CommaExp(exp.loc, eleft, e);
@@ -11833,13 +11838,13 @@ Expression semanticY(DotIdExp exp, Scope* sc, int flag)
                 if (eleft)
                     e = new DotTemplateExp(exp.loc, eleft, td);
                 else
-                    e = new TemplateExp(exp.loc, td);
+                    e = new TemplateExp(exp.loc, td, null, exp.identloc);
                 e = e.expressionSemantic(sc);
                 return e;
             }
             if (OverDeclaration od = s.isOverDeclaration())
             {
-                e = new VarExp(exp.loc, od, true);
+                e = new VarExp(exp.identloc, od, true);
                 if (eleft)
                 {
                     e = new CommaExp(exp.loc, eleft, e);
@@ -11864,7 +11869,7 @@ Expression semanticY(DotIdExp exp, Scope* sc, int flag)
             {
                 if (eleft)
                 {
-                    e = new DotVarExp(exp.loc, eleft, tup);
+                    e = new DotVarExp(exp.loc, eleft, exp.identloc, tup);
                     e = e.expressionSemantic(sc);
                     return e;
                 }
@@ -11940,13 +11945,13 @@ Expression semanticY(DotIdExp exp, Scope* sc, int flag)
             return null;
         e = new PtrExp(exp.loc, exp.e1);
         e = e.expressionSemantic(sc);
-        return e.type.dotExp(sc, e, exp.ident, flag | (exp.noderef ? DotExpFlag.noDeref : 0));
+        return e.type.dotExp(sc, e, exp, flag | (exp.noderef ? DotExpFlag.noDeref : 0));
     }
     else
     {
         if (exp.e1.op == TOK.type || exp.e1.op == TOK.template_)
             flag = 0;
-        e = exp.e1.type.dotExp(sc, exp.e1, exp.ident, flag | (exp.noderef ? DotExpFlag.noDeref : 0));
+        e = exp.e1.type.dotExp(sc, exp.e1, exp, flag | (exp.noderef ? DotExpFlag.noDeref : 0));
         if (e)
             e = e.expressionSemantic(sc);
         return e;

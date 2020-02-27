@@ -1868,7 +1868,7 @@ final class Parser(AST) : Lexer
                 if (!tqual)
                     tqual = new AST.TypeInstance(loc, tempinst);
                 else
-                    tqual.addInst(tempinst);
+                    tqual.addInst(tempinst, loc);
                 tiargs = null;
             }
             else
@@ -1876,7 +1876,7 @@ final class Parser(AST) : Lexer
                 if (!tqual)
                     tqual = new AST.TypeIdentifier(loc, id);
                 else
-                    tqual.addIdent(id);
+                    tqual.addIdent(makeIdentifierAtLoc(id, loc));
             }
 
             if (token.value != TOK.dot)
@@ -3917,10 +3917,10 @@ final class Parser(AST) : Lexer
                     if (token.value == TOK.not)
                     {
                         auto tempinst = new AST.TemplateInstance(loc, id, parseTemplateArguments());
-                        tid.addInst(tempinst);
+                        tid.addInst(tempinst, loc);
                     }
                     else
-                        tid.addIdent(id);
+                        tid.addIdent(makeIdentifierAtLoc(id, loc));
                     continue;
                 }
             case TOK.leftBracket:

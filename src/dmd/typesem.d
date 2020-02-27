@@ -180,7 +180,7 @@ private void resolveTupleIndex(const ref Loc loc, Scope* sc, Dsymbol s, Expressi
  *      ps = set if symbol
  *      typeid = set if in TypeidExpression https://dlang.org/spec/expression.html#TypeidExpression
  */
-private void resolveHelper(TypeQualified mt, const ref Loc loc, Scope* sc, Dsymbol s, Dsymbol scopesym,
+private void resolveHelper(TypeQualified mt, Loc loc, Scope* sc, Dsymbol s, Dsymbol scopesym,
     Expression* pe, Type* pt, Dsymbol* ps, bool intypeid = false)
 {
     version (none)
@@ -227,6 +227,7 @@ private void resolveHelper(TypeQualified mt, const ref Loc loc, Scope* sc, Dsymb
     //printf("\t2: s = '%s' %p, kind = '%s'\n",s.toChars(), s, s.kind());
     for (size_t i = 0; i < mt.idents.dim; i++)
     {
+        Loc idloc = identLoc(loc, mt.idents[i]);
         RootObject id = mt.idents[i];
         if (id.dyncast() == DYNCAST.expression ||
             id.dyncast() == DYNCAST.type)
@@ -234,14 +235,14 @@ private void resolveHelper(TypeQualified mt, const ref Loc loc, Scope* sc, Dsymb
             Type tx;
             Expression ex;
             Dsymbol sx;
-            resolveTupleIndex(loc, sc, s, &ex, &tx, &sx, id);
+            resolveTupleIndex(idloc, sc, s, &ex, &tx, &sx, id);
             if (sx)
             {
                 s = sx.toAlias();
                 continue;
             }
             if (tx)
-                ex = new TypeExp(loc, tx);
+                ex = new TypeExp(idloc, tx);
             assert(ex);
 
             ex = typeToExpressionHelper(mt, ex, i + 1);
@@ -254,7 +255,7 @@ private void resolveHelper(TypeQualified mt, const ref Loc loc, Scope* sc, Dsymb
         uint errorsave = global.errors;
         int flags = t is null ? SearchLocalsOnly : IgnorePrivateImports;
 
-        Dsymbol sm = s.searchX(loc, sc, id, flags);
+        Dsymbol sm = s.searchX(idloc, sc, id, flags);
         if (sm && !(sc.flags & SCOPE.ignoresymbolvisibility) && !symbolIsVisible(sc, sm))
         {
             .error(loc, "`%s` is not visible from module `%s`", sm.toPrettyChars(), sc._module.toChars());
@@ -272,9 +273,9 @@ private void resolveHelper(TypeQualified mt, const ref Loc loc, Scope* sc, Dsymb
             VarDeclaration v = s.isVarDeclaration();
             FuncDeclaration f = s.isFuncDeclaration();
             if (intypeid || !v && !f)
-                e = symbolToExp(s, loc, sc, true);
+                e = symbolToExp(s, idloc, sc, true);
             else
-                e = new VarExp(loc, s.isDeclaration(), true);
+                e = new VarExp(idloc, s.isDeclaration(), true);
 
             e = typeToExpressionHelper(mt, e, i);
             e = e.expressionSemantic(sc);
@@ -349,6 +350,7 @@ private void resolveHelper(TypeQualified mt, const ref Loc loc, Scope* sc, Dsymb
             }
         }
         s = sm.toAlias();
+        loc = idloc;
     }
 
     if (auto em = s.isEnumMember())
@@ -591,15 +593,16 @@ Expression typeToExpression(Type t)
 Expression typeToExpressionHelper(TypeQualified t, Expression e, size_t i = 0)
 {
     //printf("toExpressionHelper(e = %s %s)\n", Token.toChars(e.op), e.toChars());
-    foreach (id; t.idents[i .. t.idents.dim])
+    foreach (idloc; t.idents[i .. t.idents.dim])
     {
+        RootObject id = idloc;
         //printf("\t[%d] e: '%s', id: '%s'\n", i, e.toChars(), id.toChars());
 
         final switch (id.dyncast())
         {
             // ... '. ident'
             case DYNCAST.identifier:
-                e = new DotIdExp(e.loc, e, makeIdentifierAtLoc(cast(Identifier)id));
+                e = new DotIdExp(e.loc, e, idloc);
                 break;
 
             // ... '. name!(tiargs)'
@@ -3150,14 +3153,17 @@ void resolve(Type mt, const ref Loc loc, Scope* sc, Expression* pe, Type* pt, Ds
  *  mt = type for which the dot expression is used
  *  sc = instantiating scope
  *  e = expression to convert
- *  ident = identifier being used
+ *  die = the DotIdExp with identifier and loc being used
  *  flag = DotExpFlag bit flags
  *
  * Returns:
  *  resulting expression with e.ident resolved
  */
-Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
+Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
 {
+    Identifier ident = die.ident;
+    Loc idloc = identLoc(e.loc, die.ident);
+
     Expression visitType(Type mt)
     {
         VarDeclaration v = null;
@@ -3366,7 +3372,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
             // stringof should not add a cast to the output
             return visitType(mt);
         }
-        return mt.basetype.dotExp(sc, e.castTo(sc, mt.basetype), ident, flag);
+        return mt.basetype.dotExp(sc, e.castTo(sc, mt.basetype), die, flag);
     }
 
     Expression visitArray(TypeArray mt)
@@ -3501,7 +3507,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
             printf("TypeReference::dotExp(e = '%s', ident = '%s')\n", e.toChars(), ident.toChars());
         }
         // References just forward things along
-        return mt.next.dotExp(sc, e, ident, flag);
+        return mt.next.dotExp(sc, e, die, flag);
     }
 
     Expression visitDelegate(TypeDelegate mt)
@@ -3587,7 +3593,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
                 e = build_overload(e.loc, sc, e, null, fd);
                 // @@@DEPRECATED_2.087@@@.
                 e.deprecation("`opDot` is deprecated. Use `alias this`");
-                e = new DotIdExp(e.loc, e, makeIdentifierAtLoc(ident, e.loc));
+                e = new DotIdExp(e.loc, e, die.ident);
                 return returnExp(e.expressionSemantic(sc));
             }
 
@@ -3629,7 +3635,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
                 /* Rewrite e.ident as:
                  *  e.aliasthis.ident
                  */
-                auto die = new DotIdExp(e.loc, alias_e, makeIdentifierAtLoc(ident, e.loc));
+                auto die = new DotIdExp(e.loc, alias_e, die.ident);
 
                 auto errors = gagError ? 0 : global.startGagging();
                 auto exp = die.semanticY(sc, gagError);
@@ -3756,7 +3762,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
                     return ErrorExp.get();
                 }
                 checkAccess(e.loc, sc, null, v);
-                Expression ve = new VarExp(e.loc, v);
+                Expression ve = new VarExp(idloc, v);
                 if (!isTrivialExp(e))
                 {
                     ve = new CommaExp(e.loc, e, ve);
@@ -3782,9 +3788,9 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
         if (td)
         {
             if (e.op == TOK.type)
-                e = new TemplateExp(e.loc, td);
+                e = new TemplateExp(e.loc, td, null, die.loc);
             else
-                e = new DotTemplateExp(e.loc, e, td);
+                e = new DotTemplateExp(e.loc, e, td, die.loc);
             return e.expressionSemantic(sc);
         }
 
@@ -3849,14 +3855,14 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
                  */
                 if (hasThis(sc))
                 {
-                    e = new DotVarExp(e.loc, new ThisExp(e.loc), d);
+                    e = new DotVarExp(e.loc, new ThisExp(e.loc), idloc, d);
                     return e.expressionSemantic(sc);
                 }
             }
             if (d.semanticRun == PASS.init)
                 d.dsymbolSemantic(null);
             checkAccess(e.loc, sc, e, d);
-            auto ve = new VarExp(e.loc, d);
+            auto ve = new VarExp(idloc, d);
             if (d.isVarDeclaration() && d.needThis())
                 ve.type = d.type.addMod(e.type.mod);
             return ve;
@@ -3867,12 +3873,12 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
         {
             // (e, d)
             checkAccess(e.loc, sc, e, d);
-            Expression ve = new VarExp(e.loc, d);
+            Expression ve = new VarExp(idloc, d);
             e = unreal ? ve : new CommaExp(e.loc, e, ve);
             return e.expressionSemantic(sc);
         }
 
-        e = new DotVarExp(e.loc, e, d);
+        e = new DotVarExp(e.loc, e, idloc, d);
         return e.expressionSemantic(sc);
     }
 
@@ -3896,7 +3902,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
             {
                 /* Special enums forward to the base type
                  */
-                e = mt.sym.memtype.dotExp(sc, e, ident, flag);
+                e = mt.sym.memtype.dotExp(sc, e, die, flag);
             }
             else if (!(flag & 1))
             {
@@ -3916,7 +3922,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
                 return mt.getProperty(sc, e.loc, ident, flag & 1);
             }
 
-            Expression res = mt.sym.getMemtype(Loc.initial).dotExp(sc, e, ident, 1);
+            Expression res = mt.sym.getMemtype(Loc.initial).dotExp(sc, e, die, 1);
             if (!(flag & 1) && !res)
             {
                 if (auto ns = mt.sym.search_correct(ident))
@@ -3931,7 +3937,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
             return res;
         }
         EnumMember m = s.isEnumMember();
-        return m.getVarExp(e.loc, sc);
+        return m.getVarExp(idloc, sc);
     }
 
     Expression visitClass(TypeClass mt)
@@ -4186,7 +4192,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
                     return ErrorExp.get();
                 }
                 checkAccess(e.loc, sc, null, v);
-                Expression ve = new VarExp(e.loc, v);
+                Expression ve = new VarExp(idloc, v);
                 ve = ve.expressionSemantic(sc);
                 return ve;
             }
@@ -4209,9 +4215,9 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
         if (td)
         {
             if (e.op == TOK.type)
-                e = new TemplateExp(e.loc, td);
+                e = new TemplateExp(e.loc, td, null, die.loc);
             else
-                e = new DotTemplateExp(e.loc, e, td);
+                e = new DotTemplateExp(e.loc, e, td, die.loc);
             e = e.expressionSemantic(sc);
             return e;
         }
@@ -4306,7 +4312,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
                             e1 = getThisSkipNestedFuncs(e1.loc, sc, f.toParent2(), ad, e1, t, d, true);
                             if (!e1)
                             {
-                                e = new VarExp(e.loc, d);
+                                e = new VarExp(idloc, d);
                                 return e;
                             }
                             goto L2;
@@ -4321,7 +4327,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
                     if (cd && tcd && (tcd == cd || cd.isBaseOf(tcd, null)))
                     {
                         e = new DotTypeExp(e1.loc, e1, cd);
-                        e = new DotVarExp(e.loc, e, d);
+                        e = new DotVarExp(e.loc, e, idloc, d);
                         e = e.expressionSemantic(sc);
                         return e;
                     }
@@ -4342,7 +4348,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
                         e1 = getThisSkipNestedFuncs(e1.loc, sc, tcd.toParentP(ad), ad, e1, t, d, true);
                         if (!e1)
                         {
-                            e = new VarExp(e.loc, d);
+                            e = new VarExp(idloc, d);
                             return e;
                         }
                         goto L2;
@@ -4363,7 +4369,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
             }
 
             checkAccess(e.loc, sc, e, d);
-            auto ve = new VarExp(e.loc, d);
+            auto ve = new VarExp(idloc, d);
             if (d.isVarDeclaration() && d.needThis())
                 ve.type = d.type.addMod(e.type.mod);
             return ve;
@@ -4374,13 +4380,13 @@ Expression dotExp(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
         {
             // (e, d)
             checkAccess(e.loc, sc, e, d);
-            Expression ve = new VarExp(e.loc, d);
+            Expression ve = new VarExp(idloc, d);
             e = unreal ? ve : new CommaExp(e.loc, e, ve);
             e = e.expressionSemantic(sc);
             return e;
         }
 
-        e = new DotVarExp(e.loc, e, d);
+        e = new DotVarExp(e.loc, e, idloc, d);
         e = e.expressionSemantic(sc);
         return e;
     }
