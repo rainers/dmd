@@ -189,6 +189,11 @@ void incArrayAllocs()
     ++ctfeGlobals.numArrayAllocs;
 }
 
+void dinterpret_init()
+{
+    ctfeGlobals = ctfeGlobals.init;
+}
+
 /* ================================================ Implementation ======================================= */
 
 private:

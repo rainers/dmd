@@ -624,7 +624,7 @@ extern (C++) final class VersionCondition : DVCondition
      * Returns:
      *   `true` if it is reserved, `false` otherwise
      */
-    extern(D) private static bool isReserved(const(char)[] ident)
+    extern(D) static bool isReserved(const(char)[] ident)
     {
         // This list doesn't include "D_*" versions, see the last return
         switch (ident)
