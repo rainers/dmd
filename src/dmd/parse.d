@@ -307,7 +307,7 @@ final class Parser(AST) : Lexer
             /* Create a pseudo-filename for the mixin string, as it may not even exist
              * in the source file.
              */
-            char* filename = cast(char*)mem.xmalloc(strlen(loc.filename) + 7 + (loc.linnum).sizeof * 3 + 1);
+            char* filename = cast(char*)mem.xmalloc_noscan(strlen(loc.filename) + 7 + (loc.linnum).sizeof * 3 + 1);
             sprintf(filename, "%s-mixin-%d", loc.filename, cast(int)loc.linnum);
             scanloc.filename = filename;
         }
