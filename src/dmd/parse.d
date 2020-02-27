@@ -2375,11 +2375,12 @@ final class Parser(AST) : Lexer
     {
         uint level = 1;
         Identifier id = null;
+        Loc idloc;
 
         if (token.value == TOK.leftParentheses)
         {
             nextToken();
-
+            idloc = token.loc;
             if (token.value == TOK.identifier)
                 id = token.ident;
             else if (token.value == TOK.int32Literal || token.value == TOK.int64Literal)
@@ -2389,7 +2390,7 @@ final class Parser(AST) : Lexer
             nextToken();
             check(TOK.rightParentheses);
         }
-        return new AST.DebugCondition(mod, level, id);
+        return new AST.DebugCondition(idloc, mod, level, id);
     }
 
     /**************************************
@@ -2399,6 +2400,7 @@ final class Parser(AST) : Lexer
     {
         uint level = 1;
         Identifier id = null;
+        Loc idloc;
 
         if (token.value == TOK.leftParentheses)
         {
@@ -2408,6 +2410,7 @@ final class Parser(AST) : Lexer
              *    version (assert)
              * even though they are keywords
              */
+            idloc = token.loc;
             if (token.value == TOK.identifier)
                 id = token.ident;
             else if (token.value == TOK.int32Literal || token.value == TOK.int64Literal)
@@ -2423,7 +2426,7 @@ final class Parser(AST) : Lexer
         }
         else
             error("(condition) expected following `version`");
-        return new AST.VersionCondition(mod, level, id);
+        return new AST.VersionCondition(idloc, mod, level, id);
     }
 
     /***********************************************
@@ -8817,6 +8820,7 @@ final class Parser(AST) : Lexer
 
         auto e = parseShiftExp();
         TOK op = token.value;
+        Loc oploc = token.loc;
 
         switch (op)
         {
@@ -8837,23 +8841,25 @@ final class Parser(AST) : Lexer
             const tv = peekNext();
             if (tv == TOK.in_)
             {
+                oploc = token.loc;
                 nextToken();
                 nextToken();
                 auto e2 = parseShiftExp();
-                e = new AST.InExp(loc, e, e2);
+                e = new AST.InExp(loc, e, e2, oploc);
                 e = new AST.NotExp(loc, e);
                 break;
             }
             if (tv != TOK.is_)
                 break;
             nextToken();
+            oploc = token.loc;
             op = TOK.notIdentity;
             goto L1;
         }
         L1:
             nextToken();
             auto e2 = parseShiftExp();
-            e = new AST.IdentityExp(op, loc, e, e2);
+            e = new AST.IdentityExp(op, loc, e, e2, oploc);
             break;
 
         case TOK.lessThan:
@@ -8868,7 +8874,7 @@ final class Parser(AST) : Lexer
         case TOK.in_:
             nextToken();
             auto e2 = parseShiftExp();
-            e = new AST.InExp(loc, e, e2);
+            e = new AST.InExp(loc, e, e2, oploc);
             break;
 
         default:

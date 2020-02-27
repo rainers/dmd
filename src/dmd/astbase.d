@@ -5880,7 +5880,7 @@ struct ASTBase
 
     extern (C++) final class InExp : BinExp
     {
-        extern (D) this(const ref Loc loc, Expression e1, Expression e2)
+        extern (D) this(const ref Loc loc, Expression e1, Expression e2, const ref Loc oploc)
         {
             super(loc, TOK.in_, __traits(classInstanceSize, InExp), e1, e2);
         }
@@ -5893,7 +5893,7 @@ struct ASTBase
 
     extern (C++) final class IdentityExp : BinExp
     {
-        extern (D) this(TOK op, Loc loc, Expression e1, Expression e2)
+        extern (D) this(TOK op, Loc loc, Expression e1, Expression e2, const ref Loc oploc)
         {
             super(loc, op, __traits(classInstanceSize, IdentityExp), e1, e2);
         }
@@ -6345,9 +6345,9 @@ struct ASTBase
         Identifier ident;
         Module mod;
 
-        final extern (D) this(Module mod, uint level, Identifier ident)
+        final extern (D) this(const ref Loc loc, Module mod, uint level, Identifier ident)
         {
-            super(Loc.initial);
+            super(loc);
             this.mod = mod;
             this.ident = ident;
         }
@@ -6360,9 +6360,9 @@ struct ASTBase
 
     extern (C++) final class DebugCondition : DVCondition
     {
-        extern (D) this(Module mod, uint level, Identifier ident)
+        extern (D) this(const ref Loc loc, Module mod, uint level, Identifier ident)
         {
-            super(mod, level, ident);
+            super(loc, mod, level, ident);
         }
 
         override void accept(Visitor v)
@@ -6373,9 +6373,9 @@ struct ASTBase
 
     extern (C++) final class VersionCondition : DVCondition
     {
-        extern (D) this(Module mod, uint level, Identifier ident)
+        extern (D) this(const ref Loc loc, Module mod, uint level, Identifier ident)
         {
-            super(mod, level, ident);
+            super(loc, mod, level, ident);
         }
 
         override void accept(Visitor v)

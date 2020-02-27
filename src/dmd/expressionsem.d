@@ -8946,7 +8946,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                                 ex = new CastExp(ex.loc, ex, Type.tvoid);
                                 ey = new CastExp(ey.loc, ey, Type.tvoid);
                             }
-                            e = new CondExp(exp.loc, new InExp(exp.loc, ek, ea), ex, ey);
+                            e = new CondExp(exp.loc, new InExp(exp.loc, ek, ea, Loc.initial), ex, ey);
                         }
                         e = Expression.combine(e0, e);
                         e = e.expressionSemantic(sc);
