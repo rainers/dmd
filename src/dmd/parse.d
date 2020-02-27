@@ -6843,7 +6843,11 @@ final class Parser(AST) : Lexer
     private void check(Loc loc, TOK value)
     {
         if (token.value != value)
+        {
             error(loc, "found `%s` when expecting `%s`", token.toChars(), Token.toChars(value));
+            if (token.value == TOK.rightCurly)
+                return;
+        }
         nextToken();
     }
 
@@ -6855,7 +6859,11 @@ final class Parser(AST) : Lexer
     private void check(TOK value, const(char)* string)
     {
         if (token.value != value)
+        {
             error("found `%s` when expecting `%s` following %s", token.toChars(), Token.toChars(value), string);
+            if (token.value == TOK.rightCurly)
+                return;
+        }
         nextToken();
     }
 
