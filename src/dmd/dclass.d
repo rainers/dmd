@@ -182,6 +182,9 @@ extern (C++) class ClassDeclaration : AggregateDeclaration
     /// true if this is a scope class
     bool stack;
 
+    /// true if this is in module object
+    bool inObject;
+
     /// if this is a C++ class, this is the slot reserved for the virtual destructor
     int cppDtorVtblIndex = -1;
 
@@ -220,6 +223,7 @@ extern (C++) class ClassDeclaration : AggregateDeclaration
         else
             this.baseclasses = new BaseClasses();
 
+        this.inObject = inObject;
         this.members = members;
 
         //printf("ClassDeclaration(%s), dim = %d\n", ident.toChars(), this.baseclasses.dim);
@@ -385,7 +389,7 @@ extern (C++) class ClassDeclaration : AggregateDeclaration
         //printf("ClassDeclaration.syntaxCopy('%s')\n", toChars());
         ClassDeclaration cd =
             s ? cast(ClassDeclaration)s
-              : new ClassDeclaration(loc, ident, null, null, false);
+              : new ClassDeclaration(loc, ident, null, null, inObject);
 
         cd.storage_class |= storage_class;
 
