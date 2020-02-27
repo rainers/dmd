@@ -246,6 +246,8 @@ extern (C++) class FuncDeclaration : Declaration
     Statement frequire;                 /// lowered in contract
     Statement fensure;                  /// lowered out contract
     Statement fbody;                    /// function body
+    version (LanguageServer)
+        ScopeDsymbol scopesym;          /// scope for function parameters and locals
 
     FuncDeclarations foverrides;        /// functions this function overrides
     FuncDeclaration fdrequire;          /// function that does the in contract

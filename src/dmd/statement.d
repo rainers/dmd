@@ -1088,6 +1088,8 @@ extern (C++) final class UnrolledLoopStatement : Statement
 extern (C++) class ScopeStatement : Statement
 {
     Statement statement;
+    version (LanguageServer)
+        ScopeDsymbol scopesym;
     Loc endloc;                 // location of closing curly bracket
 
     extern (D) this(const ref Loc loc, Statement statement, Loc endloc)

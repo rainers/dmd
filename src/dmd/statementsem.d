@@ -454,6 +454,11 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
             sym.parent = sc.scopesym;
             sym.endlinnum = ss.endloc.linnum;
             sc = sc.push(sym);
+            version (LanguageServer)
+            {
+                ss.scopesym = sym;
+                sc.setNoFree();
+            }
 
             Statements* a = ss.statement.flatten(sc);
             if (a)
