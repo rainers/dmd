@@ -1631,7 +1631,7 @@ public:
         }
         else
             s1 = !cs ? f.fbody : null;
-        ReturnStatement rs = s1 ? s1.endsWithReturnStatement() : null;
+        ReturnStatement rs = s1 ? s1.isReturnStatement() : null;
         if (rs && rs.exp)
         {
             buf.writestring(" => ");
@@ -2129,17 +2129,20 @@ public:
 
     override void visit(SymOffExp e)
     {
+        auto varIdent = (e.var.isStatic() ? e.var.toPrettyChars(true) : e.var.toChars());
+            
         if (e.offset)
-            buf.printf("(& %s%+lld)", e.var.toChars(), e.offset);
+            buf.printf("(& %s%+lld)", varIdent, e.offset);
         else if (e.var.isTypeInfoDeclaration())
-            buf.writestring(e.var.toChars());
+            buf.writestring(varIdent);
         else
-            buf.printf("& %s", e.var.toChars());
+            buf.printf("& %s", varIdent);
     }
 
     override void visit(VarExp e)
     {
-        buf.writestring(e.var.toChars());
+        auto varIdent = (e.var.isStatic() ? e.var.toPrettyChars(true) : e.var.toChars());
+        buf.writestring(varIdent);
     }
 
     override void visit(OverExp e)
