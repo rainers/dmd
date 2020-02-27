@@ -14,6 +14,50 @@ module dmd.root.aav;
 import core.stdc.string;
 import dmd.root.rmem;
 
+version(GC)
+{
+    // needed for precise scanning (and likely to be more efficient)
+    struct AssocArray(K,V)
+    {
+        static if(is(K == class))
+            alias KEY = void*; // class reference does not work with C++ classes
+        else
+            alias KEY = K;
+        V[KEY] aa;
+
+        auto length() const { return aa.length; }
+
+        V opIndex(const(K) key) pure nothrow /*@nogc*/
+        {
+            if (auto p = cast(KEY)key in aa)
+                return *p;
+            return V.init;
+        }
+
+        auto getLvalue(const(K) key)
+        {
+            auto pk = cast(KEY)key;
+            void* pv = _aaGetY(cast(AA*)&aa, typeid(V[void*]), V.sizeof, &pk);
+            return cast(V*)pv;
+        }
+
+        @property auto asRange() pure nothrow @nogc
+        {
+            return aa.byKeyValue;
+        }
+    }
+
+    private struct AA { void* impl; }
+    private extern(C) void* _aaGetY(AA* paa, const TypeInfo_AssociativeArray ti, const size_t valsz, const scope void* pkey) pure nothrow;
+
+}
+else
+    version = NoGC;
+
+alias Key = void*;
+alias Value = void*;
+
+version(NoGC):
 private size_t hash(size_t a) pure nothrow @nogc @safe
 {
     a ^= (a >> 20) ^ (a >> 12);
@@ -25,9 +69,6 @@ struct KeyValueTemplate(K,V)
     K key;
     V value;
 }
-
-alias Key = void*;
-alias Value = void*;
 
 alias KeyValue = KeyValueTemplate!(Key, Value);
 
