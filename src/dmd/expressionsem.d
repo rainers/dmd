@@ -449,7 +449,7 @@ private Expression searchUFCS(Scope* sc, UnaExp ue, IdentifierAtLoc ident)
     if (!s)
     {
         auto propexp = ue.e1.type.Type.getProperty(sc, loc, ident, 0);
-        if (propexp.op == TOK.error)
+        if (propexp && propexp.op == TOK.error)
             propexp.saveOriginal(ue);
         return propexp;
     }
@@ -11573,7 +11573,8 @@ extern (C++) Expression expressionSemantic(Expression e, Scope* sc)
 {
     scope v = new ExpressionSemanticVisitor(sc);
     e.accept(v);
-    v.result.saveOriginal(e);
+    if (v.result)
+        v.result.saveOriginal(e);
     return v.result;
 }
 

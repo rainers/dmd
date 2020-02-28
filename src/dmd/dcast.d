@@ -203,6 +203,8 @@ Expression implicitCastTo(Expression e, Scope* sc, Type t)
 
     scope ImplicitCastTo v = new ImplicitCastTo(sc, t);
     e.accept(v);
+    if (v.result)
+        v.result.saveOriginal(e);
     return v.result;
 }
 

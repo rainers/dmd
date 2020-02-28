@@ -117,7 +117,7 @@ private Expression checkAssignmentAsCondition(Expression e)
     if (ec.op == TOK.assign)
     {
         ec.error("assignment cannot be used as a condition, perhaps `==` was meant?");
-        return ErrorExp.get();
+        return ErrorExp.get(e);
     }
     return e;
 }
