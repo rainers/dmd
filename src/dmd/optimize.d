@@ -692,8 +692,7 @@ Expression Expression_optimize(Expression e, int result, bool keepLvalue)
                 if (cdto.isBaseOf(cdfrom, &offset) && offset == 0)
                 {
                     // the result might not be correct if the aggregate layout isn't done
-                    assert(cdfrom.sizeok == Sizeok.done);
-                    assert(cdto.sizeok == Sizeok.done);
+                    assert(!cdfrom.isInterfaceDeclaration() || cdfrom.sizeok == Sizeok.done);
                     //printf(" returning4 %s\n", e.e1.toChars());
                     goto L1;
                 }
