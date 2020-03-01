@@ -37,7 +37,7 @@ version(GC)
         auto getLvalue(const(K) key)
         {
             auto pk = cast(KEY)key;
-            void* pv = _aaGetY(cast(AA*)&aa, typeid(V[void*]), V.sizeof, &pk);
+            void* pv = _aaGetY(cast(void**)&aa, typeid(V[void*]), V.sizeof, &pk);
             return cast(V*)pv;
         }
 
@@ -48,7 +48,7 @@ version(GC)
     }
 
     private struct AA { void* impl; }
-    private extern(C) void* _aaGetY(AA* paa, const TypeInfo_AssociativeArray ti, const size_t valsz, const scope void* pkey) pure nothrow;
+    private extern(C) void* _aaGetY(void** paa, const TypeInfo_AssociativeArray ti, const size_t valsz, const scope void* pkey) pure nothrow;
 
 }
 else
