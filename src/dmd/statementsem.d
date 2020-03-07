@@ -450,7 +450,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
         //printf("ScopeStatement::semantic(sc = %p)\n", sc);
         if (ss.statement)
         {
-            ScopeDsymbol sym = new ScopeDsymbol();
+            ScopeDsymbol sym = new ScopeDsymbol(ss.loc, null);
             sym.parent = sc.scopesym;
             sym.endlinnum = ss.endloc.linnum;
             sc = sc.push(sym);
@@ -600,11 +600,16 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
         }
         assert(fs._init is null);
 
-        auto sym = new ScopeDsymbol();
+        auto sym = new ScopeDsymbol(fs.loc, null);
         sym.parent = sc.scopesym;
         sym.endlinnum = fs.endloc.linnum;
         sc = sc.push(sym);
         sc.inLoop = true;
+        version (LanguageServer)
+        {
+            fs.scopesym = sym;
+            sc.setNoFree();
+        }
 
         if (fs.condition)
         {
@@ -1194,7 +1199,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
             return;
         }
 
-        auto sym = new ScopeDsymbol();
+        auto sym = new ScopeDsymbol(fs.loc, null);
         sym.parent = sc.scopesym;
         sym.endlinnum = fs.endloc.linnum;
         auto sc2 = sc.push(sym);
@@ -2235,7 +2240,7 @@ else
         // check in syntax level
         ifs.condition = checkAssignmentAsCondition(ifs.condition);
 
-        auto sym = new ScopeDsymbol();
+        auto sym = new ScopeDsymbol(ifs.loc, null);
         sym.parent = sc.scopesym;
         sym.endlinnum = ifs.endloc.linnum;
         Scope* scd = sc.push(sym);
@@ -4299,7 +4304,7 @@ void catchSemantic(Catch c, Scope* sc)
         c.errors = true;
     }
 
-    auto sym = new ScopeDsymbol();
+    auto sym = new ScopeDsymbol(c.loc, null);
     sym.parent = sc.scopesym;
     sc = sc.push(sym);
 
@@ -4408,7 +4413,7 @@ Statement semanticNoScope(Statement s, Scope* sc)
 // Same as semanticNoScope(), but do create a new scope
 Statement semanticScope(Statement s, Scope* sc, Statement sbreak, Statement scontinue)
 {
-    auto sym = new ScopeDsymbol();
+    auto sym = new ScopeDsymbol(s.loc, null);
     sym.parent = sc.scopesym;
     Scope* scd = sc.push(sym);
     if (sbreak)

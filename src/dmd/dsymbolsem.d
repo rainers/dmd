@@ -2748,7 +2748,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
         }
 
         // Set up scope for parameters
-        auto paramsym = new ScopeDsymbol();
+        auto paramsym = new ScopeDsymbol(tempdecl.loc, null);
         paramsym.parent = tempdecl.parent;
         Scope* paramscope = sc.push(paramsym);
         paramscope.stc = 0;
@@ -3004,7 +3004,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
         if (parentInstance)
             parentInstance.declareParameters(scy);
 
-        tm.argsym = new ScopeDsymbol();
+        tm.argsym = new ScopeDsymbol(tm.loc, null);
         tm.argsym.parent = scy.parent;
         Scope* argscope = scy.push(tm.argsym);
 
@@ -6140,7 +6140,7 @@ void templateInstanceSemantic(TemplateInstance tempinst, Scope* sc, Expressions*
     {
         printf("\tcreate scope for template parameters '%s'\n", tempinst.toChars());
     }
-    tempinst.argsym = new ScopeDsymbol();
+    tempinst.argsym = new ScopeDsymbol(tempinst.loc, null);
     tempinst.argsym.parent = _scope.parent;
     _scope = _scope.push(tempinst.argsym);
     _scope.tinst = tempinst;

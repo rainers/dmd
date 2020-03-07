@@ -1293,6 +1293,8 @@ extern (C++) final class ForStatement : Statement
     Expression increment;
     Statement _body;
     Loc endloc;             // location of closing curly bracket
+    version (LanguageServer)
+        ScopeDsymbol scopesym;
 
     // When wrapped in try/finally clauses, this points to the outermost one,
     // which may have an associated label. Internal break/continue statements

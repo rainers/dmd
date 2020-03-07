@@ -160,7 +160,7 @@ struct Scope
         *sc = Scope.init;
         sc._module = _module;
         sc.minst = _module;
-        sc.scopesym = new ScopeDsymbol();
+        sc.scopesym = new ScopeDsymbol(_module.loc, null);
         sc.scopesym.symtab = new DsymbolTable();
         // Add top level package as member of this global scope
         Dsymbol m = _module;

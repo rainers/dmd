@@ -1023,7 +1023,7 @@ extern (C++) final class TemplateDeclaration : ScopeDsymbol
      */
     Scope* scopeForTemplateParameters(TemplateInstance ti, Scope* sc)
     {
-        ScopeDsymbol paramsym = new ScopeDsymbol();
+        ScopeDsymbol paramsym = new ScopeDsymbol(ti.loc, null);
         paramsym.parent = _scope.parent;
         Scope* paramscope = _scope.push(paramsym);
         paramscope.tinst = ti;

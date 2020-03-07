@@ -92,7 +92,7 @@ private extern(C++) final class Semantic2Visitor : Visitor
     override void visit(StaticAssert sa)
     {
         //printf("StaticAssert::semantic2() %s\n", sa.toChars());
-        auto sds = new ScopeDsymbol();
+        auto sds = new ScopeDsymbol(sa.loc, null);
         sc = sc.push(sds);
         sc.tinst = null;
         sc.minst = null;

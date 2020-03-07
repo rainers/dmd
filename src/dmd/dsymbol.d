@@ -1309,7 +1309,7 @@ public:
     override Dsymbol syntaxCopy(Dsymbol s)
     {
         //printf("ScopeDsymbol::syntaxCopy('%s')\n", toChars());
-        ScopeDsymbol sds = s ? cast(ScopeDsymbol)s : new ScopeDsymbol(ident);
+        ScopeDsymbol sds = s ? cast(ScopeDsymbol)s : new ScopeDsymbol(loc, ident);
         sds.comment = comment;
         sds.members = arraySyntaxCopy(members);
         sds.endlinnum = endlinnum;
@@ -1740,6 +1740,7 @@ extern (C++) final class WithScopeSymbol : ScopeDsymbol
 
     extern (D) this(WithStatement withstate)
     {
+        super(withstate.loc, null);
         this.withstate = withstate;
     }
 
