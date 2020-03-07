@@ -1651,7 +1651,7 @@ extern (C++) abstract class Expression : ASTNode
     {
         version (LanguageServer)
         {
-            if (!orig || orig == this)
+            if (!orig || orig == this || orig == original)
                 return;
 
             if (auto ie = orig.isIdentifierExp())
