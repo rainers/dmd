@@ -658,7 +658,7 @@ nothrow:
     }
 }
 
-// for a language server, lowered expresseion should not reuse the original source location
+// for a language server, lowered expression should not reuse the original source location
 //  as internal names might get exposed to the user
 ref const(Loc) loweredLoc(ref const Loc loc)
 {
