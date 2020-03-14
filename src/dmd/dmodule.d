@@ -524,9 +524,8 @@ extern (C++) final class Module : Package
     size_t nameoffset;          // offset of module name from start of ModuleInfo
     size_t namelen;             // length of module name in characters
 
-    extern (D) this(const ref Loc loc, const(char)[] filename, Identifier ident, int doDocComment, int doHdrGen)
+    extern (D) this(const(char)[] filename, Identifier ident, int doDocComment, int doHdrGen)
     {
-        super(loc, ident);
         const(char)[] srcfilename;
         //printf("Module::Module(filename = '%s', ident = '%s')\n", filename, ident.toChars());
         this.arg = filename;
@@ -549,6 +548,8 @@ extern (C++) final class Module : Package
                   cast(int)global.mars_ext.length, global.mars_ext.ptr);
             fatal();
         }
+        const mloc = Loc(srcfilename.ptr, 0, 0);
+        super(mloc, ident);
 
         srcfile = FileName(srcfilename);
         objfile = setOutfilename(global.params.objname, global.params.objdir, filename, global.obj_ext);
@@ -559,11 +560,6 @@ extern (C++) final class Module : Package
         escapetable = new Escape();
     }
 
-    extern (D) this(const(char)[] filename, Identifier ident, int doDocComment, int doHdrGen)
-    {
-        this(Loc.initial, filename, ident, doDocComment, doHdrGen);
-    }
-
     static Module create(const(char)* filename, Identifier ident, int doDocComment, int doHdrGen)
     {
         return create(filename.toDString, ident, doDocComment, doHdrGen);
@@ -571,10 +567,10 @@ extern (C++) final class Module : Package
 
     extern (D) static Module create(const(char)[] filename, Identifier ident, int doDocComment, int doHdrGen)
     {
-        return new Module(Loc.initial, filename, ident, doDocComment, doHdrGen);
+        return new Module(filename, ident, doDocComment, doHdrGen);
     }
 
-    alias LoadModuleHandler = Module delegate(const ref Loc location, IdentifiersAtLoc* packages, Identifier ident);
+    extern(D) alias LoadModuleHandler = Module delegate(const ref Loc location, IdentifiersAtLoc* packages, Identifier ident);
     extern(D) __gshared LoadModuleHandler loadModuleHandler;
 
     static Module load(Loc loc, IdentifiersAtLoc* packages, Identifier ident)
@@ -616,7 +612,7 @@ extern (C++) final class Module : Package
         if (const result = lookForSourceFile(filename))
             filename = result; // leaks
 
-        auto m = new Module(loc, filename, ident, 0, 0);
+        auto m = new Module(filename, ident, 0, 0);
 
         if (!m.read(loc))
             return null;
