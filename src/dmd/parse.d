@@ -3441,7 +3441,7 @@ final class Parser(AST) : Lexer
             assert(0);
         }
 
-        a.endlinnum = token.loc.linnum;
+        a.setEndLoc(token.loc);
         if (tpl)
         {
             // Wrap a template around the aggregate declaration

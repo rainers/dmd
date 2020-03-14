@@ -452,7 +452,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
         {
             ScopeDsymbol sym = new ScopeDsymbol(ss.loc, null);
             sym.parent = sc.scopesym;
-            sym.endlinnum = ss.endloc.linnum;
+            sym.setEndLoc(ss.endloc);
             sc = sc.push(sym);
             version (LanguageServer)
             {
@@ -603,6 +603,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
         auto sym = new ScopeDsymbol(fs.loc, null);
         sym.parent = sc.scopesym;
         sym.endlinnum = fs.endloc.linnum;
+        sym.endcharnum = fs.endloc.charnum;
         sc = sc.push(sym);
         sc.inLoop = true;
         version (LanguageServer)
@@ -1201,7 +1202,7 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
 
         auto sym = new ScopeDsymbol(fs.loc, null);
         sym.parent = sc.scopesym;
-        sym.endlinnum = fs.endloc.linnum;
+        sym.endcharnum = fs.endloc.charnum;
         auto sc2 = sc.push(sym);
         sc2.inLoop = true;
 
@@ -2242,7 +2243,7 @@ else
 
         auto sym = new ScopeDsymbol(ifs.loc, null);
         sym.parent = sc.scopesym;
-        sym.endlinnum = ifs.endloc.linnum;
+        sym.setEndLoc(ifs.endloc);
         Scope* scd = sc.push(sym);
         if (ifs.prm)
         {
@@ -3766,7 +3767,7 @@ else
         {
             sym = new WithScopeSymbol(ws);
             sym.parent = sc.scopesym;
-            sym.endlinnum = ws.endloc.linnum;
+            sym.setEndLoc(ws.endloc);
         }
         else if (ws.exp.op == TOK.type)
         {
@@ -3778,7 +3779,7 @@ else
             }
             sym = new WithScopeSymbol(ws);
             sym.parent = sc.scopesym;
-            sym.endlinnum = ws.endloc.linnum;
+            sym.setEndLoc(ws.endloc);
         }
         else
         {
@@ -3803,7 +3804,7 @@ else
 
                 sym = new WithScopeSymbol(ws);
                 sym.parent = sc.scopesym;
-                sym.endlinnum = ws.endloc.linnum;
+                sym.setEndLoc(ws.endloc);
             }
             else if (t.ty == Tstruct)
             {
@@ -3834,7 +3835,7 @@ else
                 // Need to set the scope to make use of resolveAliasThis
                 sym.setScope(sc);
                 sym.parent = sc.scopesym;
-                sym.endlinnum = ws.endloc.linnum;
+                sym.setEndLoc(ws.endloc);
             }
             else
             {

@@ -303,7 +303,7 @@ private extern(C++) final class Semantic3Visitor : Visitor
                     break;
                 }
             }
-            ss.endlinnum = funcdecl.endloc.linnum;
+            ss.setEndLoc(funcdecl.endloc);
             Scope* sc2 = sc.push(ss);
             sc2.func = funcdecl;
             sc2.parent = funcdecl;
@@ -532,10 +532,10 @@ private extern(C++) final class Semantic3Visitor : Visitor
                 /* https://issues.dlang.org/show_bug.cgi?id=3657
                  * Set the correct end line number for fensure scope.
                  */
-                uint fensure_endlin = funcdecl.endloc.linnum;
+                Loc fensure_endloc = funcdecl.endloc;
                 if (funcdecl.fensure)
                     if (auto s = funcdecl.fensure.isScopeStatement())
-                        fensure_endlin = s.endloc.linnum;
+                        fensure_endloc = s.endloc;
 
                 if ((needEnsure && global.params.useOut == CHECKENABLE.on) || fpostinv)
                 {
@@ -545,7 +545,7 @@ private extern(C++) final class Semantic3Visitor : Visitor
                 // scope of out contract (need for vresult.semantic)
                 auto sym = new ScopeDsymbol(funcdecl.loc, null);
                 sym.parent = sc2.scopesym;
-                sym.endlinnum = fensure_endlin;
+                sym.setEndLoc(fensure_endloc);
                 scout = sc2.push(sym);
             }
 
@@ -553,7 +553,7 @@ private extern(C++) final class Semantic3Visitor : Visitor
             {
                 auto sym = new ScopeDsymbol(funcdecl.loc, null);
                 sym.parent = sc2.scopesym;
-                sym.endlinnum = funcdecl.endloc.linnum;
+                sym.setEndLoc(funcdecl.endloc);
                 sc2 = sc2.push(sym);
                 version (LanguageServer)
                 {
@@ -951,7 +951,7 @@ private extern(C++) final class Semantic3Visitor : Visitor
                  */
                 auto sym = new ScopeDsymbol(funcdecl.loc, null);
                 sym.parent = sc2.scopesym;
-                sym.endlinnum = funcdecl.endloc.linnum;
+                sym.setEndLoc(funcdecl.endloc);
                 sc2 = sc2.push(sym);
                 sc2.flags = (sc2.flags & ~SCOPE.contract) | SCOPE.require;
 
