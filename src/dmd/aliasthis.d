@@ -81,7 +81,7 @@ Expression resolveAliasThis(Scope* sc, Expression e, bool gag = false)
             uint olderrors = gag ? global.startGagging() : 0;
             Loc loc = e.loc;
             Type tthis = (e.op == TOK.type ? e.type : null);
-            e = new DotIdExp(loc, e, ad.aliasthis.ident);
+            e = new DotIdExp(loc, e, makeIdentifierAtLoc(ad.aliasthis.ident)); // no source loc for inserted ident
             e = e.expressionSemantic(sc);
             if (tthis && ad.aliasthis.sym.needThis())
             {
