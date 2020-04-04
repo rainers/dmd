@@ -477,7 +477,7 @@ extern (C++) abstract class Type : ASTNode
     extern (C++) __gshared Type[TMAX] basic;
 
     extern (D) __gshared StringTable!Type stringtable;
-    extern (D) private __gshared ubyte[TMAX] sizeTy = ()
+    extern (D) private static const ubyte[TMAX] sizeTy = ()
         {
             ubyte[TMAX] sizeTy = __traits(classInstanceSize, TypeBasic);
             sizeTy[Tsarray] = __traits(classInstanceSize, TypeSArray);
@@ -504,6 +504,33 @@ extern (C++) abstract class Type : ASTNode
             return sizeTy;
         }();
 
+    extern (D) private static const TypeInfo[TMAX] typeInfoTy = ()
+        {
+            TypeInfo[TMAX] tiTy = typeid(TypeBasic);
+            tiTy[Tsarray]    = typeid(TypeSArray);
+            tiTy[Tarray]     = typeid(TypeDArray);
+            tiTy[Taarray]    = typeid(TypeAArray);
+            tiTy[Tpointer]   = typeid(TypePointer);
+            tiTy[Treference] = typeid(TypeReference);
+            tiTy[Tfunction]  = typeid(TypeFunction);
+            tiTy[Tdelegate]  = typeid(TypeDelegate);
+            tiTy[Tident]     = typeid(TypeIdentifier);
+            tiTy[Tinstance]  = typeid(TypeInstance);
+            tiTy[Ttypeof]    = typeid(TypeTypeof);
+            tiTy[Tenum]      = typeid(TypeEnum);
+            tiTy[Tstruct]    = typeid(TypeStruct);
+            tiTy[Tclass]     = typeid(TypeClass);
+            tiTy[Ttuple]     = typeid(TypeTuple);
+            tiTy[Tslice]     = typeid(TypeSlice);
+            tiTy[Treturn]    = typeid(TypeReturn);
+            tiTy[Terror]     = typeid(TypeError);
+            tiTy[Tnull]      = typeid(TypeNull);
+            tiTy[Tvector]    = typeid(TypeVector);
+            tiTy[Ttraits]    = typeid(TypeTraits);
+            tiTy[Tmixin]     = typeid(TypeMixin);
+            return tiTy;
+        }();
+
     final extern (D) this(TY ty)
     {
         this.ty = ty;
@@ -516,9 +543,14 @@ extern (C++) abstract class Type : ASTNode
 
     final Type copy() nothrow const
     {
-        Type t = cast(Type)mem.xmalloc(sizeTy[ty]);
-        memcpy(cast(void*)t, cast(void*)this, sizeTy[ty]);
-        return t;
+        import core.memory;
+        version(LanguageServer) // assume GC
+            void* p = GC.malloc(sizeTy[ty], 0, typeInfoTy[ty]);
+        else
+            void* p = mem.xmalloc(sizeTy[ty]);
+
+        memcpy(p, cast(void*)this, sizeTy[ty]);
+        return cast(Type)p;
     }
 
     Type syntaxCopy()
@@ -1198,9 +1230,7 @@ extern (C++) abstract class Type : ASTNode
      */
     final Type nullAttributes() nothrow const
     {
-        uint sz = sizeTy[ty];
-        Type t = cast(Type)mem.xmalloc(sz);
-        memcpy(cast(void*)t, cast(void*)this, sz);
+        Type t = copy();
         // t.mod = NULL;  // leave mod unchanged
         t.deco = null;
         t.arrayof = null;

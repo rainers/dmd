@@ -697,7 +697,6 @@ extern (C++) abstract class Expression : ASTNode
      */
     final Expression copy()
     {
-        Expression e;
         if (!size)
         {
             debug
@@ -707,11 +706,17 @@ extern (C++) abstract class Expression : ASTNode
             }
             assert(0);
         }
-
-        // memory never freed, so can use the faster bump-pointer-allocation
-        e = cast(Expression)allocmemory(size);
+        version(LanguageServer)
+        {
+            assert(typeInfoExp[op] && (op == TOK.default_ || typeInfoExp[op].m_init.length == size));
+            import core.memory; // assume GC
+            void* e = GC.malloc(size, 0, typeInfoExp[op]);
+        }
+        else
+            // memory never freed, so can use the faster bump-pointer-allocation
+            e = cast(Expression)allocmemory(size);
         //printf("Expression::copy(op = %d) e = %p\n", op, e);
-        return cast(Expression)memcpy(cast(void*)e, cast(void*)this, size);
+        return cast(Expression)memcpy(e, cast(void*)this, size);
     }
 
     Expression syntaxCopy()
@@ -1811,6 +1816,129 @@ extern (C++) abstract class Expression : ASTNode
         inout(PrettyFuncInitExp) isPrettyFuncInitExp() { return op == TOK.prettyFunction ? cast(typeof(return))this : null; }
         inout(ClassReferenceExp) isClassReferenceExp() { return op == TOK.classReference ? cast(typeof(return))this : null; }
     }
+
+    extern (D) private static const TypeInfo_Class[TOK.max_] typeInfoExp = ()
+    {
+        TypeInfo_Class[TOK.max_] tiExp;
+        tiExp[TOK.int64                   ] = typeid(IntegerExp);
+        tiExp[TOK.error                   ] = typeid(ErrorExp);
+        tiExp[TOK.void_                   ] = typeid(VoidInitExp);
+        tiExp[TOK.float64                 ] = typeid(RealExp);
+        tiExp[TOK.complex80               ] = typeid(ComplexExp);
+        tiExp[TOK.identifier              ] = typeid(IdentifierExp);
+        tiExp[TOK.dollar                  ] = typeid(DollarExp);
+        tiExp[TOK.dSymbol                 ] = typeid(DsymbolExp);
+        tiExp[TOK.this_                   ] = typeid(ThisExp);
+        tiExp[TOK.super_                  ] = typeid(SuperExp);
+        tiExp[TOK.null_                   ] = typeid(NullExp);
+        tiExp[TOK.string_                 ] = typeid(StringExp);
+        tiExp[TOK.tuple                   ] = typeid(TupleExp);
+        tiExp[TOK.arrayLiteral            ] = typeid(ArrayLiteralExp);
+        tiExp[TOK.assocArrayLiteral       ] = typeid(AssocArrayLiteralExp);
+        tiExp[TOK.structLiteral           ] = typeid(StructLiteralExp);
+        tiExp[TOK.type                    ] = typeid(TypeExp);
+        tiExp[TOK.scope_                  ] = typeid(ScopeExp);
+        tiExp[TOK.template_               ] = typeid(TemplateExp);
+        tiExp[TOK.new_                    ] = typeid(NewExp);
+        tiExp[TOK.newAnonymousClass       ] = typeid(NewAnonClassExp);
+        tiExp[TOK.symbolOffset            ] = typeid(SymOffExp);
+        tiExp[TOK.variable                ] = typeid(VarExp);
+        tiExp[TOK.overloadSet             ] = typeid(OverExp);
+        tiExp[TOK.function_               ] = typeid(FuncExp);
+        tiExp[TOK.declaration             ] = typeid(DeclarationExp);
+        tiExp[TOK.typeid_                 ] = typeid(TypeidExp);
+        tiExp[TOK.traits                  ] = typeid(TraitsExp);
+        tiExp[TOK.halt                    ] = typeid(HaltExp);
+        tiExp[TOK.is_                     ] = typeid(IsExp);
+        tiExp[TOK.mixin_                  ] = typeid(CompileExp);
+        tiExp[TOK.import_                 ] = typeid(ImportExp);
+        tiExp[TOK.assert_                 ] = typeid(AssertExp);
+        tiExp[TOK.dotIdentifier           ] = typeid(DotIdExp);
+        tiExp[TOK.dotTemplateDeclaration  ] = typeid(DotTemplateExp);
+        tiExp[TOK.dotVariable             ] = typeid(DotVarExp);
+        tiExp[TOK.dotTemplateInstance     ] = typeid(DotTemplateInstanceExp);
+        tiExp[TOK.delegate_               ] = typeid(DelegateExp);
+        tiExp[TOK.dotType                 ] = typeid(DotTypeExp);
+        tiExp[TOK.call                    ] = typeid(CallExp);
+        tiExp[TOK.address                 ] = typeid(AddrExp);
+        tiExp[TOK.star                    ] = typeid(PtrExp);
+        tiExp[TOK.negate                  ] = typeid(NegExp);
+        tiExp[TOK.uadd                    ] = typeid(UAddExp);
+        tiExp[TOK.tilde                   ] = typeid(ComExp);
+        tiExp[TOK.not                     ] = typeid(NotExp);
+        tiExp[TOK.delete_                 ] = typeid(DeleteExp);
+        tiExp[TOK.cast_                   ] = typeid(CastExp);
+        tiExp[TOK.vector                  ] = typeid(VectorExp);
+        tiExp[TOK.vectorArray             ] = typeid(VectorArrayExp);
+        tiExp[TOK.slice                   ] = typeid(SliceExp);
+        tiExp[TOK.arrayLength             ] = typeid(ArrayLengthExp);
+        tiExp[TOK.array                   ] = typeid(ArrayExp);
+        tiExp[TOK.dot                     ] = typeid(DotExp);
+        tiExp[TOK.comma                   ] = typeid(CommaExp);
+        tiExp[TOK.interval                ] = typeid(IntervalExp);
+        tiExp[TOK.delegatePointer         ] = typeid(DelegatePtrExp);
+        tiExp[TOK.delegateFunctionPointer ] = typeid(DelegateFuncptrExp);
+        tiExp[TOK.index                   ] = typeid(IndexExp);
+        tiExp[TOK.plusPlus                ] = typeid(PostExp);
+        tiExp[TOK.minusMinus              ] = typeid(PostExp);
+        tiExp[TOK.prePlusPlus             ] = typeid(PreExp);
+        tiExp[TOK.preMinusMinus           ] = typeid(PreExp);
+        tiExp[TOK.assign                  ] = typeid(AssignExp);
+        tiExp[TOK.construct               ] = typeid(ConstructExp);
+        tiExp[TOK.blit                    ] = typeid(BlitExp);
+        tiExp[TOK.addAssign               ] = typeid(AddAssignExp);
+        tiExp[TOK.minAssign               ] = typeid(MinAssignExp);
+        tiExp[TOK.mulAssign               ] = typeid(MulAssignExp);
+        tiExp[TOK.divAssign               ] = typeid(DivAssignExp);
+        tiExp[TOK.modAssign               ] = typeid(ModAssignExp);
+        tiExp[TOK.andAssign               ] = typeid(AndAssignExp);
+        tiExp[TOK.orAssign                ] = typeid(OrAssignExp);
+        tiExp[TOK.xorAssign               ] = typeid(XorAssignExp);
+        tiExp[TOK.powAssign               ] = typeid(PowAssignExp);
+        tiExp[TOK.leftShiftAssign         ] = typeid(ShlAssignExp);
+        tiExp[TOK.rightShiftAssign        ] = typeid(ShrAssignExp);
+        tiExp[TOK.unsignedRightShiftAssign] = typeid(UshrAssignExp);
+        tiExp[TOK.concatenateAssign       ] = typeid(CatAssignExp);
+        tiExp[TOK.concatenateElemAssign   ] = typeid(CatElemAssignExp);
+        tiExp[TOK.concatenateDcharAssign  ] = typeid(CatDcharAssignExp);
+        tiExp[TOK.add                     ] = typeid(AddExp);
+        tiExp[TOK.min                     ] = typeid(MinExp);
+        tiExp[TOK.concatenate             ] = typeid(CatExp);
+        tiExp[TOK.mul                     ] = typeid(MulExp);
+        tiExp[TOK.div                     ] = typeid(DivExp);
+        tiExp[TOK.mod                     ] = typeid(ModExp);
+        tiExp[TOK.pow                     ] = typeid(PowExp);
+        tiExp[TOK.leftShift               ] = typeid(ShlExp);
+        tiExp[TOK.rightShift              ] = typeid(ShrExp);
+        tiExp[TOK.unsignedRightShift      ] = typeid(UshrExp);
+        tiExp[TOK.and                     ] = typeid(AndExp);
+        tiExp[TOK.or                      ] = typeid(OrExp);
+        tiExp[TOK.xor                     ] = typeid(XorExp);
+        tiExp[TOK.andAnd                  ] = typeid(LogicalExp);
+        tiExp[TOK.orOr                    ] = typeid(LogicalExp);
+        tiExp[TOK.in_                     ] = typeid(InExp);
+        tiExp[TOK.remove                  ] = typeid(RemoveExp);
+        tiExp[TOK.equal                   ] = typeid(EqualExp);
+        tiExp[TOK.notEqual                ] = typeid(EqualExp);
+        tiExp[TOK.identity                ] = typeid(IdentityExp);
+        tiExp[TOK.notIdentity             ] = typeid(IdentityExp);
+        tiExp[TOK.question                ] = typeid(CondExp);
+        tiExp[TOK.default_                ] = typeid(DefaultInitExp);
+        tiExp[TOK.file                    ] = typeid(FileInitExp);
+        tiExp[TOK.fileFullPath            ] = typeid(FileInitExp);
+        tiExp[TOK.line                    ] = typeid(LineInitExp);
+        tiExp[TOK.moduleString            ] = typeid(ModuleInitExp);
+        tiExp[TOK.functionString          ] = typeid(FuncInitExp);
+        tiExp[TOK.prettyFunction          ] = typeid(PrettyFuncInitExp);
+        tiExp[TOK.classReference          ] = typeid(ClassReferenceExp);
+
+        tiExp[TOK.lessThan                ] = typeid(CmpExp);
+        tiExp[TOK.lessOrEqual             ] = typeid(CmpExp);
+        tiExp[TOK.greaterThan             ] = typeid(CmpExp);
+        tiExp[TOK.greaterOrEqual          ] = typeid(CmpExp);
+
+        return tiExp;
+    }();
 
     override void accept(Visitor v)
     {
