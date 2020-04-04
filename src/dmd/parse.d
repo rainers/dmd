@@ -1300,6 +1300,29 @@ final class Parser(AST) : Lexer
     }
 
     /********************************************
+     * Parse declarations starting with {, skips trailing }
+     */
+    private AST.Dsymbols* parseCurlyBlock(AST.Dsymbol* pLastDecl, Loc* pEndloc = null)
+    {
+        const lookingForElseSave = lookingForElse;
+        lookingForElse = Loc();
+
+        nextToken();
+        AST.Dsymbols* a = parseDeclDefs(0, pLastDecl);
+        if (pEndloc)
+            *pEndloc = token.loc;
+        if (token.value != TOK.rightCurly)
+        {
+            /* { */
+            error("matching `}` expected, not `%s`", token.toChars());
+        }
+        else
+            nextToken();
+        lookingForElse = lookingForElseSave;
+        return a;
+    }
+
+    /********************************************
      * Parse declarations after an align, protection, or extern decl.
      */
     private AST.Dsymbols* parseBlock(AST.Dsymbol* pLastDecl, PrefixAttributes!AST* pAttrs = null)
@@ -1319,22 +1342,8 @@ final class Parser(AST) : Lexer
             break;
 
         case TOK.leftCurly:
-            {
-                const lookingForElseSave = lookingForElse;
-                lookingForElse = Loc();
-
-                nextToken();
-                a = parseDeclDefs(0, pLastDecl);
-                if (token.value != TOK.rightCurly)
-                {
-                    /* { */
-                    error("matching `}` expected, not `%s`", token.toChars());
-                }
-                else
-                    nextToken();
-                lookingForElse = lookingForElseSave;
-                break;
-            }
+            a = parseCurlyBlock(pLastDecl);
+            break;
         case TOK.colon:
             nextToken();
             a = parseDeclDefs(0, pLastDecl); // grab declarations up to closing curly bracket
@@ -1617,6 +1626,7 @@ final class Parser(AST) : Lexer
 
         nextToken();
         const loc = token.loc;
+        Loc endloc;
         if (token.value != TOK.identifier)
         {
             error("identifier expected following `template`");
@@ -1635,9 +1645,10 @@ final class Parser(AST) : Lexer
             error("members of template declaration expected");
             goto Lerr;
         }
-        decldefs = parseBlock(null);
+        decldefs = parseCurlyBlock(null, &endloc);
 
         tempdecl = new AST.TemplateDeclaration(loc, id, tpl, constraint, decldefs, ismixin);
+        tempdecl.setEndLoc(endloc);
         return tempdecl;
 
     Lerr:
@@ -3297,6 +3308,7 @@ final class Parser(AST) : Lexer
                     break;
                 }
             }
+            e.endlinnum = token.loc.linnum;
             nextToken();
         }
         else
@@ -3362,6 +3374,7 @@ final class Parser(AST) : Lexer
         }
 
         AST.Dsymbols* members = null;
+        Loc endloc = token.loc;
         if (token.value == TOK.leftCurly)
         {
             //printf("aggregate definition\n");
@@ -3376,6 +3389,7 @@ final class Parser(AST) : Lexer
                 error("`}` expected following members in `%s` declaration at %s",
                     Token.toChars(tok), loc.toChars());
             }
+            endloc = token.loc;
             nextToken();
         }
         else if (token.value == TOK.semicolon && id)
@@ -3441,7 +3455,7 @@ final class Parser(AST) : Lexer
             assert(0);
         }
 
-        a.setEndLoc(token.loc);
+        a.setEndLoc(endloc);
         if (tpl)
         {
             // Wrap a template around the aggregate declaration
