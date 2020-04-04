@@ -719,10 +719,8 @@ extern (C++) class Dsymbol : ASTNode
                                 continue;
 
                 if (auto td = pparent.isTemplateDeclaration())
-                    if (auto ident = p.getIdent())
-                        if (ident is td.ident)
-                            if (Dsymbol.oneMembers(td.members, &sym, ident) && sym is p)
-                                continue;
+                    if (td.onemember is p)
+                        continue;
             }
 
             const s = QualifyTypes ? p.toPrettyCharsHelper() : p.toChars();
