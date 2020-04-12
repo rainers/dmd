@@ -2916,6 +2916,12 @@ void functionToBufferWithIdent(TypeFunction tf, OutBuffer* buf, const(char)* ide
     visitFuncIdentWithPostfix(tf, ident.toDString(), buf, &hgs);
 }
 
+// ident is inserted before the argument list and will be "function" or "delegate" for a type
+void functionToBufferWithIdent(TypeFunction tf, OutBuffer* buf, const(char)* ident, HdrGenState* hgs)
+{
+    visitFuncIdentWithPostfix(tf, ident.toDString(), buf, hgs);
+}
+
 void toCBuffer(const Expression e, OutBuffer* buf, HdrGenState* hgs)
 {
     scope v = new ExpressionPrettyPrintVisitor(buf, hgs);

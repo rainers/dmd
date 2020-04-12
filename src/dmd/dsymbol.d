@@ -679,9 +679,12 @@ extern (C++) class Dsymbol : ASTNode
         return ident;
     }
 
+    extern(D) alias PrettyPrintSymbolHandler = const(char)* delegate(Dsymbol ds, bool qualifyTypes);
+    extern(D) __gshared PrettyPrintSymbolHandler prettyPrintSymbolHandler;
+
     const(char)* toPrettyChars(bool QualifyTypes = false)
     {
-        if (prettystring && !QualifyTypes)
+        if (prettystring && !QualifyTypes && !prettyPrintSymbolHandler)
             return prettystring;
 
         //printf("Dsymbol::toPrettyChars() '%s'\n", toChars());
@@ -708,10 +711,10 @@ extern (C++) class Dsymbol : ASTNode
         int i;
         for (Dsymbol p = this, pparent; p; p = pparent)
         {
-            Dsymbol sym;
             pparent = p.parent;
             if (pparent)
             {
+                Dsymbol sym;
                 if (auto ti = pparent.isTemplateInstance())
                     if (auto ident = p.getIdent())
                         if (ident is ti.name)
@@ -723,7 +726,8 @@ extern (C++) class Dsymbol : ASTNode
                         continue;
             }
 
-            const s = QualifyTypes ? p.toPrettyCharsHelper() : p.toChars();
+            const s = prettyPrintSymbolHandler ? prettyPrintSymbolHandler(p, QualifyTypes)
+                                               : (QualifyTypes ? p.toPrettyCharsHelper() : p.toChars());
             const len = strlen(s);
             comp[i] = s[0 .. len];
             ++i;
@@ -744,7 +748,7 @@ extern (C++) class Dsymbol : ASTNode
             *--q = '.';
         }
         free(comp.ptr);
-        if (!QualifyTypes)
+        if (!QualifyTypes && !prettyPrintSymbolHandler)
             prettystring = s;
         return s;
     }
