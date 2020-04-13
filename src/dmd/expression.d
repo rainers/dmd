@@ -3655,14 +3655,14 @@ extern (C++) final class TemplateExp : Expression
 
     extern (D) this(const ref Loc loc, TemplateDeclaration td, FuncDeclaration fd = null)
     {
+        this(loc, td, fd, loc);
+    }
+    extern (D) this(const ref Loc loc, TemplateDeclaration td, FuncDeclaration fd, const ref Loc identloc)
+    {
         super(loc, TOK.template_, __traits(classInstanceSize, TemplateExp));
         //printf("TemplateExp(): %s\n", td.toChars());
         this.td = td;
         this.fd = fd;
-    }
-    extern (D) this(const ref Loc loc, TemplateDeclaration td, FuncDeclaration fd, const ref Loc identloc)
-    {
-        this(loc, td, fd);
         version (LanguageServer)
             this.identloc = identloc;
     }
@@ -4930,16 +4930,16 @@ extern (C++) final class DotTemplateExp : UnaExp
     else
         ref const(Loc) identloc() const { return loc; }
 
-    extern (D) this(const ref Loc loc, Expression e, TemplateDeclaration td)
+    extern (D) this(const ref Loc loc, Expression e, TemplateDeclaration td, const ref Loc identloc)
     {
         super(loc, TOK.dotTemplateDeclaration, __traits(classInstanceSize, DotTemplateExp), e);
         this.td = td;
-    }
-    extern (D) this(const ref Loc loc, Expression e, TemplateDeclaration td, const ref Loc identloc)
-    {
-        this(loc, e, td);
         version (LanguageServer)
             this.identloc = identloc;
+    }
+    extern (D) this(const ref Loc loc, Expression e, TemplateDeclaration td)
+    {
+        this(loc, e, td, loc);
     }
 
     override void accept(Visitor v)
