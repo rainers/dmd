@@ -81,8 +81,11 @@ extern (C++) bool canThrow(Expression e, FuncDeclaration func, bool mustNotThrow
             if (ce.inDebugStatement)
                 return;
 
-            if (global.errors && !ce.e1.type)
+            if (!ce.e1.type)
+            {
+                assert(global.errors);
                 return; // error recovery
+            }
             /* If calling a function or delegate that is typed as nothrow,
              * then this expression cannot throw.
              * Note that pure functions can throw.

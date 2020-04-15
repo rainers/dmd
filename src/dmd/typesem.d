@@ -1745,6 +1745,7 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
         if (mtype.ty == Terror)
             return mtype;
 
+        const errors = global.errors;
         const inAlias = (sc.flags & SCOPE.alias_) != 0;
         if (mtype.exp.ident != Id.allMembers &&
             mtype.exp.ident != Id.derivedMembers &&
@@ -1839,7 +1840,7 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
             result = result.addMod(mtype.mod);
         if (!inAlias && !result)
         {
-            if (!global.errors)
+            if (errors == global.errors)
                 .error(mtype.loc, "`%s` does not give a valid type", mtype.toChars);
             return error();
         }
@@ -1964,6 +1965,7 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
 
     Type visitMixin(TypeMixin mtype)
     {
+        const errors = global.errors;
         //printf("TypeMixin::semantic() %s\n", toChars());
         auto o = mtype.compileTypeMixin(loc, sc);
         if (auto t = o.isType())
@@ -1977,7 +1979,7 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
                 return et.type.addMod(mtype.mod);
             else
             {
-                if (!global.errors)
+                if (errors != global.errors)
                     .error(e.loc, "`%s` does not give a valid type", o.toChars);
             }
         }
@@ -2036,10 +2038,8 @@ RootObject compileTypeMixin(TypeMixin tm, Loc loc, Scope* sc)
 
     auto o = p.parseTypeOrAssignExp(TOK.endOfFile);
     if (errors != global.errors)
-    {
-        assert(global.errors != errors); // should have caught all these cases
         return null;
-    }
+
     if (p.token.value != TOK.endOfFile)
     {
         .error(loc, "incomplete mixin type `%s`", str.ptr);

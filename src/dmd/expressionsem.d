@@ -6372,8 +6372,11 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         else
         {
             exp.type = exp.var.type;
-            if (!exp.type && global.errors) // var is goofed up, just return error.
+            if (!exp.type) // var is goofed up, just return error.
+            {
+                assert(global.errors);
                 return setError();
+            }
             assert(exp.type);
 
             if (t1.ty == Tpointer)

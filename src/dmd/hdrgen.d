@@ -1861,7 +1861,10 @@ public:
                  */
                 if (!global.errors)
                 {
-                    assert(0);
+                    version(LanguageServer)
+                        buf.writestring("__invalid");
+                    else
+                        assert(0);
                 }
                 break;
             }

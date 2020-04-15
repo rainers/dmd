@@ -419,8 +419,9 @@ private Statement generateCopyCtorBody(StructDeclaration sd)
  */
 private bool buildCopyCtor(StructDeclaration sd, Scope* sc)
 {
-    if (global.errors)
-        return false;
+    version(LanguageServer) {} else
+        if (global.errors)
+            return false;
 
     bool hasPostblit;
     if (sd.postblit && !sd.postblit.isDisabled())
