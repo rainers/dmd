@@ -388,5 +388,5 @@ else
     {
         return ident;
     }
-    ref const(Loc) identLoc(const ref Loc loc, const ref IdentifierAtLoc idloc) { return loc; }
+    ref const(Loc) identLoc(return const ref Loc loc, const ref IdentifierAtLoc idloc) { return loc; }
 }

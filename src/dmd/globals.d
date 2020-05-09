@@ -660,7 +660,7 @@ nothrow:
 
 // for a language server, lowered expression should not reuse the original source location
 //  as internal names might get exposed to the user
-ref const(Loc) loweredLoc(ref const Loc loc)
+ref const(Loc) loweredLoc(return ref const Loc loc)
 {
     version(LanguageServer)
         return Loc.initial;
