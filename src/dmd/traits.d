@@ -1707,7 +1707,6 @@ Expression semanticTraits(TraitsExp e, Scope* sc)
                     /* The mixin string could be a type or an expression.
                      * Have to try compiling it to see.
                      */
-                    const olderrors = global.errors;
                     OutBuffer buf;
                     if (expressionsToString(buf, sc, tm.exps))
                     {
