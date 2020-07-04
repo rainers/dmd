@@ -453,7 +453,8 @@ private bool buildCopyCtor(StructDeclaration sd, Scope* sc)
                 cpCtor = ctorDecl;
             return 0;
         }
-
+        if (ctorDecl.type.ty == Terror)
+            return 0;
         auto tf = ctorDecl.type.toTypeFunction();
         const dim = tf.parameterList.length;
         if (dim == 1)
