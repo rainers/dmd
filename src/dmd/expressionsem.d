@@ -6154,7 +6154,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             }
 
             Expression __assertFail = new IdentifierExp(exp.loc, Id.empty);
-            auto assertFail = new DotIdExp(loc, __assertFail, Id.object);
+            auto assertFail = new DotIdExp(loc, __assertFail, makeIdentifierAtLoc(Id.object));
 
             auto dt = new DotTemplateInstanceExp(loc, assertFail, Id._d_assert_fail, tiargs);
             auto ec = CallExp.create(Loc.initial, dt, es);

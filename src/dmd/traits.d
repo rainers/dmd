@@ -1002,7 +1002,7 @@ Expression semanticTraits(TraitsExp e, Scope* sc)
 
         Dsymbol sym = getDsymbol(o);
         if (auto t = isType(o))
-            ex = typeDotIdExp(e.loc, t, id);
+            ex = typeDotIdExp(e.loc, t, makeIdentifierAtLoc(id));
         else if (sym)
         {
             if (e.ident == Id.hasMember)
