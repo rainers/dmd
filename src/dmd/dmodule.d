@@ -579,7 +579,7 @@ extern (C++) final class Module : Package
         if (loadModuleHandler)
             m = loadModuleHandler(loc, packages, ident);
         else
-            m = loadFromFile(loc, packages, ident);
+            m = loadFromFile(loc, packages, ident, 0, 0);
 
         if (!m)
             return null;
@@ -600,7 +600,7 @@ extern (C++) final class Module : Package
         return m;
     }
 
-    static Module loadFromFile(Loc loc, IdentifiersAtLoc* packages, Identifier ident)
+    static Module loadFromFile(Loc loc, IdentifiersAtLoc* packages, Identifier ident, int doDocComment, int doHdrGen)
     {
         //printf("Module::load(ident = '%s')\n", ident.toChars());
         // Build module filename by turning:
@@ -612,7 +612,7 @@ extern (C++) final class Module : Package
         if (const result = lookForSourceFile(filename))
             filename = result; // leaks
 
-        auto m = new Module(filename, ident, 0, 0);
+        auto m = new Module(filename, ident, doDocComment, doHdrGen);
 
         if (!m.read(loc))
             return null;
