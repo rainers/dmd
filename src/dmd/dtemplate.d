@@ -660,7 +660,9 @@ extern (C++) final class TemplateDeclaration : ScopeDsymbol
             foreach (i, ref param; *p)
                 param = (*parameters)[i].syntaxCopy();
         }
-        return new TemplateDeclaration(loc, ident, p, constraint ? constraint.syntaxCopy() : null, Dsymbol.arraySyntaxCopy(members), ismixin, literal);
+        auto td = new TemplateDeclaration(loc, ident, p, constraint ? constraint.syntaxCopy() : null, Dsymbol.arraySyntaxCopy(members), ismixin, literal);
+        td.comment = comment;
+        return td;
     }
 
     /**********************************
