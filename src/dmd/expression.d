@@ -2191,6 +2191,11 @@ extern (C++) final class ErrorExp : Expression
 
     static ErrorExp get (Expression exp = null)
     {
+        version(LanguageServer)
+        {
+            auto errorexp = new ErrorExp;
+            errorexp.saveOriginal(exp);
+        }
         if (errorexp is null)
             errorexp = new ErrorExp();
 
@@ -2203,7 +2208,6 @@ extern (C++) final class ErrorExp : Expression
             .error(Loc.initial, "unknown, please file report on issues.dlang.org");
         }
 
-        saveOriginal(exp);
         return errorexp;
     }
 
@@ -2216,6 +2220,9 @@ extern (C++) final class ErrorExp : Expression
     {
         v.visit(this);
     }
+
+    version(LanguageServer) {} else
+        extern (C++) __gshared ErrorExp errorexp; // handy shared value
 }
 
 

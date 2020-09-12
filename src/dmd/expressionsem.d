@@ -12010,7 +12010,7 @@ Expression semanticY(DotTemplateInstanceExp exp, Scope* sc, int flag)
         e1 = new DotExp(exp.e1.loc, exp.e1, new ScopeExp(tm.loc, tm));
     }
 
-    auto die = new DotIdExp(exp.loc, e1, exp.ti.name);
+    auto die = new DotIdExp(exp.loc, e1, makeIdentifierAtLoc(exp.ti.name, exp.loc));
 
     Expression e = die.semanticX(sc);
     if (e == die)

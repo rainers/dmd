@@ -2464,7 +2464,7 @@ final class Parser(AST) : Lexer
         else
         {
             error("(expression) expected following `static if`");
-            exp = new AST.ErrorExp();
+            exp = AST.ErrorExp.get();
         }
         condition = new AST.StaticIfCondition(loc, exp);
         return condition;
@@ -6022,7 +6022,7 @@ final class Parser(AST) : Lexer
                 if (!ifbody)
                     ifbody = new AST.ErrorStatement; // remember condition even in broken AST
                 if (!condition)
-                    condition = new AST.ErrorExp();
+                    condition = AST.ErrorExp.get();
                 s = new AST.IfStatement(loc, param, condition, ifbody, elsebody, token.loc);
                 break;
             }
@@ -8683,7 +8683,7 @@ final class Parser(AST) : Lexer
                     e = parseNewExp(e);
                     continue;
                 }
-                e = new AST.DotExp(loc, e, new AST.ErrorExp());
+                e = new AST.DotExp(loc, e, AST.ErrorExp.get());
                 error("identifier or `new` expected following `.`, not `%s`", token.toChars());
                 continue;
 

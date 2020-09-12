@@ -1781,8 +1781,8 @@ private extern (C++) final class StatementSemanticVisitor : Visitor
                     if (!fdapply[i])
                     {
                         auto params = new Parameters();
-                        params.push(new Parameter(0, Type.tvoid.pointerTo(), null, null, null));
-                        params.push(new Parameter(STC.const_, Type.tsize_t, null, null, null));
+                        params.push(new Parameter(0, Type.tvoid.pointerTo()));
+                        params.push(new Parameter(STC.const_, Type.tsize_t));
                         auto dgparams = new Parameters();
                         dgparams.push(new Parameter(0, Type.tvoidptr));
                         if (dim == 2)
