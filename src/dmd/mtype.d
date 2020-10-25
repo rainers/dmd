@@ -5645,7 +5645,7 @@ extern (C++) final class TypeIdentifier : TypeQualified
 
     override Type syntaxCopy()
     {
-        auto t = Pool!TypeIdentifier.make(loc, ident);
+        auto t = new TypeIdentifier(loc, ident);
         version(LanguageServer)
             t.copiedFrom = this;
         t.syntaxCopyHelper(this);
