@@ -102,14 +102,19 @@ private Expression semanticLength(Scope* sc, TupleDeclaration tup, Expression ex
 }
 
 /*************************************
- * Resolve a tuple index.
+ * Resolve a tuple index, `s[oindex]`, by figuring out what `s[oindex]` represents.
+ * Setting one of pe/pt/ps.
+ * Params:
+ *      loc = location for error messages
+ *      sc = context
+ *      s = symbol being indexed - could be a tuple, could be an expression
+ *      pe = set if s[oindex] is an Expression, otherwise null
+ *      pt = set if s[oindex] is a Type, otherwise null
+ *      ps = set if s[oindex] is a Dsymbol, otherwise null
+ *      oindex = index into s
  */
-private void resolveTupleIndex(const ref Loc loc, Scope* sc, Dsymbol s, Expression* pe, Type* pt, Dsymbol* ps, RootObject oindex)
+private void resolveTupleIndex(const ref Loc loc, Scope* sc, Dsymbol s, out Expression pe, out Type pt, out Dsymbol ps, RootObject oindex)
 {
-    *pt = null;
-    *ps = null;
-    *pe = null;
-
     auto tup = s.isTupleDeclaration();
 
     auto eindex = isExpression(oindex);
@@ -131,13 +136,13 @@ private void resolveTupleIndex(const ref Loc loc, Scope* sc, Dsymbol s, Expressi
 
     // Convert oindex to Expression, then try to resolve to constant.
     if (tindex)
-        tindex.resolve(loc, sc, &eindex, &tindex, &sindex);
+        tindex.resolve(loc, sc, eindex, tindex, sindex);
     if (sindex)
         eindex = symbolToExp(sindex, loc, sc, false);
     if (!eindex)
     {
         .error(loc, "index `%s` is not an expression", oindex.toChars());
-        *pt = Type.terror;
+        pt = Type.terror;
         return;
     }
 
@@ -145,25 +150,23 @@ private void resolveTupleIndex(const ref Loc loc, Scope* sc, Dsymbol s, Expressi
     eindex = eindex.ctfeInterpret();
     if (eindex.op == TOK.error)
     {
-        *pt = Type.terror;
+        pt = Type.terror;
         return;
     }
     const(uinteger_t) d = eindex.toUInteger();
     if (d >= tup.objects.dim)
     {
         .error(loc, "tuple index `%llu` exceeds length %zu", d, tup.objects.dim);
-        *pt = Type.terror;
+        pt = Type.terror;
         return;
     }
 
     RootObject o = (*tup.objects)[cast(size_t)d];
-    *pt = isType(o);
-    *ps = isDsymbol(o);
-    *pe = isExpression(o);
-    if (*pt)
-        *pt = (*pt).typeSemantic(loc, sc);
-    if (*pe)
-        resolveExp(*pe, pt, pe, ps);
+    ps = isDsymbol(o);
+    if (auto t = isType(o))
+        pt = t.typeSemantic(loc, sc);
+    if (auto e = isExpression(o))
+        resolveExp(e, pt, pe, ps);
 }
 
 /*************************************
@@ -175,13 +178,13 @@ private void resolveTupleIndex(const ref Loc loc, Scope* sc, Dsymbol s, Expressi
  *      sc = context
  *      s = symbol to start search at
  *      scopesym = unused
- *      pe = set if expression
- *      pt = set if type
- *      ps = set if symbol
+ *      pe = set if expression otherwise null
+ *      pt = set if type otherwise null
+ *      ps = set if symbol otherwise null
  *      typeid = set if in TypeidExpression https://dlang.org/spec/expression.html#TypeidExpression
  */
 private void resolveHelper(TypeQualified mt, Loc loc, Scope* sc, Dsymbol s, Dsymbol scopesym,
-    Expression* pe, Type* pt, Dsymbol* ps, bool intypeid = false)
+    out Expression pe, out Type pt, out Dsymbol ps, bool intypeid = false)
 {
     version (none)
     {
@@ -189,9 +192,6 @@ private void resolveHelper(TypeQualified mt, Loc loc, Scope* sc, Dsymbol s, Dsym
         if (scopesym)
             printf("\tscopesym = '%s'\n", scopesym.toChars());
     }
-    *pe = null;
-    *pt = null;
-    *ps = null;
 
     if (!s)
     {
@@ -208,7 +208,7 @@ private void resolveHelper(TypeQualified mt, Loc loc, Scope* sc, Dsymbol s, Dsym
         else
             error(loc, "undefined identifier `%s`", p);
 
-        *pt = Type.terror;
+        pt = Type.terror;
         return;
     }
 
@@ -237,7 +237,7 @@ private void resolveHelper(TypeQualified mt, Loc loc, Scope* sc, Dsymbol s, Dsym
             Type tx;
             Expression ex;
             Dsymbol sx;
-            resolveTupleIndex(idloc, sc, s, &ex, &tx, &sx, id);
+            resolveTupleIndex(idloc, sc, s, ex, tx, sx, id);
             if (sx)
             {
                 s = sx.toAlias();
@@ -265,7 +265,7 @@ private void resolveHelper(TypeQualified mt, Loc loc, Scope* sc, Dsymbol s, Dsym
         }
         if (global.errors != errorsave)
         {
-            *pt = Type.terror;
+            pt = Type.terror;
             return;
         }
 
@@ -347,7 +347,7 @@ private void resolveHelper(TypeQualified mt, Loc loc, Scope* sc, Dsymbol s, Dsym
                     else
                         error(loc, "identifier `%s` of `%s` is not defined", id.toChars(), mt.toChars());
                 }
-                *pe = ErrorExp.get();
+                pe = ErrorExp.get();
                 return;
             }
         }
@@ -360,7 +360,7 @@ private void resolveHelper(TypeQualified mt, Loc loc, Scope* sc, Dsymbol s, Dsym
     if (auto em = s.isEnumMember())
     {
         // It's not a type, it's an expression
-        *pe = em.getVarExp(loc, sc);
+        pe = em.getVarExp(loc, sc);
         return;
     }
     if (auto v = s.isVarDeclaration())
@@ -382,27 +382,27 @@ private void resolveHelper(TypeQualified mt, Loc loc, Scope* sc, Dsymbol s, Dsym
                 error(loc, "circular reference to %s `%s`", v.kind(), v.toPrettyChars());
             else
                 error(loc, "forward reference to %s `%s`", v.kind(), v.toPrettyChars());
-            *pt = Type.terror;
+            pt = Type.terror;
             return;
         }
         if (v.type.ty == Terror)
-            *pt = Type.terror;
+            pt = Type.terror;
         else
-            *pe = new VarExp(loc, v);
+            pe = new VarExp(loc, v);
         return;
     }
     if (auto fld = s.isFuncLiteralDeclaration())
     {
         //printf("'%s' is a function literal\n", fld.toChars());
-        *pe = new FuncExp(loc, fld);
-        *pe = (*pe).expressionSemantic(sc);
+        auto e = new FuncExp(loc, fld);
+        pe = e.expressionSemantic(sc);
         return;
     }
     version (none)
     {
         if (FuncDeclaration fd = s.isFuncDeclaration())
         {
-            *pe = new DsymbolExp(loc, fd);
+            pe = new DsymbolExp(loc, fd);
             return;
         }
     }
@@ -421,7 +421,7 @@ private void resolveHelper(TypeQualified mt, Loc loc, Scope* sc, Dsymbol s, Dsym
                 continue;
             s = si;
         }
-        *ps = s;
+        ps = s;
         return;
     }
 
@@ -430,14 +430,14 @@ private void resolveHelper(TypeQualified mt, Loc loc, Scope* sc, Dsymbol s, Dsym
         {
             if (!ti.tempinst.errors)
                 error(loc, "forward reference to `%s`", ti.toChars());
-            *pt = Type.terror;
+            pt = Type.terror;
             return;
         }
 
     if (t.ty == Ttuple)
-        *pt = t;
+        pt = t;
     else
-        *pt = t.merge();
+        pt = t.merge();
 }
 
 /************************************
@@ -710,7 +710,7 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
         Type t;
         Expression e;
         Dsymbol s;
-        mtype.next.resolve(loc, sc, &e, &t, &s);
+        mtype.next.resolve(loc, sc, e, t, s);
 
         if (auto tup = s ? s.isTupleDeclaration() : null)
         {
@@ -905,7 +905,7 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
             Expression e;
             Type t;
             Dsymbol s;
-            mtype.index.resolve(idxloc, sc, &e, &t, &s);
+            mtype.index.resolve(idxloc, sc, e, t, s);
 
             //https://issues.dlang.org/show_bug.cgi?id=15478
             if (s)
@@ -1290,6 +1290,13 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
                 e = new AddrExp(e.loc, e);
                 e = e.expressionSemantic(sc);
             }
+            if (isRefOrOut && (!isAuto || e.isLvalue())
+                && !MODimplicitConv(e.type.mod, fparam.type.mod))
+            {
+                const(char)* errTxt = fparam.storageClass & STC.ref_ ? "ref" : "out";
+                .error(e.loc, "expression `%s` of type `%s` is not implicitly convertible to type `%s %s` of parameter `%s`",
+                      e.toChars(), e.type.toChars(), errTxt, fparam.type.toChars(), fparam.toChars());
+            }
             e = e.implicitCastTo(sc, fparam.type);
 
             // default arg must be an lvalue
@@ -1495,12 +1502,16 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
 
                 // Remove redundant storage classes for type, they are already applied
                 fparam.storageClass &= ~(STC.TYPECTOR);
-            }
 
-            // Now that we're done processing the types of parameters,
-            // apply `STC.ref` where necessary
-            if (global.params.previewIn)
-                target.applyInRefParams(tf);
+                // -preview=in: add `ref` storage class to suited `in` params
+                if (global.params.previewIn && (fparam.storageClass & (STC.in_ | STC.ref_)) == STC.in_)
+                {
+                    auto ts = t.baseElemOf().isTypeStruct();
+                    const isPOD = !ts || ts.sym.isPOD();
+                    if (!isPOD || target.preferPassByRef(t))
+                        fparam.storageClass |= STC.ref_;
+                }
+            }
 
             // Now that we completed semantic for the argument types,
             // run semantic on their default values,
@@ -1651,7 +1662,7 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
         Expression e;
         Dsymbol s;
         //printf("TypeIdentifier::semantic(%s)\n", mtype.toChars());
-        mtype.resolve(loc, sc, &e, &t, &s);
+        mtype.resolve(loc, sc, e, t, s);
         if (t)
         {
             //printf("\tit's a type %d, %s, %s\n", t.ty, t.toChars(), t.deco);
@@ -1706,7 +1717,7 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
         //printf("TypeInstance::semantic(%p, %s)\n", this, toChars());
         {
             const errors = global.errors;
-            mtype.resolve(loc, sc, &e, &t, &s);
+            mtype.resolve(loc, sc, e, t, s);
             // if we had an error evaluating the symbol, suppress further errors
             if (!t && errors != global.errors)
                 return error();
@@ -1733,7 +1744,7 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
         Expression e;
         Type t;
         Dsymbol s;
-        mtype.resolve(loc, sc, &e, &t, &s);
+        mtype.resolve(loc, sc, e, t, s);
         if (s && (t = s.getType()) !is null)
             t = t.addMod(mtype.mod);
         if (!t)
@@ -1858,7 +1869,7 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
         Expression e;
         Type t;
         Dsymbol s;
-        mtype.resolve(loc, sc, &e, &t, &s);
+        mtype.resolve(loc, sc, e, t, s);
         if (s && (t = s.getType()) !is null)
             t = t.addMod(mtype.mod);
         if (!t)
@@ -2543,69 +2554,37 @@ Expression getProperty(Type t, Scope* scope_, const ref Loc loc, Identifier iden
 }
 
 /***************************************
- * Normalize `e` as the result of resolve() process.
+ * Determine if Expression `exp` should instead be a Type, a Dsymbol, or remain an Expression.
+ * Params:
+ *      exp = Expression to look at
+ *      t = if exp should be a Type, set t to that Type else null
+ *      s = if exp should be a Dsymbol, set s to that Dsymbol else null
+ *      e = if exp should remain an Expression, set e to that Expression else null
+ *
  */
-private void resolveExp(Expression e, Type *pt, Expression *pe, Dsymbol* ps)
+private void resolveExp(Expression exp, out Type t, out Expression e, out Dsymbol s)
 {
-    *pt = null;
-    *pe = null;
-    *ps = null;
-
-    Dsymbol s;
-    switch (e.op)
+    if (exp.isTypeExp())
+        t = exp.type;
+    else if (auto ve = exp.isVarExp())
     {
-        case TOK.error:
-            *pt = Type.terror;
-            return;
-
-        case TOK.type:
-            *pt = e.type;
-            return;
-
-        case TOK.variable:
-            s = (cast(VarExp)e).var;
-            if (s.isVarDeclaration())
-                goto default;
-            //if (s.isOverDeclaration())
-            //    todo;
-            break;
-
-        case TOK.template_:
-            // TemplateDeclaration
-            s = (cast(TemplateExp)e).td;
-            break;
-
-        case TOK.scope_:
-            s = (cast(ScopeExp)e).sds;
-            // TemplateDeclaration, TemplateInstance, Import, Package, Module
-            break;
-
-        case TOK.function_:
-            s = getDsymbol(e);
-            break;
-
-        case TOK.dotTemplateDeclaration:
-            s = (cast(DotTemplateExp)e).td;
-            break;
-
-        //case TOK.this_:
-        //case TOK.super_:
-
-        //case TOK.tuple:
-
-        //case TOK.overloadSet:
-
-        //case TOK.dotVariable:
-        //case TOK.dotTemplateInstance:
-        //case TOK.dotType:
-        //case TOK.dotIdentifier:
-
-        default:
-            *pe = e;
-            return;
+        if (auto v = ve.var.isVarDeclaration())
+            e = exp;
+        else
+            s = ve.var;
     }
-
-    *ps = s;
+    else if (auto te = exp.isTemplateExp())
+        s = te.td;
+    else if (auto se = exp.isScopeExp())
+        s = se.sds;
+    else if (exp.isFuncExp())
+        s = getDsymbol(exp);
+    else if (auto dte = exp.isDotTemplateExp())
+        s = dte.td;
+    else if (exp.isErrorExp())
+        t = Type.terror;
+    else
+        e = exp;
 }
 
 /************************************
@@ -2621,27 +2600,27 @@ private void resolveExp(Expression e, Type *pt, Expression *pe, Dsymbol* ps)
  *  ps = is set if t is a symbol
  *  intypeid = true if in type id
  */
-void resolve(Type mt, const ref Loc loc, Scope* sc, Expression* pe, Type* pt, Dsymbol* ps, bool intypeid = false)
+void resolve(Type mt, const ref Loc loc, Scope* sc, out Expression pe, out Type pt, out Dsymbol ps, bool intypeid = false)
 {
     void returnExp(Expression e)
     {
-        *pt = null;
-        *pe = e;
-        *ps = null;
+        pe = e;
+        pt = null;
+        ps = null;
     }
 
     void returnType(Type t)
     {
-        *pt = t;
-        *pe = null;
-        *ps = null;
+        pe = null;
+        pt = t;
+        ps = null;
     }
 
     void returnSymbol(Dsymbol s)
     {
-        *pt = null;
-        *pe = null;
-        *ps = s;
+        pe = null;
+        pt = null;
+        ps = s;
     }
 
     void returnError()
@@ -2661,17 +2640,17 @@ void resolve(Type mt, const ref Loc loc, Scope* sc, Expression* pe, Type* pt, Ds
     {
         //printf("TypeSArray::resolve() %s\n", mt.toChars());
         mt.next.resolve(loc, sc, pe, pt, ps, intypeid);
-        //printf("s = %p, e = %p, t = %p\n", *ps, *pe, *pt);
-        if (*pe)
+        //printf("s = %p, e = %p, t = %p\n", ps, pe, pt);
+        if (pe)
         {
             // It's really an index expression
-            if (Dsymbol s = getDsymbol(*pe))
-                *pe = new DsymbolExp(loc, s);
-            returnExp(new ArrayExp(loc, *pe, mt.dim));
+            if (Dsymbol s = getDsymbol(pe))
+                pe = new DsymbolExp(loc, s);
+            returnExp(new ArrayExp(loc, pe, mt.dim));
         }
-        else if (*ps)
+        else if (ps)
         {
-            Dsymbol s = *ps;
+            Dsymbol s = ps;
             if (auto tup = s.isTupleDeclaration())
             {
                 mt.dim = semanticLength(sc, tup, mt.dim);
@@ -2718,8 +2697,8 @@ void resolve(Type mt, const ref Loc loc, Scope* sc, Expression* pe, Type* pt, Ds
         }
         else
         {
-            if ((*pt).ty != Terror)
-                mt.next = *pt; // prevent re-running semantic() on 'next'
+            if (pt.ty != Terror)
+                mt.next = pt; // prevent re-running semantic() on 'next'
             visitType(mt);
         }
 
@@ -2729,27 +2708,27 @@ void resolve(Type mt, const ref Loc loc, Scope* sc, Expression* pe, Type* pt, Ds
     {
         //printf("TypeDArray::resolve() %s\n", mt.toChars());
         mt.next.resolve(loc, sc, pe, pt, ps, intypeid);
-        //printf("s = %p, e = %p, t = %p\n", *ps, *pe, *pt);
-        if (*pe)
+        //printf("s = %p, e = %p, t = %p\n", ps, pe, pt);
+        if (pe)
         {
             // It's really a slice expression
-            if (Dsymbol s = getDsymbol(*pe))
-                *pe = new DsymbolExp(loc, s);
-            returnExp(new ArrayExp(loc, *pe));
+            if (Dsymbol s = getDsymbol(pe))
+                pe = new DsymbolExp(loc, s);
+            returnExp(new ArrayExp(loc, pe));
         }
-        else if (*ps)
+        else if (ps)
         {
-            if (auto tup = (*ps).isTupleDeclaration())
+            if (auto tup = ps.isTupleDeclaration())
             {
-                // keep *ps
+                // keep ps
             }
             else
                 visitType(mt);
         }
         else
         {
-            if ((*pt).ty != Terror)
-                mt.next = *pt; // prevent re-running semantic() on 'next'
+            if (pt.ty != Terror)
+                mt.next = pt; // prevent re-running semantic() on 'next'
             visitType(mt);
         }
     }
@@ -2764,7 +2743,7 @@ void resolve(Type mt, const ref Loc loc, Scope* sc, Expression* pe, Type* pt, Ds
             Expression e;
             Type t;
             Dsymbol s;
-            mt.index.resolve(loc, sc, &e, &t, &s, intypeid);
+            mt.index.resolve(loc, sc, e, t, s, intypeid);
             if (e)
             {
                 // It was an expression -
@@ -2785,8 +2764,8 @@ void resolve(Type mt, const ref Loc loc, Scope* sc, Expression* pe, Type* pt, Ds
      * Takes an array of Identifiers and figures out if
      * it represents a Type or an Expression.
      * Output:
-     *      if expression, *pe is set
-     *      if type, *pt is set
+     *      if expression, pe is set
+     *      if type, pt is set
      */
     void visitIdentifier(TypeIdentifier mt)
     {
@@ -2877,8 +2856,8 @@ void resolve(Type mt, const ref Loc loc, Scope* sc, Expression* pe, Type* pt, Ds
         }
 
         mt.resolveHelper(loc, sc, s, scopesym, pe, pt, ps, intypeid);
-        if (*pt)
-            (*pt) = (*pt).addMod(mt.mod);
+        if (pt)
+            pt = pt.addMod(mt.mod);
     }
 
     void visitInstance(TypeInstance mt)
@@ -2891,9 +2870,9 @@ void resolve(Type mt, const ref Loc loc, Scope* sc, Expression* pe, Type* pt, Ds
             return returnError();
 
         mt.resolveHelper(loc, sc, mt.tempinst, null, pe, pt, ps, intypeid);
-        if (*pt)
-            *pt = (*pt).addMod(mt.mod);
-        //if (*pt) printf("*pt = %d '%s'\n", (*pt).ty, (*pt).toChars());
+        if (pt)
+            pt = pt.addMod(mt.mod);
+        //if (pt) printf("pt = %d '%s'\n", pt.ty, pt.toChars());
     }
 
     void visitTypeof(TypeTypeof mt)
@@ -3000,8 +2979,8 @@ void resolve(Type mt, const ref Loc loc, Scope* sc, Expression* pe, Type* pt, Ds
                 e = e.expressionSemantic(sc);
                 resolveExp(e, pt, pe, ps);
             }
-            if (*pt)
-                (*pt) = (*pt).addMod(mt.mod);
+            if (pt)
+                pt = pt.addMod(mt.mod);
         }
         mt.inuse--;
     }
@@ -3040,24 +3019,24 @@ void resolve(Type mt, const ref Loc loc, Scope* sc, Expression* pe, Type* pt, Ds
                 e = e.expressionSemantic(sc);
                 resolveExp(e, pt, pe, ps);
             }
-            if (*pt)
-                (*pt) = (*pt).addMod(mt.mod);
+            if (pt)
+                pt = pt.addMod(mt.mod);
         }
     }
 
     void visitSlice(TypeSlice mt)
     {
         mt.next.resolve(loc, sc, pe, pt, ps, intypeid);
-        if (*pe)
+        if (pe)
         {
             // It's really a slice expression
-            if (Dsymbol s = getDsymbol(*pe))
-                *pe = new DsymbolExp(loc, s);
-            return returnExp(new ArrayExp(loc, *pe, new IntervalExp(loc, mt.lwr, mt.upr)));
+            if (Dsymbol s = getDsymbol(pe))
+                pe = new DsymbolExp(loc, s);
+            return returnExp(new ArrayExp(loc, pe, new IntervalExp(loc, mt.lwr, mt.upr)));
         }
-        else if (*ps)
+        else if (ps)
         {
-            Dsymbol s = *ps;
+            Dsymbol s = ps;
             TupleDeclaration td = s.isTupleDeclaration();
             if (td)
             {
@@ -3103,8 +3082,8 @@ void resolve(Type mt, const ref Loc loc, Scope* sc, Expression* pe, Type* pt, Ds
         }
         else
         {
-            if ((*pt).ty != Terror)
-                mt.next = *pt; // prevent re-running semantic() on 'next'
+            if (pt.ty != Terror)
+                mt.next = pt; // prevent re-running semantic() on 'next'
             visitType(mt);
         }
     }
@@ -3116,8 +3095,8 @@ void resolve(Type mt, const ref Loc loc, Scope* sc, Expression* pe, Type* pt, Ds
         if (auto t = o.isType())
         {
             resolve(t, loc, sc, pe, pt, ps, intypeid);
-            if (*pt)
-                (*pt) = (*pt).addMod(mt.mod);
+            if (pt)
+                pt = pt.addMod(mt.mod);
         }
         else if (auto e = o.isExpression())
         {
@@ -3736,12 +3715,6 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
         {
             return noMember(mt, sc, e, ident, flag);
         }
-        if (!s.isFuncDeclaration()) // because of overloading
-        {
-            s.checkDeprecated(e.loc, sc);
-            if (auto d = s.isDeclaration())
-                d.checkDisabled(e.loc, sc);
-        }
         s = s.toAlias();
 
         if (auto em = s.isEnumMember())
@@ -3750,6 +3723,8 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
         }
         if (auto v = s.isVarDeclaration())
         {
+            v.checkDeprecated(e.loc, sc);
+            v.checkDisabled(e.loc, sc);
             if (!v.type ||
                 !v.type.deco && v.inuse)
             {
@@ -4222,7 +4197,8 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
         }
 
         TemplateDeclaration td = s.isTemplateDeclaration();
-        if (td)
+
+        Expression toTemplateExp(TemplateDeclaration td)
         {
             if (e.op == TOK.type)
                 e = new TemplateExp(e.loc, td, null, die.loc);
@@ -4230,6 +4206,11 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
                 e = new DotTemplateExp(e.loc, e, td, die.loc);
             e = e.expressionSemantic(sc);
             return e;
+        }
+
+        if (td)
+        {
+            return toTemplateExp(td);
         }
 
         TemplateInstance ti = s.isTemplateInstance();
@@ -4372,17 +4353,28 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
             // If static function, get the most visible overload.
             // Later on the call is checked for correctness.
             // https://issues.dlang.org/show_bug.cgi?id=12511
+            Dsymbol d2 = d;
             if (auto fd = d.isFuncDeclaration())
             {
                 import dmd.access : mostVisibleOverload;
-                d = cast(Declaration)mostVisibleOverload(fd, sc._module);
+                d2 = mostVisibleOverload(fd, sc._module);
             }
 
-            checkAccess(e.loc, sc, e, d);
-            auto ve = new VarExp(idloc, d);
-            if (d.isVarDeclaration() && d.needThis())
-                ve.type = d.type.addMod(e.type.mod);
-            return ve;
+            checkAccess(e.loc, sc, e, d2);
+            if (d2.isDeclaration())
+            {
+                d = cast(Declaration)d2;
+                auto ve = new VarExp(idloc, d);
+                if (d.isVarDeclaration() && d.needThis())
+                    ve.type = d.type.addMod(e.type.mod);
+                return ve;
+            }
+            else if (d2.isTemplateDeclaration())
+            {
+                return toTemplateExp(cast(TemplateDeclaration)d2);
+            }
+            else
+                assert(0);
         }
 
         bool unreal = e.op == TOK.variable && (cast(VarExp)e).var.isField();

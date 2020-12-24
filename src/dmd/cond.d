@@ -42,7 +42,7 @@ import dmd.func;
 /***********************************************************
  */
 
-enum Include
+enum Include : ubyte
 {
     notComputed,        /// not computed yet
     yes,                /// include the conditional code
@@ -549,6 +549,7 @@ extern (C++) final class DebugCondition : DVCondition
      *           Only used if `ident` is `null`.
      *   ident = Identifier required for this condition to pass.
      *           If `null`, this conditiion will use an integer level.
+     *  loc = Location in the source file
      */
     extern (D) this(const ref Loc loc, Module mod, uint level, Identifier ident)
     {
@@ -656,6 +657,7 @@ extern (C++) final class VersionCondition : DVCondition
             case "CRuntime_Glibc":
             case "CRuntime_Microsoft":
             case "CRuntime_Musl":
+            case "CRuntime_Newlib":
             case "CRuntime_UClibc":
             case "CRuntime_WASI":
             case "Cygwin":
@@ -823,6 +825,7 @@ extern (C++) final class VersionCondition : DVCondition
      *           Only used if `ident` is `null`.
      *   ident = Identifier required for this condition to pass.
      *           If `null`, this conditiion will use an integer level.
+     *  loc = Location in the source file
      */
     extern (D) this(const ref Loc loc, Module mod, uint level, Identifier ident)
     {

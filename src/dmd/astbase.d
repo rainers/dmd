@@ -52,14 +52,14 @@ struct ASTBase
     alias Initializers          = Array!(Initializer);
     alias Ensures               = Array!(Ensure);
 
-    enum Sizeok : int
+    enum Sizeok : ubyte
     {
         none,               // size of aggregate is not yet able to compute
         fwd,                // size of aggregate is ready to compute
         done,               // size of aggregate is set correctly
     }
 
-    enum Baseok : int
+    enum Baseok : ubyte
     {
         none,               // base classes not computed yet
         start,              // in process of resolving base classes
@@ -340,6 +340,12 @@ struct ASTBase
             this.ident = ident;
         }
 
+        final extern (D) this(const ref Loc loc, Identifier ident)
+        {
+            this.loc = loc;
+            this.ident = ident;
+        }
+
         void addComment(const(char)* comment)
         {
             if (!this.comment)
@@ -471,6 +477,11 @@ struct ASTBase
             return null;
         }
 
+        inout(AliasAssign) isAliasAssign() inout
+        {
+            return null;
+        }
+
         inout(ClassDeclaration) isClassDeclaration() inout
         {
             return null;
@@ -514,12 +525,38 @@ struct ASTBase
         }
     }
 
+    extern (C++) final class AliasAssign : Dsymbol
+    {
+        Identifier ident;
+        Type type;
+
+        extern (D) this(const ref Loc loc, Identifier ident, Type type)
+        {
+            super(null);
+            this.loc = loc;
+            this.ident = ident;
+            this.type = type;
+        }
+
+        override inout(AliasAssign) isAliasAssign() inout
+        {
+            return this;
+        }
+
+        override void accept(Visitor v)
+        {
+            v.visit(this);
+        }
+    }
+
     extern (C++) abstract class Declaration : Dsymbol
     {
         StorageClass storage_class;
         Prot protection;
         LINK linkage;
         Type type;
+        short inuse;
+        ubyte adFlags;
 
         final extern (D) this(Identifier id)
         {
@@ -615,6 +652,12 @@ struct ASTBase
 
         final extern (D) this(Dsymbols *decl)
         {
+            this.decl = decl;
+        }
+
+        final extern (D) this(const ref Loc loc, Identifier ident, Dsymbols* decl)
+        {
+            super(loc, ident);
             this.decl = decl;
         }
 
@@ -1403,9 +1446,9 @@ struct ASTBase
         Condition condition;
         Dsymbols* elsedecl;
 
-        final extern (D) this(Condition condition, Dsymbols* decl, Dsymbols* elsedecl)
+        final extern (D) this(const ref Loc loc, Condition condition, Dsymbols* decl, Dsymbols* elsedecl)
         {
-            super(decl);
+            super(loc, null, decl);
             this.condition = condition;
             this.elsedecl = elsedecl;
         }
@@ -1434,9 +1477,9 @@ struct ASTBase
 
     extern (C++) final class StaticIfDeclaration : ConditionalDeclaration
     {
-        extern (D) this(Condition condition, Dsymbols* decl, Dsymbols* elsedecl)
+        extern (D) this(const ref Loc loc, Condition condition, Dsymbols* decl, Dsymbols* elsedecl)
         {
-            super(condition, decl, elsedecl);
+            super(loc, condition, decl, elsedecl);
         }
 
         override void accept(Visitor v)
@@ -1451,7 +1494,7 @@ struct ASTBase
 
         extern (D) this(StaticForeach sfe, Dsymbols* decl)
         {
-            super(decl);
+            super(sfe.loc, null, decl);
             this.sfe = sfe;
         }
 
@@ -2866,7 +2909,6 @@ struct ASTBase
 
             tshiftcnt = tint32;
             terror = basic[Terror];
-            tnull = basic[Tnull];
             tnull = new TypeNull();
             tnull.deco = tnull.merge().deco;
 
@@ -5565,13 +5607,13 @@ struct ASTBase
         }
     }
 
-    extern (C++) final class CompileExp : Expression
+    extern (C++) final class MixinExp : Expression
     {
         Expressions* exps;
 
         extern (D) this(const ref Loc loc, Expressions* exps)
         {
-            super(loc, TOK.mixin_, __traits(classInstanceSize, CompileExp));
+            super(loc, TOK.mixin_, __traits(classInstanceSize, MixinExp));
             this.exps = exps;
         }
 
@@ -6555,7 +6597,7 @@ struct ASTBase
 
     struct Prot
     {
-        enum Kind : int
+        enum Kind : ubyte
         {
             undefined,
             none,
@@ -6728,8 +6770,6 @@ struct ASTBase
             return "C++";
         case LINK.windows:
             return "Windows";
-        case LINK.pascal:
-            return "Pascal";
         case LINK.objc:
             return "Objective-C";
         }
@@ -6741,12 +6781,11 @@ struct ASTBase
 
         extern (C++) static Type va_listType(const ref Loc loc, Scope* sc)
         {
-            if (global.params.isWindows)
+            if (global.params.targetOS == TargetOS.Windows)
             {
                 return Type.tchar.pointerTo();
             }
-            else if (global.params.isLinux || global.params.isFreeBSD || global.params.isOpenBSD  || global.params.isDragonFlyBSD ||
-                global.params.isSolaris || global.params.isOSX)
+            else if (global.params.targetOS & TargetOS.Posix)
             {
                 if (global.params.is64bit)
                 {
