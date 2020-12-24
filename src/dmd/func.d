@@ -2170,7 +2170,7 @@ extern (C++) class FuncDeclaration : Declaration
             Expression e = new CallExp(loc, new VarExp(loc, fdv.fdrequire, false), params);
             Statement s2 = new ExpStatement(loc, e);
 
-            auto c = new Catch(loc, getThrowable(), null, sf);
+            auto c = new Catch(loc, getThrowable(), makeIdentifierAtLoc(null), sf);
             c.internalCatch = true;
             auto catches = new Catches();
             catches.push(c);

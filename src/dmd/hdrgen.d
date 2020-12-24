@@ -2939,9 +2939,9 @@ void functionToBufferWithIdent(TypeFunction tf, OutBuffer* buf, const(char)* ide
 }
 
 // ident is inserted before the argument list and will be "function" or "delegate" for a type
-void functionToBufferWithIdent(TypeFunction tf, OutBuffer* buf, const(char)* ident, HdrGenState* hgs)
+void functionToBufferWithIdent(TypeFunction tf, OutBuffer* buf, const(char)* ident, HdrGenState* hgs, bool isStatic)
 {
-    visitFuncIdentWithPostfix(tf, ident.toDString(), buf, hgs);
+    visitFuncIdentWithPostfix(tf, ident.toDString(), buf, hgs, isStatic);
 }
 
 void toCBuffer(const Expression e, OutBuffer* buf, HdrGenState* hgs)

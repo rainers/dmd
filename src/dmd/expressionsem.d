@@ -2650,7 +2650,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                         // 'with (exp)' is a Package/Module
                         e = withsym.withstate.exp;
                     }
-                    e = new DotIdExp(exp.loc, e, exp.ident);
+                    e = new DotIdExp(exp.loc, e, makeIdentifierAtLoc(exp.ident, exp.loc));
                     result = e.expressionSemantic(sc);
                     return;
                 }

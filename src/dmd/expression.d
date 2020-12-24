@@ -1855,7 +1855,7 @@ extern (C++) abstract class Expression : ASTNode
         tiExp[TOK.traits                  ] = typeid(TraitsExp);
         tiExp[TOK.halt                    ] = typeid(HaltExp);
         tiExp[TOK.is_                     ] = typeid(IsExp);
-        tiExp[TOK.mixin_                  ] = typeid(CompileExp);
+        tiExp[TOK.mixin_                  ] = typeid(MixinExp);
         tiExp[TOK.import_                 ] = typeid(ImportExp);
         tiExp[TOK.assert_                 ] = typeid(AssertExp);
         tiExp[TOK.dotIdentifier           ] = typeid(DotIdExp);

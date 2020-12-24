@@ -3645,7 +3645,7 @@ final class Parser(AST) : Lexer
 
         int alt = 0;
         Identifier ident;
-        t = parseDeclarator(t, alt, ident, pidentLoc, ptpl);
+        t = parseDeclarator(t, alt, ident, pidentloc, ptpl);
         checkCstyleTypeSyntax(typeLoc, t, alt, ident);
         if (pident)
             *pident = ident;
