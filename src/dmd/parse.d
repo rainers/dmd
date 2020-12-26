@@ -8732,11 +8732,11 @@ final class Parser(AST) : Lexer
                 continue;
 
             case TOK.plusPlus:
-                e = new AST.PostExp(TOK.plusPlus, loc, e);
+                e = new AST.PostExp(TOK.plusPlus, e.loc, e);
                 break;
 
             case TOK.minusMinus:
-                e = new AST.PostExp(TOK.minusMinus, loc, e);
+                e = new AST.PostExp(TOK.minusMinus, e.loc, e);
                 break;
 
             case TOK.leftParentheses:
@@ -8763,7 +8763,7 @@ final class Parser(AST) : Lexer
                             // array[..., lwr..upr, ...]
                             nextToken();
                             upr = parseAssignExp();
-                            arguments.push(new AST.IntervalExp(loc, index, upr));
+                            arguments.push(new AST.IntervalExp(e.loc, index, upr));
                         }
                         else
                             arguments.push(index);
@@ -8773,7 +8773,7 @@ final class Parser(AST) : Lexer
                     }
                     check(TOK.rightBracket);
                     inBrackets--;
-                    e = new AST.ArrayExp(loc, e, arguments);
+                    e = new AST.ArrayExp(e.loc, e, arguments);
                     continue;
                 }
             default:
