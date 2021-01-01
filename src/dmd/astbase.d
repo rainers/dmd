@@ -51,6 +51,7 @@ struct ASTBase
     alias Identifiers           = Array!(Identifier);
     alias Initializers          = Array!(Initializer);
     alias Ensures               = Array!(Ensure);
+    alias IdentifiersAtLoc      = Identifiers;
 
     enum Sizeok : ubyte
     {
@@ -580,6 +581,9 @@ struct ASTBase
     extern (C++) class ScopeDsymbol : Dsymbol
     {
         Dsymbols* members;
+        uint endlinnum;             // the line number of the statement after the scope (0 if unknown)
+        uint endcharnum;            // and its column
+
         final extern (D) this() {}
         final extern (D) this(Identifier id)
         {
@@ -589,6 +593,12 @@ struct ASTBase
         override void accept(Visitor v)
         {
             v.visit(this);
+        }
+
+        void setEndLoc(const ref Loc endloc)
+        {
+            endlinnum = endloc.linnum;
+            endcharnum = endloc.charnum;
         }
     }
 
@@ -2699,6 +2709,19 @@ struct ASTBase
         }
     }
 
+    extern (C++) final class ErrorStatement : Statement
+    {
+        final extern (D) this(Statement stmt = null)
+        {
+            super(Loc.initial, STMT.Error);
+        }
+
+        override void accept(Visitor v)
+        {
+            v.visit(this);
+        }
+    }
+
     extern (C++) final class Catch : RootObject
     {
         Loc loc;
@@ -4388,9 +4411,9 @@ struct ASTBase
             idents.push(id);
         }
 
-        final void addInst(TemplateInstance ti)
+        final void addInst(TemplateInstance inst, Loc nameLoc)
         {
-            idents.push(ti);
+            idents.push(makeIdentifierAtLoc(cast(Identifier)inst, nameLoc));
         }
 
         final void addIndex(RootObject e)
@@ -5591,6 +5614,19 @@ struct ASTBase
         }
     }
 
+    extern (C++) final class DotExp : BinExp
+    {
+        extern (D) this(const ref Loc loc, Expression e1, Expression e2)
+        {
+            super(loc, TOK.dot, __traits(classInstanceSize, DotExp), e1, e2);
+        }
+
+        override void accept(Visitor v)
+        {
+            v.visit(this);
+        }
+    }
+
     extern (C++) final class AssertExp : UnaExp
     {
         Expression msg;
@@ -6214,6 +6250,25 @@ struct ASTBase
         extern (D) this(const ref Loc loc, Expression e1, Expression e2)
         {
             super(loc, TOK.concatenateAssign, __traits(classInstanceSize, CatAssignExp), e1, e2);
+        }
+
+        override void accept(Visitor v)
+        {
+            v.visit(this);
+        }
+    }
+
+    extern (C++) final class ErrorExp : Expression
+    {
+        private extern (D) this()
+        {
+            super(Loc.initial, TOK.error, __traits(classInstanceSize, ErrorExp));
+            type = Type.terror;
+        }
+
+        static ErrorExp get (Expression exp = null)
+        {
+            return new ErrorExp;
         }
 
         override void accept(Visitor v)

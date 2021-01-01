@@ -197,6 +197,7 @@ public:
     void visit(AST.SymbolExp e) { visit(cast(AST.Expression)e); }
     void visit(AST.TupleExp e) { visit(cast(AST.Expression)e); }
     void visit(AST.ThisExp e) { visit(cast(AST.Expression)e); }
+    void visit(AST.ErrorExp e) { visit(cast(AST.Expression)e); }
 
     // Miscellaneous
     void visit(AST.VarExp e) { visit(cast(AST.SymbolExp)e); }
@@ -251,6 +252,7 @@ public:
     void visit(AST.CondExp e) { visit(cast(AST.BinExp)e); }
     void visit(AST.AssignExp e) { visit(cast(AST.BinExp)e); }
     void visit(AST.BinAssignExp e) { visit(cast(AST.BinExp)e); }
+    void visit(AST.DotExp e) { visit(cast(AST.BinExp)e); }
 
     // BinAssignExp
     void visit(AST.AddAssignExp e) { visit(cast(AST.BinAssignExp)e); }

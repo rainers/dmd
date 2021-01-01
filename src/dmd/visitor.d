@@ -62,7 +62,6 @@ public:
     void visit(ASTCodegen.TypeInfoVectorDeclaration s) { visit(cast(ASTCodegen.TypeInfoDeclaration)s); }
     void visit(ASTCodegen.FuncAliasDeclaration s) { visit(cast(ASTCodegen.FuncDeclaration)s); }
     void visit(ASTCodegen.ErrorInitializer i) { visit(cast(ASTCodegen.Initializer)i); }
-    void visit(ASTCodegen.ErrorExp e) { visit(cast(ASTCodegen.Expression)e); }
     void visit(ASTCodegen.ComplexExp e) { visit(cast(ASTCodegen.Expression)e); }
     void visit(ASTCodegen.StructLiteralExp e) { visit(cast(ASTCodegen.Expression)e); }
     void visit(ASTCodegen.ObjcClassReferenceExp e) { visit(cast(ASTCodegen.Expression)e); }
@@ -79,7 +78,6 @@ public:
     void visit(ASTCodegen.ArrayLengthExp e) { visit(cast(ASTCodegen.UnaExp)e); }
     void visit(ASTCodegen.DelegatePtrExp e) { visit(cast(ASTCodegen.UnaExp)e); }
     void visit(ASTCodegen.DelegateFuncptrExp e) { visit(cast(ASTCodegen.UnaExp)e); }
-    void visit(ASTCodegen.DotExp e) { visit(cast(ASTCodegen.BinExp)e); }
     void visit(ASTCodegen.IndexExp e) { visit(cast(ASTCodegen.BinExp)e); }
     void visit(ASTCodegen.ConstructExp e) { visit(cast(ASTCodegen.AssignExp)e); }
     void visit(ASTCodegen.BlitExp e) { visit(cast(ASTCodegen.AssignExp)e); }
