@@ -1583,10 +1583,8 @@ extern (C++) abstract class Expression : ASTNode
                 }
 
                 // Forward to aliasthis.
-                if (ad.aliasthis && !(att && tb.equivalent(att)))
+                if (ad.aliasthis && !isRecursiveAliasThis(att, tb))
                 {
-                    if (!att && tb.checkAliasThisRec())
-                        att = tb;
                     e = resolveAliasThis(sc, e);
                     t = e.type;
                     tb = e.type.toBasetype();
@@ -1828,9 +1826,9 @@ extern (C++) abstract class Expression : ASTNode
         return null;
     }
 
-    extern (D) private static const TypeInfo_Class[TOK.max_] typeInfoExp = ()
+    extern (D) private static const TypeInfo_Class[TOK.max + 1] typeInfoExp = ()
     {
-        TypeInfo_Class[TOK.max_] tiExp;
+        TypeInfo_Class[TOK.max + 1] tiExp;
         tiExp[TOK.int64                   ] = typeid(IntegerExp);
         tiExp[TOK.error                   ] = typeid(ErrorExp);
         tiExp[TOK.void_                   ] = typeid(VoidInitExp);
@@ -4996,8 +4994,6 @@ extern (C++) final class DotVarExp : UnaExp
     override Modifiable checkModifiable(Scope* sc, int flag)
     {
         //printf("DotVarExp::checkModifiable %s %s\n", toChars(), type.toChars());
-        if (checkUnsafeAccess(sc, this, false, !flag))
-            return Modifiable.initialization;
 
         if (e1.op == TOK.this_)
             return var.checkModify(loc, sc, e1, flag);

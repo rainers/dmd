@@ -2505,7 +2505,8 @@ extern (C++) class FuncDeclaration : Declaration
         if (type)
         {
             TypeFunction fdtype = type.isTypeFunction();
-            return fdtype.parameterList;
+            if (fdtype) // Could also be TypeError
+                return fdtype.parameterList;
         }
 
         return ParameterList(null, VarArg.none);
@@ -2883,7 +2884,8 @@ enum FuncResolveFlag : ubyte
 {
     standard = 0,       /// issue error messages, solve the call.
     quiet = 1,          /// do not issue error message on no match, just return `null`.
-    overloadOnly = 2,   /// only resolve overloads.
+    overloadOnly = 2,   /// only resolve overloads, i.e. do not issue error on ambiguous
+                        /// matches and need explicit this.
 }
 
 /*******************************************

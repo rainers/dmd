@@ -28,7 +28,7 @@ import dmd.declaration;
 import dmd.denum;
 import dmd.dimport;
 import dmd.dmangle;
-import dmd.dmodule : Module;
+import dmd.dmodule;
 import dmd.dscope;
 import dmd.dstruct;
 import dmd.dsymbol;
@@ -75,6 +75,7 @@ private Expression semanticLength(Scope* sc, Type t, Expression exp)
         sc = sc.push(sym);
         sc = sc.startCTFE();
         exp = exp.expressionSemantic(sc);
+        exp = resolveProperties(sc, exp);
         sc = sc.endCTFE();
         sc.pop();
     }
@@ -82,6 +83,7 @@ private Expression semanticLength(Scope* sc, Type t, Expression exp)
     {
         sc = sc.startCTFE();
         exp = exp.expressionSemantic(sc);
+        exp = resolveProperties(sc, exp);
         sc = sc.endCTFE();
     }
     return exp;
@@ -95,6 +97,7 @@ private Expression semanticLength(Scope* sc, TupleDeclaration tup, Expression ex
     sc = sc.push(sym);
     sc = sc.startCTFE();
     exp = exp.expressionSemantic(sc);
+    exp = resolveProperties(sc, exp);
     sc = sc.endCTFE();
     sc.pop();
 
@@ -219,7 +222,10 @@ private void resolveHelper(TypeQualified mt, Loc loc, Scope* sc, Dsymbol s, Dsym
     else
     {
         // check for deprecated or disabled aliases
-        s.checkDeprecated(loc, sc);
+        // functions are checked after overloading
+        // templates are checked after matching constraints
+        if (!s.isFuncDeclaration() && !s.isTemplateDeclaration())
+            s.checkDeprecated(loc, sc);
         if (d)
             d.checkDisabled(loc, sc, true);
     }
@@ -258,10 +264,22 @@ private void resolveHelper(TypeQualified mt, Loc loc, Scope* sc, Dsymbol s, Dsym
         int flags = t is null ? SearchLocalsOnly : IgnorePrivateImports;
 
         Dsymbol sm = s.searchX(idloc, sc, id, flags);
-        if (sm && !(sc.flags & SCOPE.ignoresymbolvisibility) && !symbolIsVisible(sc, sm))
+        if (sm)
         {
-            .error(loc, "`%s` is not visible from module `%s`", sm.toPrettyChars(), sc._module.toChars());
-            sm = null;
+            if (!(sc.flags & SCOPE.ignoresymbolvisibility) && !symbolIsVisible(sc, sm))
+            {
+                .error(loc, "`%s` is not visible from module `%s`", sm.toPrettyChars(), sc._module.toChars());
+                sm = null;
+            }
+            // Same check as in Expression.semanticY(DotIdExp)
+            else if (sm.isPackage() && checkAccess(sc, cast(Package)sm))
+            {
+                // @@@DEPRECATED_2.096@@@
+                // Should be an error in 2.106. Just remove the deprecation call
+                // and uncomment the null assignment
+                deprecation(loc, "%s %s is not accessible here, perhaps add 'static import %s;'", sm.kind(), sm.toPrettyChars(), sm.toPrettyChars());
+                //sm = null;
+            }
         }
         if (global.errors != errorsave)
         {
@@ -737,17 +755,6 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
         Type tbn = tn.toBasetype();
         if (mtype.dim)
         {
-            //https://issues.dlang.org/show_bug.cgi?id=15478
-            if (mtype.dim.isDotVarExp())
-            {
-                if (Declaration vd = mtype.dim.isDotVarExp().var)
-                {
-                    FuncDeclaration fd = vd.toAlias().isFuncDeclaration();
-                    if (fd)
-                        mtype.dim = new CallExp(loc, fd, null);
-                }
-            }
-
             auto errors = global.errors;
             mtype.dim = semanticLength(sc, tbn, mtype.dim);
             if (errors != global.errors)
@@ -902,12 +909,9 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
             Dsymbol s;
             mtype.index.resolve(idxloc, sc, e, t, s);
 
-            //https://issues.dlang.org/show_bug.cgi?id=15478
+            // https://issues.dlang.org/show_bug.cgi?id=15478
             if (s)
-            {
-                if (FuncDeclaration fd = s.toAlias().isFuncDeclaration())
-                    e = new CallExp(idxloc, fd, null);
-            }
+                e = symbolToExp(s, loc, sc, false);
 
             if (e)
             {
@@ -1297,9 +1301,16 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
             e = e.implicitCastTo(sc, fparam.type);
 
             // default arg must be an lvalue
-            if (isRefOrOut && !isAuto &&
-                !(global.params.previewIn && (fparam.storageClass & STC.in_)))
-                e = e.toLvalue(sc, e);
+            if (isRefOrOut && !isAuto)
+            {
+                if (!(global.params.previewIn && (fparam.storageClass & STC.in_)) &&
+                    !(global.params.rvalueRefParam))
+                {
+                    e = e.toLvalue(sc, e);
+                    if (e.op == TOK.error)
+                        errorSupplemental(e.loc, "use `-preview=in` or `preview=rvaluerefparam`");
+                }
+            }
 
             fparam.defaultArg = e;
             return (e.op != TOK.error);
@@ -1764,6 +1775,7 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
             mtype.exp.ident != Id.getMember &&
             mtype.exp.ident != Id.parent &&
             mtype.exp.ident != Id.child &&
+            mtype.exp.ident != Id.toType &&
             mtype.exp.ident != Id.getOverloads &&
             mtype.exp.ident != Id.getVirtualFunctions &&
             mtype.exp.ident != Id.getVirtualMethods &&
@@ -2215,17 +2227,18 @@ Expression getProperty(Type t, Scope* scope_, const ref Loc loc, Identifier iden
             {
                 if (s)
                     error(loc, "no property `%s` for type `%s`, did you mean `%s`?", ident.toChars(), mt.toChars(), s.toPrettyChars());
+                else if (ident == Id.call && mt.ty == Tclass)
+                    error(loc, "no property `%s` for type `%s`, did you mean `new %s`?", ident.toChars(), mt.toChars(), mt.toPrettyChars());
+
+                else if (const n = importHint(ident.toString()))
+                        error(loc, "no property `%s` for type `%s`, perhaps `import %.*s;` is needed?", ident.toChars(), mt.toChars(), cast(int)n.length, n.ptr);
                 else
                 {
-                    if (ident == Id.call && mt.ty == Tclass)
-                        error(loc, "no property `%s` for type `%s`, did you mean `new %s`?", ident.toChars(), mt.toChars(), mt.toPrettyChars());
-                    else
-                    {
-                        if (const n = importHint(ident.toString()))
-                            error(loc, "no property `%s` for type `%s`, perhaps `import %.*s;` is needed?", ident.toChars(), mt.toChars(), cast(int)n.length, n.ptr);
-                        else
-                            error(loc, "no property `%s` for type `%s`", ident.toChars(), mt.toPrettyChars(true));
-                    }
+                    error(loc, "no property `%s` for type `%s`", ident.toChars(), mt.toPrettyChars(true));
+                    if (auto dsym = mt.toDsymbol(scope_))
+                        if (auto sym = dsym.isAggregateDeclaration())
+                            if (auto fd = search_function(sym, Id.opDispatch))
+                                errorSupplemental(loc, "potentially malformed `opDispatch`. Use an explicit instantiation to get a better error message");
                 }
             }
             e = ErrorExp.get();
@@ -3778,9 +3791,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
         TemplateMixin tm = s.isTemplateMixin();
         if (tm)
         {
-            Expression de = new DotExp(e.loc, e, new ScopeExp(e.loc, tm));
-            de.type = e.type;
-            return de;
+            return new DotExp(e.loc, e, new ScopeExp(e.loc, tm)).expressionSemantic(sc);
         }
 
         TemplateDeclaration td = s.isTemplateDeclaration();
@@ -3895,23 +3906,6 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
 
         if (mt.sym.semanticRun < PASS.semanticdone)
             mt.sym.dsymbolSemantic(null);
-        if (!mt.sym.members)
-        {
-            if (mt.sym.isSpecial())
-            {
-                /* Special enums forward to the base type
-                 */
-                e = mt.sym.memtype.dotExp(sc, e, die, flag);
-            }
-            else if (!(flag & 1))
-            {
-                mt.sym.error("is forward referenced when looking for `%s`", ident.toChars());
-                e = ErrorExp.get();
-            }
-            else
-                e = null;
-            return e;
-        }
 
         Dsymbol s = mt.sym.search(e.loc, ident);
         if (!s)
@@ -4205,9 +4199,7 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
         TemplateMixin tm = s.isTemplateMixin();
         if (tm)
         {
-            Expression de = new DotExp(e.loc, e, new ScopeExp(e.loc, tm));
-            de.type = e.type;
-            return de;
+            return new DotExp(e.loc, e, new ScopeExp(e.loc, tm)).expressionSemantic(sc);
         }
 
         TemplateDeclaration td = s.isTemplateDeclaration();
