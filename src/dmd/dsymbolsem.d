@@ -4235,7 +4235,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
     override void visit(CtorDeclaration ctd)
     {
         //printf("CtorDeclaration::semantic() %s\n", toChars());
-        if (ctd.semanticRun >= PASS.semanticdone)
+        if (ctd.semanticRun >= PASS.semanticdone || ctd.errors)
             return;
         if (ctd._scope)
         {
