@@ -6196,9 +6196,9 @@ extern (C++) class AssignExp : BinExp
         super(loc, TOK.assign, __traits(classInstanceSize, AssignExp), e1, e2);
     }
 
-    this(const ref Loc loc, TOK tok, Expression e1, Expression e2)
+    this(const ref Loc loc, TOK tok, int size, Expression e1, Expression e2)
     {
-        super(loc, tok, __traits(classInstanceSize, AssignExp), e1, e2);
+        super(loc, tok, size, e1, e2);
     }
 
     override final bool isLvalue()
@@ -6248,7 +6248,7 @@ extern (C++) final class ConstructExp : AssignExp
 {
     extern (D) this(const ref Loc loc, Expression e1, Expression e2)
     {
-        super(loc, TOK.construct, e1, e2);
+        super(loc, TOK.construct, __traits(classInstanceSize, ConstructExp), e1, e2);
     }
 
     // Internal use only. If `v` is a reference variable, the assignment
@@ -6258,7 +6258,7 @@ extern (C++) final class ConstructExp : AssignExp
         auto ve = new VarExp(loc, v);
         assert(v.type && ve.type);
 
-        super(loc, TOK.construct, ve, e2);
+        super(loc, TOK.construct, __traits(classInstanceSize, ConstructExp), ve, e2);
 
         if (v.storage_class & (STC.ref_ | STC.out_))
             memset = MemorySet.referenceInit;
@@ -6276,7 +6276,7 @@ extern (C++) final class BlitExp : AssignExp
 {
     extern (D) this(const ref Loc loc, Expression e1, Expression e2)
     {
-        super(loc, TOK.blit, e1, e2);
+        super(loc, TOK.blit, __traits(classInstanceSize, BlitExp), e1, e2);
     }
 
     // Internal use only. If `v` is a reference variable, the assinment
@@ -6286,7 +6286,7 @@ extern (C++) final class BlitExp : AssignExp
         auto ve = new VarExp(loc, v);
         assert(v.type && ve.type);
 
-        super(loc, TOK.blit, ve, e2);
+        super(loc, TOK.blit, __traits(classInstanceSize, BlitExp), ve, e2);
 
         if (v.storage_class & (STC.ref_ | STC.out_))
             memset = MemorySet.referenceInit;
@@ -6495,9 +6495,9 @@ extern (C++) class CatAssignExp : BinAssignExp
         super(loc, TOK.concatenateAssign, __traits(classInstanceSize, CatAssignExp), e1, e2);
     }
 
-    extern (D) this(const ref Loc loc, TOK tok, Expression e1, Expression e2)
+    extern (D) this(const ref Loc loc, TOK tok, int size, Expression e1, Expression e2)
     {
-        super(loc, tok, __traits(classInstanceSize, CatAssignExp), e1, e2);
+        super(loc, tok, size, e1, e2);
     }
 
     override void accept(Visitor v)
@@ -6511,7 +6511,7 @@ extern (C++) final class CatElemAssignExp : CatAssignExp
 {
     extern (D) this(const ref Loc loc, Type type, Expression e1, Expression e2)
     {
-        super(loc, TOK.concatenateElemAssign, e1, e2);
+        super(loc, TOK.concatenateElemAssign, __traits(classInstanceSize, CatElemAssignExp), e1, e2);
         this.type = type;
     }
 
@@ -6526,7 +6526,7 @@ extern (C++) final class CatDcharAssignExp : CatAssignExp
 {
     extern (D) this(const ref Loc loc, Type type, Expression e1, Expression e2)
     {
-        super(loc, TOK.concatenateDcharAssign, e1, e2);
+        super(loc, TOK.concatenateDcharAssign, __traits(classInstanceSize, CatDcharAssignExp), e1, e2);
         this.type = type;
     }
 
