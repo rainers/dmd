@@ -4,6 +4,13 @@ common_steps_template: &COMMON_STEPS_TEMPLATE
   setup_repos_script: |
     set -uexo pipefail
     ln -s $CIRRUS_WORKING_DIR ../dmd
+
+    # for PRs - merge with target branch first
+    if [ ! -z ${CIRRUS_PR+x} ] ; then
+      git fetch origin "+refs/pull/$CIRRUS_PR/merge:";
+      git checkout -f FETCH_HEAD;
+    fi
+
     ./ci.sh setup_repos "${CIRRUS_BASE_BRANCH:-$CIRRUS_BRANCH}"
   build_script: ./ci.sh build
 
@@ -35,9 +42,9 @@ coverage_environment_template: &COVERAGE_ENVIRONMENT_TEMPLATE
 
 # Linux
 task:
-  name: Ubuntu 16.04 $TASK_NAME_SUFFIX
+  name: Ubuntu 18.04 $TASK_NAME_SUFFIX
   container:
-    image: ubuntu:16.04
+    image: ubuntu:18.04
     cpu: 4
     memory: 8G
   timeout_in: 60m
@@ -50,7 +57,7 @@ task:
         << : *COVERAGE_ENVIRONMENT_TEMPLATE
       - TASK_NAME_SUFFIX: x86, DMD (bootstrap)
         MODEL: 32
-        HOST_DMD: dmd-2.079.0
+        HOST_DMD: dmd-2.097.1
       - TASK_NAME_SUFFIX: x64, DMD (latest)
       # Enable this to replace coverage tests on CircleCI
       # - TASK_NAME_SUFFIX: x64, DMD (coverage)

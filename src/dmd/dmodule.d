@@ -1084,6 +1084,8 @@ extern (C++) final class Module : Package
                 foreach (id; md.packages[1 .. $]) // [b, c]
                 {
                     p = cast(Package) p.symtab.lookup(id);
+                    if (p is null)
+                        break;
                     addAccessiblePackage(p, Visibility(Visibility.Kind.private_));
                 }
             }
