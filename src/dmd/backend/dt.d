@@ -156,7 +156,7 @@ uint dt_size(const(dt_t)* dtstart)
 
 bool dtallzeros(const(dt_t)* dt)
 {
-    return dt.dt == DT_azeros && !dt.DTnext;
+    return dt && dt.dt == DT_azeros && !dt.DTnext;
 }
 
 /************************************
@@ -207,6 +207,23 @@ nothrow:
     this(int dummy)
     {
         pTail = &head;
+    }
+
+    /************************************
+     * Useful for checking if DtBuilder got initialized.
+     */
+    void checkInitialized()
+    {
+        if (!head)
+            assert(pTail == &head);
+    }
+
+    /************************************
+     * Print state of DtBuilder for debugging.
+     */
+    void print()
+    {
+        debug printf("DtBuilder: %p head: %p, pTail: %p\n", &head, head, pTail);
     }
 
     /*************************
@@ -478,10 +495,13 @@ nothrow:
      */
     void cat(ref DtBuilder dtb)
     {
-        assert(!*pTail);
-        *pTail = dtb.head;
-        pTail = dtb.pTail;
-        assert(!*pTail);
+        if (dtb.head) // if non-zero length
+        {
+            assert(!*pTail);
+            *pTail = dtb.head;
+            pTail = dtb.pTail; // if dtb is zero length, this will point pTail to dtb.head, oops
+            assert(!*pTail);
+        }
     }
 
     /**************************************

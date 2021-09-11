@@ -22,6 +22,7 @@ import dmd.aliasthis;
 import dmd.apply;
 import dmd.arrayop;
 import dmd.arraytypes;
+import dmd.astenums;
 import dmd.ast_node;
 import dmd.gluelayer;
 import dmd.canthrow;
@@ -49,6 +50,7 @@ import dmd.globals;
 import dmd.hdrgen;
 import dmd.id;
 import dmd.identifier;
+import dmd.init;
 import dmd.inline;
 import dmd.mtype;
 import dmd.nspace;
@@ -90,6 +92,18 @@ enum Modifiable
     yes,
     /// Modifiable because it is initialization
     initialization,
+}
+/**
+ * Specifies how the checkModify deals with certain situations
+ */
+enum ModifyFlags
+{
+    /// Issue error messages on invalid modifications of the variable
+    none,
+    /// No errors are emitted for invalid modifications
+    noError = 0x1,
+    /// The modification occurs for a subfield of the current variable
+    fieldAssign = 0x2,
 }
 
 /****************************************
@@ -541,6 +555,7 @@ private:
         char[__traits(classInstanceSize, ArrayLiteralExp)] arrayliteralexp;
         char[__traits(classInstanceSize, AssocArrayLiteralExp)] assocarrayliteralexp;
         char[__traits(classInstanceSize, StructLiteralExp)] structliteralexp;
+        char[__traits(classInstanceSize, CompoundLiteralExp)] compoundliteralexp;
         char[__traits(classInstanceSize, NullExp)] nullexp;
         char[__traits(classInstanceSize, DotVarExp)] dotvarexp;
         char[__traits(classInstanceSize, AddrExp)] addrexp;
@@ -1467,7 +1482,7 @@ extern (C++) abstract class Expression : ASTNode
     {
         if (auto ts = t.baseElemOf().isTypeStruct())
         {
-            if (global.params.useTypeInfo)
+            if (global.params.useTypeInfo && Type.dtypeinfo)
             {
                 // https://issues.dlang.org/show_bug.cgi?id=11395
                 // Require TypeInfo generation for array concatenation
@@ -1548,62 +1563,12 @@ extern (C++) abstract class Expression : ASTNode
      * Returns:
      *      Whether the type is modifiable
      */
-    Modifiable checkModifiable(Scope* sc, int flag = 0)
+    Modifiable checkModifiable(Scope* sc, ModifyFlags flag = ModifyFlags.none)
     {
         return type ? Modifiable.yes : Modifiable.no; // default modifiable
     }
 
-    /*****************************
-     * If expression can be tested for true or false,
-     * returns the modified expression.
-     * Otherwise returns ErrorExp.
-     */
-    Expression toBoolean(Scope* sc)
-    {
-        // Default is 'yes' - do nothing
-        Expression e = this;
-        Type t = type;
-        Type tb = type.toBasetype();
-        Type att = null;
-
-        while (1)
-        {
-            // Structs can be converted to bool using opCast(bool)()
-            if (auto ts = tb.isTypeStruct())
-            {
-                AggregateDeclaration ad = ts.sym;
-                /* Don't really need to check for opCast first, but by doing so we
-                 * get better error messages if it isn't there.
-                 */
-                if (Dsymbol fd = search_function(ad, Id._cast))
-                {
-                    e = new CastExp(loc, e, Type.tbool);
-                    e = e.expressionSemantic(sc);
-                    return e;
-                }
-
-                // Forward to aliasthis.
-                if (ad.aliasthis && !isRecursiveAliasThis(att, tb))
-                {
-                    e = resolveAliasThis(sc, e);
-                    t = e.type;
-                    tb = e.type.toBasetype();
-                    continue;
-                }
-            }
-            break;
-        }
-
-        if (!t.isBoolean())
-        {
-            if (tb != Type.terror)
-                error("expression `%s` of type `%s` does not have a boolean value", toChars(), t.toChars());
-            return ErrorExp.get(this);
-        }
-        return e;
-    }
-
-    /************************************************
+   /************************************************
      * Destructors are attached to VarDeclarations.
      * Hence, if expression returns a temp that needs a destructor,
      * make sure and create a VarDeclaration for that temp.
@@ -1698,7 +1663,7 @@ extern (C++) abstract class Expression : ASTNode
         return true;
     }
 
-    final pure inout nothrow @nogc
+    final pure inout nothrow @nogc @safe
     {
         inout(IntegerExp)   isIntegerExp() { return op == TOK.int64 ? cast(typeof(return))this : null; }
         inout(ErrorExp)     isErrorExp() { return op == TOK.error ? cast(typeof(return))this : null; }
@@ -1716,6 +1681,7 @@ extern (C++) abstract class Expression : ASTNode
         inout(ArrayLiteralExp) isArrayLiteralExp() { return op == TOK.arrayLiteral ? cast(typeof(return))this : null; }
         inout(AssocArrayLiteralExp) isAssocArrayLiteralExp() { return op == TOK.assocArrayLiteral ? cast(typeof(return))this : null; }
         inout(StructLiteralExp) isStructLiteralExp() { return op == TOK.structLiteral ? cast(typeof(return))this : null; }
+        inout(CompoundLiteralExp) isCompoundLiteralExp() { return op == TOK.compoundLiteral ? cast(typeof(return))this : null; }
         inout(TypeExp)      isTypeExp() { return op == TOK.type ? cast(typeof(return))this : null; }
         inout(ScopeExp)     isScopeExp() { return op == TOK.scope_ ? cast(typeof(return))this : null; }
         inout(TemplateExp)  isTemplateExp() { return op == TOK.template_ ? cast(typeof(return))this : null; }
@@ -1811,6 +1777,7 @@ extern (C++) abstract class Expression : ASTNode
         inout(EqualExp)    isEqualExp() { return (op == TOK.equal || op == TOK.notEqual) ? cast(typeof(return))this : null; }
         inout(IdentityExp) isIdentityExp() { return (op == TOK.identity || op == TOK.notIdentity) ? cast(typeof(return))this : null; }
         inout(CondExp)     isCondExp() { return op == TOK.question ? cast(typeof(return))this : null; }
+        inout(GenericExp)  isGenericExp() { return op == TOK._Generic ? cast(typeof(return))this : null; }
         inout(DefaultInitExp)    isDefaultInitExp() { return isDefaultInitOp(op) ? cast(typeof(return))this: null; }
         inout(FileInitExp)       isFileInitExp() { return (op == TOK.file || op == TOK.fileFullPath) ? cast(typeof(return))this : null; }
         inout(LineInitExp)       isLineInitExp() { return op == TOK.line ? cast(typeof(return))this : null; }
@@ -3557,6 +3524,36 @@ extern (C++) final class StructLiteralExp : Expression
         return this;
     }
 
+    override Expression toLvalue(Scope* sc, Expression e)
+    {
+        if (sc.flags & SCOPE.Cfile)
+            return this;  // C struct literals are lvalues
+        else
+            return Expression.toLvalue(sc, e);
+    }
+
+    override void accept(Visitor v)
+    {
+        v.visit(this);
+    }
+}
+
+/***********************************************************
+ * C11 6.5.2.5
+ * ( type-name ) { initializer-list }
+ */
+extern (C++) final class CompoundLiteralExp : Expression
+{
+    Initializer initializer; /// initializer-list
+
+    extern (D) this(const ref Loc loc, Type type_name, Initializer initializer)
+    {
+        super(loc, TOK.compoundLiteral, __traits(classInstanceSize, CompoundLiteralExp));
+        super.type = type_name;
+        this.initializer = initializer;
+        //printf("CompoundLiteralExp::CompoundLiteralExp(%s)\n", toChars());
+    }
+
     override void accept(Visitor v)
     {
         v.visit(this);
@@ -3729,7 +3726,6 @@ extern (C++) final class NewExp : Expression
 
     Expression argprefix;       // expression to be evaluated just before arguments[]
     CtorDeclaration member;     // constructor function
-    NewDeclaration allocator;   // allocator function
     bool onstack;               // allocate on stack
     bool thrownew;              // this NewExp is the expression of a ThrowStatement
 
@@ -3884,7 +3880,7 @@ extern (C++) final class VarExp : SymbolExp
         return false;
     }
 
-    override Modifiable checkModifiable(Scope* sc, int flag)
+    override Modifiable checkModifiable(Scope* sc, ModifyFlags flag)
     {
         //printf("VarExp::checkModifiable %s", toChars());
         assert(type);
@@ -4808,7 +4804,7 @@ extern (C++) class BinAssignExp : BinExp
         return toLvalue(sc, this);
     }
 
-    override inout(BinAssignExp) isBinAssignExp() pure inout nothrow @nogc
+    override inout(BinAssignExp) isBinAssignExp() pure inout nothrow @nogc @safe
     {
         return this;
     }
@@ -4914,6 +4910,7 @@ extern (C++) final class DotIdExp : UnaExp
 
     bool noderef;       // true if the result of the expression will never be dereferenced
     bool wantsym;       // do not replace Symbol with its initializer during semantic()
+    bool arrow;         // ImportC: if -> instead of .
 
     extern (D) this(const ref Loc loc, Expression e, IdentifierAtLoc ident)
     {
@@ -5003,7 +5000,7 @@ extern (C++) final class DotVarExp : UnaExp
             this.varloc = varloc;
     }
 
-    override Modifiable checkModifiable(Scope* sc, int flag)
+    override Modifiable checkModifiable(Scope* sc, ModifyFlags flag)
     {
         //printf("DotVarExp::checkModifiable %s %s\n", toChars(), type.toChars());
 
@@ -5059,13 +5056,17 @@ extern (C++) final class DotVarExp : UnaExp
                                 /* checkModify will consider that this is an initialization
                                  * of v while it is actually an assignment of a field of v
                                  */
-                                scope modifyLevel = v.checkModify(loc, sc, dve.e1, flag);
-                                // reflect that assigning a field of v is not initialization of v
-                                // unless v is a (potentially nested) union
-                                if (!onlyUnion)
-                                    v.ctorinit = false;
+                                scope modifyLevel = v.checkModify(loc, sc, dve.e1, !onlyUnion ? (flag | ModifyFlags.fieldAssign) : flag);
                                 if (modifyLevel == Modifiable.initialization)
+                                {
+                                    // https://issues.dlang.org/show_bug.cgi?id=22118
+                                    // v is a union type field that was assigned
+                                    // a variable, therefore it counts as initialization
+                                    if (v.ctorinit)
+                                        return Modifiable.initialization;
+
                                     return Modifiable.yes;
+                                }
                                 return modifyLevel;
                             }
                         }
@@ -5089,6 +5090,14 @@ extern (C++) final class DotVarExp : UnaExp
     override Expression toLvalue(Scope* sc, Expression e)
     {
         //printf("DotVarExp::toLvalue(%s)\n", toChars());
+        if (sc && sc.flags & SCOPE.Cfile)
+        {
+            /* C11 6.5.2.3-3: A postfix expression followed by the '.' or '->' operator
+             * is an lvalue if the first expression is an lvalue.
+             */
+            if (!e1.isLvalue())
+                return Expression.toLvalue(sc, e);
+        }
         if (!isLvalue())
             return Expression.toLvalue(sc, e);
         if (e1.op == TOK.this_ && sc.ctorflow.fieldinit.length && !(sc.ctorflow.callSuper & CSX.any_ctor))
@@ -5469,7 +5478,7 @@ extern (C++) final class PtrExp : UnaExp
         type = t;
     }
 
-    override Modifiable checkModifiable(Scope* sc, int flag)
+    override Modifiable checkModifiable(Scope* sc, ModifyFlags flag)
     {
         if (auto se = e1.isSymOffExp())
         {
@@ -5576,12 +5585,6 @@ extern (C++) final class DeleteExp : UnaExp
         this.isRAII = isRAII;
     }
 
-    override Expression toBoolean(Scope* sc)
-    {
-        error("`delete` does not give a boolean result");
-        return ErrorExp.get();
-    }
-
     override void accept(Visitor v)
     {
         v.visit(this);
@@ -5630,6 +5633,12 @@ extern (C++) final class CastExp : UnaExp
 
     override Expression toLvalue(Scope* sc, Expression e)
     {
+        if (sc && sc.flags & SCOPE.Cfile)
+        {
+            /* C11 6.5.4-5: A cast does not yield an lvalue.
+             */
+            return Expression.toLvalue(sc, e);
+        }
         if (isLvalue())
             return this;
         return Expression.toLvalue(sc, e);
@@ -5751,7 +5760,7 @@ extern (C++) final class SliceExp : UnaExp
         return se;
     }
 
-    override Modifiable checkModifiable(Scope* sc, int flag)
+    override Modifiable checkModifiable(Scope* sc, ModifyFlags flag)
     {
         //printf("SliceExp::checkModifiable %s\n", toChars());
         if (e1.type.ty == Tsarray || (e1.op == TOK.index && e1.type.ty != Tarray) || e1.op == TOK.slice)
@@ -5896,7 +5905,7 @@ extern (C++) final class CommaExp : BinExp
         allowCommaExp = isGenerated = generated;
     }
 
-    override Modifiable checkModifiable(Scope* sc, int flag)
+    override Modifiable checkModifiable(Scope* sc, ModifyFlags flag)
     {
         return e2.checkModifiable(sc, flag);
     }
@@ -5921,16 +5930,6 @@ extern (C++) final class CommaExp : BinExp
     override bool isBool(bool result)
     {
         return e2.isBool(result);
-    }
-
-    override Expression toBoolean(Scope* sc)
-    {
-        auto ex2 = e2.toBoolean(sc);
-        if (ex2.op == TOK.error)
-            return ex2;
-        e2 = ex2;
-        type = e2.type;
-        return this;
     }
 
     override Expression addDtorHook(Scope* sc)
@@ -6084,7 +6083,7 @@ extern (C++) final class IndexExp : BinExp
         return ie;
     }
 
-    override Modifiable checkModifiable(Scope* sc, int flag)
+    override Modifiable checkModifiable(Scope* sc, ModifyFlags flag)
     {
         if (e1.type.ty == Tsarray ||
             e1.type.ty == Taarray ||
@@ -6238,16 +6237,6 @@ extern (C++) class AssignExp : BinExp
         return this;
     }
 
-    override final Expression toBoolean(Scope* sc)
-    {
-        // Things like:
-        //  if (a = b) ...
-        // are usually mistakes.
-
-        error("assignment cannot be used as a condition, perhaps `==` was meant?");
-        return ErrorExp.get();
-    }
-
     override void accept(Visitor v)
     {
         v.visit(this);
@@ -6272,7 +6261,7 @@ extern (C++) final class ConstructExp : AssignExp
 
         super(loc, TOK.construct, __traits(classInstanceSize, ConstructExp), ve, e2);
 
-        if (v.storage_class & (STC.ref_ | STC.out_))
+        if (v.isReference())
             memset = MemorySet.referenceInit;
     }
 
@@ -6300,7 +6289,7 @@ extern (C++) final class BlitExp : AssignExp
 
         super(loc, TOK.blit, __traits(classInstanceSize, BlitExp), ve, e2);
 
-        if (v.storage_class & (STC.ref_ | STC.out_))
+        if (v.isReference())
             memset = MemorySet.referenceInit;
     }
 
@@ -6768,15 +6757,6 @@ extern (C++) final class LogicalExp : BinExp
         assert(op == TOK.andAnd || op == TOK.orOr);
     }
 
-    override Expression toBoolean(Scope* sc)
-    {
-        auto ex2 = e2.toBoolean(sc);
-        if (ex2.op == TOK.error)
-            return ex2;
-        e2 = ex2;
-        return this;
-    }
-
     override void accept(Visitor v)
     {
         v.visit(this);
@@ -6907,7 +6887,7 @@ extern (C++) final class CondExp : BinExp
         return new CondExp(loc, econd.syntaxCopy(), e1.syntaxCopy(), e2.syntaxCopy());
     }
 
-    override Modifiable checkModifiable(Scope* sc, int flag)
+    override Modifiable checkModifiable(Scope* sc, ModifyFlags flag)
     {
         if (e1.checkModifiable(sc, flag) != Modifiable.no
             && e2.checkModifiable(sc, flag) != Modifiable.no)
@@ -6932,23 +6912,14 @@ extern (C++) final class CondExp : BinExp
 
     override Expression modifiableLvalue(Scope* sc, Expression e)
     {
-        //error("conditional expression %s is not a modifiable lvalue", toChars());
+        if (!e1.isLvalue() && !e2.isLvalue())
+        {
+            error("conditional expression `%s` is not a modifiable lvalue", toChars());
+            return ErrorExp.get();
+        }
         e1 = e1.modifiableLvalue(sc, e1);
         e2 = e2.modifiableLvalue(sc, e2);
         return toLvalue(sc, this);
-    }
-
-    override Expression toBoolean(Scope* sc)
-    {
-        auto ex1 = e1.toBoolean(sc);
-        auto ex2 = e2.toBoolean(sc);
-        if (ex1.op == TOK.error)
-            return ex1;
-        if (ex2.op == TOK.error)
-            return ex2;
-        e1 = ex1;
-        e2 = ex2;
-        return this;
     }
 
     void hookDtors(Scope* sc)
@@ -7220,3 +7191,34 @@ extern (C++) final class ObjcClassReferenceExp : Expression
         v.visit(this);
     }
 }
+
+/*******************
+ * C11 6.5.1.1 Generic Selection
+ * For ImportC
+ */
+extern (C++) final class GenericExp : Expression
+{
+    Expression cntlExp; /// controlling expression of a generic selection (not evaluated)
+    Types* types;       /// type-names for generic associations (null entry for `default`)
+    Expressions* exps;  /// 1:1 mapping of typeNames to exps
+
+    extern (D) this(const ref Loc loc, Expression cntlExp, Types* types, Expressions* exps)
+    {
+        super(loc, TOK._Generic, __traits(classInstanceSize, GenericExp));
+        this.cntlExp = cntlExp;
+        this.types = types;
+        this.exps = exps;
+        assert(types.length == exps.length);  // must be the same and >=1
+    }
+
+    override GenericExp syntaxCopy()
+    {
+        return new GenericExp(loc, cntlExp.syntaxCopy(), Type.arraySyntaxCopy(types), Expression.arraySyntaxCopy(exps));
+    }
+
+    override void accept(Visitor v)
+    {
+        v.visit(this);
+    }
+}
+

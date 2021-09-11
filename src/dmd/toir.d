@@ -33,6 +33,7 @@ import dmd.backend.type;
 
 import dmd.aggregate;
 import dmd.arraytypes;
+import dmd.astenums;
 import dmd.dclass;
 import dmd.declaration;
 import dmd.dmangle;
@@ -83,6 +84,7 @@ struct IRState
     const Param* params;            // command line parameters
     const Target* target;           // target
     bool mayThrow;                  // the expression being evaluated may throw
+    bool Cfile;                     // use C semantics
 
     this(Module m, FuncDeclaration fd, Array!(elem*)* varsInScope, Dsymbols* deferToObj, Label*[void*]* labels,
         const Param* params, const Target* target)
@@ -110,6 +112,8 @@ struct IRState
      */
     bool arrayBoundsCheck()
     {
+        if (m.isCFile)
+            return false;
         bool result;
         final switch (global.params.useArrayBounds)
         {
@@ -848,7 +852,7 @@ void buildClosure(FuncDeclaration fd, IRState *irs)
         typeof(Type.size()) lastsize;
         if (vlast.storage_class & STC.lazy_)
             lastsize = target.ptrsize * 2;
-        else if (vlast.isRef() || vlast.isOut())
+        else if (vlast.isReference)
             lastsize = target.ptrsize;
         else
             lastsize = vlast.type.size();
