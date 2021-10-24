@@ -1392,6 +1392,7 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
                                 stc, narg.type, narg.ident, narg.defaultArg, narg.userAttribDecl);
                         }
                         fparam.type = new TypeTuple(newparams);
+                        fparam.type = fparam.type.typeSemantic(loc, argsc);
                     }
                     fparam.storageClass = STC.parameter;
 
@@ -2149,6 +2150,15 @@ extern(C++) Type typeSemantic(Type type, const ref Loc loc, Scope* sc)
                      * struct S { int a; } *s;
                      */
                     sd.members = mtype.members;
+                    if (sd.semanticRun == PASS.semanticdone)
+                    {
+                        /* The first semantic pass marked `sd` as an opaque struct.
+                         * Re-run semantic so that all newly assigned members are
+                         * picked up and added to the symtab.
+                         */
+                        sd.semanticRun = PASS.semantic;
+                        sd.dsymbolSemantic(sc);
+                    }
                 }
                 else
                 {
@@ -2375,7 +2385,7 @@ Expression getProperty(Type t, Scope* scope_, const ref Loc loc, Identifier iden
         {
             const explicitAlignment = mt.alignment();
             const naturalAlignment = mt.alignsize();
-            const actualAlignment = (explicitAlignment == STRUCTALIGN_DEFAULT ? naturalAlignment : explicitAlignment);
+            const actualAlignment = (explicitAlignment.isDefault() ? naturalAlignment : explicitAlignment.get());
             e = new IntegerExp(loc, actualAlignment, Type.tsize_t);
         }
         else if (ident == Id._init)
@@ -3013,6 +3023,16 @@ void resolve(Type mt, const ref Loc loc, Scope* sc, out Expression pe, out Type 
         {
             error(loc, "variable `__ctfe` cannot be read at compile time");
             return returnError();
+        }
+        if (mt.ident == Id.builtin_va_list) // gcc has __builtin_va_xxxx for stdarg.h
+        {
+            /* Since we don't support __builtin_va_start, -arg, -end, we don't
+             * have to actually care what -list is. A void* will do.
+             * If we ever do care, import core.stdc.stdarg and pull
+             * the definition out of that, similarly to how std.math is handled for PowExp
+             */
+            pt = Type.tvoidptr;
+            return;
         }
 
         Dsymbol scopesym;
@@ -3752,10 +3772,18 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
     }
 
     /***************************************
-     * Figures out what to do with an undefined member reference
-     * for classes and structs.
-     *
-     * If flag & 1, don't report "not a property" error and just return NULL.
+     * `ident` was not found as a member of `mt`.
+     * Attempt to use overloaded opDot(), overloaded opDispatch(), or `alias this`.
+     * If that fails, forward to visitType().
+     * Params:
+     *  mt = class or struct
+     *  sc = context
+     *  e = `this` for `ident`
+     *  ident = name of member
+     *  flag = flag & 1, don't report "not a property" error and just return NULL.
+     *         flag & DotExpFlag.noAliasThis, don't do 'alias this' resolution.
+     * Returns:
+     *  resolved expression if found, otherwise null
      */
     Expression noMember(Type mt, Scope* sc, Expression e, Identifier ident, int flag)
     {
@@ -3846,7 +3874,8 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, int flag)
 
             /* See if we should forward to the alias this.
              */
-            auto alias_e = resolveAliasThis(sc, e, gagError);
+            auto alias_e = flag & DotExpFlag.noAliasThis ? null
+                                                         : resolveAliasThis(sc, e, gagError);
             if (alias_e && alias_e != e)
             {
                 /* Rewrite e.ident as:
@@ -4770,6 +4799,7 @@ Expression defaultInit(Type mt, const ref Loc loc)
         }
         auto cond = IntegerExp.createBool(false);
         auto msg = new StringExp(loc, "Accessed expression of type `noreturn`");
+        msg.type = Type.tstring;
         auto ae = new AssertExp(loc, cond, msg);
         ae.type = mt;
         return ae;

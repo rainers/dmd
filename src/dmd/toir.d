@@ -34,6 +34,7 @@ import dmd.backend.type;
 import dmd.aggregate;
 import dmd.arraytypes;
 import dmd.astenums;
+import dmd.attrib;
 import dmd.dclass;
 import dmd.declaration;
 import dmd.dmangle;
@@ -495,8 +496,9 @@ int intrinsic_op(FuncDeclaration fd)
         return op;
     //printf("intrinsic_op(%s)\n", name);
 
-    // Look for [core|std].module.function as id3.id2.id1 ...
     const Identifier id3 = fd.ident;
+
+    // Look for [core|std].module.function as id3.id2.id1 ...
     auto m = fd.getModule();
     if (!m || !m.md)
         return op;
@@ -720,14 +722,14 @@ void setClosureVarOffset(FuncDeclaration fd)
              */
             memsize = target.ptrsize * 2;
             memalignsize = memsize;
-            xalign = STRUCTALIGN_DEFAULT;
+            xalign.setDefault();
         }
         else if (v.storage_class & (STC.out_ | STC.ref_))
         {
             // reference parameters are just pointers
             memsize = target.ptrsize;
             memalignsize = memsize;
-            xalign = STRUCTALIGN_DEFAULT;
+            xalign.setDefault();
         }
         else
         {

@@ -16,6 +16,7 @@ import core.stdc.stdio;
 import dmd.aggregate;
 import dmd.arraytypes;
 import dmd.astenums;
+import dmd.attrib;
 import dmd.ctorflow;
 import dmd.dclass;
 import dmd.delegatize;
@@ -1975,7 +1976,7 @@ extern (C++) class TypeInfoDeclaration : VarDeclaration
         storage_class = STC.static_ | STC.gshared;
         visibility = Visibility(Visibility.Kind.public_);
         linkage = LINK.c;
-        alignment = target.ptrsize;
+        alignment.set(target.ptrsize);
     }
 
     static TypeInfoDeclaration create(Type tinfo)

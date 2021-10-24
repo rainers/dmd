@@ -730,12 +730,21 @@ struct Scope
         }
     }
 
+    /******************************
+     */
     structalign_t alignment()
     {
         if (aligndecl)
-            return aligndecl.getAlignment(&this);
+        {
+            auto ad = aligndecl.getAlignment(&this);
+            return ad.salign;
+        }
         else
-            return STRUCTALIGN_DEFAULT;
+        {
+            structalign_t sa;
+            sa.setDefault();
+            return sa;
+        }
     }
 
     /**********************************

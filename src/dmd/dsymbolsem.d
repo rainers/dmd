@@ -109,17 +109,18 @@ extern(C++) void dsymbolSemantic(Dsymbol dsym, Scope* sc)
  *      ad = AlignmentDeclaration
  *      sc = context
  * Returns:
- *      alignment as numerical value that is never 0.
- *      STRUCTALIGN_DEFAULT is used instead.
- *      STRUCTALIGN_DEFAULT is returned for errors
+ *      ad with alignment value determined
  */
-structalign_t getAlignment(AlignDeclaration ad, Scope* sc)
+AlignDeclaration getAlignment(AlignDeclaration ad, Scope* sc)
 {
-    if (ad.salign != ad.UNKNOWN)   // UNKNOWN is 0
-        return ad.salign;
+    if (!ad.salign.isUnknown())   // UNKNOWN is 0
+        return ad;
 
     if (!ad.exps)
-        return ad.salign = STRUCTALIGN_DEFAULT;
+    {
+        ad.salign.setDefault();
+        return ad;
+    }
 
     dinteger_t strictest = 0;   // strictest alignment
     bool errors;
@@ -140,7 +141,7 @@ structalign_t getAlignment(AlignDeclaration ad, Scope* sc)
             if (sc.flags & SCOPE.Cfile && n == 0)       // C11 6.7.5-6 allows 0 for alignment
                 continue;
 
-            if (n < 1 || n & (n - 1) || structalign_t.max < n || !e.type.isintegral())
+            if (n < 1 || n & (n - 1) || ushort.max < n || !e.type.isintegral())
             {
                 error(ad.loc, "alignment must be an integer positive power of 2, not 0x%llx", cast(ulong)n);
                 errors = true;
@@ -150,10 +151,12 @@ structalign_t getAlignment(AlignDeclaration ad, Scope* sc)
         }
     }
 
-    ad.salign = (errors || strictest == 0)  // C11 6.7.5-6 says alignment of 0 means no effect
-                ? STRUCTALIGN_DEFAULT
-                : cast(structalign_t) strictest;
-    return ad.salign;
+    if (errors || strictest == 0)  // C11 6.7.5-6 says alignment of 0 means no effect
+        ad.salign.setDefault();
+    else
+        ad.salign.set(cast(uint) strictest);
+
+    return ad;
 }
 
 const(char)* getMessage(DeprecatedDeclaration dd)
@@ -440,7 +443,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
          * otherwise the scope overrrides.
          */
         dsym.alignment = sc.alignment();
-        if (dsym.alignment == STRUCTALIGN_DEFAULT)
+        if (dsym.alignment.isDefault())
             dsym.alignment = dsym.type.alignment(); // use type's alignment
 
         //printf("sc.stc = %x\n", sc.stc);
@@ -935,6 +938,15 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
             sc = sc.push();
             sc.stc &= ~(STC.TYPECTOR | STC.pure_ | STC.nothrow_ | STC.nogc | STC.ref_ | STC.disable);
 
+            if (sc.flags & SCOPE.Cfile &&
+                dsym.type.isTypeSArray() &&
+                dsym.type.isTypeSArray().isIncomplete() &&
+                dsym._init.isVoidInitializer() &&
+                !(dsym.storage_class & STC.field))
+            {
+                dsym.error("incomplete array type must have initializer");
+            }
+
             ExpInitializer ei = dsym._init.isExpInitializer();
 
             if (ei) // https://issues.dlang.org/show_bug.cgi?id=13424
@@ -970,6 +982,13 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
                         }
                         ei = new ExpInitializer(dsym._init.loc, e);
                         dsym._init = ei;
+                    }
+                    else if (sc.flags & SCOPE.Cfile && dsym.type.isTypeSArray() &&
+                             dsym.type.isTypeSArray().isIncomplete())
+                    {
+                        // C11 6.7.9-22 determine the size of the incomplete array,
+                        // or issue an error that the initializer is invalid.
+                        dsym._init = dsym._init.initializerSemantic(sc, dsym.type, INITinterpret);
                     }
 
                     Expression exp = ei.exp;

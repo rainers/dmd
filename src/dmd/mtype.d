@@ -237,6 +237,7 @@ enum DotExpFlag
 {
     gag     = 1,    // don't report "not a property" error and just return null
     noDeref = 2,    // the use of the expression will not attempt a dereference
+    noAliasThis = 4, // don't do 'alias this' resolution
 }
 
 /***********************************************************
@@ -2391,7 +2392,9 @@ extern (C++) abstract class Type : ASTNode
      */
     structalign_t alignment()
     {
-        return STRUCTALIGN_DEFAULT;
+        structalign_t s;
+        s.setDefault();
+        return s;
     }
 
     /***************************************
@@ -3625,6 +3628,13 @@ extern (C++) final class TypeSArray : TypeArray
         this.dim = dim;
     }
 
+    extern (D) this(Type t)  // for incomplete type
+    {
+        super(Tsarray, t);
+        //printf("TypeSArray()\n");
+        this.dim = new IntegerExp(0);
+    }
+
     override const(char)* kind() const
     {
         return "sarray";
@@ -3637,6 +3647,15 @@ extern (C++) final class TypeSArray : TypeArray
         auto result = new TypeSArray(t, e);
         result.mod = mod;
         return result;
+    }
+
+    /***
+     * C11 6.7.6.2-4 incomplete array type
+     * Returns: true if incomplete type
+     */
+    bool isIncomplete()
+    {
+        return dim.isIntegerExp() && dim.isIntegerExp().getInteger() == 0;
     }
 
     override d_uns64 size(const ref Loc loc)
@@ -4855,7 +4874,10 @@ extern (C++) final class TypeFunction : TypeNext
                             }
                         }
                         else
-                            m = arg.implicitConvTo(tprm);
+                        {
+                            import dmd.dcast : cimplicitConvTo;
+                            m = (sc && sc.flags & SCOPE.Cfile) ? arg.cimplicitConvTo(tprm) : arg.implicitConvTo(tprm);
+                        }
                     }
                     //printf("match %d\n", m);
                 }
@@ -5853,7 +5875,7 @@ extern (C++) final class TypeStruct : Type
 
     override structalign_t alignment()
     {
-        if (sym.alignment == 0)
+        if (sym.alignment.isUnknown())
             sym.size(sym.loc);
         return sym.alignment;
     }
@@ -6633,6 +6655,29 @@ extern (C++) final class TypeTuple : Type
             }
         }
         return false;
+    }
+
+    override MATCH implicitConvTo(Type to)
+    {
+        if (this == to)
+            return MATCH.exact;
+        if (auto tt = to.isTypeTuple())
+        {
+            if (arguments.dim == tt.arguments.dim)
+            {
+                MATCH m = MATCH.exact;
+                for (size_t i = 0; i < tt.arguments.dim; i++)
+                {
+                    Parameter arg1 = (*arguments)[i];
+                    Parameter arg2 = (*tt.arguments)[i];
+                    MATCH mi = arg1.type.implicitConvTo(arg2.type);
+                    if (mi < m)
+                        m = mi;
+                }
+                return m;
+            }
+        }
+        return MATCH.nomatch;
     }
 
     override void accept(Visitor v)

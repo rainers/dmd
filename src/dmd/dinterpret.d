@@ -42,6 +42,7 @@ import dmd.mtype;
 import dmd.printast;
 import dmd.root.rmem;
 import dmd.root.array;
+import dmd.root.ctfloat;
 import dmd.root.region;
 import dmd.root.rootobject;
 import dmd.statement;
@@ -2848,8 +2849,7 @@ public:
             auto se = ctfeEmplaceExp!StructLiteralExp(e.loc, cast(StructDeclaration)cd, elems, e.newtype);
             se.origin = se;
             se.ownedByCtfe = OwnedBy.ctfe;
-            emplaceExp!(ClassReferenceExp)(pue, e.loc, se, e.type);
-            Expression eref = pue.exp();
+            Expression eref = ctfeEmplaceExp!ClassReferenceExp(e.loc, se, e.type);
             if (e.member)
             {
                 // Call constructor
@@ -6036,9 +6036,20 @@ public:
         }
         if (e.to.ty == Tsarray)
             e1 = resolveSlice(e1);
-        if (e.to.toBasetype().ty == Tbool && e1.type.ty == Tpointer)
+
+        auto tobt = e.to.toBasetype();
+        if (tobt.ty == Tbool && e1.type.ty == Tpointer)
         {
             emplaceExp!(IntegerExp)(pue, e.loc, e1.op != TOK.null_, e.to);
+            result = pue.exp();
+            return;
+        }
+        else if (tobt.isTypeBasic() && e1.op == TOK.null_)
+        {
+            if (tobt.isintegral())
+                emplaceExp!(IntegerExp)(pue, e.loc, 0, e.to);
+            else if (tobt.isreal())
+                emplaceExp!(RealExp)(pue, e.loc, CTFloat.zero, e.to);
             result = pue.exp();
             return;
         }
@@ -6318,7 +6329,7 @@ public:
             auto tsa = cast(TypeSArray)v.type;
             auto len = cast(size_t)tsa.dim.toInteger();
             UnionExp ue = void;
-            result = createBlockDuplicatedArrayLiteral(&ue, ex.loc, v.type, ex, len);
+            result = createBlockDuplicatedArrayLiteral(&ue, e.loc, v.type, result, len);
             if (result == ue.exp())
                 result = ue.copy();
             (*se.elements)[i] = result;

@@ -4433,6 +4433,26 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             }
             else if (exp.e1.op == TOK.type && (sc && sc.flags & SCOPE.Cfile))
             {
+                const numArgs = exp.arguments ? exp.arguments.length : 0;
+                if (e1org.parens && numArgs >= 1)
+                {
+                    /* Ambiguous cases arise from CParser where there is not enough
+                     * information to determine if we have a function call or a cast.
+                     *   ( type-name ) ( identifier ) ;
+                     *   ( identifier ) ( identifier ) ;
+                     * If exp.e1 is a type-name, then this is a cast.
+                     */
+                    Expression arg;
+                    foreach (a; (*exp.arguments)[])
+                    {
+                        arg = arg ? new CommaExp(a.loc, arg, a) : a;
+                    }
+                    auto t = exp.e1.isTypeExp().type;
+                    auto e = new CastExp(exp.loc, arg, t);
+                    result = e.expressionSemantic(sc);
+                    return;
+                }
+
                 /* Ambiguous cases arise from CParser where there is not enough
                  * information to determine if we have a function call or declaration.
                  *   type-name ( identifier ) ;
@@ -4440,7 +4460,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                  * If exp.e1 is a type-name, then this is a declaration. C11 does not
                  * have type construction syntax, so don't convert this to a cast().
                  */
-                if (exp.arguments && exp.arguments.dim == 1)
+                if (numArgs == 1)
                 {
                     Expression arg = (*exp.arguments)[0];
                     if (auto ie = (*exp.arguments)[0].isIdentifierExp())
@@ -4654,15 +4674,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         {
             UnaExp ue = cast(UnaExp)exp.e1;
 
-            Expression ue1 = ue.e1;
-            Expression ue1old = ue1; // need for 'right this' check
-            VarDeclaration v;
-            if (ue1.op == TOK.variable && (v = (cast(VarExp)ue1).var.isVarDeclaration()) !is null && v.needThis())
-            {
-                ue.e1 = new TypeExp(ue1.loc, ue1.type);
-                ue1 = null;
-            }
-
+            Expression ue1old = ue.e1; // need for 'right this' check
             DotVarExp dve;
             DotTemplateExp dte;
             Dsymbol s;
@@ -4681,7 +4693,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             }
 
             // Do overload resolution
-            exp.f = resolveFuncCall(exp.loc, sc, s, tiargs, ue1 ? ue1.type : null, exp.arguments, FuncResolveFlag.standard);
+            exp.f = resolveFuncCall(exp.loc, sc, s, tiargs, ue.e1.type, exp.arguments, FuncResolveFlag.standard);
             if (!exp.f || exp.f.errors || exp.f.type.ty == Terror)
                 return setError();
 
@@ -4693,7 +4705,6 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                 auto ad2 = b.sym;
                 ue.e1 = ue.e1.castTo(sc, ad2.type.addMod(ue.e1.type.mod));
                 ue.e1 = ue.e1.expressionSemantic(sc);
-                ue1 = ue.e1;
                 auto vi = exp.f.findVtblIndex(&ad2.vtbl, cast(int)ad2.vtbl.dim);
                 assert(vi >= 0);
                 exp.f = ad2.vtbl[vi].isFuncDeclaration();
@@ -6435,6 +6446,12 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                     assert(0);
                 return;
             }
+        }
+
+        if (sc.flags & SCOPE.Cfile && exp.ident != Id.__sizeof)
+        {
+            result = fieldLookup(exp.e1, sc, exp.ident);
+            return;
         }
 
         Expression e = exp.semanticY(sc, 1);
@@ -8738,6 +8755,11 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
 
                 e1x = e;
             }
+            else if (sc.flags & SCOPE.Cfile && e1x.isDotIdExp())
+            {
+                auto die = e1x.isDotIdExp();
+                e1x = fieldLookup(die.e1, sc, die.ident);
+            }
             else if (auto die = e1x.isDotIdExp())
             {
                 Expression e = die.semanticY(sc, 1);
@@ -10139,6 +10161,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         /* ImportC: convert arrays to pointers, functions to pointers to functions
          */
         exp.e1 = exp.e1.arrayFuncConv(sc);
+        exp.e2 = exp.e2.arrayFuncConv(sc);
 
         Type t1 = exp.e1.type.toBasetype();
         Type t2 = exp.e2.type.toBasetype();
@@ -11466,25 +11489,6 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             return false;
         }
 
-        if (sc && sc.flags & SCOPE.Cfile)
-        {
-            // https://issues.dlang.org/show_bug.cgi?id=22262
-            // In C11, zero implicitly casts to a null pointer.
-            if ((t1.ty == Tpointer) != (t2.ty == Tpointer))
-            {
-                if (auto ie = exp.e1.isIntegerExp())
-                {
-                    if (ie.toInteger() == 0)
-                        exp.e1 = new NullExp(ie.loc, t2);
-                }
-                else if (auto ie = exp.e2.isIntegerExp())
-                {
-                    if (ie.toInteger() == 0)
-                        exp.e2 = new NullExp(ie.loc, t1);
-                }
-            }
-        }
-
         if (auto e = exp.op_overload(sc))
         {
             result = e;
@@ -12112,8 +12116,15 @@ Expression semanticX(DotIdExp exp, Scope* sc)
     return exp;
 }
 
-// Resolve e1.ident without seeing UFCS.
-// If flag == 1, stop "not a property" error and return NULL.
+/******************************
+ * Resolve properties, i.e. `e1.ident`, without seeing UFCS.
+ * Params:
+ *      exp = expression to resolve
+ *      sc = context
+ *      flag = if 1 then do not emit error messages, just return null
+ * Returns:
+ *      resolved expression, null if error
+ */
 Expression semanticY(DotIdExp exp, Scope* sc, int flag)
 {
     //printf("DotIdExp::semanticY(this = %p, '%s')\n", exp, exp.toChars());
@@ -12398,12 +12409,12 @@ Expression semanticY(DotIdExp exp, Scope* sc, int flag)
     else if (exp.ident == Id.__xalignof &&
              exp.e1.isVarExp() &&
              exp.e1.isVarExp().var.isVarDeclaration() &&
-             exp.e1.isVarExp().var.isVarDeclaration().alignment)
+             !exp.e1.isVarExp().var.isVarDeclaration().alignment.isUnknown())
     {
         // For `x.alignof` get the alignment of the variable, not the alignment of its type
         const explicitAlignment = exp.e1.isVarExp().var.isVarDeclaration().alignment;
         const naturalAlignment = exp.e1.type.alignsize();
-        const actualAlignment = (explicitAlignment == STRUCTALIGN_DEFAULT ? naturalAlignment : explicitAlignment);
+        const actualAlignment = explicitAlignment.isDefault() ? naturalAlignment : explicitAlignment.get();
         e = new IntegerExp(exp.loc, actualAlignment, Type.tsize_t);
         return e;
     }
@@ -12989,7 +13000,7 @@ private bool fit(StructDeclaration sd, const ref Loc loc, Scope* sc, Expressions
         const hasPointers = tb.hasPointers();
         if (hasPointers)
         {
-            if ((stype.alignment() < target.ptrsize ||
+            if ((!stype.alignment.isDefault() && stype.alignment.get() < target.ptrsize ||
                  (v.offset & (target.ptrsize - 1))) &&
                 (sc.func && sc.func.setUnsafe()))
             {

@@ -696,12 +696,9 @@ extern (C++) final class AlignDeclaration : AttribDeclaration
 {
     Expressions* exps;                              /// Expression(s) yielding the desired alignment,
                                                     /// the largest value wins
-    enum structalign_t UNKNOWN = 0;                 /// alignment not yet computed
-    static assert(STRUCTALIGN_DEFAULT != UNKNOWN);
-
-    /// the actual alignment, `UNKNOWN` until it's either set to the value of `ealign`
-    /// or `STRUCTALIGN_DEFAULT` if `ealign` is null ( / an error ocurred)
-    structalign_t salign = UNKNOWN;
+    /// the actual alignment is Unknown until it's either set to the value of `ealign`
+    /// or the default if `ealign` is null ( / an error ocurred)
+    structalign_t salign;
 
 
     extern (D) this(const ref Loc loc, Expression exp, Dsymbols* decl)
@@ -709,8 +706,7 @@ extern (C++) final class AlignDeclaration : AttribDeclaration
         super(loc, null, decl);
         if (exp)
         {
-            if (!exps)
-                exps = new Expressions();
+            exps = new Expressions();
             exps.push(exp);
         }
     }
@@ -719,6 +715,12 @@ extern (C++) final class AlignDeclaration : AttribDeclaration
     {
         super(loc, null, decl);
         this.exps = exps;
+    }
+
+    extern (D) this(const ref Loc loc, structalign_t salign, Dsymbols* decl)
+    {
+        super(loc, null, decl);
+        this.salign = salign;
     }
 
     override AlignDeclaration syntaxCopy(Dsymbol s)

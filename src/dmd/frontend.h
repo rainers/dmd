@@ -1178,6 +1178,25 @@ enum class LINK : uint8_t
     system = 6u,
 };
 
+struct structalign_t final
+{
+private:
+    uint16_t value;
+    bool pack;
+public:
+    bool isDefault() const;
+    void setDefault();
+    bool isUnknown() const;
+    void setUnknown();
+    void set(uint32_t value);
+    uint32_t get() const;
+    bool isPack() const;
+    void setPack(bool pack);
+    structalign_t()
+    {
+    }
+};
+
 enum class PINLINE : uint8_t
 {
     default_ = 0u,
@@ -2036,7 +2055,7 @@ public:
     Type* unqualify(uint32_t m);
     virtual Type* toHeadMutable();
     virtual ClassDeclaration* isClassHandle();
-    virtual uint32_t alignment();
+    virtual structalign_t alignment();
     virtual Expression* defaultInitLiteral(const Loc& loc);
     virtual bool isZeroInit(const Loc& loc);
     Identifier* getTypeInfoIdent();
@@ -3149,6 +3168,7 @@ enum class DotExpFlag
 {
     gag = 1,
     noDeref = 2,
+    noAliasThis = 4,
 };
 
 enum : int32_t { LOGDEFAULTINIT = 0 };
@@ -3572,11 +3592,12 @@ public:
     Expression* dim;
     const char* kind() const;
     TypeSArray* syntaxCopy();
+    bool isIncomplete();
     d_uns64 size(const Loc& loc);
     uint32_t alignsize();
     bool isString();
     bool isZeroInit(const Loc& loc);
-    uint32_t alignment();
+    structalign_t alignment();
     MATCH constConv(Type* to);
     MATCH implicitConvTo(Type* to);
     Expression* defaultInitLiteral(const Loc& loc);
@@ -3610,7 +3631,7 @@ public:
     uint32_t alignsize();
     TypeStruct* syntaxCopy();
     Dsymbol* toDsymbol(Scope* sc);
-    uint32_t alignment();
+    structalign_t alignment();
     Expression* defaultInitLiteral(const Loc& loc);
     bool isZeroInit(const Loc& loc);
     bool isAssignable();
@@ -3666,6 +3687,7 @@ public:
     const char* kind() const;
     TypeTuple* syntaxCopy();
     bool equals(const RootObject* const o) const;
+    MATCH implicitConvTo(Type* to);
     void accept(Visitor* v);
 };
 
@@ -5146,9 +5168,7 @@ class AlignDeclaration final : public AttribDeclaration
 {
 public:
     Array<Expression* >* exps;
-    enum : uint32_t { UNKNOWN = 0u };
-
-    uint32_t salign;
+    structalign_t salign;
     AlignDeclaration* syntaxCopy(Dsymbol* s);
     Scope* newScope(Scope* sc);
     void accept(Visitor* v);
@@ -5609,7 +5629,7 @@ public:
     uint32_t offset;
     uint32_t sequenceNumber;
     static uint32_t nextSequenceNumber;
-    uint32_t alignment;
+    structalign_t alignment;
     enum : uint32_t { AdrOnStackNone = 4294967295u };
 
     uint32_t ctfeAdrOnStack;
@@ -6062,7 +6082,7 @@ public:
     FuncDeclaration* xhash;
     static FuncDeclaration* xerreq;
     static FuncDeclaration* xerrcmp;
-    uint32_t alignment;
+    structalign_t alignment;
     ThreeState ispod;
     TypeTuple* argTypes;
     static StructDeclaration* create(Loc loc, Identifier* id, bool inObject);
@@ -8278,6 +8298,16 @@ struct Id final
     static Identifier* dllexport;
     static Identifier* vector_size;
     static Identifier* noreturn;
+    static Identifier* builtin_va_list;
+    static Identifier* builtin_va_start;
+    static Identifier* builtin_va_arg;
+    static Identifier* builtin_va_copy;
+    static Identifier* builtin_va_end;
+    static Identifier* va_list_tag;
+    static Identifier* pack;
+    static Identifier* show;
+    static Identifier* push;
+    static Identifier* pop;
     static void initialize();
     Id()
     {

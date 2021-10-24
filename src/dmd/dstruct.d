@@ -16,6 +16,7 @@ module dmd.dstruct;
 import dmd.aggregate;
 import dmd.arraytypes;
 import dmd.astenums;
+import dmd.attrib;
 import dmd.declaration;
 import dmd.dmodule;
 import dmd.dscope;
@@ -333,10 +334,10 @@ extern (C++) class StructDeclaration : AggregateDeclaration
         // Round struct size up to next alignsize boundary.
         // This will ensure that arrays of structs will get their internals
         // aligned properly.
-        if (alignment == STRUCTALIGN_DEFAULT)
+        if (alignment.isDefault() || alignment.isPack())
             structsize = (structsize + alignsize - 1) & ~(alignsize - 1);
         else
-            structsize = (structsize + alignment - 1) & ~(alignment - 1);
+            structsize = (structsize + alignment.get() - 1) & ~(alignment.get() - 1);
 
         sizeok = Sizeok.done;
 

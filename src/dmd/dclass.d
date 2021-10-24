@@ -20,6 +20,7 @@ import dmd.aggregate;
 import dmd.apply;
 import dmd.arraytypes;
 import dmd.astenums;
+import dmd.attrib;
 import dmd.gluelayer;
 import dmd.declaration;
 import dmd.dscope;
@@ -615,7 +616,7 @@ extern (C++) class ClassDeclaration : AggregateDeclaration
 
                 if (!b.sym.alignsize)
                     b.sym.alignsize = target.ptrsize;
-                alignmember(b.sym.alignsize, b.sym.alignsize, &offset);
+                alignmember(structalign_t(cast(ushort)b.sym.alignsize), b.sym.alignsize, &offset);
                 assert(bi < vtblInterfaces.dim);
 
                 BaseClass* bv = (*vtblInterfaces)[bi];
