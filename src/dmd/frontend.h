@@ -995,6 +995,7 @@ public:
     void deprecation(const char* format, ...);
     bool checkDeprecated(const Loc& loc, Scope* sc);
     Module* getModule();
+    bool isCsymbol();
     Module* getAccessModule();
     Dsymbol* pastMixin();
     Dsymbol* toParent();
@@ -6971,6 +6972,8 @@ public:
     TemplateInstance* ti;
     DotTemplateInstanceExp* syntaxCopy();
     bool findTempDecl(Scope* sc);
+    bool checkType();
+    bool checkValue();
     void accept(Visitor* v);
 };
 

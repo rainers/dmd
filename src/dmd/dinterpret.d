@@ -76,6 +76,7 @@ public Expression ctfeInterpret(Expression e)
         case TOK.template_:              // non-eponymous template/instance
         case TOK.scope_:                 // ditto
         case TOK.dotTemplateDeclaration: // ditto, e.e1 doesn't matter here
+        case TOK.dotTemplateInstance:    // ditto
         case TOK.dot:                    // ditto
              if (e.type.ty == Terror)
                 return ErrorExp.get();
@@ -2214,7 +2215,7 @@ public:
                     Expression ev = getValue(v);
                     if (ev.op == TOK.variable ||
                         ev.op == TOK.index ||
-                        ev.op == TOK.slice ||
+                        (ev.op == TOK.slice && ev.type.toBasetype().ty == Tsarray) ||
                         ev.op == TOK.dotVariable)
                     {
                         result = interpret(pue, ev, istate, goal);
@@ -6053,7 +6054,7 @@ public:
             result = pue.exp();
             return;
         }
-        result = ctfeCast(pue, e.loc, e.type, e.to, e1);
+        result = ctfeCast(pue, e.loc, e.type, e.to, e1, true);
     }
 
     override void visit(AssertExp e)
