@@ -2175,13 +2175,13 @@ void test4251b()
     // derived class to const(base interface) in tail
     interface I {}
     class X : I {}
-    static assert(is( X[] : const(I)[] ));
+    static assert(!is( X[] : const(I)[] ));
 
     // interface to const(base interface) in tail
     interface J {}
     interface K : I, J {}
     static assert( is( K[] : const(I)[] )); // OK, runtime offset is same
-    static assert(is( K[] : const(J)[] )); // !? NG, runtime offset is different
+    static assert(!is( K[] : const(J)[] )); // NG, runtime offset is different
 }
 
 /************************************/
@@ -2860,9 +2860,11 @@ static assert(is(S7038b == shared));
 immutable struct S7038c{ int x; }
 static assert(is(S7038c == immutable));
 
-static assert(!is(C7038 == const));
+// https://issues.dlang.org/show_bug.cgi?id=22515
+// Classes fixed for consistency with structs
+static assert(is(C7038 == const));
 const class C7038{ int x; }
-static assert(!is(C7038 == const));
+static assert(is(C7038 == const));
 
 void test7038()
 {
@@ -2871,7 +2873,7 @@ void test7038()
     static assert(is(typeof(s.x) == const int));
 
     C7038 c;
-    static assert(!is(typeof(c) == const));
+    static assert(is(typeof(c) == const));
     static assert(is(typeof(c.x) == const int));
 }
 
