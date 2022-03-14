@@ -87,7 +87,7 @@ final class CParser(AST) : Parser!AST
                     /* Seen references to C builtin functions.
                      * Import their definitions
                      */
-                    auto s = new AST.Import(Loc.initial, null, Id.builtins, null, false);
+                    auto s = new AST.Import(Loc.initial, null, Id.builtins, makeIdentifierAtLoc(null), false);
                     wrap.push(s);
                 }
 

@@ -4560,7 +4560,7 @@ public auto makeTupleForeach(Scope* sc, bool isStatic, bool isDecl, ForeachState
                 declareVariable(0, e.type, ident, e, null);
                 import dmd.cond: StaticForeach;
                 auto field = Identifier.idPool(StaticForeach.tupleFieldName.ptr,StaticForeach.tupleFieldName.length);
-                Expression access = new DotIdExp(loc, e, field);
+                Expression access = new DotIdExp(loc, e, makeIdentifierAtLoc(field, loc));
                 access = expressionSemantic(access, sc);
                 if (!tuple) return returnEarly();
                 //printf("%s\n",tuple.toChars());

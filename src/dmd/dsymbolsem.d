@@ -2443,7 +2443,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
                 Previously this used getProperty, which doesn't consider anything user defined,
                 this construct does do that and thus fixes the bug.
             */
-            Expression emax = DotIdExp.create(em.ed.loc, new TypeExp(em.ed.loc, tprev), Id.max);
+            Expression emax = DotIdExp.create(em.ed.loc, new TypeExp(em.ed.loc, tprev), makeIdentifierAtLoc(Id.max));
             emax = emax.expressionSemantic(sc);
             emax = emax.ctfeInterpret();
 

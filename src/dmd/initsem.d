@@ -386,7 +386,7 @@ extern(C++) Initializer initializerSemantic(Initializer init, Scope* sc, ref Typ
 
         const sz = t.nextOf().size();
         if (sz == SIZE_INVALID)
-            return err();
+            return err(i);
         bool overflow;
         const max = mulu(i.dim, sz, overflow);
         if (overflow || max >= amax)
@@ -854,7 +854,7 @@ extern(C++) Initializer initializerSemantic(Initializer init, Scope* sc, ref Typ
 
         const sz = tn.size(); // element size
         if (sz == SIZE_INVALID)
-            return err();
+            return err(ci);
         bool overflow;
         const max = mulu(edim, sz, overflow);
         if (overflow || max >= amax)

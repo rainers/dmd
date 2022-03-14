@@ -92,7 +92,7 @@ class Parser(AST) : Lexer
     AST.Dsymbols* parseModule()
     {
         if (!parseModuleDeclaration())
-            return errorReturn();
+            return errorReturn(null);
 
         return parseModuleContent();
     }
@@ -114,6 +114,8 @@ class Parser(AST) : Lexer
         // ModuleDeclaration leads off
         if (token.value == TOK.module_)
         {
+            nextToken();
+
             /* parse ModuleFullyQualifiedName
              * https://dlang.org/spec/module.html#ModuleFullyQualifiedName
              */
@@ -164,13 +166,13 @@ class Parser(AST) : Lexer
         if (token.value == TOK.rightCurly)
         {
             error(token.loc, "unmatched closing brace");
-            return errorReturn();
+            return errorReturn(decldefs);
         }
 
         if (token.value != TOK.endOfFile)
         {
             error(token.loc, "unrecognized declaration");
-            return errorReturn();
+            return errorReturn(decldefs);
         }
         return decldefs;
     }
@@ -180,12 +182,12 @@ class Parser(AST) : Lexer
      +
      + Returns: An empty list of Dsymbols
      +/
-    private AST.Dsymbols* errorReturn()
+    private AST.Dsymbols* errorReturn(AST.Dsymbols* decldefs)
     {
         while (token.value != TOK.semicolon && token.value != TOK.endOfFile)
             nextToken();
         nextToken();
-        return decldefs;
+        return decldefs ? decldefs : new AST.Dsymbols();
     }
 
     /**********************************
@@ -4729,7 +4731,7 @@ class Parser(AST) : Lexer
          */
         if (token.value == TOK.identifier && peekNext() == TOK.this_)
         {
-            auto s = new AST.AliasThis(loc, token.ident);
+            auto s = new AST.AliasThis(loc, makeIdentifierAtLoc(token.ident, token.loc));
             nextToken();
             check(TOK.this_);
             check(TOK.semicolon);
@@ -4766,6 +4768,7 @@ class Parser(AST) : Lexer
             auto a = new AST.Dsymbols();
             while (1)
             {
+                auto identloc = token.loc;
                 auto ident = token.ident;
                 nextToken();
                 AST.TemplateParameters* tpl = null;
@@ -4815,7 +4818,7 @@ class Parser(AST) : Lexer
                     attributesAppended = true;
                     storage_class = appendStorageClass(storage_class, funcStc);
                     AST.Type tf = new AST.TypeFunction(parameterList, tret, link, storage_class);
-                    v = new AST.AliasDeclaration(loc, ident, tf);
+                    v = new AST.AliasDeclaration(identloc, ident, tf);
                 }
                 else if (token.value == TOK.function_ ||
                     token.value == TOK.delegate_ ||
@@ -4861,7 +4864,7 @@ class Parser(AST) : Lexer
                         }
                     }
 
-                    v = new AST.AliasDeclaration(loc, ident, s);
+                    v = new AST.AliasDeclaration(identloc, ident, s);
                 }
                 else
                 {
@@ -4891,7 +4894,7 @@ class Parser(AST) : Lexer
                         }
                     }
 
-                    v = new AST.AliasDeclaration(loc, ident, t);
+                    v = new AST.AliasDeclaration(identloc, ident, t);
                 }
                 if (!attributesAppended)
                     storage_class = appendStorageClass(storage_class, funcStc);
@@ -4902,7 +4905,7 @@ class Parser(AST) : Lexer
                 {
                     auto a2 = new AST.Dsymbols();
                     a2.push(s);
-                    auto tempdecl = new AST.TemplateDeclaration(loc, ident, tpl, null, a2);
+                    auto tempdecl = new AST.TemplateDeclaration(Loc.initial, ident, tpl, null, a2);
                     s = tempdecl;
                 }
                 if (link != linkage)
