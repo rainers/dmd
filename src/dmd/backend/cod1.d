@@ -1604,6 +1604,19 @@ void getlvalue(ref CodeBuilder cdb,code *pcs,elem *e,regm_t keepmsk)
                 debug if (debugr) printf("'%s' not reg cand due to offset or size\n", s.Sident.ptr);
                 s.Sflags &= ~GTregcand;
             }
+            else if (tyvector(s.Stype.Tty))
+            {
+                // https://issues.dlang.org/show_bug.cgi?id=21673
+                // https://issues.dlang.org/show_bug.cgi?id=21676
+                // https://issues.dlang.org/show_bug.cgi?id=23009
+                // Currently, when assigning to element [0] of a double2 and -O puts it in
+                // a register, this gets generated:
+                // movsd   XMM0,[RDI]
+                // This clears the rest of XMM0, setting element [1] to 0.
+                // Until this is fixed, keep vector variables on the stack
+                debug if (debugr) printf("'%s' not reg cand due to vector type\n", s.Sident.ptr);
+                s.Sflags &= ~GTregcand;
+            }
 
             if (config.fpxmmregs && tyfloating(s.ty()) && !tyfloating(ty))
             {
@@ -3464,7 +3477,7 @@ void cdfunc(ref CodeBuilder cdb, elem* e, regm_t* pretregs)
 
         if (numpara > cgstate.funcarg.size)
         {   // New high water mark
-            //printf("increasing size from %d to %d\n", (int)cgstate.funcarg.size, (int)numpara);
+            //printf("increasing size from %d to %d\n", cast(int)cgstate.funcarg.size, cast(int)numpara);
             cgstate.funcarg.size = numpara;
         }
         usefuncarg = true;
@@ -3763,7 +3776,7 @@ void cdfunc(ref CodeBuilder cdb, elem* e, regm_t* pretregs)
         keepmsk |= mAX;
     }
 
-    //printf("funcargtos2 = %d\n", (int)funcargtos);
+    //printf("funcargtos2 = %d\n", cast(int)funcargtos);
     assert(!usefuncarg || (funcargtos == 0 && cgstate.funcargtos == 0));
     cgstate.stackclean--;
 
@@ -4243,7 +4256,7 @@ private void movParams(ref CodeBuilder cdb, elem* e, uint stackalign, uint funca
     targ_size_t sz = _align(stackalign, szb);       // size after alignment
     assert((sz & (stackalign - 1)) == 0);         // ensure that alignment worked
     assert((sz & (REGSIZE - 1)) == 0);
-    //printf("szb = %d sz = %d\n", (int)szb, (int)sz);
+    //printf("szb = %d sz = %d\n", cast(int)szb, cast(int)sz);
 
     code cs;
     cs.Iflags = 0;
@@ -5502,19 +5515,22 @@ void loaddata(ref CodeBuilder cdb, elem* e, regm_t* pretregs)
              regcon.params & mask(e.EV.Vsym.Spreg2) && e.EV.Voffset == REGSIZE) &&
             sz <= REGSIZE)                  // make sure no 'paint' to a larger size happened
         {
-            reg = e.EV.Voffset ? e.EV.Vsym.Spreg2 : e.EV.Vsym.Spreg;
-            forregs = mask(reg);
+            const reg_t preg = e.EV.Voffset ? e.EV.Vsym.Spreg2 : e.EV.Vsym.Spreg;
+            const regm_t pregm = mask(preg);
 
-            if (debugr)
-                printf("%s.%d is fastpar and using register %s\n",
-                       e.EV.Vsym.Sident.ptr,
-                       cast(int)e.EV.Voffset,
-                       regm_str(forregs));
+            if (!(sz <= 2 && pregm & XMMREGS))   // no SIMD instructions to load 1 or 2 byte quantities
+            {
+                if (debugr)
+                    printf("%s.%d is fastpar and using register %s\n",
+                           e.EV.Vsym.Sident.ptr,
+                           cast(int)e.EV.Voffset,
+                           regm_str(pregm));
 
-            mfuncreg &= ~forregs;
-            regcon.used |= forregs;
-            fixresult(cdb,e,forregs,pretregs);
-            return;
+                mfuncreg &= ~pregm;
+                regcon.used |= pregm;
+                fixresult(cdb,e,pregm,pretregs);
+                return;
+            }
         }
 
         allocreg(cdb, &forregs, &reg, tym);            // allocate registers

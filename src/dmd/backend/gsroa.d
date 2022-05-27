@@ -353,14 +353,10 @@ if (1)
     else
         enum tmp_length = 6;
     SymInfo[tmp_length] tmp = void;
-    SymInfo* sip;
-    if (sia_length <= tmp.length / 3)
-        sip = tmp.ptr;
-    else
-    {
-        sip = cast(SymInfo *)malloc(3 * sia_length * SymInfo.sizeof);
-        assert(sip);
-    }
+
+    import dmd.common.string : SmallBuffer;
+    auto sb = SmallBuffer!(SymInfo)(3 * sia_length, tmp[]);
+    SymInfo* sip = sb.ptr;
     memset(sip, 0, 3 * sia_length * SymInfo.sizeof);
     SymInfo[] sia = sip[0 .. sia_length];
     SymInfo[] sia2 = sip[sia_length .. sia_length * 3];
@@ -368,7 +364,7 @@ if (1)
     if (log) foreach (si; 0 .. symtab.length)
     {
         Symbol *s = symtab[si];
-        printf("[%d]: %p %d %s\n", cast(int)si, s, cast(int)type_size(s.Stype), s.Sident.ptr);
+        printf("[%d]: %p %d %s %s\n", cast(int)si, s, cast(int)type_size(s.Stype), s.Sident.ptr, tym_str(s.Stype.Tty));
     }
 
     bool anySlice = false;
@@ -387,6 +383,7 @@ if (1)
 
         const sz = type_size(s.Stype);
         if (sz != 2 * SLICESIZE ||
+            tyvector(s.Stype.Tty) ||            // SIMD types
             tyfv(s.Stype.Tty) || tybasic(s.Stype.Tty) == TYhptr)    // because there is no TYseg
         {
             if (log) printf(" can't because size or pointer type\n");
@@ -428,12 +425,12 @@ if (1)
     }
 
     if (!anySlice)
-        goto Ldone;
+        return;
 
     foreach (b; BlockRange(startblock))
     {
         if (b.BC == BCasm)
-            goto Ldone;
+            return;
         if (b.Belem)
             sliceStructs_Gather(symtab, sia, b.Belem);
     }
@@ -494,7 +491,7 @@ if (1)
             }
         }
         if (!any)
-            goto Ldone;
+            return;
     }
 
     foreach (si; 0 .. symtab.length)
@@ -520,9 +517,6 @@ if (1)
         printf("after slicing done\n");
     }
 
-Ldone:
-    if (sip != tmp.ptr)
-        free(sip);
 }
 }
 

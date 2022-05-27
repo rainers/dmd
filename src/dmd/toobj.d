@@ -254,9 +254,9 @@ void write_instance_pointers(Type type, Symbol *s, uint offset)
     if (!type.hasPointers())
         return;
 
-    Array!(d_uns64) data;
-    d_uns64 sz = getTypePointerBitmap(Loc.initial, type, &data);
-    if (sz == d_uns64.max)
+    Array!(ulong) data;
+    ulong sz = getTypePointerBitmap(Loc.initial, type, &data);
+    if (sz == ulong.max)
         return;
 
     const bytes_size_t = cast(size_t)Type.tsize_t.size(Loc.initial);
@@ -280,6 +280,9 @@ void write_instance_pointers(Type type, Symbol *s, uint offset)
 void toObjFile(Dsymbol ds, bool multiobj)
 {
     //printf("toObjFile(%s)\n", ds.toChars());
+
+    bool isCfile = ds.isCsymbol();
+
     extern (C++) final class ToObjFile : Visitor
     {
         alias visit = Visitor.visit;
@@ -570,7 +573,7 @@ void toObjFile(Dsymbol ds, bool multiobj)
                 return;
 
             Symbol *s = toSymbol(vd);
-            d_uns64 sz64 = vd.type.size(vd.loc);
+            const sz64 = vd.type.size(vd.loc);
             if (sz64 == SIZE_INVALID)
             {
                 vd.error("size overflow");
@@ -609,30 +612,31 @@ void toObjFile(Dsymbol ds, bool multiobj)
             if (!sz)
             {
                 const ty = vd.type.toBasetype().ty;
-                if (ty != Tsarray && ty != Tnoreturn)
+                if (ty != Tsarray && ty != Tnoreturn && !vd.isCsymbol())
                     assert(0); // this shouldn't be possible
             }
 
             auto dtb = DtBuilder(0);
             if (config.objfmt == OBJ_MACH && target.is64bit && (s.Stype.Tty & mTYLINK) == mTYthread)
             {
-                tlsToDt(vd, s, sz, dtb);
+                tlsToDt(vd, s, sz, dtb, isCfile);
             }
             else if (!sz)
             {
                 /* Give it a byte of data
                  * so we can take the 'address' of this symbol
                  * and avoid problematic behavior of object file format
+                 * Note that gcc will give 0 size C objects a `comm a:byte:00h`
                  */
                 dtb.nzeros(1);
             }
             else if (vd._init)
             {
-                initializerToDt(vd, dtb);
+                initializerToDt(vd, dtb, vd.isCsymbol());
             }
             else
             {
-                Type_toDt(vd.type, dtb);
+                Type_toDt(vd.type, dtb, vd.isCsymbol());
             }
             s.Sdt = dtb.finish();
 
@@ -646,6 +650,9 @@ void toObjFile(Dsymbol ds, bool multiobj)
                 s.Sclass = SCglobal;
                 dt2common(&s.Sdt);
             }
+
+            if (s.Sclass & SCglobal && s.Stype.Tty & mTYconst)
+                out_readonly(s);
 
             outdata(s);
             if (vd.type.isMutable() || !vd._init)
@@ -860,9 +867,9 @@ void toObjFile(Dsymbol ds, bool multiobj)
         }
 
     private:
-        static void initializerToDt(VarDeclaration vd, ref DtBuilder dtb)
+        static void initializerToDt(VarDeclaration vd, ref DtBuilder dtb, bool isCfile)
         {
-            Initializer_toDt(vd._init, dtb);
+            Initializer_toDt(vd._init, dtb, isCfile);
 
             // Look for static array that is block initialized
             ExpInitializer ie = vd._init.isExpInitializer();
@@ -911,7 +918,7 @@ void toObjFile(Dsymbol ds, bool multiobj)
          *      sz = data size of s
          *      dtb = where to put the data
          */
-        static void tlsToDt(VarDeclaration vd, Symbol *s, uint sz, ref DtBuilder dtb)
+        static void tlsToDt(VarDeclaration vd, Symbol *s, uint sz, ref DtBuilder dtb, bool isCfile)
         {
             assert(config.objfmt == OBJ_MACH && target.is64bit && (s.Stype.Tty & mTYLINK) == mTYthread);
 
@@ -921,7 +928,7 @@ void toObjFile(Dsymbol ds, bool multiobj)
             if (sz == 0)
                 tlvInitDtb.nzeros(1);
             else if (vd._init)
-                initializerToDt(vd, tlvInitDtb);
+                initializerToDt(vd, tlvInitDtb, isCfile);
             else
                 Type_toDt(vd.type, tlvInitDtb);
 
@@ -964,7 +971,7 @@ void toObjFile(Dsymbol ds, bool multiobj)
             Symbol *tlvInit = symbol_name(tlvInitName, SCstatic, t);
             tlvInit.Sdt = null;
             tlvInit.Salignment = type_alignsize(s.Stype);
-            if (vd.linkage == LINK.cpp)
+            if (vd._linkage == LINK.cpp)
                 tlvInit.Sflags |= SFLpublic;
 
             return tlvInit;
@@ -981,7 +988,7 @@ void toObjFile(Dsymbol ds, bool multiobj)
          */
         static mangle_t mangle(const VarDeclaration vd)
         {
-            final switch (vd.linkage)
+            final switch (vd.resolvedLinkage())
             {
                 case LINK.windows:
                     return target.is64bit ? mTYman_c : mTYman_std;
@@ -998,7 +1005,7 @@ void toObjFile(Dsymbol ds, bool multiobj)
 
                 case LINK.default_:
                 case LINK.system:
-                    printf("linkage = %d\n", vd.linkage);
+                    printf("linkage = %d\n", vd._linkage);
                     assert(0);
             }
         }

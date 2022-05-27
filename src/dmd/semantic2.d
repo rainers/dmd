@@ -239,7 +239,7 @@ private extern(C++) final class Semantic2Visitor : Visitor
             return;
         }
 
-        UserAttributeDeclaration.checkGNUABITag(vd, vd.linkage);
+        UserAttributeDeclaration.checkGNUABITag(vd, vd._linkage);
 
         if (vd._init && !vd.toParent().isFuncDeclaration())
         {
@@ -331,11 +331,14 @@ private extern(C++) final class Semantic2Visitor : Visitor
         // gets imported, it is unaffected by context.
         Scope* sc = Scope.createGlobal(mod); // create root scope
         //printf("Module = %p\n", sc.scopesym);
-        // Pass 2 semantic routines: do initializers and function bodies
-        for (size_t i = 0; i < mod.members.dim; i++)
+        if (mod.members)
         {
-            Dsymbol s = (*mod.members)[i];
-            s.semantic2(sc);
+            // Pass 2 semantic routines: do initializers and function bodies
+            for (size_t i = 0; i < mod.members.dim; i++)
+            {
+                Dsymbol s = (*mod.members)[i];
+                s.semantic2(sc);
+            }
         }
         if (mod.userAttribDecl)
         {
@@ -377,6 +380,7 @@ private extern(C++) final class Semantic2Visitor : Visitor
             alias f1 = fd;
             auto tf1 = cast(TypeFunction) f1.type;
             auto parent1 = f1.toParent2();
+            const linkage1 = f1.resolvedLinkage();
 
             overloadApply(f1, (Dsymbol s)
             {
@@ -389,7 +393,7 @@ private extern(C++) final class Semantic2Visitor : Visitor
                     return 0;
 
                 // Functions with different manglings can never conflict
-                if (f1.linkage != f2.linkage)
+                if (linkage1 != f2.resolvedLinkage())
                     return 0;
 
                 // Functions with different names never conflict
@@ -423,15 +427,15 @@ private extern(C++) final class Semantic2Visitor : Visitor
                 const sameParams = tf1.parameterList == tf2.parameterList;
 
                 // Allow the hack to declare overloads with different parameters/STC's
-                // @@@DEPRECATED_2.094@@@
+                // @@@DEPRECATED_2.104@@@
                 // Deprecated in 2020-08, make this an error in 2.104
                 if (parent1.isModule() &&
-                    f1.linkage != LINK.d && f1.linkage != LINK.cpp &&
+                    linkage1 != LINK.d && linkage1 != LINK.cpp &&
                     (!sameAttr || !sameParams)
                 )
                 {
                     f2.deprecation("cannot overload `extern(%s)` function at %s",
-                            linkageToChars(f1.linkage),
+                            linkageToChars(f1._linkage),
                             f1.loc.toChars());
                     return 0;
                 }
@@ -441,7 +445,7 @@ private extern(C++) final class Semantic2Visitor : Visitor
                     return 0;
 
                 // Different attributes don't conflict in extern(D)
-                if (!sameAttr && f1.linkage == LINK.d)
+                if (!sameAttr && linkage1 == LINK.d)
                     return 0;
 
                 error(f2.loc, "%s `%s%s` conflicts with previous declaration at %s",
@@ -458,7 +462,7 @@ private extern(C++) final class Semantic2Visitor : Visitor
             return;
         TypeFunction f = cast(TypeFunction) fd.type;
 
-        UserAttributeDeclaration.checkGNUABITag(fd, fd.linkage);
+        UserAttributeDeclaration.checkGNUABITag(fd, fd._linkage);
         //semantic for parameters' UDAs
         foreach (i, param; f.parameterList)
         {
@@ -476,7 +480,7 @@ private extern(C++) final class Semantic2Visitor : Visitor
         i.mod.semantic2(null);
         if (i.mod.needmoduleinfo)
         {
-            //printf("module5 %s because of %s\n", sc.module.toChars(), mod.toChars());
+            //printf("module5 %s because of %s\n", sc._module.toChars(), mod.toChars());
             if (sc)
                 sc._module.needmoduleinfo = 1;
         }
@@ -641,7 +645,7 @@ private extern(C++) final class Semantic2Visitor : Visitor
                     {
                         //printf("            found\n");
                         // Check that calling conventions match
-                        if (fd.linkage != ifd.linkage)
+                        if (fd._linkage != ifd._linkage)
                             fd.error("linkage doesn't match interface function");
 
                         // Check that it is current

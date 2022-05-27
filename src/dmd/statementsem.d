@@ -47,9 +47,11 @@ import dmd.globals;
 import dmd.gluelayer;
 import dmd.id;
 import dmd.identifier;
+import dmd.importc;
 import dmd.init;
 import dmd.intrange;
 import dmd.mtype;
+import dmd.mustuse;
 import dmd.nogc;
 import dmd.opover;
 import dmd.parse;
@@ -212,8 +214,10 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
             if (f.checkForwardRef(s.exp.loc))
                 s.exp = ErrorExp.get(s.exp);
         }
-        if (discardValue(s.exp))
+        if (checkMustUse(s.exp, sc))
             s.exp = ErrorExp.get(s.exp);
+        if (!(sc.flags & SCOPE.Cfile) && discardValue(s.exp))
+            s.exp = ErrorExp.get();
 
         s.exp = s.exp.optimize(WANTvalue);
         s.exp = checkGC(sc, s.exp);
@@ -760,12 +764,12 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
         Dsymbol sapply = null;                  // the inferred opApply() or front() function
         if (!inferForeachAggregate(sc, fs.op == TOK.foreach_, fs.aggr, sapply))
         {
-            const(char)* msg = "";
-            if (fs.aggr.type && isAggregate(fs.aggr.type))
-            {
-                msg = ", define `opApply()`, range primitives, or use `.tupleof`";
-            }
-            fs.error("invalid `foreach` aggregate `%s`%s", oaggr.toChars(), msg);
+            assert(oaggr.type);
+
+            fs.error("invalid `foreach` aggregate `%s` of type `%s`", oaggr.toChars(), oaggr.type.toPrettyChars());
+            if (isAggregate(fs.aggr.type))
+                fs.loc.errorSupplemental("maybe define `opApply()`, range primitives, or use `.tupleof`");
+
             return setError();
         }
 
@@ -898,7 +902,6 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
                             assert(t.ty == Tdelegate);
                             tfld = cast(TypeFunction)t.nextOf();
                         }
-                        //printf("tfld = %s\n", tfld.toChars());
                     }
                 }
             }
@@ -1020,18 +1023,17 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
                 if (dim == 2)
                 {
                     Parameter p = (*fs.parameters)[0];
-                    auto var = new VarDeclaration(loc, p.type.mutableOf(), Identifier.generateId("__key"), null);
-                    var.storage_class |= STC.temp | STC.foreach_;
-                    if (var.storage_class & (STC.ref_ | STC.out_))
-                        var.storage_class |= STC.nodtor;
+                    fs.key = new VarDeclaration(loc, p.type.mutableOf(), Identifier.generateId("__key"), null);
+                    fs.key.storage_class |= STC.temp | STC.foreach_;
+                    if (fs.key.isReference())
+                        fs.key.storage_class |= STC.nodtor;
 
-                    fs.key = var;
                     if (p.storageClass & STC.ref_)
                     {
-                        if (var.type.constConv(p.type) == MATCH.nomatch)
+                        if (fs.key.type.constConv(p.type) == MATCH.nomatch)
                         {
                             fs.error("key type mismatch, `%s` to `ref %s`",
-                                     var.type.toChars(), p.type.toChars());
+                                     fs.key.type.toChars(), p.type.toChars());
                             return retError();
                         }
                     }
@@ -1041,7 +1043,7 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
                         IntRange dimrange = getIntRange(ta.dim);
                         // https://issues.dlang.org/show_bug.cgi?id=12504
                         dimrange.imax = SignExtendedNumber(dimrange.imax.value-1);
-                        if (!IntRange.fromType(var.type).contains(dimrange))
+                        if (!IntRange.fromType(fs.key.type).contains(dimrange))
                         {
                             fs.error("index type `%s` cannot cover index range 0..%llu",
                                      p.type.toChars(), ta.dim.toInteger());
@@ -1053,17 +1055,15 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
                 // Now declare the value
                 {
                     Parameter p = (*fs.parameters)[dim - 1];
-                    auto var = new VarDeclaration(loc, p.type, p.ident, null);
-                    var.storage_class |= STC.foreach_;
-                    var.storage_class |= p.storageClass & (STC.scope_ | STC.IOR | STC.TYPECTOR);
-                    if (var.isReference())
-                        var.storage_class |= STC.nodtor;
-
-                    fs.value = var;
-                    if (var.storage_class & STC.ref_)
+                    fs.value = new VarDeclaration(loc, p.type, p.ident, null);
+                    fs.value.storage_class |= STC.foreach_;
+                    fs.value.storage_class |= p.storageClass & (STC.scope_ | STC.IOR | STC.TYPECTOR);
+                    if (fs.value.isReference())
                     {
+                        fs.value.storage_class |= STC.nodtor;
+
                         if (fs.aggr.checkModifiable(sc2, ModifyFlags.noError) == Modifiable.initialization)
-                            var.setInCtorOnly = true;
+                            fs.value.setInCtorOnly = true;
 
                         Type t = tab.nextOf();
                         if (t.constConv(p.type) == MATCH.nomatch)
@@ -1086,7 +1086,7 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
                  */
                 auto id = Identifier.generateId("__r");
                 auto ie = new ExpInitializer(loc, new SliceExp(loc, fs.aggr, null, null));
-                const valueIsRef = cast(bool) ((*fs.parameters)[dim - 1].storageClass & STC.ref_);
+                const valueIsRef = (*fs.parameters)[$ - 1].isReference();
                 VarDeclaration tmp;
                 if (fs.aggr.op == EXP.arrayLiteral && !valueIsRef)
                 {
@@ -1476,12 +1476,12 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
         /* Call:
          *      _aApply(aggr, flde)
          */
-        __gshared const(char)** fntab =
+        static immutable fntab =
         [
          "cc", "cw", "cd",
          "wc", "cc", "wd",
          "dc", "dw", "dd"
-         ];
+        ];
 
         const(size_t) BUFFER_LEN = 7 + 1 + 2 + dim.sizeof * 3 + 1;
         char[BUFFER_LEN] fdname;
@@ -1504,7 +1504,7 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
                 assert(0);
         }
         const(char)* r = (fs.op == TOK.foreach_reverse_) ? "R" : "";
-        int j = sprintf(fdname.ptr, "_aApply%s%.*s%llu", r, 2, fntab[flag], cast(ulong)dim);
+        int j = sprintf(fdname.ptr, "_aApply%s%.*s%llu", r, 2, fntab[flag].ptr, cast(ulong)dim);
         assert(j < BUFFER_LEN);
 
         FuncDeclaration fdapply;
@@ -1643,7 +1643,7 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
      * Params:
      *  sc = context
      *  fs = ForeachStatement
-     *  tfld = type of function literal to be created, can be null
+     *  tfld = type of function literal to be created (type of opApply() function if any), can be null
      * Returns:
      *  Function literal created, as an expression
      *  null if error.
@@ -1654,7 +1654,7 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
         foreach (i; 0 .. fs.parameters.dim)
         {
             Parameter p = (*fs.parameters)[i];
-            StorageClass stc = STC.ref_;
+            StorageClass stc = STC.ref_ | (p.storageClass & STC.scope_);
             IdentifierAtLoc id;
 
             p.type = p.type.typeSemantic(fs.loc, sc);
@@ -1663,17 +1663,17 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
             {
                 Parameter prm = tfld.parameterList[i];
                 //printf("\tprm = %s%s\n", (prm.storageClass&STC.ref_?"ref ":"").ptr, prm.ident.toChars());
-                stc = prm.storageClass & STC.ref_;
-                id = p.ident; // argument copy is not need.
-                if ((p.storageClass & STC.ref_) != stc)
+                stc = (prm.storageClass & STC.ref_) | (p.storageClass & STC.scope_);
+                if ((p.storageClass & STC.ref_) != (prm.storageClass & STC.ref_))
                 {
-                    if (!stc)
+                    if (!(prm.storageClass & STC.ref_))
                     {
                         fs.error("`foreach`: cannot make `%s` `ref`", p.ident.toChars());
                         return null;
                     }
                     goto LcopyArg;
                 }
+                id = p.ident; // argument copy is not need.
             }
             else if (p.storageClass & STC.ref_)
             {
@@ -1690,7 +1690,7 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
 
                 Initializer ie = new ExpInitializer(fs.loc, new IdentifierExp(fs.loc, id));
                 auto v = new VarDeclaration(identLoc(fs.loc, p.ident), p.type, p.ident, ie);
-                v.storage_class |= STC.temp;
+                v.storage_class |= STC.temp | (stc & STC.scope_);
                 Statement s = new ExpStatement(fs.loc, v);
                 fs._body = new CompoundStatement(fs.loc, s, fs._body);
             }
@@ -2358,12 +2358,12 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
                 needswitcherror = true;
         }
 
-        if (!sc.sw.sdefault && !(sc.flags & SCOPE.Cfile) &&
+        if (!sc.sw.sdefault &&
             (!ss.isFinal || needswitcherror || global.params.useAssert == CHECKENABLE.on))
         {
             ss.hasNoDefault = 1;
 
-            if (!ss.isFinal && (!ss._body || !ss._body.isErrorStatement()))
+            if (!ss.isFinal && (!ss._body || !ss._body.isErrorStatement()) && !(sc.flags & SCOPE.Cfile))
                 ss.error("`switch` statement without a `default`; use `final switch` or add `default: assert(0);` or add `default: break;`");
 
             // Generate runtime error if the default is hit
@@ -2371,7 +2371,11 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
             CompoundStatement cs;
             Statement s;
 
-            if (global.params.useSwitchError == CHECKENABLE.on &&
+            if (sc.flags & SCOPE.Cfile)
+            {
+                s = new BreakStatement(ss.loc, null);   // default for C is `default: break;`
+            }
+            else if (global.params.useSwitchError == CHECKENABLE.on &&
                 global.params.checkAction != CHECKACTION.halt)
             {
                 if (global.params.checkAction == CHECKACTION.C)
@@ -2413,7 +2417,7 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
             ss._body = cs;
         }
 
-        if (ss.checkLabel())
+        if (!(sc.flags & SCOPE.Cfile) && ss.checkLabel())
         {
             sc.pop();
             return setError();
@@ -2905,6 +2909,7 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
                 rs.exp = inferType(rs.exp, fld.treq.nextOf().nextOf());
 
             rs.exp = rs.exp.expressionSemantic(sc);
+            rs.exp = rs.exp.arrayFuncConv(sc);
             // If we're returning by ref, allow the expression to be `shared`
             const returnSharedRef = (tf.isref && (fd.inferRetType || tret.isShared()));
             rs.exp.checkSharedAccess(sc, returnSharedRef);
@@ -3893,7 +3898,7 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
                 fd.gotos = new GotoStatements();
             fd.gotos.push(gs);
         }
-        else if (gs.checkLabel())
+        else if (!(sc.flags & SCOPE.Cfile) && gs.checkLabel())
             return setError();
 
         result = gs;
@@ -3969,12 +3974,10 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
         }
 
         assert(sc.func);
-        // use setImpure/setGC when the deprecation cycle is over
-        PURE purity;
-        if (!(cas.stc & STC.pure_) && (purity = sc.func.isPureBypassingInference()) != PURE.impure && purity != PURE.fwdref)
-            cas.deprecation("`asm` statement is assumed to be impure - mark it with `pure` if it is not");
-        if (!(cas.stc & STC.nogc) && sc.func.isNogcBypassingInference())
-            cas.deprecation("`asm` statement is assumed to use the GC - mark it with `@nogc` if it does not");
+        if (!(cas.stc & STC.pure_) && sc.func.setImpure())
+            cas.error("`asm` statement is assumed to be impure - mark it with `pure` if it is not");
+        if (!(cas.stc & STC.nogc) && sc.func.setGC())
+            cas.error("`asm` statement is assumed to use the GC - mark it with `@nogc` if it does not");
         if (!(cas.stc & (STC.trusted | STC.safe)) && sc.func.setUnsafe())
             cas.error("`asm` statement is assumed to be `@system` - mark it with `@trusted` if it is not");
 
@@ -4821,161 +4824,71 @@ private Statements* flatten(Statement statement, Scope* sc)
 }
 
 /***********************************************************
- * Convert TemplateMixin members (== Dsymbols) to Statements.
+ * Convert TemplateMixin members (which are Dsymbols) to Statements.
+ * Params:
+ *    s = the symbol to convert to a Statement
+ * Returns:
+ *    s redone as a Statement
  */
 private Statement toStatement(Dsymbol s)
 {
-    extern (C++) final class ToStmt : Visitor
+    Statement result;
+
+    if (auto tm = s.isTemplateMixin())
     {
-        alias visit = Visitor.visit;
-    public:
-        Statement result;
-
-        Statement visitMembers(Loc loc, Dsymbols* a)
+        auto a = new Statements();
+        foreach (m; *tm.members)
         {
-            if (!a)
-                return null;
-
-            auto statements = new Statements();
-            foreach (s; *a)
-            {
-                statements.push(toStatement(s));
-            }
-            return new CompoundStatement(loc, statements);
+            if (Statement sx = toStatement(m))
+                a.push(sx);
         }
-
-        override void visit(Dsymbol s)
-        {
-            .error(Loc.initial, "Internal Compiler Error: cannot mixin %s `%s`\n", s.kind(), s.toChars());
-            result = new ErrorStatement();
-        }
-
-        override void visit(TemplateMixin tm)
-        {
-            auto a = new Statements();
-            foreach (m; *tm.members)
-            {
-                Statement s = toStatement(m);
-                if (s)
-                    a.push(s);
-            }
-            result = new CompoundStatement(tm.loc, a);
-        }
-
+        result = new CompoundStatement(tm.loc, a);
+    }
+    else if (s.isVarDeclaration()       ||
+             s.isAggregateDeclaration() ||
+             s.isFuncDeclaration()      ||
+             s.isEnumDeclaration()      ||
+             s.isAliasDeclaration()     ||
+             s.isTemplateDeclaration())
+    {
+        /* Perhaps replace the above with isScopeDsymbol() || isDeclaration()
+         */
         /* An actual declaration symbol will be converted to DeclarationExp
          * with ExpStatement.
          */
-        Statement declStmt(Dsymbol s)
-        {
-            auto de = new DeclarationExp(s.loc, s);
-            de.type = Type.tvoid; // avoid repeated semantic
-            return new ExpStatement(s.loc, de);
-        }
-
-        override void visit(VarDeclaration d)
-        {
-            result = declStmt(d);
-        }
-
-        override void visit(AggregateDeclaration d)
-        {
-            result = declStmt(d);
-        }
-
-        override void visit(FuncDeclaration d)
-        {
-            result = declStmt(d);
-        }
-
-        override void visit(EnumDeclaration d)
-        {
-            result = declStmt(d);
-        }
-
-        override void visit(AliasDeclaration d)
-        {
-            result = declStmt(d);
-        }
-
-        override void visit(TemplateDeclaration d)
-        {
-            result = declStmt(d);
-        }
-
+        auto de = new DeclarationExp(s.loc, s);
+        de.type = Type.tvoid; // avoid repeated semantic
+        result = new ExpStatement(s.loc, de);
+    }
+    else if (auto d = s.isAttribDeclaration())
+    {
         /* All attributes have been already picked by the semantic analysis of
          * 'bottom' declarations (function, struct, class, etc).
          * So we don't have to copy them.
          */
-        override void visit(StorageClassDeclaration d)
+        if (Dsymbols* a = d.include(null))
         {
-            result = visitMembers(d.loc, d.decl);
-        }
-
-        override void visit(DeprecatedDeclaration d)
-        {
-            result = visitMembers(d.loc, d.decl);
-        }
-
-        override void visit(LinkDeclaration d)
-        {
-            result = visitMembers(d.loc, d.decl);
-        }
-
-        override void visit(VisibilityDeclaration d)
-        {
-            result = visitMembers(d.loc, d.decl);
-        }
-
-        override void visit(AlignDeclaration d)
-        {
-            result = visitMembers(d.loc, d.decl);
-        }
-
-        override void visit(UserAttributeDeclaration d)
-        {
-            result = visitMembers(d.loc, d.decl);
-        }
-
-        override void visit(ForwardingAttribDeclaration d)
-        {
-            result = visitMembers(d.loc, d.decl);
-        }
-
-        override void visit(StaticAssert s)
-        {
-        }
-
-        override void visit(Import s)
-        {
-        }
-
-        override void visit(PragmaDeclaration d)
-        {
-        }
-
-        override void visit(ConditionalDeclaration d)
-        {
-            result = visitMembers(d.loc, d.include(null));
-        }
-
-        override void visit(StaticForeachDeclaration d)
-        {
-            assert(d.sfe && !!d.sfe.aggrfe ^ !!d.sfe.rangefe);
-            result = visitMembers(d.loc, d.include(null));
-        }
-
-        override void visit(CompileDeclaration d)
-        {
-            result = visitMembers(d.loc, d.include(null));
+            auto statements = new Statements();
+            foreach (sx; *a)
+            {
+                statements.push(toStatement(sx));
+            }
+            result = new CompoundStatement(d.loc, statements);
         }
     }
+    else if (s.isStaticAssert() ||
+             s.isImport())
+    {
+        /* Ignore as they are not Statements
+         */
+    }
+    else
+    {
+        .error(Loc.initial, "Internal Compiler Error: cannot mixin %s `%s`\n", s.kind(), s.toChars());
+        result = new ErrorStatement();
+    }
 
-    if (!s)
-        return null;
-
-    scope ToStmt v = new ToStmt();
-    s.accept(v);
-    return v.result;
+    return result;
 }
 
 /**
