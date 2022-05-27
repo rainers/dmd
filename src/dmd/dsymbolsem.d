@@ -6870,7 +6870,7 @@ bool determineFields(AggregateDeclaration ad)
 private CallExp doAtomicOp (string op, Identifier var, Expression arg)
 {
     __gshared Import imp = null;
-    __gshared Identifier[1] id;
+    __gshared IdentifierAtLoc[1] id;
 
     assert(op == "-=" || op == "+=");
 
@@ -6879,8 +6879,8 @@ private CallExp doAtomicOp (string op, Identifier var, Expression arg)
     // Below code is similar to `loadStdMath` (used for `^^` operator)
     if (!imp)
     {
-        id[0] = Id.core;
-        auto s = new Import(Loc.initial, id[], Id.atomic, null, true);
+        id[0] = makeIdentifierAtLoc(Id.core);
+        auto s = new Import(Loc.initial, id[], Id.atomic, makeIdentifierAtLoc(null), true);
         // Module.load will call fatal() if there's no std.math available.
         // Gag the error here, pushing the error handling to the caller.
         uint errors = global.startGagging();

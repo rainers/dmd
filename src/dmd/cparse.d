@@ -980,7 +980,7 @@ final class CParser(AST) : Parser!AST
                 }
                 // must be an expression
                 e = cparsePrimaryExp();
-                e = new AST.DotIdExp(loc, e, Id.__sizeof);
+                e = new AST.DotIdExp(loc, e, makeIdentifierAtLoc(Id.__sizeof, loc));
                 break;
             }
 
@@ -1972,7 +1972,7 @@ final class CParser(AST) : Parser!AST
                 {
                     if (auto t = p.type.isTypeIdentifier())
                     {
-                        p.ident = t.ident;
+                        p.ident = makeIdentifierAtLoc(t.ident, t.loc);
                         p.type = null;
                     }
                 }

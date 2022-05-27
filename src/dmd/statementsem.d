@@ -1686,7 +1686,7 @@ package (dmd) extern (C++) final class StatementSemanticVisitor : Visitor
                 // Make a copy of the ref argument so it isn't
                 // a reference.
             LcopyArg:
-                id = Identifier.generateId("__applyArg", cast(int)i);
+                id = makeIdentifierAtLoc(Identifier.generateId("__applyArg", cast(int)i));
 
                 Initializer ie = new ExpInitializer(fs.loc, new IdentifierExp(fs.loc, id));
                 auto v = new VarDeclaration(identLoc(fs.loc, p.ident), p.type, p.ident, ie);
@@ -4110,7 +4110,7 @@ void catchSemantic(Catch c, Scope* sc)
     // DIP1008 requires destruction of the Throwable, even if the user didn't specify an identifier
     auto ident = c.ident;
     if (!ident && global.params.ehnogc)
-        ident = Identifier.generateAnonymousId("var");
+        ident = makeIdentifierAtLoc(Identifier.generateAnonymousId("var"));
 
     if (ident)
     {

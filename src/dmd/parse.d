@@ -3449,7 +3449,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                 while (token.value == TOK.comma);
                 break; // no comma-separated imports of this form
             }
-            aliasid = null;
+            aliasid = makeIdentifierAtLoc(null);
         }
         while (token.value == TOK.comma);
 
