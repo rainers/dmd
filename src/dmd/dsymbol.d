@@ -1228,6 +1228,31 @@ extern (C++) class Dsymbol : ASTNode
     {
     }
 
+    version(LanguageServer)
+    {
+        // a global hash table doesn't work well if parsing should be separated from semantic analysis
+        const(char)* comment;
+        UnitTestDeclaration ddocUnittest;
+
+        /****************************************
+        * Add documentation comment to Dsymbol.
+        * Ignore NULL comments.
+        */
+        void addComment(const(char)* comment)
+        {
+            //if (comment)
+            //    printf("adding comment '%s' to symbol %p '%s'\n", comment, this, toChars());
+            if (!this.comment)
+                this.comment = comment;
+            else if (comment && strcmp(cast(char*)comment, cast(char*)this.comment) != 0)
+            {
+                // Concatenate the two
+                this.comment = Lexer.combineComments(this.comment.toDString(), comment.toDString(), true);
+            }
+        }
+    }
+    else
+    {
     /****************************************
      * Add documentation comment to Dsymbol.
      * Ignore NULL comments.
@@ -1292,6 +1317,7 @@ extern (C++) class Dsymbol : ASTNode
 
     private extern (D) __gshared UnitTestDeclaration[void*] ddocUnittestHashTable;
 
+    } // version(LanguageServer)
 
     /****************************************
      * Returns true if this symbol is defined in a non-root module without instantiation.
@@ -1323,8 +1349,11 @@ extern (C++) class Dsymbol : ASTNode
      */
     static void deinitialize()
     {
-        commentHashTable = commentHashTable.init;
-        ddocUnittestHashTable = ddocUnittestHashTable.init;
+        version(LanguageServer) {} else
+        {
+            commentHashTable = commentHashTable.init;
+            ddocUnittestHashTable = ddocUnittestHashTable.init;
+        }
     }
 
     /************

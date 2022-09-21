@@ -4114,7 +4114,7 @@ void catchSemantic(Catch c, Scope* sc)
 
     if (ident)
     {
-        c.var = new VarDeclaration(c.ident.loc, c.type, ident, null, stc);
+        c.var = new VarDeclaration(identLoc(c.loc, ident), c.type, ident, null, stc);
         c.var.iscatchvar = true;
         c.var.dsymbolSemantic(sc);
             c.var.originalType = originalType;
