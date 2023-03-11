@@ -2481,7 +2481,7 @@ struct ASTBase
 
     extern (C++) final class ErrorStatement : Statement
     {
-        extern (D) this()
+        extern (D) this(Statement stmt = null)
         {
             super(Loc.initial, STMT.Error);
             assert(global.gaggedErrors || global.errors);
@@ -2514,19 +2514,6 @@ struct ASTBase
         {
             super(loc, s, STMT.CompoundAsm);
             this.stc = stc;
-        }
-
-        override void accept(Visitor v)
-        {
-            v.visit(this);
-        }
-    }
-
-    extern (C++) final class ErrorStatement : Statement
-    {
-        final extern (D) this(Statement stmt = null)
-        {
-            super(Loc.initial, STMT.Error);
         }
 
         override void accept(Visitor v)
@@ -5490,7 +5477,7 @@ struct ASTBase
     {
         extern (D) this(const ref Loc loc, Expression e1, Expression e2)
         {
-            super(loc, TOK.dot, __traits(classInstanceSize, DotExp), e1, e2);
+            super(loc, EXP.dot, __traits(classInstanceSize, DotExp), e1, e2);
         }
 
         override void accept(Visitor v)

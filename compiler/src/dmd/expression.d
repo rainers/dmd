@@ -746,7 +746,7 @@ extern (C++) abstract class Expression : ASTNode
         }
         else
             // memory never freed, so can use the faster bump-pointer-allocation
-            e = cast(Expression)allocmemory(size);
+            void* e = allocmemory(size);
         //printf("Expression::copy(op = %d) e = %p\n", op, e);
         return cast(Expression)memcpy(e, cast(void*)this, size);
     }
