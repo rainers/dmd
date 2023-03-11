@@ -1,7 +1,7 @@
 /**
  * Converts expressions to Intermediate Representation (IR) for the backend.
  *
- * Copyright:   Copyright (C) 1999-2022 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2023 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/e2ir.d, _e2ir.d)
@@ -44,6 +44,7 @@ import dmd.glue;
 import dmd.hdrgen;
 import dmd.id;
 import dmd.init;
+import dmd.location;
 import dmd.mtype;
 import dmd.objc_glue;
 import dmd.printast;
@@ -112,9 +113,13 @@ bool ISX64REF(Declaration var)
     {
         if (target.os == Target.OS.Windows && target.is64bit)
         {
+            /* Use Microsoft C++ ABI
+             * https://docs.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170#parameter-passing
+             * but watch out because the spec doesn't mention copy construction
+             */
             return var.type.size(Loc.initial) > REGSIZE
                 || (var.storage_class & STC.lazy_)
-                || (var.type.isTypeStruct() && !var.type.isTypeStruct().sym.isPOD());
+                || (var.type.isTypeStruct() && var.type.isTypeStruct().sym.hasCopyConstruction());
         }
         else if (target.os & Target.OS.Posix)
         {
@@ -132,7 +137,7 @@ bool ISX64REF(IRState* irs, Expression exp)
     if (irs.target.os == Target.OS.Windows && irs.target.is64bit)
     {
         return exp.type.size(Loc.initial) > REGSIZE
-            || (exp.type.isTypeStruct() && !exp.type.isTypeStruct().sym.isPOD());
+               || (exp.type.isTypeStruct() && exp.type.isTypeStruct().sym.hasCopyConstruction());
     }
     else if (irs.target.os & Target.OS.Posix)
     {
@@ -266,7 +271,7 @@ Symbol *toStringSymbol(const(char)* str, size_t len, size_t sz)
                 }
             }
 
-            si = symbol_calloc(buf.peekChars(), cast(uint)buf.length);
+            si = symbol_calloc(buf[]);
             si.Sclass = SC.comdat;
             si.Stype = type_static_array(cast(uint)(len * sz), tstypes[TYchar]);
             si.Stype.Tcount++;
@@ -402,9 +407,9 @@ elem *toElemDtor(Expression e, IRState *irs)
     if (irs.mayThrow && !canThrow(e, irs.getFunc(), false))
         irs.mayThrow = false;
 
-    const starti = irs.varsInScope.dim;
+    const starti = irs.varsInScope.length;
     elem* er = toElem(e, irs);
-    const endi = irs.varsInScope.dim;
+    const endi = irs.varsInScope.length;
 
     irs.mayThrow = mayThrowSave;
 
@@ -513,7 +518,7 @@ elem* toElem(Expression e, IRState *irs)
     {
         elem *e;
         Type tb = (se.op == EXP.symbolOffset) ? se.var.type.toBasetype() : se.type.toBasetype();
-        int offset = (se.op == EXP.symbolOffset) ? cast(int)(cast(SymOffExp)se).offset : 0;
+        long offset = (se.op == EXP.symbolOffset) ? cast(long)(cast(SymOffExp)se).offset : 0;
         VarDeclaration v = se.var.isVarDeclaration();
 
         //printf("[%s] SymbolExp.toElem('%s') %p, %s\n", se.loc.toChars(), se.toChars(), se, se.type.toChars());
@@ -605,8 +610,14 @@ elem* toElem(Expression e, IRState *irs)
                 }
 
                 int soffset;
-                if (v && v.offset && !forceStackAccess)
+                if (v && v.inClosure && !forceStackAccess)
                     soffset = v.offset;
+                else if (v && v.inAlignSection)
+                {
+                    ethis = el_bin(OPadd, TYnptr, ethis, el_long(TYnptr, fd.salignSection.Soffset));
+                    ethis = el_una(OPind, TYnptr, ethis);
+                    soffset = v.offset;
+                }
                 else
                 {
                     soffset = cast(int)s.Soffset;
@@ -641,12 +652,12 @@ elem* toElem(Expression e, IRState *irs)
             }
         }
 
-        /* If var is a member of a closure
+        /* If var is a member of a closure or aligned section
          */
-        if (v && v.offset)
+        if (v && (v.inClosure || v.inAlignSection))
         {
-            assert(irs.sclosure);
-            e = el_var(irs.sclosure);
+            assert(irs.sclosure || fd.salignSection);
+            e = el_var(v.inClosure ? irs.sclosure : fd.salignSection);
             e = el_bin(OPadd, TYnptr, e, el_long(TYsize_t, v.offset));
             if (se.op == EXP.variable)
             {
@@ -798,6 +809,18 @@ elem* toElem(Expression e, IRState *irs)
         }
         if (Expression ex = isExpression(e.obj))
         {
+            if (auto ev = ex.isVarExp())
+            {
+                if (auto em = ev.var.isEnumMember())
+                    ex = em.value;
+            }
+            if (auto ecr = ex.isClassReferenceExp())
+            {
+                Type t = ecr.type;
+                elem* result = getTypeInfo(ecr, t, irs);
+                return el_bin(OPadd, result.Ety, result, el_long(TYsize_t, t.vtinfo.offset));
+            }
+
             auto tc = ex.type.toBasetype().isTypeClass();
             assert(tc);
             // generate **classptr to get the classinfo
@@ -1070,10 +1093,7 @@ elem* toElem(Expression e, IRState *irs)
                 assert(!(global.params.ehnogc && ne.thrownew),
                     "This should have been rewritten to `_d_newThrowable` in the semantic phase.");
 
-                Symbol *csym = toSymbol(cd);
-                const rtl = RTLSYM.NEWCLASS;
-                ex = el_bin(OPcall,TYnptr,el_var(getRtlsym(rtl)),el_ptr(csym));
-                toTraceGC(irs, ex, ne.loc);
+                ex = toElem(ne.lowering, irs);
                 ectype = null;
 
                 if (cd.isNested())
@@ -1233,8 +1253,8 @@ elem* toElem(Expression e, IRState *irs)
         {
             elem *ezprefix = ne.argprefix ? toElem(ne.argprefix, irs) : null;
 
-            assert(ne.arguments && ne.arguments.dim >= 1);
-            if (ne.arguments.dim == 1)
+            assert(ne.arguments && ne.arguments.length >= 1);
+            if (ne.arguments.length == 1)
             {
                 // Single dimension array allocations
                 Expression arg = (*ne.arguments)[0]; // gives array length
@@ -1249,7 +1269,7 @@ elem* toElem(Expression e, IRState *irs)
             else
             {
                 // Multidimensional array allocations
-                foreach (i; 0 .. ne.arguments.dim)
+                foreach (i; 0 .. ne.arguments.length)
                 {
                     assert(t.ty == Tarray);
                     t = t.nextOf();
@@ -1260,7 +1280,7 @@ elem* toElem(Expression e, IRState *irs)
                 Symbol *sdata = null;
                 elem *earray = ExpressionsToStaticArray(irs, ne.loc, ne.arguments, &sdata);
 
-                e = el_pair(TYdarray, el_long(TYsize_t, ne.arguments.dim), el_ptr(sdata));
+                e = el_pair(TYdarray, el_long(TYsize_t, ne.arguments.length), el_ptr(sdata));
                 if (irs.target.os == Target.OS.Windows && irs.target.is64bit)
                     e = addressElem(e, Type.tsize_t.arrayOf());
                 e = el_param(e, getTypeInfo(ne, ne.type, irs));
@@ -1283,7 +1303,7 @@ elem* toElem(Expression e, IRState *irs)
             e = el_bin(OPcall,TYnptr,el_var(getRtlsym(rtl)),e);
             toTraceGC(irs, e, ne.loc);
 
-            if (ne.arguments && ne.arguments.dim == 1)
+            if (ne.arguments && ne.arguments.length == 1)
             {
                 /* ezprefix, ts=_d_newitemT(ti), *ts=arguments[0], ts
                  */
@@ -1420,7 +1440,7 @@ elem* toElem(Expression e, IRState *irs)
     elem* visitAssert(AssertExp ae)
     {
         // https://dlang.org/spec/expression.html#assert_expressions
-        //printf("AssertExp.toElem() %s\n", toChars());
+        //printf("AssertExp.toElem() %s\n", ae.toChars());
         elem *e;
         if (irs.params.useAssert == CHECKENABLE.on)
         {
@@ -1731,7 +1751,7 @@ elem* toElem(Expression e, IRState *irs)
             Symbol *sdata;
             elem *earr = ElemsToStaticArray(ce.loc, ce.type, &elems, &sdata);
 
-            elem *ep = el_pair(TYdarray, el_long(TYsize_t, elems.dim), el_ptr(sdata));
+            elem *ep = el_pair(TYdarray, el_long(TYsize_t, elems.length), el_ptr(sdata));
             if (irs.target.os == Target.OS.Windows && irs.target.is64bit)
                 ep = addressElem(ep, Type.tvoid.arrayOf());
             ep = el_param(ep, getTypeInfo(ce, ta, irs));
@@ -1818,6 +1838,111 @@ elem* toElem(Expression e, IRState *irs)
             // This codepath was replaced by lowering during semantic
             // to object.__cmp in druntime.
             assert(0);
+        }
+        else if (t1.ty == Tvector)
+        {
+            elem* e1 = toElem(ce.e1, irs);
+            elem* e2 = toElem(ce.e2, irs);
+
+            tym_t tym = totym(ce.type);
+            elem* ex;  // store side effects in ex
+
+            // swap operands
+            void swapOps()
+            {
+                // put side effects of e1 into ex
+                if (el_sideeffect(e1) && e2.Eoper != OPconst)
+                {
+                    ex = e1;
+                    e1 = el_same(&ex);
+                }
+
+                // swap
+                auto tmp = e2;
+                e2 = e1;
+                e1 = tmp;
+            }
+
+            if (t1.isfloating())
+            {
+                /* Rewrite in terms of < or <= operator
+                 */
+                OPER op;
+                switch (eop)
+                {
+                    case OPlt:   // x < y
+                    case OPle:   // x <= y
+                        op = eop;
+                        break;
+
+                    case OPgt: op = OPlt; goto Lswap; // y < x
+                    case OPge: op = OPle; goto Lswap; // y <= x
+                    Lswap:
+                        swapOps();
+                        break;
+
+                    default:
+                        assert(0);
+                }
+
+                e = el_bin(op, tym, e1, e2);
+                elem_setLoc(e, ce.loc);
+                e = el_combine(ex, e);
+                return e;
+            }
+
+            /* Rewrite in terms of > operator
+             */
+            bool swap;       // swap operands
+            bool comp;       // complement result
+            switch (eop)
+            {
+                case OPgt:                           break; //   x > y
+                case OPlt: swap = true;              break; //   y > x
+                case OPle:              comp = true; break; // !(x > y)
+                case OPge: swap = true; comp = true; break; // !(y > x)
+                default:   assert(0);
+            }
+
+            if (swap)
+                swapOps();
+
+            if (t1.isunsigned() || t2.isunsigned())
+            {
+                /* only signed compare is available. Bias
+                 * unsigned values by subtracting int.min
+                 */
+                ulong val;
+                Type telement = t1.isTypeVector().basetype.nextOf().toBasetype();
+                tym_t ty = totym(telement);
+                switch (tysize(ty)) // vector element size
+                {
+                    case 1: val = byte.min;  break;
+                    case 2: val = short.min; break;
+                    case 4: val = int.min;   break;
+                    case 8: val = long.min;  break;
+                    default:
+                        assert(0);
+                }
+                elem* ec1 = el_vectorConst(totym(t1), val);
+                e1 = el_bin(OPmin, ec1.Ety, e1, ec1);
+
+                elem* ec2 = el_calloc();
+                el_copy(ec2, ec1);
+                e2 = el_bin(OPmin, ec2.Ety, e2, ec2);
+            }
+
+            e = el_bin(OPgt, tym, e1, e2);
+
+            if (comp)
+            {
+                // ex ^ ~0
+                elem* ec = el_vectorConst(totym(t1), ~0L);
+                e = el_bin(OPxor, ec.Ety, e, ec);
+            }
+
+            elem_setLoc(e, ce.loc);
+            e = el_combine(ex, e);
         }
         else
         {
@@ -1960,8 +2085,23 @@ elem* toElem(Expression e, IRState *irs)
             elem_setLoc(e, ee.loc);
             return e;
         }
+        else if (eop == OPne && t1.ty == Tvector)
+        {
+            /* (e1 == e2) ^ ~0
+             */
+            elem* ex = toElemBin(ee, OPeqeq);
+
+            elem *ec = el_calloc();
+            ec.Eoper = OPconst;
+            ec.Ety = totym(t1);
+            ec.EV.Vcent.lo = ~0L;
+            ec.EV.Vcent.hi = ~0L;
+            e = el_bin(OPxor, ec.Ety, ex, ec);
+        }
         else
+        {
             e = toElemBin(ee, eop);
+        }
         return e;
     }
 
@@ -1990,7 +2130,7 @@ elem* toElem(Expression e, IRState *irs)
 
         const canSkipCompare = isTrivialExp(ie.e1) && isTrivialExp(ie.e2);
         elem *e;
-        if (t1.ty == Tstruct && (cast(TypeStruct)t1).sym.fields.dim == 0 && canSkipCompare)
+        if (t1.ty == Tstruct && (cast(TypeStruct)t1).sym.fields.length == 0 && canSkipCompare)
         {
             // we can skip the compare if the structs are empty
             e = el_long(TYbool, ie.op == EXP.identity);
@@ -2452,7 +2592,7 @@ elem* toElem(Expression e, IRState *irs)
 
                 elem *el = e1;
                 elem *enbytes = el_long(TYsize_t, sz);
-                elem *evalue = el_long(TYsize_t, 0);
+                elem *evalue = el_long(TYchar, 0);
 
                 el = el_una(OPaddr, TYnptr, el);
                 elem* e = el_param(enbytes, evalue);
@@ -2497,7 +2637,7 @@ elem* toElem(Expression e, IRState *irs)
                     ae.e2.type.isZeroInit(ae.e2.loc))
                 {
                     elem* enbytes = el_long(TYsize_t, ae.e1.type.size());
-                    elem* evalue = el_long(TYsize_t, 0);
+                    elem* evalue = el_long(TYchar, 0);
                     elem* el = el_una(OPaddr, TYnptr, e1);
                     elem* e = el_bin(OPmemset,TYnptr, el, el_param(enbytes, evalue));
                     return setResult2(e);
@@ -2526,7 +2666,7 @@ elem* toElem(Expression e, IRState *irs)
 
                 elem *el = e1;
                 elem *enbytes = el_long(TYsize_t, sz);
-                elem *evalue = el_long(TYsize_t, 0);
+                elem *evalue = el_long(TYchar, 0);
 
                 el = el_una(OPaddr, TYnptr, el);
                 elem* e = el_param(enbytes, evalue);
@@ -2562,7 +2702,7 @@ elem* toElem(Expression e, IRState *irs)
             {
                 ArrayLiteralExp ale = cast(ArrayLiteralExp)ae.e2;
                 elem* e;
-                if (ale.elements.dim == 0)
+                if (ale.elements.length == 0)
                 {
                     e = e1;
                 }
@@ -2770,6 +2910,7 @@ elem* toElem(Expression e, IRState *irs)
 
     elem* visitUshrAssign(UshrAssignExp e)
     {
+        //printf("UShrAssignExp.toElem() %s, %s\n", e.e1.type.toChars(), e.e1.toChars());
         return toElemBinAssign(e, OPshrass);
     }
 
@@ -3201,7 +3342,7 @@ elem* toElem(Expression e, IRState *irs)
             if (dctor)
             {
             }
-            else if (ce.arguments && ce.arguments.dim && ec.Eoper != OPvar)
+            else if (ce.arguments && ce.arguments.length && ec.Eoper != OPvar)
             {
                 if (ec.Eoper == OPind && el_sideeffect(ec.EV.E1))
                 {
@@ -3236,7 +3377,7 @@ elem* toElem(Expression e, IRState *irs)
                 // see issue 3822
                 if (fd && fd.ident == Id.__alloca &&
                     !fd.fbody && fd._linkage == LINK.c &&
-                    arguments && arguments.dim == 1)
+                    arguments && arguments.length == 1)
                 {   Expression arg = (*arguments)[0];
                     arg = arg.optimize(WANTvalue);
                     if (arg.isConst() && arg.type.isintegral())
@@ -3263,7 +3404,7 @@ elem* toElem(Expression e, IRState *irs)
         else
         {
             ec = toElem(ce.e1, irs);
-            if (ce.arguments && ce.arguments.dim)
+            if (ce.arguments && ce.arguments.length)
             {
                 /* The idea is to enforce expressions being evaluated left to right,
                  * even though call trees are evaluated parameters first.
@@ -3436,7 +3577,7 @@ elem* toElem(Expression e, IRState *irs)
         version (none)
         {
             printf("VectorExp.toElem()\n");
-            ve.print();
+            printAST(ve);
             printf("\tfrom: %s\n", ve.e1.type.toChars());
             printf("\tto  : %s\n", ve.to.toChars());
         }
@@ -3489,6 +3630,11 @@ elem* toElem(Expression e, IRState *irs)
                         assert(0);
                 }
             }
+        }
+        else if (ve.type.size() == ve.e1.type.size())
+        {
+            e = toElem(ve.e1, irs);
+            e.Ety = totym(ve.type);  // paint vector type on it
         }
         else
         {
@@ -3855,7 +4001,7 @@ elem* toElem(Expression e, IRState *irs)
 
     elem* visitArrayLiteral(ArrayLiteralExp ale)
     {
-        size_t dim = ale.elements ? ale.elements.dim : 0;
+        size_t dim = ale.elements ? ale.elements.length : 0;
 
         //printf("ArrayLiteralExp.toElem() %s, type = %s\n", ale.toChars(), ale.type.toChars());
         Type tb = ale.type.toBasetype();
@@ -3868,7 +4014,7 @@ elem* toElem(Expression e, IRState *irs)
         elem *e;
         if (dim > 0)
         {
-            if (tb.ty == Tsarray ||
+            if (ale.onstack || tb.ty == Tsarray ||
                 irs.Cfile && tb.ty == Tpointer)
             {
                 Symbol *stmp = null;
@@ -3924,7 +4070,7 @@ elem* toElem(Expression e, IRState *irs)
 
         Type t = aale.type.toBasetype().mutableOf();
 
-        size_t dim = aale.keys.dim;
+        size_t dim = aale.keys.length;
         if (dim)
         {
             // call _d_assocarrayliteralTX(TypeInfo_AssociativeArray ti, void[] keys, void[] values)
@@ -4185,7 +4331,7 @@ elem *Dsymbol_toElem(Dsymbol s, IRState* irs)
 elem *ElemsToStaticArray(const ref Loc loc, Type telem, Elems *elems, Symbol **psym)
 {
     // Create a static array of type telem[dim]
-    const dim = elems.dim;
+    const dim = elems.length;
     assert(dim);
 
     Type tsarray = telem.sarrayOf(dim);
@@ -4217,7 +4363,7 @@ elem *ElemsToStaticArray(const ref Loc loc, Type telem, Elems *elems, Symbol **p
 elem *ExpressionsToStaticArray(IRState* irs, const ref Loc loc, Expressions *exps, Symbol **psym, size_t offset = 0, Expression basis = null)
 {
     // Create a static array of type telem[dim]
-    const dim = exps.dim;
+    const dim = exps.length;
     assert(dim);
 
     Type telem = ((*exps)[0] ? (*exps)[0] : basis).type;
@@ -4242,7 +4388,7 @@ elem *ExpressionsToStaticArray(IRState* irs, const ref Loc loc, Expressions *exp
             el.type.toBasetype().ty == Tsarray)
         {
             ArrayLiteralExp ale = cast(ArrayLiteralExp)el;
-            if (ale.elements && ale.elements.dim)
+            if (ale.elements && ale.elements.length)
             {
                 elem *ex = ExpressionsToStaticArray(irs,
                     ale.loc, ale.elements, &stmp, cast(uint)(offset + i * szelem), ale.basis);
@@ -4261,7 +4407,7 @@ elem *ExpressionsToStaticArray(IRState* irs, const ref Loc loc, Expressions *exp
                 Expression en = (*exps)[j];
                 if (!en)
                     en = basis;
-                if (!el.equals(en))
+                if (!el.isIdentical(en))
                     break;
                 j++;
             }
@@ -5245,7 +5391,7 @@ elem *callfunc(const ref Loc loc,
         // Discard unreachable argument evaluation + function call
         return ec;
     }
-    if (arguments && arguments.dim)
+    if (arguments && arguments.length)
     {
         if (op == OPvector)
         {
@@ -5256,7 +5402,7 @@ elem *callfunc(const ref Loc loc,
 
         /* Convert arguments[] to elems[] in left-to-right order
          */
-        const n = arguments.dim;
+        const n = arguments.length;
         debug
             elem*[2] elems_array = void;
         else
@@ -6013,6 +6159,7 @@ StructDeclaration needsDtor(Type t)
  */
 elem *setArray(Expression exp, elem *eptr, elem *edim, Type tb, elem *evalue, IRState *irs, int op)
 {
+    //elem_print(evalue);
     assert(op == EXP.blit || op == EXP.assign || op == EXP.construct);
     const sz = cast(uint)tb.size();
     Type tb2 = tb;
@@ -6154,15 +6301,27 @@ Lagain:
             default:
                 assert(0);
         }
+        // do a cast to tym
         tym = tym | (evalue.Ety & ~mTYbasic);
-        evalue = addressElem(evalue, tb);
-        evalue = el_una(OPind, tym, evalue);
+        if (evalue.Eoper == OPconst)
+        {
+            evalue = el_copytree(evalue);
+            evalue.Ety = tym;
+        }
+        else
+        {
+            evalue = addressElem(evalue, tb);
+            evalue = el_una(OPind, tym, evalue);
+        }
     }
 
     evalue = useOPstrpar(evalue);
 
     // Be careful about parameter side effect ordering
-    if (r == RTLSYM.MEMSET8)
+    if (r == RTLSYM.MEMSET8 ||
+        r == RTLSYM.MEMSET16 ||
+        r == RTLSYM.MEMSET32 ||
+        r == RTLSYM.MEMSET64)
     {
         elem *e = el_param(edim, evalue);
         return el_bin(OPmemset,TYnptr,eptr,e);
@@ -6297,8 +6456,8 @@ elem *toElemStructLit(StructLiteralExp sle, IRState *irs, EXP op, Symbol *sym, b
      *  U u3 = U(1, 2);     // error
      *  U u4 = {x:1, y:2};  // error
      */
-    size_t dim = sle.elements ? sle.elements.dim : 0;
-    assert(dim <= sle.sd.fields.dim);
+    size_t dim = sle.elements ? sle.elements.length : 0;
+    assert(dim <= sle.sd.fields.length);
 
     if (fillHoles)
     {
@@ -6309,7 +6468,7 @@ elem *toElemStructLit(StructLiteralExp sle, IRState *irs, EXP op, Symbol *sym, b
         const size_t structsize = sle.sd.structsize;
         size_t offset = 0;
         //printf("-- %s - fillHoles, structsize = %d\n", sle.toChars(), structsize);
-        for (size_t i = 0; i < sle.sd.fields.dim && offset < structsize; )
+        for (size_t i = 0; i < sle.sd.fields.length && offset < structsize; )
         {
             VarDeclaration v = sle.sd.fields[i];
 
@@ -6341,7 +6500,7 @@ elem *toElemStructLit(StructLiteralExp sle, IRState *irs, EXP op, Symbol *sym, b
              *  }
              *  S s = {f2:x, f3:y};     // filled holes: 2..8 and 12..16
              */
-            size_t vend = sle.sd.fields.dim;
+            size_t vend = sle.sd.fields.length;
             size_t holeEnd = structsize;
             size_t offset2 = structsize;
             foreach (j; i + 1 .. vend)
@@ -6448,10 +6607,10 @@ elem *toElemStructLit(StructLiteralExp sle, IRState *irs, EXP op, Symbol *sym, b
         }
     }
 
-    if (sle.sd.isNested() && dim != sle.sd.fields.dim)
+    if (sle.sd.isNested() && dim != sle.sd.fields.length)
     {
         // Initialize the hidden 'this' pointer
-        assert(sle.sd.fields.dim);
+        assert(sle.sd.fields.length);
 
         elem* e1, e2;
         if (tybasic(stmp.Stype.Tty) == TYnptr)

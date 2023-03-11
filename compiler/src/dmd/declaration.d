@@ -2,7 +2,7 @@
  * Miscellaneous declarations, including typedef, alias, variable declarations including the
  * implicit this declaration, type tuples, ClassInfo, ModuleInfo and various TypeInfos.
  *
- * Copyright:   Copyright (C) 1999-2022 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2023 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/declaration.d, _declaration.d)
@@ -35,6 +35,7 @@ import dmd.identifier;
 import dmd.init;
 import dmd.initsem;
 import dmd.intrange;
+import dmd.location;
 import dmd.mtype;
 import dmd.common.outbuffer;
 import dmd.root.rootobject;
@@ -66,7 +67,7 @@ bool checkFrameAccess(Loc loc, Scope* sc, AggregateDeclaration ad, size_t iStart
     }
 
     bool result = false;
-    for (size_t i = iStart; i < ad.fields.dim; i++)
+    for (size_t i = iStart; i < ad.fields.length; i++)
     {
         VarDeclaration vd = ad.fields[i];
         Type tb = vd.type.baseElemOf();
@@ -81,6 +82,9 @@ bool checkFrameAccess(Loc loc, Scope* sc, AggregateDeclaration ad, size_t iStart
 /***********************************************
  * Mark variable v as modified if it is inside a constructor that var
  * is a field in.
+ * Also used to allow immutable globals to be initialized inside a static constructor.
+ * Returns:
+ *    true if it's an initialization of v
  */
 bool modifyFieldVar(Loc loc, Scope* sc, VarDeclaration var, Expression e1)
 {
@@ -93,7 +97,7 @@ bool modifyFieldVar(Loc loc, Scope* sc, VarDeclaration var, Expression e1)
             fd = s.isFuncDeclaration();
         if (fd &&
             ((fd.isCtorDeclaration() && var.isField()) ||
-             (fd.isStaticCtorDeclaration() && !var.isField())) &&
+             ((fd.isStaticCtorDeclaration() || fd.isCrtCtor) && !var.isField())) &&
             fd.toParentDecl() == var.toParent2() &&
             (!e1 || e1.op == EXP.this_))
         {
@@ -297,7 +301,7 @@ extern (C++) abstract class Declaration : Dsymbol
                 {
                     auto sd = p.isStructDeclaration();
                     assert(sd);
-                    for (size_t i = 0; i < sd.fields.dim; i++)
+                    for (size_t i = 0; i < sd.fields.length; i++)
                     {
                         auto structField = sd.fields[i];
                         if (structField.overlapped)
@@ -548,6 +552,11 @@ extern (C++) abstract class Declaration : Dsymbol
         return (storage_class & STC.future) != 0;
     }
 
+    final extern(D) bool isSystem() const pure nothrow @nogc @safe
+    {
+        return (storage_class & STC.system) != 0;
+    }
+
     override final Visibility visible() pure nothrow @nogc @safe
     {
         return visibility;
@@ -601,7 +610,7 @@ extern (C++) final class TupleDeclaration : Declaration
         {
             /* It's only a type tuple if all the Object's are types
              */
-            for (size_t i = 0; i < objects.dim; i++)
+            for (size_t i = 0; i < objects.length; i++)
             {
                 RootObject o = (*objects)[i];
                 if (o.dyncast() != DYNCAST.type)
@@ -614,10 +623,10 @@ extern (C++) final class TupleDeclaration : Declaration
             /* We know it's a type tuple, so build the TypeTuple
              */
             Types* types = cast(Types*)objects;
-            auto args = new Parameters(objects.dim);
+            auto args = new Parameters(objects.length);
             OutBuffer buf;
             int hasdeco = 1;
-            for (size_t i = 0; i < types.dim; i++)
+            for (size_t i = 0; i < types.length; i++)
             {
                 Type t = (*types)[i];
                 //printf("type = %s\n", t.toChars());
@@ -648,7 +657,7 @@ extern (C++) final class TupleDeclaration : Declaration
     override Dsymbol toAlias2()
     {
         //printf("TupleDeclaration::toAlias2() '%s' objects = %s\n", toChars(), objects.toChars());
-        for (size_t i = 0; i < objects.dim; i++)
+        for (size_t i = 0; i < objects.length; i++)
         {
             RootObject o = (*objects)[i];
             if (Dsymbol s = isDsymbol(o))
@@ -1102,7 +1111,7 @@ extern (C++) class VarDeclaration : Declaration
 {
     Initializer _init;
     FuncDeclarations nestedrefs;    // referenced by these lexically nested functions
-    Dsymbol aliassym;               // if redone as alias to another symbol
+    TupleDeclaration aliasTuple;    // when `this` is really a tuple of declarations
     VarDeclaration lastVar;         // Linked list of variables for goto-skips-init detection
     Expression edtor;               // if !=null, does the destruction of the variable
     IntRange* range;                // if !=null, the variable is known to be within the range
@@ -1139,6 +1148,12 @@ extern (C++) class VarDeclaration : Declaration
         bool doNotInferReturn;  /// do not infer 'return' for this variable
 
         bool isArgDtorVar;      /// temporary created to handle scope destruction of a function argument
+        bool isCmacro;          /// it is a C macro turned into a C declaration
+        version (MARS)
+        {
+            bool inClosure;         /// is inserted into a GC allocated closure
+            bool inAlignSection;    /// is inserted into an aligned section on stack
+        }
     }
 
     import dmd.common.bitfields : generateBitFields;
@@ -1195,12 +1210,10 @@ extern (C++) class VarDeclaration : Declaration
     {
         //printf("VarDeclaration::setFieldOffset(ad = %s) %s\n", ad.toChars(), toChars());
 
-        if (aliassym)
+        if (aliasTuple)
         {
             // If this variable was really a tuple, set the offsets for the tuple fields
-            TupleDeclaration v2 = aliassym.isTupleDeclaration();
-            assert(v2);
-            v2.foreachVar((s) { s.setFieldOffset(ad, fieldState, isunion); });
+            aliasTuple.foreachVar((s) { s.setFieldOffset(ad, fieldState, isunion); });
             return;
         }
 
@@ -1219,7 +1232,7 @@ extern (C++) class VarDeclaration : Declaration
             fieldState.offset = ad.structsize; // https://issues.dlang.org/show_bug.cgi?id=13613
             return;
         }
-        for (size_t i = 0; i < ad.fields.dim; i++)
+        for (size_t i = 0; i < ad.fields.length; i++)
         {
             if (ad.fields[i] == this)
             {
@@ -1311,9 +1324,17 @@ extern (C++) class VarDeclaration : Declaration
 
     override final bool isImportedSymbol() const
     {
-        if (visibility.kind == Visibility.Kind.export_ && !_init && (storage_class & STC.static_ || parent.isModule()))
-            return true;
-        return false;
+        /* If global variable has `export` and `extern` then it is imported
+         *   export int sym1;            // definition:  exported
+         *   export extern int sym2;     // declaration: imported
+         *   export extern int sym3 = 0; // error, extern cannot have initializer
+         */
+        bool result =
+            visibility.kind == Visibility.Kind.export_ &&
+            storage_class & STC.extern_ &&
+            (storage_class & STC.static_ || parent.isModule());
+        //printf("isImportedSymbol() %s %d\n", toChars(), result);
+        return result;
     }
 
     final bool isCtorinit() const pure nothrow @nogc @safe
@@ -1657,8 +1678,7 @@ extern (C++) class VarDeclaration : Declaration
         // Add this VarDeclaration to fdv.closureVars[] if not already there
         if (!sc.intypeof && !(sc.flags & SCOPE.compile) &&
             // https://issues.dlang.org/show_bug.cgi?id=17605
-            (fdv.isCompileTimeOnly || !fdthis.isCompileTimeOnly)
-           )
+            (fdv.skipCodegen || !fdthis.skipCodegen))
         {
             if (!fdv.closureVars.contains(this))
                 fdv.closureVars.push(this);
@@ -1695,8 +1715,8 @@ extern (C++) class VarDeclaration : Declaration
         if ((!type || !type.deco) && _scope)
             dsymbolSemantic(this, _scope);
 
-        assert(this != aliassym);
-        Dsymbol s = aliassym ? aliassym.toAlias() : this;
+        assert(this != aliasTuple);
+        Dsymbol s = aliasTuple ? aliasTuple.toAlias() : this;
         return s;
     }
 

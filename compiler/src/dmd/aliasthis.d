@@ -3,7 +3,7 @@
  *
  * Specification: $(LINK2 https://dlang.org/spec/class.html#alias-this, Alias This)
  *
- * Copyright:   Copyright (C) 1999-2022 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2023 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/aliasthis.d, _aliasthis.d)
@@ -21,6 +21,7 @@ import dmd.expression;
 import dmd.expressionsem;
 import dmd.globals;
 import dmd.identifier;
+import dmd.location;
 import dmd.mtype;
 import dmd.opover;
 import dmd.tokens;
@@ -95,7 +96,7 @@ Expression resolveAliasThis(Scope* sc, Expression e, bool gag = false, bool find
             const flags = DotExpFlag.noAliasThis | (gag ? DotExpFlag.gag : 0);
             uint olderrors = gag ? global.startGagging() : 0;
             auto die = new DotIdExp(loc, e, makeIdentifierAtLoc(ad.aliasthis.ident)); // just to satisfy dotExp interface, no source loc for inserted ident
-            e = dotExp(e.type, sc, e, die, flags);
+            e = dotExp(ad.type, sc, e, die, flags);
             if (!e || findOnly)
                 return gag && global.endGagging(olderrors) ? null : e;
 

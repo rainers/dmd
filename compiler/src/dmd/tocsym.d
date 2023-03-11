@@ -1,7 +1,7 @@
 /**
  * Convert a D symbol to a symbol the linker understands (with mangled name).
  *
- * Copyright:   Copyright (C) 1999-2022 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2023 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/tocsym.d, _tocsym.d)
@@ -38,6 +38,7 @@ import dmd.glue;
 import dmd.identifier;
 import dmd.id;
 import dmd.init;
+import dmd.location;
 import dmd.mtype;
 import dmd.target;
 import dmd.toctype;
@@ -86,13 +87,13 @@ Symbol *toSymbolX(Dsymbol ds, const(char)* prefix, SC sclass, type *t, const(cha
     auto sb = SmallBuffer!(char)(idlen, idbuf[]);
     char *id = sb.ptr;
 
-    int nwritten = sprintf(id,"_D%.*s%d%.*s%.*s",
+    int nwritten = snprintf(id, idlen, "_D%.*s%d%.*s%.*s",
         cast(int)nlen, n,
         cast(int)prefixlen, cast(int)prefixlen, prefix,
         cast(int)suffixlen, suffix);
     assert(cast(uint)nwritten < idlen);         // nwritten does not include the terminating 0 char
 
-    Symbol *s = symbol_name(id, nwritten, sclass, t);
+    Symbol *s = symbol_name(id[0 .. nwritten], sclass, t);
 
     //printf("-Dsymbol::toSymbolX() %s\n", id);
     return s;
@@ -109,7 +110,7 @@ Symbol *toSymbol(Dsymbol s)
 
         Symbol *result;
 
-        this()
+        this() scope
         {
             result = null;
         }
@@ -128,6 +129,8 @@ Symbol *toSymbol(Dsymbol s)
         override void visit(VarDeclaration vd)
         {
             //printf("VarDeclaration.toSymbol(%s)\n", vd.toChars());
+            if (vd.needThis())
+                fprintf(stderr, "VarDeclaration.toSymbol(%s) needThis kind: %s\n", vd.toPrettyChars(), vd.kind());
             assert(!vd.needThis());
 
             import dmd.common.outbuffer : OutBuffer;
@@ -137,7 +140,7 @@ Symbol *toSymbol(Dsymbol s)
             if (vd.isDataseg())
             {
                 mangleToBuffer(vd, &buf);
-                id = buf.peekChars()[0..buf.length]; // symbol_calloc needs zero termination
+                id = buf[];
             }
             else
             {
@@ -147,12 +150,12 @@ Symbol *toSymbol(Dsymbol s)
                     {
                         buf.writestring("__nrvo_");
                         buf.writestring(id);
-                        id = buf.peekChars()[0..buf.length]; // symbol_calloc needs zero termination
+                        id = buf[];
                         isNRVO = true;
                     }
                 }
             }
-            Symbol *s = symbol_calloc(id.ptr, cast(uint)id.length);
+            Symbol *s = symbol_calloc(id);
             s.Salignment = vd.alignment.isDefault() ? -1 : vd.alignment.get();
             if (vd.storage_class & STC.temp)
                 s.Sflags |= SFLartifical;
@@ -260,7 +263,7 @@ Symbol *toSymbol(Dsymbol s)
                 s.Sclass = SC.auto_;
                 s.Sfl = FLauto;
 
-                if (vd.nestedrefs.dim)
+                if (vd.nestedrefs.length)
                 {
                     /* Symbol is accessed by a nested function. Make sure
                      * it is not put in a register, and that the optimizer
@@ -338,7 +341,7 @@ Symbol *toSymbol(Dsymbol s)
             //printf("FuncDeclaration.toSymbol(%s %s)\n", fd.kind(), fd.toChars());
             //printf("\tid = '%s'\n", id);
             //printf("\ttype = %s\n", fd.type.toChars());
-            auto s = symbol_calloc(id, cast(uint)strlen(id));
+            auto s = symbol_calloc(id[0 .. strlen(id)]);
 
             s.prettyIdent = fd.toPrettyChars(true);
 
@@ -355,12 +358,16 @@ Symbol *toSymbol(Dsymbol s)
             else if (fd.isMember2() && fd.isStatic())
                 f.Fflags |= Fstatic;
 
+            if (fd.isSafe())
+                f.Fflags3 |= F3safe;
+
             if (fd.inlining == PINLINE.default_ && global.params.useInline ||
                 fd.inlining == PINLINE.always)
             {
                 // this is copied from inline.d
                 if (!fd.fbody ||
                     fd.ident == Id.ensure ||
+                    fd.skipCodegen ||
                     (fd.ident == Id.require &&
                      fd.toParent().isFuncDeclaration() &&
                      fd.toParent().isFuncDeclaration().needThis()) ||
@@ -496,14 +503,21 @@ Symbol *toSymbol(Dsymbol s)
 
 
 /*************************************
+ * Create Windows import symbol from backend Symbol.
+ * Params:
+ *      sym = backend symbol
+ *      loc = location for error message purposes
+ * Returns:
+ *      import symbol
  */
 
-Symbol *toImport(Symbol *sym, Loc loc)
+private Symbol *createImport(Symbol *sym, Loc loc)
 {
-    //printf("Dsymbol.toImport('%s')\n", sym.Sident);
-    char *n = sym.Sident.ptr;
+    //printf("Dsymbol.createImport('%s')\n", sym.Sident.ptr);
+    const char* n = sym.Sident.ptr;
     import core.stdc.stdlib : alloca;
-    char *id = cast(char *) alloca(6 + strlen(n) + 1 + type_paramsize(sym.Stype).sizeof*3 + 1);
+    const allocLen = 6 + strlen(n) + 1 + type_paramsize(sym.Stype).sizeof*3 + 1;
+    char *id = cast(char *) alloca(allocLen);
     int idlen;
     if (target.os & Target.OS.Posix)
     {
@@ -513,20 +527,20 @@ Symbol *toImport(Symbol *sym, Loc loc)
     else if (sym.Stype.Tmangle == mTYman_std && tyfunc(sym.Stype.Tty))
     {
         if (target.os == Target.OS.Windows && target.is64bit)
-            idlen = sprintf(id,"__imp_%s",n);
+            idlen = snprintf(id, allocLen, "__imp_%s",n);
         else
-            idlen = sprintf(id,"_imp__%s@%u",n,cast(uint)type_paramsize(sym.Stype));
+            idlen = snprintf(id, allocLen, "_imp__%s@%u",n,cast(uint)type_paramsize(sym.Stype));
     }
     else
     {
-        idlen = sprintf(id,(target.os == Target.OS.Windows && target.is64bit) ? "__imp_%s" : (sym.Stype.Tmangle == mTYman_cpp) ? "_imp_%s" : "_imp__%s",n);
+        idlen = snprintf(id, allocLen, (target.os == Target.OS.Windows && target.is64bit) ? "__imp_%s" : (sym.Stype.Tmangle == mTYman_cpp) ? "_imp_%s" : "_imp__%s",n);
     }
     auto t = type_alloc(TYnptr | mTYconst);
     t.Tnext = sym.Stype;
     t.Tnext.Tcount++;
     t.Tmangle = mTYman_c;
     t.Tcount++;
-    auto s = symbol_calloc(id, idlen);
+    auto s = symbol_calloc(id[0 .. idlen]);
     s.Stype = t;
     s.Sclass = SC.extern_;
     s.Sfl = FLextern;
@@ -543,7 +557,7 @@ Symbol *toImport(Declaration ds)
     {
         if (!ds.csym)
             ds.csym = toSymbol(ds);
-        ds.isym = toImport(ds.csym, ds.loc);
+        ds.isym = createImport(ds.csym, ds.loc);
     }
     return ds.isym;
 }
@@ -564,10 +578,11 @@ Symbol *toThunkSymbol(FuncDeclaration fd, int offset)
     s.Sfunc.Fflags &= ~Finline;  // thunks are not real functions, don't inline them
 
     __gshared int tmpnum;
-    char[6 + tmpnum.sizeof * 3 + 1] name = void;
+    const nameLen = 6 + tmpnum.sizeof * 3 + 1;
+    char[nameLen] name = void;
 
-    sprintf(name.ptr,"_THUNK%d",tmpnum++);
-    auto sthunk = symbol_name(name.ptr,SC.static_,fd.csym.Stype);
+    const len = snprintf(name.ptr,nameLen,"_THUNK%d",tmpnum++);
+    auto sthunk = symbol_name(name[0 .. len],SC.static_,fd.csym.Stype);
     sthunk.Sflags |= SFLnodebug | SFLartifical;
     sthunk.Sflags |= SFLimplem;
     outthunk(sthunk, fd.csym, 0, TYnptr, -offset, -1, 0);
@@ -655,7 +670,24 @@ Symbol *toInitializer(AggregateDeclaration ad)
         else
         {
             auto stag = fake_classsym(Id.ClassInfo);
-            auto s = toSymbolX(ad, "__init", SC.extern_, stag.Stype, "Z");
+
+            Symbol* s;
+
+            Module m = ad.getModule();
+            if (m.filetype == FileType.c)
+            {
+                /* For ImportC structs, the module names are stripped from the mangled name.
+                 * This leads to name collisions. Add the module name back in.
+                 */
+                import dmd.common.outbuffer : OutBuffer;
+                OutBuffer buf;
+                buf.writestring("__init");
+                buf.writestring(m.toChars());
+                s = toSymbolX(ad, buf.peekChars(), SC.extern_, stag.Stype, "Z");
+            }
+            else
+                s = toSymbolX(ad, "__init", SC.extern_, stag.Stype, "Z");
+
             s.Sfl = FLextern;
             s.Sflags |= SFLnodebug;
             if (sd)
@@ -698,8 +730,9 @@ Symbol *aaGetSymbol(TypeAArray taa, const(char)* func, int flags)
 
     //printf("aaGetSymbol(func = '%s', flags = %d, key = %p)\n", func, flags, key);
     import core.stdc.stdlib : alloca;
-    auto id = cast(char *)alloca(3 + strlen(func) + 1);
-    const idlen = sprintf(id, "_aa%s", func);
+    const allocLen = 3 + strlen(func) + 1;
+    auto id = cast(char *)alloca(allocLen);
+    const idlen = snprintf(id, allocLen, "_aa%s", func);
 
     // See if symbol is already in sarray
     foreach (s; sarray)
@@ -712,7 +745,7 @@ Symbol *aaGetSymbol(TypeAArray taa, const(char)* func, int flags)
 
     // Create new Symbol
 
-    auto s = symbol_calloc(id, idlen);
+    auto s = symbol_calloc(id[0 .. idlen]);
     s.Sclass = SC.extern_;
     s.Ssymnum = SYMIDX.max;
     symbol_func(s);
@@ -736,7 +769,7 @@ Symbol* toSymbol(StructLiteralExp sle)
         return sle.sym;
     auto t = type_alloc(TYint);
     t.Tcount++;
-    auto s = symbol_calloc("internal", 8);
+    auto s = symbol_calloc("internal");
     s.Sclass = SC.static_;
     s.Sfl = FLextern;
     s.Sflags |= SFLnodebug;
@@ -756,7 +789,7 @@ Symbol* toSymbol(ClassReferenceExp cre)
         return cre.value.origin.sym;
     auto t = type_alloc(TYint);
     t.Tcount++;
-    auto s = symbol_calloc("internal", 8);
+    auto s = symbol_calloc("internal");
     s.Sclass = SC.static_;
     s.Sfl = FLextern;
     s.Sflags |= SFLnodebug;
@@ -811,7 +844,7 @@ Symbol* toSymbolCpp(ClassDeclaration cd)
 Symbol *toSymbolCppTypeInfo(ClassDeclaration cd)
 {
     const id = target.cpp.typeInfoMangle(cd);
-    auto s = symbol_calloc(id, cast(uint)strlen(id));
+    auto s = symbol_calloc(id[0 .. strlen(id)]);
     s.Sclass = SC.extern_;
     s.Sfl = FLextern;          // C++ code will provide the definition
     s.Sflags |= SFLnodebug;
