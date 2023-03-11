@@ -3812,7 +3812,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                     return setError();
 
                 Expression id = new IdentifierExp(exp.loc, Id.empty);
-                id = new DotIdExp(exp.loc, id, Id.object);
+                id = new DotIdExp(exp.loc, id, makeIdentifierAtLoc(Id.object));
 
                 auto tiargs = new Objects();
                 auto t = exp.newtype.unqualify(MODFlags.wild);  // remove `inout`

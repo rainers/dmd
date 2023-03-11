@@ -4476,7 +4476,8 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
 
             const loc = token.loc;
             Identifier ident;
-            auto t = parseDeclarator(ts, alt, &ident, null, &tpl, storage_class, &disable, &udas);
+            Loc identloc;
+            auto t = parseDeclarator(ts, alt, &ident, &identloc, &tpl, storage_class, &disable, &udas);
             assert(t);
             if (!tfirst)
                 tfirst = t;
@@ -4522,7 +4523,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                     else
                         error("alias cannot have initializer");
                 }
-                v = new AST.AliasDeclaration(aliasLoc, ident, t);
+                v = new AST.AliasDeclaration(identloc, ident, t);
 
                 v.storage_class = storage_class;
                 if (pAttrs)

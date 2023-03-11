@@ -1320,7 +1320,6 @@ extern (C++) final class Module : Package
         __gshared Module std_math;
         return loadModuleFromLibrary(std_math, Id.std, Id.math);
     }
-
     /**********************************
      * Load a Module from the library.
      * Params:
@@ -1335,9 +1334,9 @@ extern (C++) final class Module : Package
         if (mod)
             return mod;
 
-        auto ids = new Identifier[1];
-        ids[0] = pkgid;
-        auto imp = new Import(Loc.initial, ids[], modid, null, true);
+        auto ids = new IdentifierAtLoc[1];
+        ids[0] = makeIdentifierAtLoc(pkgid);
+        auto imp = new Import(Loc.initial, ids[], makeIdentifierAtLoc(modid), makeIdentifierAtLoc(null), true);
         // Module.load will call fatal() if there's no module available.
         // Gag the error here, pushing the error handling to the caller.
         const errors = global.startGagging();
