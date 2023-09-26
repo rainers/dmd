@@ -1366,9 +1366,10 @@ extern (C++) final class Module : Package
         if (mod)
             return mod;
 
-        auto ids = new IdentifierAtLoc[1];
-        ids[0] = makeIdentifierAtLoc(pkgid);
-        auto imp = new Import(Loc.initial, pkgids[], makeIdentifierAtLoc(modid), makeIdentifierAtLoc(null), true);
+        auto ids = new IdentifierAtLoc[pkgids.length];
+        foreach(i, pkgid; pkgids)
+            ids[i] = makeIdentifierAtLoc(pkgid);
+        auto imp = new Import(Loc.initial, ids[], makeIdentifierAtLoc(modid), makeIdentifierAtLoc(null), true);
         // Module.load will call fatal() if there's no module available.
         // Gag the error here, pushing the error handling to the caller.
         const errors = global.startGagging();

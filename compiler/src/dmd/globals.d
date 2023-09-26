@@ -462,15 +462,5 @@ alias dinteger_t = ulong;
 alias sinteger_t = long;
 alias uinteger_t = ulong;
 
-// for a language server, lowered expression should not reuse the original source location
-//  as internal names might get exposed to the user
-ref const(Loc) loweredLoc(return ref const Loc loc)
-{
-    version(LanguageServer)
-        return Loc.initial;
-    else
-        return loc;
-}
-
 /// Collection of global state
 extern (C++) __gshared Global global;

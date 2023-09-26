@@ -20,6 +20,7 @@ import dmd.func;
 import dmd.globals;
 import dmd.identifier;
 import dmd.init;
+import dmd.location;
 import dmd.mtype;
 import dmd.postordervisitor;
 import dmd.tokens;

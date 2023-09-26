@@ -4842,7 +4842,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
         {
             check(TOK.this_);
             check(TOK.assign);
-            auto s = new AST.AliasThis(loc, token.ident);
+            auto s = new AST.AliasThis(loc, makeIdentifierAtLoc(token.ident, loc));
             nextToken();
             check(TOK.semicolon, "`alias this = Identifier`");
             auto a = new AST.Dsymbols();

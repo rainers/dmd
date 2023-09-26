@@ -956,7 +956,7 @@ Expression semanticTraits(TraitsExp e, Scope* sc)
             // https://issues.dlang.org/show_bug.cgi?id=23951
             if (auto decl = sym.isDeclaration())
             {
-                ex = typeDotIdExp(e.loc, decl.type, id);
+                ex = typeDotIdExp(e.loc, decl.type, makeIdentifierAtLoc(id, ex.loc));
                 goto doSemantic;
             }
         }

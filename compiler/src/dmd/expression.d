@@ -794,7 +794,7 @@ extern (C++) abstract class Expression : ASTNode
         }
         version(LanguageServer)
         {
-            assert(typeInfoExp[op] && (op == EXP.default_ || typeInfoExp[op].m_init.length == size));
+            assert(typeInfoExp[op] && typeInfoExp[op].m_init.length == size);
             import core.memory; // assume GC
             void* e = GC.malloc(size, 0, typeInfoExp[op]);
         }
@@ -1914,9 +1914,9 @@ extern (C++) abstract class Expression : ASTNode
         }
     }
 
-    extern (D) private static const TypeInfo_Class[TOK.max + 1] typeInfoExp = ()
+    extern (D) private static const TypeInfo_Class[EXP.max + 1] typeInfoExp = ()
     {
-        TypeInfo_Class[TOK.max + 1] tiExp;
+        TypeInfo_Class[EXP.max + 1] tiExp;
         tiExp[EXP.int64                   ] = typeid(IntegerExp);
         tiExp[EXP.error                   ] = typeid(ErrorExp);
         tiExp[EXP.void_                   ] = typeid(VoidInitExp);
@@ -2020,7 +2020,6 @@ extern (C++) abstract class Expression : ASTNode
         tiExp[EXP.identity                ] = typeid(IdentityExp);
         tiExp[EXP.notIdentity             ] = typeid(IdentityExp);
         tiExp[EXP.question                ] = typeid(CondExp);
-        tiExp[EXP.default_                ] = typeid(DefaultInitExp);
         tiExp[EXP.file                    ] = typeid(FileInitExp);
         tiExp[EXP.fileFullPath            ] = typeid(FileInitExp);
         tiExp[EXP.line                    ] = typeid(LineInitExp);
@@ -6414,7 +6413,7 @@ extern (C++) class AssignExp : BinExp
         super(loc, EXP.assign, e1, e2);
     }
 
-    this(const ref Loc loc, EXP tok, int size, Expression e1, Expression e2)
+    this(const ref Loc loc, EXP tok, Expression e1, Expression e2)
     {
         super(loc, tok, e1, e2);
     }
@@ -6482,7 +6481,7 @@ extern (C++) final class ConstructExp : AssignExp
 {
     extern (D) this(const ref Loc loc, Expression e1, Expression e2)
     {
-        super(loc, EXP.construct, __traits(classInstanceSize, ConstructExp), e1, e2);
+        super(loc, EXP.construct, e1, e2);
     }
 
     // Internal use only. If `v` is a reference variable, the assignment
@@ -6492,7 +6491,7 @@ extern (C++) final class ConstructExp : AssignExp
         auto ve = new VarExp(loc, v);
         assert(v.type && ve.type);
 
-        super(loc, EXP.construct, __traits(classInstanceSize, ConstructExp), ve, e2);
+        super(loc, EXP.construct, ve, e2);
 
         if (v.isReference())
             memset = MemorySet.referenceInit;
@@ -6511,7 +6510,7 @@ extern (C++) final class BlitExp : AssignExp
 {
     extern (D) this(const ref Loc loc, Expression e1, Expression e2)
     {
-        super(loc, EXP.blit, __traits(classInstanceSize, BlitExp), e1, e2);
+        super(loc, EXP.blit, e1, e2);
     }
 
     // Internal use only. If `v` is a reference variable, the assinment
@@ -6521,7 +6520,7 @@ extern (C++) final class BlitExp : AssignExp
         auto ve = new VarExp(loc, v);
         assert(v.type && ve.type);
 
-        super(loc, EXP.blit, __traits(classInstanceSize, BlitExp), ve, e2);
+        super(loc, EXP.blit, ve, e2);
 
         if (v.isReference())
             memset = MemorySet.referenceInit;

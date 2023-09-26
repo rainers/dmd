@@ -146,8 +146,8 @@ extern(C++) Statement statementSemantic(Statement s, Scope* sc)
         Compiler.onStatementSemanticStart(s, sc);
 
     Statement result = statementSemanticVisit(s, sc);
-    if (v.result)
-        v.result.saveOriginal(s);
+    if (result)
+        result.saveOriginal(s);
 
     version (CallbackAPI)
         Compiler.onStatementSemanticDone(s, sc);
@@ -3797,7 +3797,7 @@ private extern(D) Expression applyOpApply(ForeachStatement fs, Expression flde,
      *  aggr.apply(flde)
      */
     Expression ec;
-    ec = new DotIdExp(fs.loc, fs.aggr, sapply.ident);
+    ec = new DotIdExp(fs.loc, fs.aggr, makeIdentifierAtLoc(sapply.ident, sapply.loc));
     ec = new CallExp(fs.loc, ec, flde);
     ec = ec.expressionSemantic(sc2);
     if (ec.op == EXP.error)
@@ -3878,13 +3878,13 @@ private extern(D) Expression applyArray(ForeachStatement fs, Expression flde,
     FuncDeclaration fdapply;
     TypeDelegate dgty;
     auto params = new Parameters();
-    params.push(new Parameter(STC.in_, tn.arrayOf(), null, null, null));
+    params.push(new Parameter(STC.in_, tn.arrayOf()));
     auto dgparams = new Parameters();
-    dgparams.push(new Parameter(0, Type.tvoidptr, null, null, null));
+    dgparams.push(new Parameter(0, Type.tvoidptr));
     if (dim == 2)
-        dgparams.push(new Parameter(0, Type.tvoidptr, null, null, null));
+        dgparams.push(new Parameter(0, Type.tvoidptr));
     dgty = new TypeDelegate(new TypeFunction(ParameterList(dgparams), Type.tint32, LINK.d));
-    params.push(new Parameter(0, dgty, null, null, null));
+    params.push(new Parameter(0, dgty));
     fdapply = FuncDeclaration.genCfunc(params, Type.tint32, fdname.ptr);
 
     if (tab.isTypeSArray())
@@ -3945,14 +3945,14 @@ private extern(D) Expression applyAssocArray(ForeachStatement fs, Expression fld
     if (!fdapply[i])
     {
         auto params = new Parameters();
-        params.push(new Parameter(0, Type.tvoid.pointerTo(), null, null, null));
-        params.push(new Parameter(STC.const_, Type.tsize_t, null, null, null));
+        params.push(new Parameter(0, Type.tvoid.pointerTo()));
+        params.push(new Parameter(STC.const_, Type.tsize_t));
         auto dgparams = new Parameters();
-        dgparams.push(new Parameter(0, Type.tvoidptr, null, null, null));
+        dgparams.push(new Parameter(0, Type.tvoidptr));
         if (dim == 2)
-            dgparams.push(new Parameter(0, Type.tvoidptr, null, null, null));
+            dgparams.push(new Parameter(0, Type.tvoidptr));
         fldeTy[i] = new TypeDelegate(new TypeFunction(ParameterList(dgparams), Type.tint32, LINK.d));
-        params.push(new Parameter(0, fldeTy[i], null, null, null));
+        params.push(new Parameter(0, fldeTy[i]));
         fdapply[i] = FuncDeclaration.genCfunc(params, Type.tint32, i ? Id._aaApply2 : Id._aaApply);
     }
 
@@ -4024,7 +4024,7 @@ private FuncExp foreachBodyToFunction(Scope* sc, ForeachStatement fs, TypeFuncti
     foreach (i, p; *fs.parameters)
     {
         StorageClass stc = STC.ref_ | (p.storageClass & STC.scope_);
-        Identifier id;
+        IdentifierAtLoc id;
 
         p.type = p.type.typeSemantic(fs.loc, sc);
         p.type = p.type.addStorageClass(p.storageClass);
@@ -4055,7 +4055,7 @@ private FuncExp foreachBodyToFunction(Scope* sc, ForeachStatement fs, TypeFuncti
             // Make a copy of the ref argument so it isn't
             // a reference.
         LcopyArg:
-            id = Identifier.generateId("__applyArg", cast(int)i);
+            id = makeIdentifierAtLoc(Identifier.generateId("__applyArg", cast(int)i));
 
             Initializer ie = new ExpInitializer(fs.loc, new IdentifierExp(fs.loc, id));
             auto v = new VarDeclaration(fs.loc, p.type, p.ident, ie);

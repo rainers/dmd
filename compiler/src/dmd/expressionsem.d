@@ -3575,7 +3575,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
          * `_d_newitemT!T()`.
          */
         Expression id = new IdentifierExp(ne.loc, Id.empty);
-        id = new DotIdExp(ne.loc, id, Id.object);
+        id = new DotIdExp(ne.loc, id, makeIdentifierAtLoc(Id.object));
         auto tiargs = new Objects();
         /*
          * Remove `inout`, `const`, `immutable` and `shared` to reduce the
@@ -11088,7 +11088,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         handleCatArgument(arguments, exp.e2);
 
         Expression id = new IdentifierExp(exp.loc, Id.empty);
-        id = new DotIdExp(exp.loc, id, Id.object);
+        id = new DotIdExp(exp.loc, id, makeIdentifierAtLoc(Id.object));
 
         auto tiargs = new Objects();
         tiargs.push(exp.type);

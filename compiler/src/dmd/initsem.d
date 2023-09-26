@@ -814,7 +814,7 @@ extern(C++) Initializer initializerSemantic(Initializer init, Scope* sc, ref Typ
                         goto L2;
                     }
                     error(ci.loc, "`.%s` is not a field of `%s`\n", id.toChars(), sd.toChars());
-                    return err();
+                    return err(ci);
                 }
                 else
                 {
@@ -983,13 +983,13 @@ extern(C++) Initializer initializerSemantic(Initializer init, Scope* sc, ref Typ
         else
         {
             error(ci.loc, "unrecognized C initializer `%s`", ci.toChars());
-            return err();
+            return err(ci);
         }
     }
 
     mixin VisitInitializer!Initializer visit;
     auto result = visit.VisitInitializer(init);
-    return (result !is null) ? result : new ErrorInitializer();
+    return (result !is null) ? result : new ErrorInitializer(init);
 }
 
 /***********************
@@ -1145,7 +1145,7 @@ Initializer inferType(Initializer init, Scope* sc)
 
     mixin VisitInitializer!Initializer visit;
     auto result = visit.VisitInitializer(init);
-    return (result !is null) ? result : new ErrorInitializer();
+    return (result !is null) ? result : new ErrorInitializer(init);
 }
 
 /***********************
