@@ -50,6 +50,7 @@ import dmd.toir;
 import dmd.tokens;
 import dmd.visitor;
 
+import dmd.backend.barray;
 import dmd.backend.cc;
 import dmd.backend.cdef;
 import dmd.backend.cgcv;
@@ -75,7 +76,7 @@ alias toSymbol = dmd.glue.toSymbol;
 alias StmtState = dmd.stmtstate.StmtState!block;
 
 
-void elem_setLoc(elem *e, const ref Loc loc) pure nothrow
+void elem_setLoc(elem *e, const ref Loc loc) nothrow
 {
     srcpos_setLoc(e.Esrcpos, loc);
 }
@@ -95,43 +96,32 @@ void Statement_toIR(Statement s, IRState *irs)
         }
 
     StmtState stmtstate;
-    scope v = new S2irVisitor(irs, &stmtstate);
-    s.accept(v);
+    Statement_toIR(s, irs, &stmtstate);
 }
 
-private extern (C++) class S2irVisitor : Visitor
+void Statement_toIR(Statement s, IRState *irs, StmtState* stmtstate)
 {
-    IRState* irs;
-    StmtState* stmtstate;
-
-    this(IRState *irs, StmtState* stmtstate) scope
-    {
-        this.irs = irs;
-        this.stmtstate = stmtstate;
-    }
-
-    alias visit = Visitor.visit;
-
     /****************************************
      * This should be overridden by each statement class.
      */
 
-    override void visit(Statement s)
+    void visitDefaultCase(Statement s)
     {
+        error(s.loc, "visitDefaultCase() %d for %s\n", s.stmt, s.toChars());
         assert(0);
     }
 
     /*************************************
      */
 
-    override void visit(ScopeGuardStatement s)
+    void visitScopeGuard(ScopeGuardStatement s)
     {
     }
 
     /****************************************
      */
 
-    override void visit(IfStatement s)
+    void visitIf(IfStatement s)
     {
         elem *e;
         Blockx *blx = irs.blx;
@@ -174,7 +164,7 @@ private extern (C++) class S2irVisitor : Visitor
     /**************************************
      */
 
-    override void visit(PragmaStatement s)
+    void visitPragma(PragmaStatement s)
     {
         //printf("PragmaStatement.toIR()\n");
         if (s.ident == Id.startaddress)
@@ -189,18 +179,10 @@ private extern (C++) class S2irVisitor : Visitor
         }
     }
 
-    /***********************
-     */
-
-    override void visit(WhileStatement s)
-    {
-        assert(0); // was "lowered"
-    }
-
     /******************************************
      */
 
-    override void visit(DoStatement s)
+    void visitDo(DoStatement s)
     {
         Blockx *blx = irs.blx;
 
@@ -229,7 +211,7 @@ private extern (C++) class S2irVisitor : Visitor
     /*****************************************
      */
 
-    override void visit(ForStatement s)
+    void visitFor(ForStatement s)
     {
         //printf("visit(ForStatement)) %u..%u\n", s.loc.linnum, s.endloc.linnum);
         Blockx *blx = irs.blx;
@@ -279,30 +261,10 @@ private extern (C++) class S2irVisitor : Visitor
         block_next(blx,BCgoto, mystate.breakBlock);
     }
 
-
-    /**************************************
-     */
-
-    override void visit(ForeachStatement s)
-    {
-        printf("ForeachStatement.toIR() %s\n", s.toChars());
-        assert(0);  // done by "lowering" in the front end
-    }
-
-
-    /**************************************
-     */
-
-    override void visit(ForeachRangeStatement s)
-    {
-        assert(0);
-    }
-
-
     /****************************************
      */
 
-    override void visit(BreakStatement s)
+    void visitBreak(BreakStatement s)
     {
         block *bbreak;
         block *b;
@@ -329,7 +291,7 @@ private extern (C++) class S2irVisitor : Visitor
     /************************************
      */
 
-    override void visit(ContinueStatement s)
+    void visitContinue(ContinueStatement s)
     {
         block *bcont;
         block *b;
@@ -358,7 +320,7 @@ private extern (C++) class S2irVisitor : Visitor
     /**************************************
      */
 
-    override void visit(GotoStatement s)
+    void visitGoto(GotoStatement s)
     {
         Blockx *blx = irs.blx;
 
@@ -374,7 +336,7 @@ private extern (C++) class S2irVisitor : Visitor
         block_next(blx,BCgoto,null);
     }
 
-    override void visit(LabelStatement s)
+    void visitLabel(LabelStatement s)
     {
         //printf("LabelStatement.toIR() %p, statement: `%s`\n", this, s.statement.toChars());
         Blockx *blx = irs.blx;
@@ -395,7 +357,7 @@ private extern (C++) class S2irVisitor : Visitor
     /**************************************
      */
 
-    override void visit(SwitchStatement s)
+    void visitSwitch(SwitchStatement s)
     {
         Blockx *blx = irs.blx;
 
@@ -476,22 +438,24 @@ private extern (C++) class S2irVisitor : Visitor
         block_appendexp(mystate.switchBlock, econd);
         block_next(blx,BCswitch,null);
 
-        // Corresponding free is in block_free
-        alias TCase = typeof(mystate.switchBlock.Bswitch[0]);
-        auto pu = cast(TCase *)Mem.check(.malloc(TCase.sizeof * (numcases + 1)));
-        mystate.switchBlock.Bswitch = pu;
-        /* First pair is the number of cases, and the default block
+        /* First successor is the default block
          */
-        *pu++ = numcases;
         mystate.switchBlock.appendSucc(mystate.defaultBlock);
 
-        /* Fill in the first entry for each pair, which is the case value.
-         * CaseStatement.toIR() will fill in
-         * the second entry for each pair with the block.
-         */
         if (numcases)
-            foreach (cs; *s.cases)
-                *pu++ = cs.exp.toInteger();
+        {
+            // Corresponding free is in block_free
+            alias TCase = typeof(mystate.switchBlock.Bswitch[0]);
+            auto pu = cast(TCase *)Mem.check(.malloc(TCase.sizeof * numcases));
+            mystate.switchBlock.Bswitch = pu[0 .. numcases];
+
+            /* Fill in the first entry for each pair, which is the case value.
+             * CaseStatement.toIR() will fill in
+             * the second entry for each pair with the block.
+             */
+            foreach (i, cs; *s.cases)
+                mystate.switchBlock.Bswitch[i] = cs.exp.toInteger();
+        }
 
         Statement_toIR(s._body, irs, &mystate);
 
@@ -501,7 +465,7 @@ private extern (C++) class S2irVisitor : Visitor
         block_goto(blx, BCgoto, mystate.breakBlock);
     }
 
-    override void visit(CaseStatement s)
+    void visitCase(CaseStatement s)
     {
         Blockx *blx = irs.blx;
         block *bcase = blx.curblock;
@@ -517,7 +481,7 @@ private extern (C++) class S2irVisitor : Visitor
             Statement_toIR(s.statement, irs, stmtstate);
     }
 
-    override void visit(DefaultStatement s)
+    void visitDefault(DefaultStatement s)
     {
         Blockx *blx = irs.blx;
         block *bcase = blx.curblock;
@@ -530,7 +494,7 @@ private extern (C++) class S2irVisitor : Visitor
             Statement_toIR(s.statement, irs, stmtstate);
     }
 
-    override void visit(GotoDefaultStatement s)
+    void visitGotoDefault(GotoDefaultStatement s)
     {
         block *b;
         Blockx *blx = irs.blx;
@@ -545,7 +509,7 @@ private extern (C++) class S2irVisitor : Visitor
         block_next(blx,BCgoto,null);
     }
 
-    override void visit(GotoCaseStatement s)
+    void visitGotoCase(GotoCaseStatement s)
     {
         Blockx *blx = irs.blx;
         block *bdest = cast(block*)s.cs.extra;
@@ -558,7 +522,7 @@ private extern (C++) class S2irVisitor : Visitor
         block_next(blx,BCgoto,null);
     }
 
-    override void visit(SwitchErrorStatement s)
+    void visitSwitchError(SwitchErrorStatement s)
     {
         // SwitchErrors are lowered to a CallExpression to object.__switch_error() in druntime
         // We still need the call wrapped in SwitchErrorStatement to pass compiler error checks.
@@ -574,7 +538,7 @@ private extern (C++) class S2irVisitor : Visitor
     /**************************************
      */
 
-    override void visit(ReturnStatement s)
+    void visitReturn(ReturnStatement s)
     {
         //printf("s2ir.ReturnStatement: %s\n", s.toChars());
         Blockx *blx = irs.blx;
@@ -716,7 +680,7 @@ private extern (C++) class S2irVisitor : Visitor
     /**************************************
      */
 
-    override void visit(ExpStatement s)
+    void visitExp(ExpStatement s)
     {
         Blockx *blx = irs.blx;
 
@@ -739,7 +703,15 @@ private extern (C++) class S2irVisitor : Visitor
     /**************************************
      */
 
-    override void visit(CompoundStatement s)
+    void visitDtorExp(DtorExpStatement s)
+    {
+        return visitExp(s);
+    }
+
+    /**************************************
+     */
+
+    void visitCompound(CompoundStatement s)
     {
         if (s.statements)
         {
@@ -751,11 +723,18 @@ private extern (C++) class S2irVisitor : Visitor
         }
     }
 
+    /**************************************
+     */
+
+    void visitCompoundAsm(CompoundAsmStatement s)
+    {
+        return visitCompound(s);
+    }
 
     /**************************************
      */
 
-    override void visit(UnrolledLoopStatement s)
+    void visitUnrolledLoop(UnrolledLoopStatement s)
     {
         Blockx *blx = irs.blx;
 
@@ -793,7 +772,7 @@ private extern (C++) class S2irVisitor : Visitor
     /**************************************
      */
 
-    override void visit(ScopeStatement s)
+    void visitScope(ScopeStatement s)
     {
         if (s.statement)
         {
@@ -813,7 +792,7 @@ private extern (C++) class S2irVisitor : Visitor
     /***************************************
      */
 
-    override void visit(WithStatement s)
+    void visitWith(WithStatement s)
     {
         //printf("WithStatement.toIR()\n");
         if (s.exp.op == EXP.scope_ || s.exp.op == EXP.type)
@@ -844,7 +823,7 @@ private extern (C++) class S2irVisitor : Visitor
     /***************************************
      */
 
-    override void visit(ThrowStatement s)
+    void visitThrow(ThrowStatement s)
     {
         // throw(exp)
 
@@ -867,7 +846,7 @@ private extern (C++) class S2irVisitor : Visitor
      * A try-catch statement.
      */
 
-    override void visit(TryCatchStatement s)
+    void visitTryCatch(TryCatchStatement s)
     {
         Blockx *blx = irs.blx;
 
@@ -970,14 +949,17 @@ private extern (C++) class S2irVisitor : Visitor
                                         el_combine(e3, el_var(shandler)));
 
             const numcases = s.catches.length;
-            bswitch.Bswitch = cast(targ_llong *) Mem.check(.malloc((targ_llong).sizeof * (numcases + 1)));
-            bswitch.Bswitch[0] = numcases;
+            if (numcases)
+            {
+                long* pu = cast(long*) Mem.check(.malloc(long.sizeof * numcases));
+                bswitch.Bswitch = pu[0 .. numcases];
+            }
             bswitch.appendSucc(defaultblock);
             block_next(blx, BCswitch, null);
 
             foreach (i, cs; *s.catches)
             {
-                bswitch.Bswitch[1 + i] = 1 + i;
+                bswitch.Bswitch[i] = i;
 
                 if (cs.var)
                     cs.var.csym = tryblock.jcatchvar;
@@ -1015,12 +997,12 @@ private extern (C++) class S2irVisitor : Visitor
                 {
                     if (ct == catchtype)
                     {
-                        bswitch.Bswitch[1 + i] = 1 + j;  // index starts at 1
+                        bswitch.Bswitch[i] = 1 + j;  // index starts at 1
                         goto L1;
                     }
                 }
                 f.typesTable.push(catchtype);
-                bswitch.Bswitch[1 + i] = f.typesTable.length;  // index starts at 1
+                bswitch.Bswitch[i] = f.typesTable.length;  // index starts at 1
            L1:
                 block *bcase = blx.curblock;
                 bswitch.appendSucc(bcase);
@@ -1076,11 +1058,11 @@ private extern (C++) class S2irVisitor : Visitor
             /* Make a copy of the switch case table, which will later become the Action Table.
              * Need a copy since the bswitch may get rewritten by the optimizer.
              */
-            alias TAction = typeof(bcatch.actionTable[0]);
-            bcatch.actionTable = cast(TAction*)Mem.check(.malloc(TAction.sizeof * (numcases + 1)));
-            foreach (i; 0 .. numcases + 1)
-                bcatch.actionTable[i] = cast(TAction)bswitch.Bswitch[i];
-
+            alias TAction = typeof((*bcatch.actionTable)[0]);
+            bcatch.actionTable = cast(Barray!TAction*)Mem.check(.calloc(Barray!TAction.sizeof, 1));
+            bcatch.actionTable.setLength(numcases);
+            foreach (i; 0 .. numcases)
+                (*bcatch.actionTable)[i] = cast(TAction)bswitch.Bswitch[i];
         }
         else
         {
@@ -1094,7 +1076,7 @@ private extern (C++) class S2irVisitor : Visitor
                 tryblock.appendSucc(bcatch);
                 block_goto(blx, BCjcatch, null);
 
-                if (cs.type && irs.target.os == Target.OS.Windows && irs.target.is64bit) // Win64
+                if (cs.type && irs.target.os == Target.OS.Windows && irs.target.isX86_64) // Win64
                 {
                     /* The linker will attempt to merge together identical functions,
                      * even if the catch types differ. So add a reference to the
@@ -1147,7 +1129,7 @@ private extern (C++) class S2irVisitor : Visitor
      *      _ret
      */
 
-    override void visit(TryFinallyStatement s)
+    void visitTryFinally(TryFinallyStatement s)
     {
         //printf("TryFinallyStatement.toIR()\n");
 
@@ -1389,16 +1371,7 @@ private extern (C++) class S2irVisitor : Visitor
     /****************************************
      */
 
-    override void visit(SynchronizedStatement s)
-    {
-        assert(0);
-    }
-
-
-    /****************************************
-     */
-
-    override void visit(InlineAsmStatement s)
+    void visitInlineAsm(InlineAsmStatement s)
 //    { .visit(irs, s); }
     {
         block *bpre;
@@ -1490,15 +1463,12 @@ private extern (C++) class S2irVisitor : Visitor
     /****************************************
      */
 
-    override void visit(ImportStatement s)
+    void visitImport(ImportStatement s)
     {
     }
 
-    static void Statement_toIR(Statement s, IRState *irs, StmtState* stmtstate)
-    {
-        scope v = new S2irVisitor(irs, stmtstate);
-        s.accept(v);
-    }
+    mixin VisitStatement!void visit;
+    visit.VisitStatement(s);
 }
 
 /***************************************************
@@ -1743,12 +1713,12 @@ void insertFinallyBlockGotos(block *startblock)
     }
 }
 
-private void block_setLoc(block *b, const ref Loc loc) pure nothrow
+private void block_setLoc(block *b, const ref Loc loc) nothrow
 {
     srcpos_setLoc(b.Bsrcpos, loc);
 }
 
-private void srcpos_setLoc(ref Srcpos s, const ref Loc loc) pure nothrow
+private void srcpos_setLoc(ref Srcpos s, const ref Loc loc) nothrow
 {
     s.set(loc.filename, loc.linnum, loc.charnum);
 }

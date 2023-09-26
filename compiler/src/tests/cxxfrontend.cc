@@ -68,11 +68,11 @@ static void frontend_init()
     gc_disable();
 
     global._init();
-    global.vendor = "Front-End Tester";
+    global.compileEnv.vendor = "Front-End Tester";
     global.params.objname = NULL;
 
     target.os = Target::OS_linux;
-    target.is64bit = true;
+    target.isX86_64 = true;
     target.cpu = CPU::native;
     target._init(global.params);
 
@@ -964,8 +964,8 @@ public:
         else
             sym = func->searchLabel(s->ident, s->loc);
         sym->statement->accept(this);
-        if (sym == func->returnLabel && func->fensure != NULL)
-            func->fensure->accept(this);
+        if (sym == func->returnLabel && func->fensure() != NULL)
+            func->fensure()->accept(this);
         else if (s->statement)
             s->statement->accept(this);
     }

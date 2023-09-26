@@ -16,12 +16,6 @@
 
 module dmd.backend.cgcs;
 
-version (SPP)
-{
-}
-else
-{
-
 import core.stdc.stdio;
 import core.stdc.stdlib;
 
@@ -50,12 +44,6 @@ nothrow:
 public extern (C++) void comsubs()
 {
     debug if (debugx) printf("comsubs(%p)\n",startblock);
-
-    version (SCPP)
-    {
-        if (errcnt)
-            return;
-    }
 
     comsubs2(startblock, cgcsdata);
 
@@ -746,6 +734,4 @@ void touchaccess(ref Barray!HCS hcstab, const elem *ev) pure nothrow
         if (e && (e.Eoper == OPvp_fp || e.Eoper == OPcvp_fp) && e.EV.E1 != ev1)
             hcs.Helem = null;
     }
-}
-
 }

@@ -90,7 +90,7 @@ FileName preprocess(FileName csrcfile, ref const Loc loc, out bool ifile, OutBuf
         const ext = FileName.ext(name);
         assert(ext);
         const ifilename = FileName.addExt(name[0 .. name.length - (ext.length + 1)], i_ext);
-        const command = cppCommand();
+        const command = global.params.cpp ? toDString(global.params.cpp) : cppCommand();
         auto status = runPreprocessor(command, csrcfile.toString(), importc_h, global.params.cppswitches, ifilename, defines);
         if (status)
         {
@@ -117,7 +117,7 @@ private const(char)[] cppCommand()
         {
             VSOptions vsopt;
             vsopt.initialize();
-            auto path = vsopt.compilerPath(target.is64bit);
+            auto path = vsopt.compilerPath(target.isX86_64);
             return toDString(path);
         }
         if (target.objectFormat() == Target.ObjectFormat.omf)

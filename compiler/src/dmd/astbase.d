@@ -463,21 +463,21 @@ struct ASTBase
     extern (C++) final class StaticAssert : Dsymbol
     {
         Expression exp;
-        Expressions* msg;
+        Expressions* msgs;
 
         extern (D) this(const ref Loc loc, Expression exp, Expression msg)
         {
             super(loc, Id.empty);
             this.exp = exp;
-            this.msg = new Expressions(1);
-            (*this.msg)[0] = msg;
+            this.msgs = new Expressions(1);
+            (*this.msgs)[0] = msg;
         }
 
-        extern (D) this(const ref Loc loc, Expression exp, Expressions* msg)
+        extern (D) this(const ref Loc loc, Expression exp, Expressions* msgs)
         {
             super(loc, Id.empty);
             this.exp = exp;
-            this.msg = msg;
+            this.msgs = msgs;
         }
 
         override void accept(Visitor v)
@@ -1075,7 +1075,7 @@ struct ASTBase
         }
     }
 
-    extern (C++) final class CompileDeclaration : AttribDeclaration
+    extern (C++) final class MixinDeclaration : AttribDeclaration
     {
         Expressions* exps;
 
@@ -1289,6 +1289,13 @@ struct ASTBase
         final extern (D) this(StorageClass stc, Dsymbols* decl)
         {
             super(decl);
+            this.stc = stc;
+        }
+
+        final extern (D) this(const ref Loc loc, StorageClass stc, Dsymbols* decl)
+        {
+            super(decl);
+            this.loc = loc;
             this.stc = stc;
         }
 
@@ -1937,13 +1944,13 @@ struct ASTBase
         }
     }
 
-    extern (C++) final class CompileStatement : Statement
+    extern (C++) final class MixinStatement : Statement
     {
         Expressions* exps;
 
         final extern (D) this(const ref Loc loc, Expressions* exps)
         {
-            super(loc, STMT.Compile);
+            super(loc, STMT.Mixin);
             this.exps = exps;
         }
 
@@ -3703,7 +3710,7 @@ struct ASTBase
                 {
                     Expression e = (*exps)[i];
                     if (e.type.ty == Ttuple)
-                        e.error("cannot form tuple of tuples");
+                        e.error("cannot form sequence of sequences");
                     auto arg = new Parameter(STC.undefined_, e.type);
                     (*arguments)[i] = arg;
                 }
@@ -3775,18 +3782,22 @@ struct ASTBase
         Loc loc;
         TOK tok;
         Identifier id;
+        structalign_t packalign;
         Dsymbols* members;
+        Type base;
 
         Type resolved;
         MOD mod;
 
-        extern (D) this(const ref Loc loc, TOK tok, Identifier id, Dsymbols* members)
+        extern (D) this(const ref Loc loc, TOK tok, Identifier id, structalign_t packalign, Type base, Dsymbols* members)
         {
             //printf("TypeTag %p\n", this);
             super(Ttag);
             this.loc = loc;
             this.tok = tok;
             this.id = id;
+            this.packalign = packalign;
+            this.base = base;
             this.members = members;
             this.mod = 0;
         }
@@ -3955,7 +3966,7 @@ struct ASTBase
         extern (D) this(ParameterList pl, Type treturn, LINK linkage, StorageClass stc = 0)
         {
             super(Tfunction, treturn);
-            assert(VarArg.none <= pl.varargs && pl.varargs <= VarArg.typesafe);
+            assert(VarArg.none <= pl.varargs && pl.varargs <= VarArg.max);
             this.parameterList = pl;
             this.linkage = linkage;
 
@@ -4540,7 +4551,6 @@ struct ASTBase
     {
         EXP op;
         ubyte size;
-        ubyte parens;
         Type type;
         Loc loc;
 
@@ -5119,6 +5129,8 @@ struct ASTBase
 
     extern (C++) final class TypeExp : Expression
     {
+        bool parens;
+
         extern (D) this(const ref Loc loc, Type type)
         {
             super(loc, EXP.type, __traits(classInstanceSize, TypeExp));
@@ -5151,6 +5163,7 @@ struct ASTBase
     extern (C++) class IdentifierExp : Expression
     {
         Identifier ident;
+        bool parens;
 
         final extern (D) this(const ref Loc loc, Identifier ident)
         {

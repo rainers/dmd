@@ -153,6 +153,11 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
     if (parseCommandlineAndConfig(argc, argv, params, files))
         return EXIT_FAILURE;
 
+    global.compileEnv.previewIn        = global.params.previewIn;
+    global.compileEnv.ddocOutput       = global.params.ddoc.doOutput;
+    global.compileEnv.shortenedMethods = global.params.shortenedMethods;
+    global.compileEnv.obsolete         = global.params.obsolete;
+
     if (params.usage)
     {
         usage();
@@ -693,7 +698,7 @@ bool parseCommandlineAndConfig(size_t argc, const(char)** argv, ref Param params
     sections.push("Environment");
     parseConfFile(environment, global.inifilename, inifilepath, inifileBuffer, &sections);
 
-    const(char)[] arch = target.is64bit ? "64" : "32"; // use default
+    const(char)[] arch = target.isX86_64 ? "64" : "32"; // use default
     arch = parse_arch_arg(&arguments, arch);
 
     // parse architecture from DFLAGS read from [Environment] section
@@ -704,7 +709,7 @@ bool parseCommandlineAndConfig(size_t argc, const(char)** argv, ref Param params
         arch = parse_arch_arg(&dflags, arch);
     }
 
-    bool is64bit = arch[0] == '6';
+    bool isX86_64 = arch[0] == '6';
 
     version(Windows) // delete LIB entry in [Environment] (necessary for optlink) to allow inheriting environment for MS-COFF
     if (arch != "32omf")
@@ -727,7 +732,7 @@ bool parseCommandlineAndConfig(size_t argc, const(char)** argv, ref Param params
         return true;
     }
 
-    if (target.is64bit != is64bit)
+    if (target.isX86_64 != isX86_64)
         error(Loc.initial, "the architecture must not be changed in the %s section of %.*s",
               envsection.ptr, cast(int)global.inifilename.length, global.inifilename.ptr);
 
@@ -1123,7 +1128,7 @@ private void setDefaultLibrary(ref Param params, const ref Target target)
     {
         if (target.os == Target.OS.Windows)
         {
-            if (target.is64bit)
+            if (target.isX86_64)
                 driverParams.defaultlibname = "phobos64";
             else if (!target.omfobj)
                 driverParams.defaultlibname = "phobos32mscoff";
@@ -1148,187 +1153,6 @@ private void setDefaultLibrary(ref Param params, const ref Target target)
 
     if (driverParams.debuglibname is null)
         driverParams.debuglibname = driverParams.defaultlibname;
-}
-
-/**
- * Add default `version` identifier for dmd, and set the
- * target platform in `params`.
- * https://dlang.org/spec/version.html#predefined-versions
- *
- * Needs to be run after all arguments parsing (command line, DFLAGS environment
- * variable and config file) in order to add final flags (such as `X86_64` or
- * the `CRuntime` used).
- *
- * Params:
- *      params = which target to compile for (set by `setTarget()`)
- *      tgt    = target
- */
-public
-void addDefaultVersionIdentifiers(const ref Param params, const ref Target tgt)
-{
-    VersionCondition.addPredefinedGlobalIdent("DigitalMars");
-    VersionCondition.addPredefinedGlobalIdent("LittleEndian");
-    VersionCondition.addPredefinedGlobalIdent("D_Version2");
-    VersionCondition.addPredefinedGlobalIdent("all");
-
-    addPredefinedGlobalIdentifiers(tgt);
-
-    if (params.ddoc.doOutput)
-        VersionCondition.addPredefinedGlobalIdent("D_Ddoc");
-    if (params.cov)
-        VersionCondition.addPredefinedGlobalIdent("D_Coverage");
-    if (driverParams.pic != PIC.fixed)
-        VersionCondition.addPredefinedGlobalIdent(driverParams.pic == PIC.pic ? "D_PIC" : "D_PIE");
-    if (params.useUnitTests)
-        VersionCondition.addPredefinedGlobalIdent("unittest");
-    if (params.useAssert == CHECKENABLE.on)
-        VersionCondition.addPredefinedGlobalIdent("assert");
-    if (params.useIn == CHECKENABLE.on)
-        VersionCondition.addPredefinedGlobalIdent("D_PreConditions");
-    if (params.useOut == CHECKENABLE.on)
-        VersionCondition.addPredefinedGlobalIdent("D_PostConditions");
-    if (params.useInvariants == CHECKENABLE.on)
-        VersionCondition.addPredefinedGlobalIdent("D_Invariants");
-    if (params.useArrayBounds == CHECKENABLE.off)
-        VersionCondition.addPredefinedGlobalIdent("D_NoBoundsChecks");
-    if (params.betterC)
-    {
-        VersionCondition.addPredefinedGlobalIdent("D_BetterC");
-    }
-    else
-    {
-        VersionCondition.addPredefinedGlobalIdent("D_ModuleInfo");
-        VersionCondition.addPredefinedGlobalIdent("D_Exceptions");
-        VersionCondition.addPredefinedGlobalIdent("D_TypeInfo");
-    }
-
-    VersionCondition.addPredefinedGlobalIdent("D_HardFloat");
-
-    if (params.tracegc)
-        VersionCondition.addPredefinedGlobalIdent("D_ProfileGC");
-
-    if (driverParams.optimize)
-        VersionCondition.addPredefinedGlobalIdent("D_Optimized");
-}
-
-/**
- * Add predefined global identifiers that are determied by the target
- */
-private
-void addPredefinedGlobalIdentifiers(const ref Target tgt)
-{
-    import dmd.cond : VersionCondition;
-
-    alias predef = VersionCondition.addPredefinedGlobalIdent;
-    if (tgt.cpu >= CPU.sse2)
-    {
-        predef("D_SIMD");
-        if (tgt.cpu >= CPU.avx)
-            predef("D_AVX");
-        if (tgt.cpu >= CPU.avx2)
-            predef("D_AVX2");
-    }
-
-    with (Target)
-    {
-        if (tgt.os & OS.Posix)
-            predef("Posix");
-        if (tgt.os & (OS.linux | OS.FreeBSD | OS.OpenBSD | OS.DragonFlyBSD | OS.Solaris))
-            predef("ELFv1");
-        switch (tgt.os)
-        {
-            case OS.none:         { predef("FreeStanding"); break; }
-            case OS.linux:        { predef("linux");        break; }
-            case OS.OpenBSD:      { predef("OpenBSD");      break; }
-            case OS.DragonFlyBSD: { predef("DragonFlyBSD"); break; }
-            case OS.Solaris:      { predef("Solaris");      break; }
-            case OS.Windows:
-            {
-                 predef("Windows");
-                 VersionCondition.addPredefinedGlobalIdent(tgt.is64bit ? "Win64" : "Win32");
-                 break;
-            }
-            case OS.OSX:
-            {
-                predef("OSX");
-                // For legacy compatibility
-                predef("darwin");
-                break;
-            }
-            case OS.FreeBSD:
-            {
-                predef("FreeBSD");
-                switch (tgt.osMajor)
-                {
-                    case 10: predef("FreeBSD_10");  break;
-                    case 11: predef("FreeBSD_11"); break;
-                    case 12: predef("FreeBSD_12"); break;
-                    case 13: predef("FreeBSD_13"); break;
-                    default: predef("FreeBSD_11"); break;
-                }
-                break;
-            }
-            default: assert(0);
-        }
-    }
-
-    addCRuntimePredefinedGlobalIdent(tgt.c);
-    addCppRuntimePredefinedGlobalIdent(tgt.cpp);
-
-    if (tgt.is64bit)
-    {
-        VersionCondition.addPredefinedGlobalIdent("D_InlineAsm_X86_64");
-        VersionCondition.addPredefinedGlobalIdent("X86_64");
-    }
-    else
-    {
-        VersionCondition.addPredefinedGlobalIdent("D_InlineAsm"); //legacy
-        VersionCondition.addPredefinedGlobalIdent("D_InlineAsm_X86");
-        VersionCondition.addPredefinedGlobalIdent("X86");
-    }
-    if (tgt.isLP64)
-        VersionCondition.addPredefinedGlobalIdent("D_LP64");
-    else if (tgt.is64bit)
-        VersionCondition.addPredefinedGlobalIdent("X32");
-}
-
-private
-void addCRuntimePredefinedGlobalIdent(const ref TargetC c)
-{
-    import dmd.cond : VersionCondition;
-
-    alias predef = VersionCondition.addPredefinedGlobalIdent;
-    with (TargetC.Runtime) switch (c.runtime)
-    {
-    default:
-    case Unspecified: return;
-    case Bionic:      return predef("CRuntime_Bionic");
-    case DigitalMars: return predef("CRuntime_DigitalMars");
-    case Glibc:       return predef("CRuntime_Glibc");
-    case Microsoft:   return predef("CRuntime_Microsoft");
-    case Musl:        return predef("CRuntime_Musl");
-    case Newlib:      return predef("CRuntime_Newlib");
-    case UClibc:      return predef("CRuntime_UClibc");
-    case WASI:        return predef("CRuntime_WASI");
-    }
-}
-
-private
-void addCppRuntimePredefinedGlobalIdent(const ref TargetCPP cpp)
-{
-    import dmd.cond : VersionCondition;
-
-    alias predef = VersionCondition.addPredefinedGlobalIdent;
-    with (TargetCPP.Runtime) switch (cpp.runtime)
-    {
-    default:
-    case Unspecified: return;
-    case Clang:       return predef("CppRuntime_Clang");
-    case DigitalMars: return predef("CppRuntime_DigitalMars");
-    case Gcc:         return predef("CppRuntime_Gcc");
-    case Microsoft:   return predef("CppRuntime_Microsoft");
-    case Sun:         return predef("CppRuntime_Sun");
-    }
 }
 
 private void printPredefinedVersions(FILE* stream)
@@ -1572,6 +1396,18 @@ bool parseCommandLine(const ref Strings arguments, const size_t argc, ref Param 
 
         if (arg == "-allinst")               // https://dlang.org/dmd.html#switch-allinst
             params.allInst = true;
+        else if (startsWith(p + 1, "cpp="))  // https://dlang.org/dmd.html#switch-cpp
+        {
+            if (p[5])
+            {
+                params.cpp = p + 5;
+            }
+            else
+            {
+                errorInvalidSwitch(p, "it must be followed by the filename of the desired C preprocessor");
+                return false;
+            }
+        }
         else if (arg == "-de")               // https://dlang.org/dmd.html#switch-de
             params.useDeprecated = DiagnosticReporting.error;
         else if (arg == "-d")                // https://dlang.org/dmd.html#switch-d
@@ -1785,22 +1621,22 @@ bool parseCommandLine(const ref Strings arguments, const size_t argc, ref Param 
         }
         else if (arg == "-m32") // https://dlang.org/dmd.html#switch-m32
         {
-            target.is64bit = false;
+            target.isX86_64 = false;
             target.omfobj = false;
         }
         else if (arg == "-m64") // https://dlang.org/dmd.html#switch-m64
         {
-            target.is64bit = true;
+            target.isX86_64 = true;
             target.omfobj = false;
         }
         else if (arg == "-m32mscoff") // https://dlang.org/dmd.html#switch-m32mscoff
         {
-            target.is64bit = false;
+            target.isX86_64 = false;
             target.omfobj = false;
         }
         else if (arg == "-m32omf") // https://dlang.org/dmd.html#switch-m32omfobj
         {
-            target.is64bit = false;
+            target.isX86_64 = false;
             target.omfobj = true;
         }
         else if (startsWith(p + 1, "mscrtlib="))
@@ -2107,6 +1943,11 @@ bool parseCommandLine(const ref Strings arguments, const size_t argc, ref Param 
             params.warnings = DiagnosticReporting.error;
         else if (arg == "-wi")  // https://dlang.org/dmd.html#switch-wi
             params.warnings = DiagnosticReporting.inform;
+        else if (arg == "-wo")  // https://dlang.org/dmd.html#switch-wo
+        {
+            params.warnings = DiagnosticReporting.inform;
+            params.obsolete = true;
+        }
         else if (arg == "-O")   // https://dlang.org/dmd.html#switch-O
             driverParams.optimize = true;
         else if (arg == "-o-")  // https://dlang.org/dmd.html#switch-o-
@@ -2318,7 +2159,10 @@ bool parseCommandLine(const ref Strings arguments, const size_t argc, ref Param 
         else if (arg == "-release")     // https://dlang.org/dmd.html#switch-release
             params.release = true;
         else if (arg == "-betterC")     // https://dlang.org/dmd.html#switch-betterC
+        {
             params.betterC = true;
+            params.allInst = true;
+        }
         else if (arg == "-noboundscheck") // https://dlang.org/dmd.html#switch-noboundscheck
         {
             params.boundscheck = CHECKENABLE.off;
@@ -2598,7 +2442,7 @@ private void reconcileCommands(ref Param params, ref Target target)
     }
     else if (target.os == Target.OS.DragonFlyBSD)
     {
-        if (!target.is64bit)
+        if (!target.isX86_64)
             error(Loc.initial, "`-m32` is not supported on DragonFlyBSD, it is 64-bit only");
     }
 
@@ -2713,7 +2557,7 @@ private void reconcileLinkRunLib(ref Param params, size_t numSrcFiles, const cha
             {
                 VSOptions vsopt;
                 vsopt.initialize();
-                driverParams.mscrtlib = vsopt.defaultRuntimeLibrary(target.is64bit).toDString;
+                driverParams.mscrtlib = vsopt.defaultRuntimeLibrary(target.isX86_64).toDString;
             }
             else
             {

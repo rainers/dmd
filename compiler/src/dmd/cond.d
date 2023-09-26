@@ -260,7 +260,7 @@ extern (C++) final class StaticForeach : RootObject
         auto sdecl = new StructDeclaration(loc, sid, false);
         sdecl.storage_class |= STC.static_;
         sdecl.members = new Dsymbols();
-        auto fid = Identifier.idPool(tupleFieldName.ptr, tupleFieldName.length);
+        auto fid = Identifier.idPool(tupleFieldName);
         auto ty = new TypeTypeof(loc, new TupleExp(loc, e));
         sdecl.members.push(new VarDeclaration(loc, ty, fid, null, 0));
         auto r = cast(TypeStruct)sdecl.type;
@@ -734,6 +734,7 @@ extern (C++) final class VersionCondition : DVCondition
             case "SysV4":
             case "TVOS":
             case "unittest":
+            case "VisionOS":
             case "WASI":
             case "WatchOS":
             case "WebAssembly":

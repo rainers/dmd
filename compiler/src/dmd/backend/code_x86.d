@@ -138,9 +138,6 @@ enum
 enum RMload  = (1 << 30);
 enum RMstore = (1 << 31);
 
-extern (C++) extern __gshared regm_t ALLREGS;
-extern (C++) extern __gshared regm_t BYTEREGS;
-
     // To support positional independent code,
     // must be able to remove BX from available registers
     enum ALLREGS_INIT          = (mAX|mBX|mCX|mDX|mSI|mDI);
@@ -307,9 +304,6 @@ enum
     CFPREFIX    = CFSEG | CFopsize | CFaddrsize,
 }
 
-@trusted
-extern (C) void CF_print(uint cf);
-
 struct code
 {
     code *next;
@@ -402,8 +396,6 @@ struct code
     }
 }
 
-extern (C) void code_print(scope code*);
-
 /*******************
  * Some instructions.
  */
@@ -472,6 +464,8 @@ enum
 
     ESCAPE  = SEGDS,   // marker that special information is here
                        // (Iop2 is the type of special information)
+    ENDBR32 = 0xF30F1EFB,
+    ENDBR64 = 0xF30F1EFA,
 }
 
 
@@ -573,11 +567,3 @@ struct Globals87
 
     Barray!NDP save;           // 8087 values spilled to memory
 }
-
-extern (C++) extern __gshared Globals87 global87;
-
-void getlvalue_msw(code *);
-void getlvalue_lsw(code *);
-void getlvalue(ref CodeBuilder cdb, code *pcs, elem *e, regm_t keepmsk);
-void loadea(ref CodeBuilder cdb, elem *e, code *cs, uint op, uint reg, targ_size_t offset, regm_t keepmsk, regm_t desmsk);
-bool loadxmmconst(elem* e);
