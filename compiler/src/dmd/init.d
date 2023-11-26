@@ -25,7 +25,7 @@ import dmd.identifier;
 import dmd.location;
 import dmd.mtype;
 import dmd.common.outbuffer;
-import dmd.root.rootobject;
+import dmd.rootobject;
 import dmd.tokens;
 import dmd.visitor;
 
@@ -51,18 +51,10 @@ extern (C++) class Initializer : ASTNode
     }
 
 
-    extern (D) this(const ref Loc loc, InitKind kind)
+    extern (D) this(const ref Loc loc, InitKind kind) @safe
     {
         this.loc = loc;
         this.kind = kind;
-    }
-
-    override final const(char)* toChars() const
-    {
-        OutBuffer buf;
-        HdrGenState hgs;
-        .toCBuffer(this, &buf, &hgs);
-        return buf.extractChars();
     }
 
     final inout(ErrorInitializer) isErrorInitializer() inout @nogc nothrow pure
@@ -108,7 +100,7 @@ extern (C++) final class VoidInitializer : Initializer
 {
     Type type;      // type that this will initialize to
 
-    extern (D) this(const ref Loc loc)
+    extern (D) this(const ref Loc loc) @safe
     {
         super(loc, InitKind.void_);
     }
@@ -126,7 +118,7 @@ extern (C++) final class ErrorInitializer : Initializer
     version (LanguageServer)
         Initializer original;
 
-    extern (D) this(Initializer original)
+    extern (D) this(Initializer original) @safe
     {
         super(Loc.initial, InitKind.error);
         version (LanguageServer)
@@ -211,7 +203,7 @@ extern (C++) final class ExpInitializer : Initializer
     bool expandTuples;
     Expression exp;
 
-    extern (D) this(const ref Loc loc, Expression exp)
+    extern (D) this(const ref Loc loc, Expression exp) @safe
     {
         super(loc, InitKind.exp);
         this.exp = exp;
@@ -231,8 +223,8 @@ struct Designator
     Expression exp;     /// [ constant-expression ]
     Identifier ident;   /// . identifier
 
-    this(Expression exp) { this.exp = exp; }
-    this(Identifier ident) { this.ident = ident; }
+    this(Expression exp) @safe { this.exp = exp; }
+    this(Identifier ident) @safe  { this.ident = ident; }
 }
 
 /*********************************************
@@ -382,7 +374,7 @@ mixin template VisitInitializer(Result)
  *      handler = string for the name of the visit handler
  * Returns: boilerplate code for a case
  */
-pure string visitCase(string handler)
+string visitCase(string handler) pure @safe
 {
     if (__ctfe)
     {
