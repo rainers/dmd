@@ -713,13 +713,31 @@ extern (C++) class Dsymbol : ASTNode
 
         void addQualifiers(Dsymbol p)
         {
+            bool show = true;
             if (p.parent)
             {
+                // don't repeat name in one-member template instances
+                Dsymbol sym;
+                if (auto ti = p.parent.isTemplateInstance())
+                    if (auto ident = p.getIdent())
+                        if (ident is ti.name)
+                            if (Dsymbol.oneMembers(ti.members, &sym, ident) && sym is p)
+                                show = false;
+
+                if (auto td = p.parent.isTemplateDeclaration())
+                    if (td.onemember is p)
+                        show = false;
+
                 addQualifiers(p.parent);
-                buf.writeByte('.');
+                if (show)
+                    buf.writeByte('.');
             }
-            const s = QualifyTypes ? p.toPrettyCharsHelper() : p.toChars();
-            buf.writestring(s);
+            if (show)
+            {
+                const s = prettyPrintSymbolHandler ? prettyPrintSymbolHandler(p, QualifyTypes)
+                        : (QualifyTypes ? p.toPrettyCharsHelper() : p.toChars());
+                buf.writestring(s);
+            }
         }
 
         addQualifiers(this);
