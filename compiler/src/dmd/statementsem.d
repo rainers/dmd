@@ -162,7 +162,7 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
 
     void setError()
     {
-        result = new ErrorStatement();
+        result = new ErrorStatement(s);
     }
 
     void visitDefaultCase(Statement s)
@@ -891,7 +891,7 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
         void retError()
         {
             sc2.pop();
-            result = new ErrorStatement();
+            result = new ErrorStatement(fs);
         }
 
         void rangeError()
@@ -4358,7 +4358,7 @@ public auto makeTupleForeach(Scope* sc, bool isStatic, bool isDecl, ForeachState
         if (isDecl)
             result.decl = null;
         else
-            result.statement = new ErrorStatement();
+            result.statement = new ErrorStatement(fs);
         return result;
     }
 
@@ -4702,10 +4702,10 @@ public auto makeTupleForeach(Scope* sc, bool isStatic, bool isDecl, ForeachState
  */
 private Statements* flatten(Statement statement, Scope* sc)
 {
-    static auto errorStatements()
+    auto errorStatements()
     {
         auto a = new Statements();
-        a.push(new ErrorStatement());
+        a.push(new ErrorStatement(statement));
         return a;
     }
 

@@ -258,7 +258,7 @@ AFTER_EMIT:
     {
         asmerr("end of instruction expected, not `%s`", asmstate.tok.toChars());  // end of line expected
     }
-    return asmstate.errors ? new ErrorStatement() : s;
+    return asmstate.errors ? new ErrorStatement(s) : s;
 }
 
 private:
