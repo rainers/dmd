@@ -784,7 +784,7 @@ void toObjFile(Dsymbol ds, bool multiobj)
                 assert(e.op == EXP.string_);
 
                 StringExp se = cast(StringExp)e;
-                char *name = cast(char *)mem.xmalloc(se.numberOfCodeUnits() + 1);
+                char *name = cast(char *)mem.xmalloc_noscan(se.numberOfCodeUnits() + 1);
                 se.writeTo(name, true);
 
                 /* Embed the library names into the object file.
@@ -819,7 +819,7 @@ void toObjFile(Dsymbol ds, bool multiobj)
                 assert(e.op == EXP.string_);
 
                 StringExp se = cast(StringExp)e;
-                char *directive = cast(char *)mem.xmalloc(se.numberOfCodeUnits() + 1);
+                char *directive = cast(char *)mem.xmalloc_noscan(se.numberOfCodeUnits() + 1);
                 se.writeTo(directive, true);
 
                 obj_linkerdirective(directive);

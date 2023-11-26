@@ -301,7 +301,7 @@ Symbol *toStringSymbol(StringExp se)
     }
     else
     {
-        auto p = cast(char *)mem.xmalloc(n * se.sz);
+        auto p = cast(char *)mem.xmalloc_noscan(n * se.sz);
         se.writeTo(p, false);
         si = toStringSymbol(p, n, se.sz);
         mem.xfree(p);

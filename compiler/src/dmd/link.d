@@ -708,7 +708,7 @@ public int runLINK()
             if (!FileName.equalsExt(p, "a"))
             {
                 const plen = strlen(p);
-                char* s = cast(char*)mem.xmalloc(plen + 3);
+                char* s = cast(char*)mem.xmalloc_noscan(plen + 3);
                 s[0] = '-';
                 s[1] = 'l';
                 memcpy(s + 2, p, plen + 1);
@@ -981,7 +981,7 @@ public int runProgram()
             if (strchr(a, ' '))
             {
                 const blen = 3 + strlen(a);
-                char* b = cast(char*)mem.xmalloc(blen);
+                char* b = cast(char*)mem.xmalloc_noscan(blen);
                 snprintf(b, blen, "\"%s\"", a);
                 a = b;
             }

@@ -7314,7 +7314,7 @@ Loc adjustLocForMixin(const(char)[] input, ref const Loc loc, ref Output mixinOu
          * in the source file.
          */
         auto len = strlen(loc.filename) + 7 + (loc.linnum).sizeof * 3 + 1;
-        char* filename = cast(char*)mem.xmalloc(len);
+        char* filename = cast(char*)mem.xmalloc_noscan(len);
         snprintf(filename, len, "%s-mixin-%d", loc.filename, cast(int)loc.linnum);
         result = Loc(filename, loc.linnum, loc.charnum);
     }

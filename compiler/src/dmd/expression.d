@@ -2663,7 +2663,7 @@ extern (C++) final class StringExp : Expression
     extern (D) const(char)[] toStringz() const
     {
         auto nbytes = len * sz;
-        char* s = cast(char*)mem.xmalloc(nbytes + sz);
+        char* s = cast(char*)mem.xmalloc_noscan(nbytes + sz);
         writeTo(s, true);
         return s[0 .. nbytes];
     }

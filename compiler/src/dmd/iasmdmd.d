@@ -3676,7 +3676,7 @@ code *asm_db_parse(OP *pop)
                     }
                     else
                     {
-                        auto qstart = cast(char *)mem.xmalloc(len * se.sz);
+                        auto qstart = cast(char *)mem.xmalloc_noscan(len * se.sz);
                         se.writeTo(qstart, false);
                         writeBytes(qstart[0 .. len]);
                         mem.xfree(qstart);
