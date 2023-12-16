@@ -819,6 +819,9 @@ extern (C++) struct Scope
      */
     extern (D) bool needsCodegen()
     {
-        return (flags & (SCOPE.ctfe | SCOPE.ctfeBlock | SCOPE.compile)) == 0;
+        version (LanguageServer)
+            return false; // avoid lowerings, they add to the confusion and are too runtime specific
+        else
+            return (flags & (SCOPE.ctfe | SCOPE.ctfeBlock | SCOPE.compile)) == 0;
     }
 }
