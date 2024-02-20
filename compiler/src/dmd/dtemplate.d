@@ -28,7 +28,7 @@
  *   arguments, and uses it if found.
  * - Otherwise, the rest of semantic is run on the `TemplateInstance`.
  *
- * Copyright:   Copyright (C) 1999-2023 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2024 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/dtemplate.d, _dtemplate.d)
@@ -69,6 +69,7 @@ import dmd.initsem;
 import dmd.location;
 import dmd.mtype;
 import dmd.opover;
+import dmd.optimize;
 import dmd.root.array;
 import dmd.common.outbuffer;
 import dmd.rootobject;
@@ -614,7 +615,7 @@ extern (C++) final class TemplateDeclaration : ScopeDsymbol
             return;
 
         Dsymbol s;
-        if (!Dsymbol.oneMembers(members, &s, ident) || !s)
+        if (!Dsymbol.oneMembers(members, s, ident) || !s)
             return;
 
         onemember = s;
@@ -747,7 +748,7 @@ extern (C++) final class TemplateDeclaration : ScopeDsymbol
         OutBuffer buf;
         HdrGenState hgs;
 
-        buf.writestring(ident.toString());
+        buf.writestring(ident == Id.ctor ? "this" : ident.toString());
         buf.writeByte('(');
         foreach (i, const tp; *parameters)
         {
@@ -764,6 +765,11 @@ extern (C++) final class TemplateDeclaration : ScopeDsymbol
             {
                 TypeFunction tf = cast(TypeFunction)fd.type;
                 buf.writestring(parametersTypeToChars(tf.parameterList));
+                if (tf.mod)
+                {
+                    buf.writeByte(' ');
+                    buf.MODtoBuffer(tf.mod);
+                }
             }
         }
 
@@ -6042,9 +6048,9 @@ extern (C++) class TemplateInstance : ScopeDsymbol
         return "template instance";
     }
 
-    override bool oneMember(Dsymbol* ps, Identifier ident)
+    override bool oneMember(out Dsymbol ps, Identifier ident)
     {
-        *ps = null;
+        ps = null;
         return true;
     }
 
@@ -6478,7 +6484,7 @@ extern (C++) class TemplateInstance : ScopeDsymbol
              */
             Identifier id = name;
             Dsymbol scopesym;
-            Dsymbol s = sc.search(loc, id, &scopesym);
+            Dsymbol s = sc.search(loc, id, scopesym);
             if (!s)
             {
                 s = sc.search_correct(id);
@@ -7528,7 +7534,12 @@ extern (C++) class TemplateInstance : ScopeDsymbol
         }
         //printf("\t-. mi = %s\n", mi.toPrettyChars());
 
-        assert(!memberOf || (!memberOf.isRoot() && mi.isRoot()), "can only re-append from non-root to root module");
+        if (memberOf) // already appended to some module
+        {
+            assert(mi.isRoot(), "can only re-append to a root module");
+            if (memberOf.isRoot())
+                return null; // no need to move to another root module
+        }
 
         Dsymbols* a = mi.members;
         a.push(this);
@@ -7607,7 +7618,7 @@ extern (C++) class TemplateInstance : ScopeDsymbol
                 if (members.length)
                 {
                     Dsymbol sa;
-                    if (Dsymbol.oneMembers(members, &sa, tempdecl.ident) && sa)
+                    if (Dsymbol.oneMembers(members, sa, tempdecl.ident) && sa)
                         aliasdecl = sa;
                 }
                 done = true;
@@ -7828,7 +7839,7 @@ extern (C++) final class TemplateMixin : TemplateInstance
         return "mixin";
     }
 
-    override bool oneMember(Dsymbol* ps, Identifier ident)
+    override bool oneMember(out Dsymbol ps, Identifier ident)
     {
         return Dsymbol.oneMember(ps, ident);
     }
@@ -7837,15 +7848,6 @@ extern (C++) final class TemplateMixin : TemplateInstance
     {
         //printf("TemplateMixin.hasPointers() %s\n", toChars());
         return members.foreachDsymbol( (s) { return s.hasPointers(); } ) != 0;
-    }
-
-    override void setFieldOffset(AggregateDeclaration ad, ref FieldState fieldState, bool isunion)
-    {
-        //printf("TemplateMixin.setFieldOffset() %s\n", toChars());
-        if (_scope) // if fwd reference
-            dsymbolSemantic(this, null); // try to resolve it
-
-        members.foreachDsymbol( (s) { s.setFieldOffset(ad, fieldState, isunion); } );
     }
 
     override const(char)* toChars() const
