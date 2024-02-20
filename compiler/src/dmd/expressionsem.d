@@ -247,7 +247,7 @@ extern (D) bool findTempDecl(DotTemplateInstanceExp exp, Scope* sc)
     if (ti.tempdecl)
         return true;
 
-    Expression e = new DotIdExp(exp.loc, e1, ti.name);
+    Expression e = new DotIdExp(exp.loc, e1, makeIdentifierAtLoc(ti.name, exp.loc));
     e = e.expressionSemantic(sc);
     if (e.op == EXP.dot)
         e = (cast(DotExp)e).e2;
@@ -5193,7 +5193,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                  * to `_d_newarraymTX!(T[][]...[], T)([n1, n2, ...])`.
                  */
                 Expression lowering = new IdentifierExp(exp.loc, Id.empty);
-                lowering = new DotIdExp(exp.loc, lowering, Id.object);
+                lowering = new DotIdExp(exp.loc, lowering, makeIdentifierAtLoc(Id.object));
 
                 auto tbn = exp.type.nextOf();
                 while (tbn.ty == Tarray)

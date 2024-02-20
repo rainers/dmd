@@ -340,7 +340,8 @@ Expression resolveAliasThis(Scope* sc, Expression e, bool gag = false, bool find
             Type tthis = (e.op == EXP.type ? e.type : null);
             const flags = cast(DotExpFlag) (DotExpFlag.noAliasThis | (gag * DotExpFlag.gag));
             uint olderrors = gag ? global.startGagging() : 0;
-            e = dotExp(ad.type, sc, e, ad.aliasthis.ident, flags);
+            auto die = new DotIdExp(loc, e, makeIdentifierAtLoc(ad.aliasthis.ident)); // just to satisfy dotExp interface, no source loc for inserted ident
+            e = dotExp(ad.type, sc, e, die, flags);
             if (!e || findOnly)
                 return gag && global.endGagging(olderrors) ? null : e;
 
@@ -8880,7 +8881,7 @@ extern(C++) class ImportAllVisitor : Visitor
              (*m.members)[0].ident != Id.object ||
              (*m.members)[0].isImport() is null))
         {
-            auto im = new Import(Loc.initial, null, Id.object, null, 0);
+            auto im = new Import(Loc.initial, null, Id.object, makeIdentifierAtLoc(null), 0);
             m.members.shift(im);
         }
         if (!m.symtab)

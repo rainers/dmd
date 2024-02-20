@@ -1069,7 +1069,7 @@ Initializer inferType(Initializer init, Scope* sc)
     Initializer visitDefault(DefaultInitializer i)
     {
         error(i.loc, "cannot infer type from default initializer");
-        return new ErrorInitializer();
+        return new ErrorInitializer(i);
     }
 
     Initializer visitError(ErrorInitializer i)

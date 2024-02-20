@@ -684,7 +684,7 @@ extern (C++) class Dsymbol : ASTNode
                 if (auto ti = p.parent.isTemplateInstance())
                     if (auto ident = p.getIdent())
                         if (ident is ti.name)
-                            if (Dsymbol.oneMembers(ti.members, &sym, ident) && sym is p)
+                            if (Dsymbol.oneMembers(ti.members, sym, ident) && sym is p)
                                 show = false;
 
                 if (auto td = p.parent.isTemplateDeclaration())
