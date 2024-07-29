@@ -9,6 +9,13 @@
  */
 
 /**********************
+ * Silence noisy warnings for this file
+ */
+#ifdef __GNUC__
+#pragma GCC system_header
+#endif
+
+/**********************
  * For special casing ImportC code.
  */
 #define __IMPORTC__ 1
@@ -70,12 +77,18 @@ typedef unsigned long long __uint64_t;
  * Obsolete detritus
  */
 #define __cdecl
+#define __pascal
+
+/*********************
+ * DMC-specific extensions, https://digitalmars.com/ctg/pointers16.html
+ */
+#ifdef __DMC__
 #define __ss
 #define __cs
 #define __far
 #define __near
 #define __handle
-#define __pascal
+#endif
 
 /****************************
  * __extension__ is a GNU C extension. It suppresses warnings
@@ -134,6 +147,7 @@ typedef unsigned long long __uint64_t;
 #define __ptr64
 #define __unaligned
 #define _NO_CRT_STDIO_INLINE 1
+#define _stdcall __stdcall
 
 // This header disables the Windows API Annotations macros
 // Need to include sal.h to get the pragma once to prevent macro redefinition.

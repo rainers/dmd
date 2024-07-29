@@ -27,6 +27,7 @@ import dmd.dtemplate;
 import dmd.errors;
 import dmd.expression;
 import dmd.func;
+import dmd.funcsem;
 import dmd.globals;
 import dmd.gluelayer;
 import dmd.id;
@@ -38,6 +39,7 @@ import dmd.location;
 import dmd.mtype;
 import dmd.common.outbuffer;
 import dmd.rootobject;
+import dmd.root.filename;
 import dmd.target;
 import dmd.tokens;
 import dmd.typesem;
@@ -213,9 +215,21 @@ bool modifyFieldVar(Loc loc, Scope* sc, VarDeclaration var, Expression e1)
 
 /******************************************
  */
-extern (C++) void ObjectNotFound(Identifier id)
+void ObjectNotFound(Loc loc, Identifier id)
 {
-    error(Loc.initial, "`%s` not found. object.d may be incorrectly installed or corrupt.", id.toChars());
+    error(loc, "`%s` not found. object.d may be incorrectly installed or corrupt.", id.toChars());
+    version (IN_LLVM)
+    {
+        errorSupplemental(loc, "ldc2 might not be correctly installed.");
+        errorSupplemental(loc, "Please check your ldc2.conf configuration file.");
+        errorSupplemental(loc, "Installation instructions can be found at http://wiki.dlang.org/LDC.");
+    }
+    else version (MARS)
+    {
+        errorSupplemental(loc, "dmd might not be correctly installed. Run 'dmd -man' for installation instructions.");
+        const dmdConfFile = global.inifilename.length ? FileName.canonicalName(global.inifilename) : "not found";
+        errorSupplemental(loc, "config file: %.*s", cast(int)dmdConfFile.length, dmdConfFile.ptr);
+    }
     fatal();
 }
 
@@ -1375,7 +1389,7 @@ extern (C++) class VarDeclaration : Declaration
     /*************************************
      * Return true if we can take the address of this variable.
      */
-    final bool canTakeAddressOf()
+    final bool canTakeAddressOf() @safe
     {
         return !(storage_class & STC.manifest);
     }
@@ -1383,9 +1397,9 @@ extern (C++) class VarDeclaration : Declaration
     /******************************************
      * Return true if variable needs to call the destructor.
      */
-    final bool needsScopeDtor()
+    final bool needsScopeDtor() @safe
     {
-        //printf("VarDeclaration::needsScopeDtor() %s\n", toChars());
+        //printf("VarDeclaration::needsScopeDtor() %s %d\n", toChars(), edtor && !(storage_class & STC.nodtor));
         return edtor && !(storage_class & STC.nodtor);
     }
 
@@ -1756,6 +1770,35 @@ extern (C++) final class SymbolDeclaration : Declaration
 
 /***********************************************************
  */
+private Identifier getTypeInfoIdent(Type t)
+{
+    import dmd.dmangle;
+    import core.stdc.stdlib;
+    import dmd.root.rmem;
+    // _init_10TypeInfo_%s
+    OutBuffer buf;
+    buf.reserve(32);
+    mangleToBuffer(t, buf);
+
+    const slice = buf[];
+
+    // Allocate buffer on stack, fail over to using malloc()
+    char[128] namebuf;
+    const namelen = 19 + size_t.sizeof * 3 + slice.length + 1;
+    auto name = namelen <= namebuf.length ? namebuf.ptr : cast(char*)Mem.check(malloc(namelen));
+
+    const length = snprintf(name, namelen, "_D%lluTypeInfo_%.*s6__initZ",
+            cast(ulong)(9 + slice.length), cast(int)slice.length, slice.ptr);
+    //printf("%p %s, deco = %s, name = %s\n", this, toChars(), deco, name);
+    assert(0 < length && length < namelen); // don't overflow the buffer
+
+    auto id = Identifier.idPool(name[0 .. length]);
+
+    if (name != namebuf.ptr)
+        free(name);
+    return id;
+}
+
 extern (C++) class TypeInfoDeclaration : VarDeclaration
 {
     Type tinfo;
@@ -1810,7 +1853,7 @@ extern (C++) final class TypeInfoStructDeclaration : TypeInfoDeclaration
         super(tinfo);
         if (!Type.typeinfostruct)
         {
-            ObjectNotFound(Id.TypeInfo_Struct);
+            ObjectNotFound(loc, Id.TypeInfo_Struct);
         }
         type = Type.typeinfostruct.type;
     }
@@ -1835,7 +1878,7 @@ extern (C++) final class TypeInfoClassDeclaration : TypeInfoDeclaration
         super(tinfo);
         if (!Type.typeinfoclass)
         {
-            ObjectNotFound(Id.TypeInfo_Class);
+            ObjectNotFound(loc, Id.TypeInfo_Class);
         }
         type = Type.typeinfoclass.type;
     }
@@ -1860,7 +1903,7 @@ extern (C++) final class TypeInfoInterfaceDeclaration : TypeInfoDeclaration
         super(tinfo);
         if (!Type.typeinfointerface)
         {
-            ObjectNotFound(Id.TypeInfo_Interface);
+            ObjectNotFound(loc, Id.TypeInfo_Interface);
         }
         type = Type.typeinfointerface.type;
     }
@@ -1885,7 +1928,7 @@ extern (C++) final class TypeInfoPointerDeclaration : TypeInfoDeclaration
         super(tinfo);
         if (!Type.typeinfopointer)
         {
-            ObjectNotFound(Id.TypeInfo_Pointer);
+            ObjectNotFound(loc, Id.TypeInfo_Pointer);
         }
         type = Type.typeinfopointer.type;
     }
@@ -1910,7 +1953,7 @@ extern (C++) final class TypeInfoArrayDeclaration : TypeInfoDeclaration
         super(tinfo);
         if (!Type.typeinfoarray)
         {
-            ObjectNotFound(Id.TypeInfo_Array);
+            ObjectNotFound(loc, Id.TypeInfo_Array);
         }
         type = Type.typeinfoarray.type;
     }
@@ -1935,7 +1978,7 @@ extern (C++) final class TypeInfoStaticArrayDeclaration : TypeInfoDeclaration
         super(tinfo);
         if (!Type.typeinfostaticarray)
         {
-            ObjectNotFound(Id.TypeInfo_StaticArray);
+            ObjectNotFound(loc, Id.TypeInfo_StaticArray);
         }
         type = Type.typeinfostaticarray.type;
     }
@@ -1960,7 +2003,7 @@ extern (C++) final class TypeInfoAssociativeArrayDeclaration : TypeInfoDeclarati
         super(tinfo);
         if (!Type.typeinfoassociativearray)
         {
-            ObjectNotFound(Id.TypeInfo_AssociativeArray);
+            ObjectNotFound(loc, Id.TypeInfo_AssociativeArray);
         }
         type = Type.typeinfoassociativearray.type;
     }
@@ -1985,7 +2028,7 @@ extern (C++) final class TypeInfoEnumDeclaration : TypeInfoDeclaration
         super(tinfo);
         if (!Type.typeinfoenum)
         {
-            ObjectNotFound(Id.TypeInfo_Enum);
+            ObjectNotFound(loc, Id.TypeInfo_Enum);
         }
         type = Type.typeinfoenum.type;
     }
@@ -2010,7 +2053,7 @@ extern (C++) final class TypeInfoFunctionDeclaration : TypeInfoDeclaration
         super(tinfo);
         if (!Type.typeinfofunction)
         {
-            ObjectNotFound(Id.TypeInfo_Function);
+            ObjectNotFound(loc, Id.TypeInfo_Function);
         }
         type = Type.typeinfofunction.type;
     }
@@ -2035,7 +2078,7 @@ extern (C++) final class TypeInfoDelegateDeclaration : TypeInfoDeclaration
         super(tinfo);
         if (!Type.typeinfodelegate)
         {
-            ObjectNotFound(Id.TypeInfo_Delegate);
+            ObjectNotFound(loc, Id.TypeInfo_Delegate);
         }
         type = Type.typeinfodelegate.type;
     }
@@ -2060,7 +2103,7 @@ extern (C++) final class TypeInfoTupleDeclaration : TypeInfoDeclaration
         super(tinfo);
         if (!Type.typeinfotypelist)
         {
-            ObjectNotFound(Id.TypeInfo_Tuple);
+            ObjectNotFound(loc, Id.TypeInfo_Tuple);
         }
         type = Type.typeinfotypelist.type;
     }
@@ -2085,7 +2128,7 @@ extern (C++) final class TypeInfoConstDeclaration : TypeInfoDeclaration
         super(tinfo);
         if (!Type.typeinfoconst)
         {
-            ObjectNotFound(Id.TypeInfo_Const);
+            ObjectNotFound(loc, Id.TypeInfo_Const);
         }
         type = Type.typeinfoconst.type;
     }
@@ -2110,7 +2153,7 @@ extern (C++) final class TypeInfoInvariantDeclaration : TypeInfoDeclaration
         super(tinfo);
         if (!Type.typeinfoinvariant)
         {
-            ObjectNotFound(Id.TypeInfo_Invariant);
+            ObjectNotFound(loc, Id.TypeInfo_Invariant);
         }
         type = Type.typeinfoinvariant.type;
     }
@@ -2135,7 +2178,7 @@ extern (C++) final class TypeInfoSharedDeclaration : TypeInfoDeclaration
         super(tinfo);
         if (!Type.typeinfoshared)
         {
-            ObjectNotFound(Id.TypeInfo_Shared);
+            ObjectNotFound(loc, Id.TypeInfo_Shared);
         }
         type = Type.typeinfoshared.type;
     }
@@ -2160,7 +2203,7 @@ extern (C++) final class TypeInfoWildDeclaration : TypeInfoDeclaration
         super(tinfo);
         if (!Type.typeinfowild)
         {
-            ObjectNotFound(Id.TypeInfo_Wild);
+            ObjectNotFound(loc, Id.TypeInfo_Wild);
         }
         type = Type.typeinfowild.type;
     }
@@ -2185,7 +2228,7 @@ extern (C++) final class TypeInfoVectorDeclaration : TypeInfoDeclaration
         super(tinfo);
         if (!Type.typeinfovector)
         {
-            ObjectNotFound(Id.TypeInfo_Vector);
+            ObjectNotFound(loc, Id.TypeInfo_Vector);
         }
         type = Type.typeinfovector.type;
     }

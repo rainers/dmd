@@ -21,12 +21,11 @@ import dmd.backend.barray;
 import dmd.backend.cc;
 import dmd.backend.cdef;
 import dmd.backend.code;
-import dmd.backend.code_x86;
+import dmd.backend.x86.code_x86;
 import dmd.backend.cv8;
 import dmd.backend.dlist;
 import dmd.backend.dvec;
 import dmd.backend.el;
-import dmd.backend.md5;
 import dmd.backend.mem;
 import dmd.backend.global;
 import dmd.backend.obj;
@@ -270,7 +269,7 @@ Obj MsCoffObj_init(OutBuffer *objbuf, const(char)* filename, const(char)* csegna
         Symbol **p = cast(Symbol **)symbuf.buf;
         const size_t n = symbuf.length() / (Symbol *).sizeof;
         for (size_t i = 0; i < n; ++i)
-            symbol_reset(p[i]);
+            symbol_reset(*p[i]);
         symbuf.reset();
     }
     else
@@ -597,7 +596,7 @@ void MsCoffObj_termfile()
  */
 
 @trusted
-void MsCoffObj_term(const(char)* objfilename)
+void MsCoffObj_term(const(char)[] objfilename)
 {
     //printf("MsCoffObj_term()\n");
     assert(fobjbuf.length() == 0);
@@ -1678,14 +1677,14 @@ char *obj_mangle2(Symbol *s,char *dest)
     //dbg_printf("len %d\n",len);
     switch (type_mangle(s.Stype))
     {
-        case mTYman_pas:                // if upper case
-        case mTYman_for:
+        case Mangle.pascal:             // if upper case
+        case Mangle.fortran:
             if (len >= DEST_LEN)
                 dest = cast(char *)mem_malloc(len + 1);
             memcpy(dest,name,len + 1);  // copy in name and ending 0
             strupr(dest);               // to upper case
             break;
-        case mTYman_std:
+        case Mangle.stdcall:
             if (!(config.flags4 & CFG4oldstdmangle) &&
                 config.exe == EX_WIN32 && tyfunc(s.ty()) &&
                 !variadic(s.Stype))
@@ -1705,8 +1704,8 @@ char *obj_mangle2(Symbol *s,char *dest)
             }
             goto case;
 
-        case mTYman_cpp:
-        case mTYman_sys:
+        case Mangle.cpp:
+        case Mangle.syscall:
         case_mTYman_c64:
         case 0:
             if (len >= DEST_LEN)
@@ -1714,8 +1713,8 @@ char *obj_mangle2(Symbol *s,char *dest)
             memcpy(dest,name,len+1);// copy in name and trailing 0
             break;
 
-        case mTYman_c:
-        case mTYman_d:
+        case Mangle.c:
+        case Mangle.d:
             if(I64)
                 goto case_mTYman_c64;
             // Prepend _ to identifier
@@ -1729,7 +1728,7 @@ char *obj_mangle2(Symbol *s,char *dest)
 debug
 {
             printf("mangling %x\n",type_mangle(s.Stype));
-            symbol_print(s);
+            symbol_print(*s);
 }
             printf("%d\n", type_mangle(s.Stype));
             assert(0);

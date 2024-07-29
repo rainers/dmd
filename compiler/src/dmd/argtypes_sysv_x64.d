@@ -15,6 +15,7 @@ import dmd.astenums;
 import dmd.declaration;
 import dmd.globals;
 import dmd.mtype;
+import dmd.typesem;
 import dmd.target;
 import dmd.visitor;
 
@@ -30,7 +31,7 @@ import dmd.visitor;
  *      A tuple of zero length means the type cannot be passed/returned in registers.
  *      null indicates a `void`.
  */
-extern (C++) TypeTuple toArgTypes_sysv_x64(Type t)
+TypeTuple toArgTypes_sysv_x64(Type t)
 {
     if (t == Type.terror)
         return new TypeTuple(t);
@@ -65,6 +66,7 @@ extern (C++) TypeTuple toArgTypes_sysv_x64(Type t)
             assert(c == Class.sseUp);
 
         assert(size % 8 == 0);
+        import dmd.typesem : sarrayOf;
         return new TypeTuple(new TypeVector(Type.tfloat64.sarrayOf(N)));
     }
 

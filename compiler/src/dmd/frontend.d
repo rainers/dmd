@@ -11,8 +11,9 @@
 module dmd.frontend;
 
 import dmd.astcodegen : ASTCodegen;
+import dmd.astenums : CHECKENABLE;
 import dmd.dmodule : Module;
-import dmd.globals : CHECKENABLE, DiagnosticReporting;
+import dmd.globals : DiagnosticReporting;
 import dmd.errors;
 import dmd.location;
 
@@ -113,11 +114,12 @@ void initDMD(
     version (CRuntime_Microsoft)
         import dmd.root.longdouble : initFPU;
 
+    import dmd.astenums : CHECKENABLE;
     import dmd.cond : VersionCondition;
     import dmd.dmodule : Module;
     import dmd.escape : EscapeState;
     import dmd.expression : Expression;
-    import dmd.globals : CHECKENABLE, global;
+    import dmd.globals : global;
     import dmd.id : Id;
     import dmd.identifier : Identifier;
     import dmd.mtype : Type;
@@ -142,6 +144,8 @@ void initDMD(
     versionIdentifiers.each!(VersionCondition.addGlobalIdent);
 
     target.os = defaultTargetOS();
+    target.isX86_64 = (size_t.sizeof == 8);
+    target.isX86 = !target.isX86_64;
     target._init(global.params);
     Type._init();
     Id.initialize();
@@ -203,9 +207,6 @@ void addImport(const(char)[] path)
     import dmd.arraytypes : Strings;
     import std.string : toStringz;
 
-    if (global.path is null)
-        global.path = new Strings();
-
     global.path.push(path.toStringz);
 }
 
@@ -220,9 +221,6 @@ void addStringImport(const(char)[] path)
 
     import dmd.globals : global;
     import dmd.arraytypes : Strings;
-
-    if (global.filePath is null)
-        global.filePath = new Strings();
 
     global.filePath.push(path.toStringz);
 }

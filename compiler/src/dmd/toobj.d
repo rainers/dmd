@@ -40,6 +40,7 @@ import dmd.errors;
 import dmd.errorsink;
 import dmd.expression;
 import dmd.func;
+import dmd.funcsem;
 import dmd.globals;
 import dmd.glue;
 import dmd.hdrgen;
@@ -59,13 +60,14 @@ import dmd.todt;
 import dmd.tokens;
 import dmd.traits;
 import dmd.typinf;
+import dmd.typesem : size;
 import dmd.visitor;
 
 import dmd.backend.cc;
 import dmd.backend.cdef;
 import dmd.backend.cgcv;
 import dmd.backend.code;
-import dmd.backend.code_x86;
+import dmd.backend.x86.code_x86;
 import dmd.backend.cv4;
 import dmd.backend.dt;
 import dmd.backend.el;
@@ -85,7 +87,7 @@ void genModuleInfo(Module m)
 
     if (!Module.moduleinfo)
     {
-        ObjectNotFound(Id.ModuleInfo);
+        ObjectNotFound(m.loc, Id.ModuleInfo);
     }
 
     Symbol *msym = toSymbol(m);
@@ -245,6 +247,7 @@ void write_pointers(Type type, Symbol *s, uint offset)
 */
 void write_instance_pointers(Type type, Symbol *s, uint offset)
 {
+    import dmd.typesem : hasPointers;
     if (!type.hasPointers())
         return;
 
@@ -1013,7 +1016,7 @@ void toObjFile(Dsymbol ds, bool multiobj)
         }
 
         /**
-         * Returns the target mangling mangle_t for the given variable.
+         * Returns the target mangling Mangle for the given variable.
          *
          * Params:
          *      vd = the variable declaration
@@ -1021,22 +1024,22 @@ void toObjFile(Dsymbol ds, bool multiobj)
          * Returns:
          *      the mangling that should be used for variable
          */
-        static mangle_t mangle(const VarDeclaration vd)
+        static Mangle mangle(const VarDeclaration vd)
         {
             final switch (vd.resolvedLinkage())
             {
                 case LINK.windows:
-                    return target.isX86_64 ? mTYman_c : mTYman_std;
+                    return target.isX86 ? Mangle.stdcall : Mangle.c;
 
                 case LINK.objc:
                 case LINK.c:
-                    return mTYman_c;
+                    return Mangle.c;
 
                 case LINK.d:
-                    return mTYman_d;
+                    return Mangle.d;
 
                 case LINK.cpp:
-                    return mTYman_cpp;
+                    return Mangle.cpp;
 
                 case LINK.default_:
                 case LINK.system:
@@ -1074,7 +1077,7 @@ private bool finishVtbl(ClassDeclaration cd)
         }
         // Ensure function has a return value
         // https://issues.dlang.org/show_bug.cgi?id=4869
-        if (!fd.functionSemantic())
+        if (!functionSemantic(fd))
         {
             hasError = true;
         }
@@ -1098,7 +1101,8 @@ private bool finishVtbl(ClassDeclaration cd)
                 continue;
             if (fd2.isFuture())
                 continue;
-            if (!fd.leastAsSpecialized(fd2, null) && !fd2.leastAsSpecialized(fd, null))
+            if (!fd.leastAsSpecialized(fd2, null) &&
+                !fd2.leastAsSpecialized(fd, null))
                 continue;
             // Hiding detected: same name, overlapping specializations
             TypeFunction tf = fd.type.toTypeFunction();
@@ -1219,11 +1223,35 @@ private size_t emitVtbl(ref DtBuilder dtb, BaseClass *b, ref FuncDeclarations bv
  */
 private void genClassInfoForClass(ClassDeclaration cd, Symbol* sinit)
 {
+    if (Type.typeinfoclass)
+    {
+        if (Type.typeinfoclass.structsize != target.classinfosize)
+        {
+            debug printf("target.classinfosize = x%x, Type.typeinfoclass.structsize = x%x\n", target.classinfosize, Type.typeinfoclass.structsize);
+            .error(cd.loc, "%s `%s` mismatch between compiler (%d bytes) and object.d or object.di (%d bytes) found. Check installation and import paths with -v compiler switch.",
+                   cd.kind, cd.toPrettyChars, cast(uint)target.classinfosize, cast(uint)Type.typeinfoclass.structsize);
+            fatal();
+        }
+    }
+
     // Put out the ClassInfo, which will be the __ClassZ symbol in the object file
     SC scclass = SC.comdat;
     cd.csym.Sclass = scclass;
     cd.csym.Sfl = FLdata;
 
+    auto dtb = DtBuilder(0);
+
+    ClassInfoToDt(dtb, cd, sinit);
+
+    cd.csym.Sdt = dtb.finish();
+    // ClassInfo cannot be const data, because we use the monitor on it
+    outdata(cd.csym);
+    if (cd.isExport() || driverParams.exportVisibility == ExpVis.public_)
+        objmod.export_symbol(cd.csym, 0);
+}
+
+private void ClassInfoToDt(ref DtBuilder dtb, ClassDeclaration cd, Symbol* sinit)
+{
     /* The layout is:
        {
             void **vptr;
@@ -1236,26 +1264,17 @@ private void genClassInfoForClass(ClassDeclaration cd, Symbol* sinit)
             void* destructor;
             void function(Object) classInvariant;   // class invariant
             ClassFlags m_flags;
+            ushort depth;
             void* deallocator;
             OffsetTypeInfo[] offTi;
             void function(Object) defaultConstructor;
             //const(MemberInfo[]) function(string) xgetMembers;   // module getMembers() function
             immutable(void)* m_RTInfo;
             //TypeInfo typeinfo;
+            uint[4] nameSig;
        }
      */
     uint offset = target.classinfosize;    // must be ClassInfo.size
-    if (Type.typeinfoclass)
-    {
-        if (Type.typeinfoclass.structsize != target.classinfosize)
-        {
-            debug printf("target.classinfosize = x%x, Type.typeinfoclass.structsize = x%x\n", offset, Type.typeinfoclass.structsize);
-            .error(cd.loc, "%s `%s` mismatch between dmd and object.d or object.di found. Check installation and import paths with -v compiler switch.", cd.kind, cd.toPrettyChars);
-            fatal();
-        }
-    }
-
-    auto dtb = DtBuilder(0);
 
     if (auto tic = Type.typeinfoclass)
     {
@@ -1323,6 +1342,7 @@ private void genClassInfoForClass(ClassDeclaration cd, Symbol* sinit)
     if (cd.isCPPclass()) flags |= ClassFlags.isCPPclass;
     flags |= ClassFlags.hasGetMembers;
     flags |= ClassFlags.hasTypeInfo;
+    flags |= ClassFlags.hasNameSig;
     if (cd.ctor)
         flags |= ClassFlags.hasCtor;
     for (ClassDeclaration pc = cd; pc; pc = pc.baseClass)
@@ -1354,7 +1374,13 @@ Louter:
             }
         }
     }
-    dtb.size(flags);
+
+    int depth = 0;
+    for (ClassDeclaration pc = cd; pc; pc = pc.baseClass)
+        ++depth;  // distance to Object
+
+    // m_flags and depth, align to size_t
+    dtb.size((depth << 16) | flags);
 
     // deallocator
     dtb.size(0);
@@ -1378,6 +1404,14 @@ Louter:
         dtb.size(1);
 
     //dtb.xoff(toSymbol(cd.type.vtinfo), 0, TYnptr); // typeinfo
+
+    // uint[4] nameSig
+    {
+        import dmd.common.blake3;
+        const hash = blake3((cast(ubyte*)name)[0 .. namelen]);
+        //truncate and use the first 16 bytes only
+        dtb.nbytes(16, cast(char*)hash.ptr);
+    }
 
     //////////////////////////////////////////////
 
@@ -1445,12 +1479,6 @@ Louter:
     dtb.nbytes(cast(uint)(namelen + 1), name);
     const size_t namepad = -(namelen + 1) & (target.ptrsize - 1); // align
     dtb.nzeros(cast(uint)namepad);
-
-    cd.csym.Sdt = dtb.finish();
-    // ClassInfo cannot be const data, because we use the monitor on it
-    outdata(cd.csym);
-    if (cd.isExport() || driverParams.exportVisibility == ExpVis.public_)
-        objmod.export_symbol(cd.csym, 0);
 }
 
 /******************************************************
@@ -1467,6 +1495,19 @@ private void genClassInfoForInterface(InterfaceDeclaration id)
     id.csym.Sclass = scclass;
     id.csym.Sfl = FLdata;
 
+    auto dtb = DtBuilder(0);
+
+    InterfaceInfoToDt(dtb, id);
+
+    id.csym.Sdt = dtb.finish();
+    out_readonly(id.csym);
+    outdata(id.csym);
+    if (id.isExport() || driverParams.exportVisibility == ExpVis.public_)
+        objmod.export_symbol(id.csym, 0);
+}
+
+private void InterfaceInfoToDt(ref DtBuilder dtb, InterfaceDeclaration id)
+{
     /* The layout is:
        {
             void **vptr;
@@ -1479,16 +1520,16 @@ private void genClassInfoForInterface(InterfaceDeclaration id)
             void* destructor;
             void function(Object) classInvariant;   // class invariant
             ClassFlags m_flags;
+            ushort depth;
             void* deallocator;
             OffsetTypeInfo[] offTi;
             void function(Object) defaultConstructor;
             //const(MemberInfo[]) function(string) xgetMembers;   // module getMembers() function
             immutable(void)* m_RTInfo;
             //TypeInfo typeinfo;
+            uint[4] nameSig;
        }
      */
-    auto dtb = DtBuilder(0);
-
     if (auto tic = Type.typeinfoclass)
     {
         dtb.xoff(toVtblSymbol(tic), 0, TYnptr); // vtbl for ClassInfo
@@ -1524,7 +1565,8 @@ private void genClassInfoForInterface(InterfaceDeclaration id)
         {
             if (Type.typeinfoclass.structsize != offset)
             {
-                .error(id.loc, "%s `%s` mismatch between dmd and object.d or object.di found. Check installation and import paths with -v compiler switch.", id.kind, id.toPrettyChars);
+                .error(id.loc, "%s `%s` mismatch between compiler (%d bytes) and object.d or object.di (%d bytes) found. Check installation and import paths with -v compiler switch.",
+                       id.kind, id.toPrettyChars, cast(uint)offset, cast(uint)Type.typeinfoclass.structsize);
                 fatal();
             }
         }
@@ -1548,7 +1590,8 @@ private void genClassInfoForInterface(InterfaceDeclaration id)
     // flags
     ClassFlags flags = ClassFlags.hasOffTi | ClassFlags.hasTypeInfo;
     if (id.isCOMinterface()) flags |= ClassFlags.isCOMclass;
-    dtb.size(flags);
+    flags |= ClassFlags.hasNameSig;
+    dtb.size(flags); // depth part is 0
 
     // deallocator
     dtb.size(0);
@@ -1570,6 +1613,14 @@ private void genClassInfoForInterface(InterfaceDeclaration id)
         dtb.size(0);       // no pointers
 
     //dtb.xoff(toSymbol(id.type.vtinfo), 0, TYnptr); // typeinfo
+
+    // uint[4] nameSig
+    {
+        import dmd.common.blake3;
+        const hash = blake3((cast(ubyte*)name)[0 .. namelen]);
+        //only use the first 16 bytes
+        dtb.nbytes(16, cast(char*)hash.ptr);
+    }
 
     //////////////////////////////////////////////
 
@@ -1600,10 +1651,4 @@ private void genClassInfoForInterface(InterfaceDeclaration id)
     dtb.nbytes(cast(uint)(namelen + 1), name);
     const size_t namepad =  -(namelen + 1) & (target.ptrsize - 1); // align
     dtb.nzeros(cast(uint)namepad);
-
-    id.csym.Sdt = dtb.finish();
-    out_readonly(id.csym);
-    outdata(id.csym);
-    if (id.isExport() || driverParams.exportVisibility == ExpVis.public_)
-        objmod.export_symbol(id.csym, 0);
 }

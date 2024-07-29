@@ -32,11 +32,12 @@ jobs:
             os: ubuntu-22.04
             model: 32
             host_dmd: dmd
-          - job_name: Ubuntu 22.04 x86, DMD (coverage)
-            os: ubuntu-22.04
-            model: 32
-            host_dmd: dmd
-            coverage: true
+          # Disabled because of failure https://issues.dlang.org/show_bug.cgi?id=24518
+          # - job_name: Ubuntu 22.04 x86, DMD (coverage)
+          #   os: ubuntu-22.04
+          #   model: 32
+          #   host_dmd: dmd
+          #   coverage: true
           - job_name: Ubuntu 22.04 x86, DMD (bootstrap)
             os: ubuntu-22.04
             model: 32
@@ -52,10 +53,11 @@ jobs:
           - job_name: macOS 13 x64, DMD (latest)
             os: macos-13
             host_dmd: dmd
-          - job_name: macOS 13 x64, DMD (coverage)
-            os: macos-13
-            host_dmd: dmd
-            coverage: true
+          # Disabled because of failure https://issues.dlang.org/show_bug.cgi?id=24518
+          # - job_name: macOS 13 x64, DMD (coverage)
+          #   os: macos-13
+          #   host_dmd: dmd
+          #   coverage: true
           - job_name: macOS 12 x64, DMD (bootstrap)
             os: macos-12
             # de-facto bootstrap version on OSX
@@ -71,14 +73,13 @@ jobs:
             model: 32
     name: ${{ matrix.job_name }}
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.os == 'macos-13' }}
     timeout-minutes: 40
     env:
       # for ci/run.sh:
       OS_NAME: ${{ startsWith(matrix.os, 'ubuntu') && 'linux' || (startsWith(matrix.os, 'macos') && 'osx' || (startsWith(matrix.os, 'windows') && 'windows' || '')) }}
       MODEL: ${{ matrix.model || '64' }}
       HOST_DMD: ${{ matrix.host_dmd }}
-      N: ${{ startsWith(matrix.os, 'macos') && '3' || '2' }}
+      # N is set dynamically below
       FULL_BUILD: true
       # for coverage:
       DMD_TEST_COVERAGE: ${{ matrix.coverage && '1' || '0' }}
@@ -92,14 +93,19 @@ jobs:
         with:
           fetch-depth: 50
 
+      - name: Set environment variable N (parallelism)
+        run: echo "N=$(${{ runner.os == 'macOS' && 'sysctl -n hw.logicalcpu' || 'nproc' }})" >> $GITHUB_ENV
+
       - name: 'Posix: Install prerequisites'
         if: runner.os != 'Windows'
         run: ${{ runner.os == 'macOS' && 'ci/cirrusci.sh' || 'sudo -E ci/cirrusci.sh' }}
-      - name: 'Windows: Set up MSVC environment'
-        if: runner.os == 'Windows'
-        uses: seanmiddleditch/gha-setup-vsdevenv@v4
-        with:
-          arch: ${{ env.MODEL == '64' && 'x64' || 'x86' }}
+
+      # NOTE: Linker ICEs with Xcode 15.0.1 (default version on macos-13)
+      # * https://issues.dlang.org/show_bug.cgi?id=24407
+      # Remove this step if the default gets changed to 15.1 in actions/runner-images.
+      - name: 'macOS 13: Switch to Xcode v15.1'
+        if: matrix.os == 'macos-13'
+        run: sudo xcode-select -switch /Applications/Xcode_15.1.app
 
       - name: 'Posix: Install host compiler'
         if: runner.os != 'Windows'
@@ -134,12 +140,14 @@ jobs:
         env:
           # on Windows, `ci/run.sh build` expects the DMD env var to be set to the DMD-CLI-compatible host compiler
           DMD: ${{ runner.os == 'Windows' && (startsWith(matrix.host_dmd, 'ldc') && 'ldmd2' || 'dmd') || '' }}
-          # work around the LDC host compiler on Windows assuming the first link.exe in PATH is the MSVC one
-          # (VSINSTALLDIR is set, but GHA uses Git's bin\bash.exe for `shell: bash`, which prepends Git's usr\bin to PATH, with GNU link.exe)
-          LDC_VSDIR_FORCE: ${{ runner.os == 'Windows' && startsWith(matrix.host_dmd, 'ldc') && '1' || '' }}
       - name: Rebuild dmd (with enabled coverage)
         if: matrix.coverage
         run: ENABLE_RELEASE=0 ENABLE_DEBUG=1 ENABLE_COVERAGE=1 ci/run.sh rebuild
+      - name: 'Windows: Set up MSVC environment' # some tests need cl.exe etc. in PATH
+        if: runner.os == 'Windows'
+        uses: seanmiddleditch/gha-setup-vsdevenv@v4
+        with:
+          arch: ${{ env.MODEL == '64' && 'x64' || 'x86' }}
       - name: Test dmd
         run: ci/run.sh test_dmd
       - name: Test druntime
@@ -155,6 +163,9 @@ jobs:
       - name: Test phobos
         if: '!matrix.coverage'
         run: ci/run.sh test_phobos
+      - name: Test self-compile
+        if: '!matrix.coverage' # already re-built with enabled coverage
+        run: ENABLE_RELEASE=0 ci/run.sh rebuild
       - name: Upload coverage report
         if: matrix.coverage
         run: ci/run.sh codecov
@@ -183,6 +194,7 @@ jobs:
           operating_system: freebsd
           hypervisor: qemu
           memory: 12G
+          cpu_count: 4
           sync_files: runner-to-vm
           version: ${{ matrix.freebsd_version }}
           shell: bash
@@ -195,7 +207,7 @@ jobs:
             export OS_NAME=freebsd
             export MODEL=64
             export HOST_DMD='${{ matrix.host_dmd }}'
-            export N=3
+            export N="$(nproc)"
             export FULL_BUILD=true
             export CI_DFLAGS="-version=TARGET_FREEBSD${freebsd_major}"
 
@@ -242,4 +254,8 @@ jobs:
 
             echo '::group::Test phobos'
             ci/run.sh test_phobos
+            echo '::endgroup::'
+
+            echo '::group::Test self-compile'
+            ENABLE_RELEASE=0 ci/run.sh rebuild
             echo '::endgroup::'

@@ -25,6 +25,7 @@ import dmd.astenums;
 import dmd.backend.type;
 import dmd.ctfeexpr;
 import dmd.declaration;
+import dmd.dcast : implicitConvTo;
 import dmd.dclass;
 import dmd.denum;
 import dmd.dstruct;
@@ -61,7 +62,7 @@ alias Dts = Array!(dt_t*);
 
 /* ================================================================ */
 
-extern (C++) void Initializer_toDt(Initializer init, ref DtBuilder dtb, bool isCfile)
+void Initializer_toDt(Initializer init, ref DtBuilder dtb, bool isCfile)
 {
     void visitError(ErrorInitializer)
     {
@@ -92,6 +93,11 @@ extern (C++) void Initializer_toDt(Initializer init, ref DtBuilder dtb, bool isC
         if (tb.ty == Tvector)
             tb = (cast(TypeVector)tb).basetype;
 
+        if (ai.dim == 0 && tb.isZeroInit(ai.loc))
+        {
+            dtb.nzeros(cast(uint)ai.type.size());
+            return;
+        }
         Type tn = tb.nextOf().toBasetype();
 
         //printf("\tdim = %d\n", ai.dim);
@@ -218,7 +224,7 @@ extern (C++) void Initializer_toDt(Initializer init, ref DtBuilder dtb, bool isC
 
 /* ================================================================ */
 
-extern (C++) void Expression_toDt(Expression e, ref DtBuilder dtb)
+void Expression_toDt(Expression e, ref DtBuilder dtb)
 {
     dtb.checkInitialized();
 
@@ -422,8 +428,9 @@ extern (C++) void Expression_toDt(Expression e, ref DtBuilder dtb)
                 }
                 else
                 {
-                    ubyte pow2 = e.sz == 4 ? 2 : 1;
-                    dtb.abytes(0, n * e.sz, p, cast(uint)e.sz, pow2);
+                    import core.bitop : bsr;
+                    const pow2 = cast(ubyte) bsr(e.sz);
+                    dtb.abytes(0, n * e.sz, p, cast(uint) e.sz, pow2);
                 }
                 break;
 
@@ -649,7 +656,7 @@ extern (C++) void Expression_toDt(Expression e, ref DtBuilder dtb)
 
 // Generate the data for the static initializer.
 
-extern (C++) void ClassDeclaration_toDt(ClassDeclaration cd, ref DtBuilder dtb)
+void ClassDeclaration_toDt(ClassDeclaration cd, ref DtBuilder dtb)
 {
     //printf("ClassDeclaration.toDt(this = '%s')\n", cd.toChars());
 
@@ -658,7 +665,7 @@ extern (C++) void ClassDeclaration_toDt(ClassDeclaration cd, ref DtBuilder dtb)
     //printf("-ClassDeclaration.toDt(this = '%s')\n", cd.toChars());
 }
 
-extern (C++) void StructDeclaration_toDt(StructDeclaration sd, ref DtBuilder dtb)
+void StructDeclaration_toDt(StructDeclaration sd, ref DtBuilder dtb)
 {
     //printf("+StructDeclaration.toDt(), this='%s'\n", sd.toChars());
     membersToDt(sd, dtb, null, 0, null, null);
@@ -673,7 +680,7 @@ extern (C++) void StructDeclaration_toDt(StructDeclaration sd, ref DtBuilder dtb
  *      cd = C++ class
  *      dtb = data table builder
  */
-extern (C++) void cpp_type_info_ptr_toDt(ClassDeclaration cd, ref DtBuilder dtb)
+void cpp_type_info_ptr_toDt(ClassDeclaration cd, ref DtBuilder dtb)
 {
     //printf("cpp_type_info_ptr_toDt(this = '%s')\n", cd.toChars());
     assert(cd.isCPPclass());
@@ -954,7 +961,6 @@ private void membersToDt(AggregateDeclaration ad, ref DtBuilder dtb,
                     bitFieldSize = (bf.bitOffset + bf.fieldWidth + 7) / 8;
                     break;
 
-                case TargetC.BitFieldStyle.DM:
                 case TargetC.BitFieldStyle.MS:
                     // This relies on all bit fields in the same storage location have the same type
                     bitFieldSize = cast(uint)vd.type.size();
@@ -1043,7 +1049,7 @@ private void membersToDt(AggregateDeclaration ad, ref DtBuilder dtb,
 
 /* ================================================================= */
 
-extern (C++) void Type_toDt(Type t, ref DtBuilder dtb, bool isCtype = false)
+void Type_toDt(Type t, ref DtBuilder dtb, bool isCtype = false)
 {
     switch (t.ty)
     {
@@ -1121,7 +1127,7 @@ private void ClassReferenceExp_toDt(ClassReferenceExp e, ref DtBuilder dtb, int 
         write_instance_pointers(e.type, s, 0);
 }
 
-extern (C++) void ClassReferenceExp_toInstanceDt(ClassReferenceExp ce, ref DtBuilder dtb)
+void ClassReferenceExp_toInstanceDt(ClassReferenceExp ce, ref DtBuilder dtb)
 {
     //printf("ClassReferenceExp.toInstanceDt() %d\n", ce.op);
     ClassDeclaration cd = ce.originalClass();
@@ -1437,6 +1443,13 @@ private extern (C++) class TypeInfoDtVisitor : Visitor
                 /* ti.toObjFile() won't get called. So, store these
                  * member functions into object file in here.
                  */
+
+                if (sd.semanticRun < PASS.semantic3done)
+                {
+                    import dmd.semantic3 : semanticTypeInfoMembers;
+                    semanticTypeInfoMembers(sd);
+                }
+
                 if (sd.xeq && sd.xeq != StructDeclaration.xerreq)
                     toObjFile(sd.xeq, global.params.multiobj);
                 if (sd.xcmp && sd.xcmp != StructDeclaration.xerrcmp)
@@ -1616,7 +1629,7 @@ private extern (C++) class TypeInfoDtVisitor : Visitor
     }
 }
 
-extern (C++) void TypeInfo_toDt(ref DtBuilder dtb, TypeInfoDeclaration d)
+void TypeInfo_toDt(ref DtBuilder dtb, TypeInfoDeclaration d)
 {
     scope v = new TypeInfoDtVisitor(dtb);
     d.accept(v);

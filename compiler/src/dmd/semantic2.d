@@ -40,6 +40,7 @@ import dmd.escape;
 import dmd.expression;
 import dmd.expressionsem;
 import dmd.func;
+import dmd.funcsem;
 import dmd.globals;
 import dmd.id;
 import dmd.identifier;
@@ -73,7 +74,7 @@ enum LOG = false;
 /*************************************
  * Does semantic analysis on initializers and members of aggregates.
  */
-extern(C++) void semantic2(Dsymbol dsym, Scope* sc)
+void semantic2(Dsymbol dsym, Scope* sc)
 {
     scope v = new Semantic2Visitor(sc);
     dsym.accept(v);
@@ -315,7 +316,7 @@ private extern(C++) final class Semantic2Visitor : Visitor
                         return arrayHasInvalidEnumInitializer((cast(StructLiteralExp)e).elements);
                     if (e.op == EXP.assocArrayLiteral)
                     {
-                        AssocArrayLiteralExp ae = cast(AssocArrayLiteralExp)e;
+                        auto ae = cast(AssocArrayLiteralExp)e;
                         return arrayHasInvalidEnumInitializer(ae.values) ||
                                arrayHasInvalidEnumInitializer(ae.keys);
                     }
@@ -887,5 +888,12 @@ private extern(C++) final class StaticAAVisitor : SemanticTimeTransitiveVisitor
         loweredExp = loweredExp.ctfeInterpret();
 
         aaExp.lowering = loweredExp;
+    }
+
+    // https://issues.dlang.org/show_bug.cgi?id=24602
+    // TODO: Is this intionally not visited by SemanticTimeTransitiveVisitor?
+    override void visit(ClassReferenceExp crExp)
+    {
+        this.visit(crExp.value);
     }
 }

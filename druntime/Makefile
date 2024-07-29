@@ -117,7 +117,6 @@ UTFLAGS:=-version=CoreUnittest -unittest -checkaction=context
 
 # Set PHOBOS_DFLAGS (for linking against Phobos)
 PHOBOS_PATH=../../phobos
-SHARED=$(if $(findstring $(OS),linux freebsd),1,)
 ROOT_DIR := $(shell pwd)
 PHOBOS_DFLAGS=-conf= $(MODEL_FLAG) -I$(ROOT_DIR)/import -I$(PHOBOS_PATH) -L-L$(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL) $(PIC)
 ifeq (1,$(SHARED))
@@ -375,15 +374,8 @@ $(abspath ../generated/$(OS)/$(BUILD)/$(MODEL)/dmd$(DOTEXE)): ../generated/$(OS)
 
 ################### C/ASM Targets ############################
 
-# Although dmd is compiling the .c files, the preprocessor used on Windows is cl.exe.
-# Until https://issues.dlang.org/show_bug.cgi?id=24111 is fixed, the INCLUDE
-# enviroment variable needs to be set with the path to the VC system include files.
-
 OBJS:=$(ROOT)/errno_c$(DOTOBJ)
-ifeq (32omf,$(MODEL))
-    # minit.asm is only used for -m32omf on Windows; there's a pre-built minit.obj
-    OBJS+=src/rt/minit$(DOTOBJ)
-else ifneq (windows,$(OS))
+ifneq (windows,$(OS))
     OBJS+=$(ROOT)/threadasm$(DOTOBJ) $(ROOT)/valgrind$(DOTOBJ)
 endif
 
@@ -423,18 +415,13 @@ $(DRUNTIME): $(OBJS) $(SRCS) $(DMD)
 
 lib: $(DRUNTIME)
 
-UT_MODULES:=$(patsubst src/%.d,$(ROOT)/unittest/%,$(SRCS))
+UT_SRCS:=$(SRCS)
+UT_MODULES:=$(patsubst src/%.d,$(ROOT)/unittest/%,$(UT_SRCS))
 HAS_ADDITIONAL_TESTS:=$(shell test -d test && echo 1)
 ifeq ($(HAS_ADDITIONAL_TESTS),1)
     ADDITIONAL_TESTS:=test/init_fini test/exceptions test/coverage test/profile test/cycles test/allocations test/typeinfo \
-        test/aa test/cpuid test/gc test/hash test/lifetime \
+        test/aa test/cpuid test/gc test/hash test/lifetime test/shared \
         test/thread test/unittest test/imports test/betterc test/stdcpp test/config test/traits
-    ifneq (,$(SHARED))
-        ADDITIONAL_TESTS+=test/shared
-    else ifeq (windows,$(OS))
-        # although a druntime DLL isn't supported yet, there are Windows-specific general DLL tests
-        ADDITIONAL_TESTS+=test/shared
-    endif
     ifeq (windows,$(OS))
         ADDITIONAL_TESTS+=test/uuid
     else
@@ -444,12 +431,7 @@ endif
 
 .PHONY : unittest
 ifeq (1,$(BUILD_WAS_SPECIFIED))
-ifeq (32omf,$(MODEL))
-unittest :
-	@echo "Skipping druntime unittests because they cannot be linked on Win32 + OMF due to OPTLINK issues."
-else
 unittest : $(UT_MODULES) $(addsuffix /.run,$(ADDITIONAL_TESTS))
-endif
 else
 unittest : unittest-debug unittest-release
 unittest-%: target
@@ -512,7 +494,13 @@ endif
 test/%/.run: test/%/Makefile $(DMD)
 	$(QUIET)$(MAKE) -C test/$* MODEL=$(MODEL) OS=$(OS) DMD=$(abspath $(DMD)) BUILD=$(BUILD) \
 		DRUNTIME=$(abspath $(DRUNTIME)) DRUNTIMESO=$(abspath $(DRUNTIMESO)) LINKDL=$(LINKDL) \
-		QUIET=$(QUIET) TIMELIMIT='$(TIMELIMIT)' PIC=$(PIC)
+		QUIET=$(QUIET) TIMELIMIT='$(TIMELIMIT)' PIC=$(PIC) SHARED=$(SHARED)
+
+test/%/.clean: test/%/Makefile
+	$(QUIET)$(MAKE) -C test/$* MODEL=$(MODEL) OS=$(OS) BUILD=$(BUILD) clean
+ifeq (0,$(BUILD_WAS_SPECIFIED))
+	$(QUIET)$(MAKE) -C test/$* MODEL=$(MODEL) OS=$(OS) BUILD=debug clean
+endif
 
 #################### benchmark suite ##########################
 
@@ -529,7 +517,7 @@ benchmark-compile-only: $(ROOT)/benchmark$(DOTEXE) $(DMD)
 MANIFEST = $(shell git ls-tree --name-only -r HEAD)
 
 CWS_MAKEFILES = $(filter mak/% %.mak %/Makefile,$(MANIFEST))
-NOT_MAKEFILES = $(filter-out $(CWS_MAKEFILES) src/rt/minit.obj test/%.exp,$(MANIFEST))
+NOT_MAKEFILES = $(filter-out $(CWS_MAKEFILES) test/%.exp,$(MANIFEST))
 GREP = grep
 
 checkwhitespace:
@@ -564,9 +552,6 @@ endif
 
 clean: $(addsuffix /.clean,$(ADDITIONAL_TESTS))
 	rm -rf $(ROOT_OF_THEM_ALL) $(IMPDIR) $(DOC_OUTPUT_DIR) druntime.zip
-
-test/%/.clean: test/%/Makefile
-	$(MAKE) -C test/$* clean
 
 %/.directory :
 	mkdir -p $* || exists $*

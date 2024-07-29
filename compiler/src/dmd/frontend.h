@@ -102,11 +102,11 @@ class OverloadSet;
 class MixinDeclaration;
 class StaticAssert;
 class StaticIfDeclaration;
+class CAsmDeclaration;
 class DsymbolTable;
 struct MangleOverride;
 class AliasThis;
 class Expression;
-class TypeTuple;
 class Condition;
 class StaticForeach;
 struct UnionExp;
@@ -117,18 +117,19 @@ class ForeachStatement;
 class ForeachRangeStatement;
 struct OutBuffer;
 class TypeInfoClassDeclaration;
+class TypeTuple;
 class Initializer;
 struct IntRange;
 struct ModuleDeclaration;
 template <typename Datum>
 struct FileMapping;
 struct Escape;
-class ErrorSink;
 class LabelStatement;
 class SwitchStatement;
 class Statement;
 class TryFinallyStatement;
 class ScopeGuardStatement;
+class ErrorSink;
 struct DocComment;
 class WithStatement;
 struct AA;
@@ -148,7 +149,6 @@ class TemplateThisParameter;
 class TemplateTupleParameter;
 struct TemplatePrevious;
 class TypeQualified;
-struct TYPE;
 class TypeBasic;
 class TypeFunction;
 class TypeError;
@@ -184,6 +184,7 @@ class DsymbolExp;
 class ThisExp;
 class SuperExp;
 class NullExp;
+class InterpExp;
 class TupleExp;
 class ArrayLiteralExp;
 class AssocArrayLiteralExp;
@@ -286,21 +287,9 @@ class ThrownExceptionExp;
 class UnaExp;
 class BinExp;
 class BinAssignExp;
+struct InterpolatedSet;
 struct ContractInfo;
 struct ObjcSelector;
-class PeelStatement;
-class CompoundStatement;
-class CompoundDeclarationStatement;
-class UnrolledLoopStatement;
-class WhileStatement;
-class DoStatement;
-class ForStatement;
-class IfStatement;
-class CaseRangeStatement;
-class DefaultStatement;
-class SynchronizedStatement;
-class TryCatchStatement;
-class DebugStatement;
 class ErrorInitializer;
 class VoidInitializer;
 class DefaultInitializer;
@@ -309,20 +298,33 @@ class ArrayInitializer;
 class ExpInitializer;
 class CInitializer;
 class ErrorStatement;
+class PeelStatement;
 class ExpStatement;
+class CompoundStatement;
+class IfStatement;
 class ConditionalStatement;
 class StaticForeachStatement;
+class DefaultStatement;
 class GotoDefaultStatement;
 class BreakStatement;
 class DtorExpStatement;
 class MixinStatement;
 class ForwardingStatement;
+class DoStatement;
+class WhileStatement;
+class ForStatement;
 class ContinueStatement;
+class TryCatchStatement;
 class ThrowStatement;
+class DebugStatement;
 class SwitchErrorStatement;
+class UnrolledLoopStatement;
+class CompoundDeclarationStatement;
 class CompoundAsmStatement;
 class PragmaStatement;
 class StaticAssertStatement;
+class CaseRangeStatement;
+class SynchronizedStatement;
 class AsmStatement;
 class InlineAsmStatement;
 class GccAsmStatement;
@@ -581,6 +583,7 @@ public:
     virtual MixinDeclaration* isMixinDeclaration();
     virtual StaticAssert* isStaticAssert();
     virtual StaticIfDeclaration* isStaticIfDeclaration();
+    virtual CAsmDeclaration* isCAsmDeclaration();
 };
 
 struct BitArray final
@@ -738,6 +741,7 @@ enum class BUILTIN : uint8_t
     toPrecFloat = 33u,
     toPrecDouble = 34u,
     toPrecReal = 35u,
+    ctfeWrite = 36u,
 };
 
 enum class Include : uint8_t
@@ -763,12 +767,12 @@ public:
     const char* name() const;
     static const char* path(const char* str);
     static const char* combine(const char* path, const char* name);
-    static Array<const char* >* splitPath(const char* path);
+    static void appendSplitPath(const char* path, Array<const char* >& array);
     static const char* defaultExt(const char* name, const char* ext);
     static const char* forceExt(const char* name, const char* ext);
     static bool equalsExt(const char* name, const char* ext);
     bool equalsExt(const char* ext) const;
-    static const char* searchPath(Array<const char* >* path, const char* name, bool cwd);
+    static const char* searchPath(const Array<const char* >& path, const char* name, bool cwd);
     static int32_t exists(const char* name);
     static bool ensurePathExists(const char* path);
     static const char* canonicalName(const char* name);
@@ -778,14 +782,6 @@ public:
         str()
     {
     }
-};
-
-enum class MATCH
-{
-    nomatch = 0,
-    convert = 1,
-    constant = 2,
-    exact = 3,
 };
 
 enum class ThreeState : uint8_t
@@ -836,6 +832,14 @@ enum class FileType : uint8_t
     dhdr = 1u,
     ddoc = 2u,
     c = 3u,
+};
+
+enum class Edition : uint8_t
+{
+    none = 0u,
+    legacy = 1u,
+    v2024 = 2u,
+    latest = 2u,
 };
 
 struct OutBuffer final
@@ -976,6 +980,7 @@ public:
     virtual void visit(typename AST::DebugSymbol s);
     virtual void visit(typename AST::VersionSymbol s);
     virtual void visit(typename AST::AliasAssign s);
+    virtual void visit(typename AST::CAsmDeclaration s);
     virtual void visit(typename AST::Package s);
     virtual void visit(typename AST::EnumDeclaration s);
     virtual void visit(typename AST::AggregateDeclaration s);
@@ -1092,6 +1097,7 @@ public:
     virtual void visit(typename AST::TypeidExp e);
     virtual void visit(typename AST::TraitsExp e);
     virtual void visit(typename AST::StringExp e);
+    virtual void visit(typename AST::InterpExp e);
     virtual void visit(typename AST::NewExp e);
     virtual void visit(typename AST::AssocArrayLiteralExp e);
     virtual void visit(typename AST::ArrayLiteralExp e);
@@ -1317,6 +1323,15 @@ enum class ClassFlags : uint32_t
     isAbstract = 64u,
     isCPPclass = 128u,
     hasDtor = 256u,
+    hasNameSig = 512u,
+};
+
+enum class MATCH
+{
+    nomatch = 0,
+    convert = 1,
+    constant = 2,
+    exact = 3,
 };
 
 struct MatchAccumulator final
@@ -1339,6 +1354,8 @@ struct MatchAccumulator final
         nextf(nextf)
         {}
 };
+
+enum : char { PathSeparator = '/' };
 
 enum class StructFlags
 {
@@ -1389,6 +1406,19 @@ enum class SearchOpt : uint32_t
 typedef uint32_t SearchOptFlags;
 
 enum : int32_t { IDX_NOTFOUND = 305419896 };
+
+struct MATCHpair final
+{
+    MATCH mta;
+    MATCH mfa;
+    MATCHpair()
+    {
+    }
+    MATCHpair(MATCH mta, MATCH mfa = (MATCH)0) :
+        mta(mta),
+        mfa(mfa)
+        {}
+};
 
 class TemplateParameter : public ASTNode
 {
@@ -1449,21 +1479,17 @@ public:
     bool deprecated_;
     Visibility visibility;
     TemplatePrevious* previous;
-private:
     Expression* lastConstraint;
     Array<Expression* > lastConstraintNegs;
     Array<RootObject* >* lastConstraintTiargs;
-public:
     TemplateDeclaration* syntaxCopy(Dsymbol* __param_0_) override;
     bool overloadInsert(Dsymbol* s) override;
     bool hasStaticCtorOrDtor() override;
     const char* kind() const override;
     const char* toChars() const override;
     const char* toCharsNoConstraints() const;
-    const char* toCharsMaybeConstraints(bool includeConstraints) const;
     Visibility visible() override;
     const char* getConstraintEvalError(const char*& tip);
-    Scope* scopeForTemplateParameters(TemplateInstance* ti, Scope* sc);
     TemplateDeclaration* isTemplateDeclaration() override;
     bool isDeprecated() const override;
     bool isOverloadable() const override;
@@ -1484,6 +1510,7 @@ public:
     ScopeDsymbol* argsym;
     size_t hash;
     Array<Expression* >* fargs;
+    Array<Identifier* >* fnames;
     Array<TemplateInstance* >* deferred;
     Module* memberOf;
     TemplateInstance* tinst;
@@ -1690,8 +1717,6 @@ enum class TY : uint8_t
     Ttag = 47u,
 };
 
-typedef uint64_t dinteger_t;
-
 class Type : public ASTNode
 {
 public:
@@ -1731,14 +1756,12 @@ public:
             {}
     };
 
-private:
     Mcache* mcache;
-public:
     Type* pto;
     Type* rto;
     Type* arrayof;
     TypeInfoDeclaration* vtinfo;
-    TYPE* ctype;
+    void* ctype;
     static Type* tvoid;
     static Type* tint8;
     static Type* tuns8;
@@ -1797,18 +1820,13 @@ public:
     Type* copy() const;
     virtual Type* syntaxCopy();
     bool equals(const RootObject* const o) const override;
-    bool equivalent(Type* t);
     DYNCAST dyncast() const final override;
     size_t getUniqueID() const;
     const char* toChars() const final override;
     char* toPrettyChars(bool QualifyTypes = false);
     static void _init();
     static void deinitialize();
-    uinteger_t size();
-    virtual uinteger_t size(const Loc& loc);
     virtual uint32_t alignsize();
-    Type* trySemantic(const Loc& loc, Scope* sc);
-    Type* merge2();
     void modToBuffer(OutBuffer& buf) const;
     char* modToChars() const;
     virtual bool isintegral();
@@ -1832,25 +1850,7 @@ public:
     bool isSharedWild() const;
     bool isNaked() const;
     Type* nullAttributes() const;
-    Type* constOf();
-    Type* immutableOf();
-    Type* mutableOf();
-    Type* sharedOf();
-    Type* sharedConstOf();
-    Type* unSharedOf();
-    Type* wildOf();
-    Type* wildConstOf();
-    Type* sharedWildOf();
-    Type* sharedWildConstOf();
-    Type* castMod(uint8_t mod);
-    Type* addMod(uint8_t mod);
-    virtual Type* addStorageClass(StorageClass stc);
-    Type* pointerTo();
-    Type* referenceTo();
-    Type* arrayOf();
-    Type* sarrayOf(dinteger_t dim);
     bool hasDeprecatedAliasThis();
-    Type* aliasthisOf();
     virtual Type* makeConst();
     virtual Type* makeImmutable();
     virtual Type* makeShared();
@@ -1860,24 +1860,16 @@ public:
     virtual Type* makeSharedWild();
     virtual Type* makeSharedWildConst();
     virtual Type* makeMutable();
-    virtual Dsymbol* toDsymbol(Scope* sc);
     Type* toBasetype();
-    virtual bool isBaseOf(Type* t, int32_t* poffset);
-    virtual MATCH implicitConvTo(Type* to);
     virtual MATCH constConv(Type* to);
     virtual uint8_t deduceWild(Type* t, bool isRef);
-    virtual Type* substWildTo(uint32_t mod);
-    Type* unqualify(uint32_t m);
-    virtual Type* toHeadMutable();
     virtual ClassDeclaration* isClassHandle();
     virtual structalign_t alignment();
     virtual Expression* defaultInitLiteral(const Loc& loc);
     virtual bool isZeroInit(const Loc& loc);
-    Identifier* getTypeInfoIdent();
     virtual int32_t hasWild() const;
-    virtual bool hasPointers();
     virtual bool hasVoidInitPointers();
-    virtual bool hasSystemFields();
+    virtual bool hasUnsafeBitpatterns();
     virtual bool hasInvariant();
     virtual Type* nextOf();
     Type* baseElemOf();
@@ -1925,22 +1917,6 @@ public:
     void update(Type* tt, Expression* e, Type* tparam);
     MATCH matchAll(Type* tt);
 };
-
-extern Dsymbol* isDsymbol(RootObject* o);
-
-extern bool isError(const RootObject* const o);
-
-extern Expression* isExpression(RootObject* o);
-
-extern Parameter* isParameter(RootObject* o);
-
-extern TemplateParameter* isTemplateParameter(RootObject* o);
-
-extern Tuple* isTuple(RootObject* o);
-
-extern Type* isType(RootObject* o);
-
-extern void printTemplateStats();
 
 class DebugSymbol final : public Dsymbol
 {
@@ -2055,45 +2031,48 @@ enum class EXP : uint8_t
     preMinusMinus = 86u,
     identifier = 87u,
     string_ = 88u,
-    this_ = 89u,
-    super_ = 90u,
-    halt = 91u,
-    tuple = 92u,
-    error = 93u,
-    void_ = 94u,
-    int64 = 95u,
-    float64 = 96u,
-    complex80 = 97u,
-    import_ = 98u,
-    delegate_ = 99u,
-    function_ = 100u,
-    mixin_ = 101u,
-    in_ = 102u,
-    break_ = 103u,
-    continue_ = 104u,
-    goto_ = 105u,
-    scope_ = 106u,
-    traits = 107u,
-    overloadSet = 108u,
-    line = 109u,
-    file = 110u,
-    fileFullPath = 111u,
-    moduleString = 112u,
-    functionString = 113u,
-    prettyFunction = 114u,
-    pow = 115u,
-    powAssign = 116u,
-    vector = 117u,
-    voidExpression = 118u,
-    cantExpression = 119u,
-    showCtfeContext = 120u,
-    objcClassReference = 121u,
-    vectorArray = 122u,
-    compoundLiteral = 123u,
-    _Generic_ = 124u,
-    interval = 125u,
-    loweredAssignExp = 126u,
+    interpolated = 89u,
+    this_ = 90u,
+    super_ = 91u,
+    halt = 92u,
+    tuple = 93u,
+    error = 94u,
+    void_ = 95u,
+    int64 = 96u,
+    float64 = 97u,
+    complex80 = 98u,
+    import_ = 99u,
+    delegate_ = 100u,
+    function_ = 101u,
+    mixin_ = 102u,
+    in_ = 103u,
+    break_ = 104u,
+    continue_ = 105u,
+    goto_ = 106u,
+    scope_ = 107u,
+    traits = 108u,
+    overloadSet = 109u,
+    line = 110u,
+    file = 111u,
+    fileFullPath = 112u,
+    moduleString = 113u,
+    functionString = 114u,
+    prettyFunction = 115u,
+    pow = 116u,
+    powAssign = 117u,
+    vector = 118u,
+    voidExpression = 119u,
+    cantExpression = 120u,
+    showCtfeContext = 121u,
+    objcClassReference = 122u,
+    vectorArray = 123u,
+    compoundLiteral = 124u,
+    _Generic_ = 125u,
+    interval = 126u,
+    loweredAssignExp = 127u,
 };
+
+typedef uint64_t dinteger_t;
 
 struct complex_t final
 {
@@ -2127,6 +2106,7 @@ public:
     Type* type;
     Loc loc;
     const EXP op;
+    bool parens;
     size_t size() const;
     static void _init();
     static void deinitialize();
@@ -2160,6 +2140,7 @@ public:
     SuperExp* isSuperExp();
     NullExp* isNullExp();
     StringExp* isStringExp();
+    InterpExp* isInterpExp();
     TupleExp* isTupleExp();
     ArrayLiteralExp* isArrayLiteralExp();
     AssocArrayLiteralExp* isAssocArrayLiteralExp();
@@ -2452,6 +2433,7 @@ class CastExp final : public UnaExp
 public:
     Type* to;
     uint8_t mod;
+    bool trusted;
     CastExp* syntaxCopy() override;
     bool isLvalue() override;
     void accept(Visitor* v) override;
@@ -2615,7 +2597,6 @@ class IdentifierExp : public Expression
 {
 public:
     Identifier* ident;
-    bool parens;
     static IdentifierExp* create(const Loc& loc, Identifier* ident);
     bool isLvalue() final override;
     void accept(Visitor* v) override;
@@ -2798,143 +2779,144 @@ enum class TOK : uint8_t
     dcharLiteral = 85u,
     identifier = 86u,
     string_ = 87u,
-    hexadecimalString = 88u,
-    this_ = 89u,
-    super_ = 90u,
-    error = 91u,
-    void_ = 92u,
-    int8 = 93u,
-    uns8 = 94u,
-    int16 = 95u,
-    uns16 = 96u,
-    int32 = 97u,
-    uns32 = 98u,
-    int64 = 99u,
-    uns64 = 100u,
-    int128 = 101u,
-    uns128 = 102u,
-    float32 = 103u,
-    float64 = 104u,
-    float80 = 105u,
-    imaginary32 = 106u,
-    imaginary64 = 107u,
-    imaginary80 = 108u,
-    complex32 = 109u,
-    complex64 = 110u,
-    complex80 = 111u,
-    char_ = 112u,
-    wchar_ = 113u,
-    dchar_ = 114u,
-    bool_ = 115u,
-    struct_ = 116u,
-    class_ = 117u,
-    interface_ = 118u,
-    union_ = 119u,
-    enum_ = 120u,
-    import_ = 121u,
-    alias_ = 122u,
-    override_ = 123u,
-    delegate_ = 124u,
-    function_ = 125u,
-    mixin_ = 126u,
-    align_ = 127u,
-    extern_ = 128u,
-    private_ = 129u,
-    protected_ = 130u,
-    public_ = 131u,
-    export_ = 132u,
-    static_ = 133u,
-    final_ = 134u,
-    const_ = 135u,
-    abstract_ = 136u,
-    debug_ = 137u,
-    deprecated_ = 138u,
-    in_ = 139u,
-    out_ = 140u,
-    inout_ = 141u,
-    lazy_ = 142u,
-    auto_ = 143u,
-    package_ = 144u,
-    immutable_ = 145u,
-    if_ = 146u,
-    else_ = 147u,
-    while_ = 148u,
-    for_ = 149u,
-    do_ = 150u,
-    switch_ = 151u,
-    case_ = 152u,
-    default_ = 153u,
-    break_ = 154u,
-    continue_ = 155u,
-    with_ = 156u,
-    synchronized_ = 157u,
-    return_ = 158u,
-    goto_ = 159u,
-    try_ = 160u,
-    catch_ = 161u,
-    finally_ = 162u,
-    asm_ = 163u,
-    foreach_ = 164u,
-    foreach_reverse_ = 165u,
-    scope_ = 166u,
-    onScopeExit = 167u,
-    onScopeFailure = 168u,
-    onScopeSuccess = 169u,
-    invariant_ = 170u,
-    unittest_ = 171u,
-    argumentTypes = 172u,
-    ref_ = 173u,
-    macro_ = 174u,
-    parameters = 175u,
-    traits = 176u,
-    pure_ = 177u,
-    nothrow_ = 178u,
-    gshared = 179u,
-    line = 180u,
-    file = 181u,
-    fileFullPath = 182u,
-    moduleString = 183u,
-    functionString = 184u,
-    prettyFunction = 185u,
-    shared_ = 186u,
-    at = 187u,
-    pow = 188u,
-    powAssign = 189u,
-    goesTo = 190u,
-    vector = 191u,
-    pound = 192u,
-    arrow = 193u,
-    colonColon = 194u,
-    wchar_tLiteral = 195u,
-    endOfLine = 196u,
-    whitespace = 197u,
-    inline_ = 198u,
-    register_ = 199u,
-    restrict_ = 200u,
-    signed_ = 201u,
-    sizeof_ = 202u,
-    typedef_ = 203u,
-    unsigned_ = 204u,
-    volatile_ = 205u,
-    _Alignas_ = 206u,
-    _Alignof_ = 207u,
-    _Atomic_ = 208u,
-    _Bool_ = 209u,
-    _Complex_ = 210u,
-    _Generic_ = 211u,
-    _Imaginary_ = 212u,
-    _Noreturn_ = 213u,
-    _Static_assert_ = 214u,
-    _Thread_local_ = 215u,
-    _assert_ = 216u,
-    _import_ = 217u,
-    __cdecl_ = 218u,
-    __declspec_ = 219u,
-    __stdcall_ = 220u,
-    __thread_ = 221u,
-    __pragma_ = 222u,
-    __int128_ = 223u,
-    __attribute___ = 224u,
+    interpolated = 88u,
+    hexadecimalString = 89u,
+    this_ = 90u,
+    super_ = 91u,
+    error = 92u,
+    void_ = 93u,
+    int8 = 94u,
+    uns8 = 95u,
+    int16 = 96u,
+    uns16 = 97u,
+    int32 = 98u,
+    uns32 = 99u,
+    int64 = 100u,
+    uns64 = 101u,
+    int128 = 102u,
+    uns128 = 103u,
+    float32 = 104u,
+    float64 = 105u,
+    float80 = 106u,
+    imaginary32 = 107u,
+    imaginary64 = 108u,
+    imaginary80 = 109u,
+    complex32 = 110u,
+    complex64 = 111u,
+    complex80 = 112u,
+    char_ = 113u,
+    wchar_ = 114u,
+    dchar_ = 115u,
+    bool_ = 116u,
+    struct_ = 117u,
+    class_ = 118u,
+    interface_ = 119u,
+    union_ = 120u,
+    enum_ = 121u,
+    import_ = 122u,
+    alias_ = 123u,
+    override_ = 124u,
+    delegate_ = 125u,
+    function_ = 126u,
+    mixin_ = 127u,
+    align_ = 128u,
+    extern_ = 129u,
+    private_ = 130u,
+    protected_ = 131u,
+    public_ = 132u,
+    export_ = 133u,
+    static_ = 134u,
+    final_ = 135u,
+    const_ = 136u,
+    abstract_ = 137u,
+    debug_ = 138u,
+    deprecated_ = 139u,
+    in_ = 140u,
+    out_ = 141u,
+    inout_ = 142u,
+    lazy_ = 143u,
+    auto_ = 144u,
+    package_ = 145u,
+    immutable_ = 146u,
+    if_ = 147u,
+    else_ = 148u,
+    while_ = 149u,
+    for_ = 150u,
+    do_ = 151u,
+    switch_ = 152u,
+    case_ = 153u,
+    default_ = 154u,
+    break_ = 155u,
+    continue_ = 156u,
+    with_ = 157u,
+    synchronized_ = 158u,
+    return_ = 159u,
+    goto_ = 160u,
+    try_ = 161u,
+    catch_ = 162u,
+    finally_ = 163u,
+    asm_ = 164u,
+    foreach_ = 165u,
+    foreach_reverse_ = 166u,
+    scope_ = 167u,
+    onScopeExit = 168u,
+    onScopeFailure = 169u,
+    onScopeSuccess = 170u,
+    invariant_ = 171u,
+    unittest_ = 172u,
+    argumentTypes = 173u,
+    ref_ = 174u,
+    macro_ = 175u,
+    parameters = 176u,
+    traits = 177u,
+    pure_ = 178u,
+    nothrow_ = 179u,
+    gshared = 180u,
+    line = 181u,
+    file = 182u,
+    fileFullPath = 183u,
+    moduleString = 184u,
+    functionString = 185u,
+    prettyFunction = 186u,
+    shared_ = 187u,
+    at = 188u,
+    pow = 189u,
+    powAssign = 190u,
+    goesTo = 191u,
+    vector = 192u,
+    pound = 193u,
+    arrow = 194u,
+    colonColon = 195u,
+    wchar_tLiteral = 196u,
+    endOfLine = 197u,
+    whitespace = 198u,
+    inline_ = 199u,
+    register_ = 200u,
+    restrict_ = 201u,
+    signed_ = 202u,
+    sizeof_ = 203u,
+    typedef_ = 204u,
+    unsigned_ = 205u,
+    volatile_ = 206u,
+    _Alignas_ = 207u,
+    _Alignof_ = 208u,
+    _Atomic_ = 209u,
+    _Bool_ = 210u,
+    _Complex_ = 211u,
+    _Generic_ = 212u,
+    _Imaginary_ = 213u,
+    _Noreturn_ = 214u,
+    _Static_assert_ = 215u,
+    _Thread_local_ = 216u,
+    _assert_ = 217u,
+    _import_ = 218u,
+    __cdecl_ = 219u,
+    __declspec_ = 220u,
+    __stdcall_ = 221u,
+    __thread_ = 222u,
+    __pragma_ = 223u,
+    __int128_ = 224u,
+    __attribute___ = 225u,
 };
 
 class FuncExp final : public Expression
@@ -3017,6 +2999,17 @@ public:
     dinteger_t getInteger();
     IntegerExp* syntaxCopy() override;
     static IntegerExp* createBool(bool b);
+};
+
+class InterpExp final : public Expression
+{
+public:
+    char postfix;
+    OwnedBy ownedByCtfe;
+    InterpolatedSet* interpolatedSet;
+    enum : char { NoPostfix = 0u };
+
+    void accept(Visitor* v) override;
 };
 
 class IntervalExp final : public Expression
@@ -3347,6 +3340,7 @@ public:
         char* string;
         char16_t* wstring;
         char32_t* dstring;
+        uint64_t* lstring;
     };
     size_t len;
     uint8_t sz;
@@ -3360,6 +3354,7 @@ public:
     size_t numberOfCodeUnits(int32_t tynto = 0) const;
     void writeTo(void* dest, bool zero, int32_t tyto = 0) const;
     char32_t getCodeUnit(size_t i) const;
+    dinteger_t getIndex(size_t i) const;
     StringExp* toStringExp() override;
     int32_t compare(const StringExp* const se2) const;
     Optional<bool > toBool() override;
@@ -3472,7 +3467,6 @@ public:
 class TypeExp final : public Expression
 {
 public:
-    bool parens;
     TypeExp* syntaxCopy() override;
     bool checkType() override;
     bool checkValue() override;
@@ -3556,8 +3550,6 @@ public:
     void accept(Visitor* v) override;
 };
 
-extern void expandTuples(Array<Expression* >* exps, Array<Identifier* >* names = nullptr);
-
 enum : int32_t { stageApply = 8 };
 
 enum : int32_t { stageInlineScan = 16 };
@@ -3624,14 +3616,6 @@ struct ObjcFuncDeclaration final
         selectorParameter(selectorParameter),
         isOptional(isOptional)
         {}
-};
-
-enum class PURE : uint8_t
-{
-    impure = 0u,
-    fwdref = 1u,
-    weak = 2u,
-    const_ = 3u,
 };
 
 enum class VarArg : uint8_t
@@ -3784,14 +3768,10 @@ public:
     Array<Expression* >* fdrequireParams(Array<Expression* >* param);
     Array<Expression* >* fdensureParams(Array<Expression* >* param);
     FuncDeclaration* syntaxCopy(Dsymbol* s) override;
-    bool functionSemantic();
-    bool functionSemantic3();
     bool equals(const RootObject* const o) const final override;
-    int32_t findVtblIndex(Array<Dsymbol* >* vtbl, int32_t dim);
     bool overloadInsert(Dsymbol* s) override;
     bool inUnittest();
-    MATCH leastAsSpecialized(FuncDeclaration* g, Array<Identifier* >* names);
-    LabelDsymbol* searchLabel(Identifier* ident, const Loc& loc = Loc::initial);
+    LabelDsymbol* searchLabel(Identifier* ident, const Loc& loc);
     enum : int32_t { LevelError = -2 };
 
     const char* toPrettyChars(bool QualifyTypes = false) override;
@@ -3806,9 +3786,7 @@ public:
     bool isCodeseg() const final override;
     bool isOverloadable() const final override;
     bool isAbstract() final override;
-    bool canInferAttributes(Scope* sc);
     void initInferAttributes();
-    PURE isPure();
     bool isSafe();
     bool isTrusted();
     bool isNogc();
@@ -3825,8 +3803,6 @@ public:
     bool needsClosure();
     bool checkClosure();
     bool hasNestedFrameRefs();
-    static bool needsFensure(FuncDeclaration* fd);
-    void buildEnsureRequire();
     ParameterList getParameterList();
     static FuncDeclaration* genCfunc(Array<Parameter* >* fparams, Type* treturn, const char* name, StorageClass stc = 0);
     static FuncDeclaration* genCfunc(Array<Parameter* >* fparams, Type* treturn, Identifier* id, StorageClass stc = 0);
@@ -3892,14 +3868,6 @@ public:
     void accept(Visitor* v) override;
 };
 
-enum class FuncResolveFlag : uint8_t
-{
-    standard = 0u,
-    quiet = 1u,
-    overloadOnly = 2u,
-    ufcs = 4u,
-};
-
 class InvariantDeclaration final : public FuncDeclaration
 {
 public:
@@ -3921,60 +3889,6 @@ public:
     bool addPostInvariant() override;
     NewDeclaration* isNewDeclaration() override;
     void accept(Visitor* v) override;
-};
-
-class SemanticTimePermissiveVisitor : public Visitor
-{
-public:
-    using Visitor::visit;
-    void visit(Dsymbol* __param_0_) override;
-    void visit(Parameter* __param_0_) override;
-    void visit(Statement* __param_0_) override;
-    void visit(Type* __param_0_) override;
-    void visit(Expression* __param_0_) override;
-    void visit(TemplateParameter* __param_0_) override;
-    void visit(Condition* __param_0_) override;
-    void visit(Initializer* __param_0_) override;
-};
-
-class StatementRewriteWalker : public SemanticTimePermissiveVisitor
-{
-public:
-    using SemanticTimePermissiveVisitor::visit;
-    Statement** ps;
-    void visitStmt(Statement*& s);
-    void replaceCurrent(Statement* s);
-    void visit(PeelStatement* s) override;
-    void visit(CompoundStatement* s) override;
-    void visit(CompoundDeclarationStatement* s) override;
-    void visit(UnrolledLoopStatement* s) override;
-    void visit(ScopeStatement* s) override;
-    void visit(WhileStatement* s) override;
-    void visit(DoStatement* s) override;
-    void visit(ForStatement* s) override;
-    void visit(ForeachStatement* s) override;
-    void visit(ForeachRangeStatement* s) override;
-    void visit(IfStatement* s) override;
-    void visit(SwitchStatement* s) override;
-    void visit(CaseStatement* s) override;
-    void visit(CaseRangeStatement* s) override;
-    void visit(DefaultStatement* s) override;
-    void visit(SynchronizedStatement* s) override;
-    void visit(WithStatement* s) override;
-    void visit(TryCatchStatement* s) override;
-    void visit(TryFinallyStatement* s) override;
-    void visit(DebugStatement* s) override;
-    void visit(LabelStatement* s) override;
-};
-
-class NrvoWalker final : public StatementRewriteWalker
-{
-public:
-    using StatementRewriteWalker::visit;
-    FuncDeclaration* fd;
-    Scope* sc;
-    void visit(ReturnStatement* s) override;
-    void visit(TryFinallyStatement* s) override;
 };
 
 class PostBlitDeclaration final : public FuncDeclaration
@@ -4055,6 +3969,8 @@ struct HdrGenState final
     bool importcHdr;
     bool doFuncBodies;
     bool vcg_ast;
+    bool skipConstraints;
+    bool showOneMember;
     bool fullQual;
     int32_t tpltMember;
     int32_t autoMember;
@@ -4070,6 +3986,8 @@ struct HdrGenState final
         importcHdr(),
         doFuncBodies(),
         vcg_ast(),
+        skipConstraints(),
+        showOneMember(true),
         fullQual(),
         tpltMember(),
         autoMember(),
@@ -4080,13 +3998,15 @@ struct HdrGenState final
         inEnumDecl()
     {
     }
-    HdrGenState(bool hdrgen, bool ddoc = false, bool fullDump = false, bool importcHdr = false, bool doFuncBodies = false, bool vcg_ast = false, bool fullQual = false, int32_t tpltMember = 0, int32_t autoMember = 0, int32_t forStmtInit = 0, int32_t insideFuncBody = 0, int32_t insideAggregate = 0, bool declstring = false, EnumDeclaration* inEnumDecl = nullptr) :
+    HdrGenState(bool hdrgen, bool ddoc = false, bool fullDump = false, bool importcHdr = false, bool doFuncBodies = false, bool vcg_ast = false, bool skipConstraints = false, bool showOneMember = true, bool fullQual = false, int32_t tpltMember = 0, int32_t autoMember = 0, int32_t forStmtInit = 0, int32_t insideFuncBody = 0, int32_t insideAggregate = 0, bool declstring = false, EnumDeclaration* inEnumDecl = nullptr) :
         hdrgen(hdrgen),
         ddoc(ddoc),
         fullDump(fullDump),
         importcHdr(importcHdr),
         doFuncBodies(doFuncBodies),
         vcg_ast(vcg_ast),
+        skipConstraints(skipConstraints),
+        showOneMember(showOneMember),
         fullQual(fullQual),
         tpltMember(tpltMember),
         autoMember(autoMember),
@@ -4099,14 +4019,6 @@ struct HdrGenState final
 };
 
 enum : int32_t { TEST_EMIT_ALL = 0 };
-
-extern void genhdrfile(Module* m, bool doFuncBodies, OutBuffer& buf);
-
-extern void moduleToBuffer(OutBuffer& buf, bool vcg_ast, Module* m);
-
-extern const char* parametersTypeToChars(ParameterList pl);
-
-extern const char* toChars(const Statement* const s);
 
 enum class InitKind : uint8_t
 {
@@ -4198,10 +4110,6 @@ public:
     Type* type;
     void accept(Visitor* v) override;
 };
-
-extern Initializer* initializerSemantic(Initializer* init, Scope* sc, Type*& tx, NeedInterpret needInterpret);
-
-extern Expression* initializerToExpression(Initializer* init, Type* itype = nullptr, const bool isCfile = false);
 
 enum class Covariant
 {
@@ -4307,11 +4215,8 @@ public:
     static TypeAArray* create(Type* t, Type* index);
     const char* kind() const override;
     TypeAArray* syntaxCopy() override;
-    uinteger_t size(const Loc& loc) override;
     bool isZeroInit(const Loc& loc) override;
     bool isBoolean() override;
-    bool hasPointers() override;
-    MATCH implicitConvTo(Type* to) override;
     MATCH constConv(Type* to) override;
     void accept(Visitor* v) override;
 };
@@ -4323,7 +4228,6 @@ public:
     uint32_t flags;
     const char* kind() const override;
     TypeBasic* syntaxCopy() override;
-    uinteger_t size(const Loc& loc) override;
     uint32_t alignsize() override;
     bool isintegral() override;
     bool isfloating() override;
@@ -4332,8 +4236,8 @@ public:
     bool iscomplex() override;
     bool isscalar() override;
     bool isunsigned() override;
-    MATCH implicitConvTo(Type* to) override;
     bool isZeroInit(const Loc& loc) override;
+    bool hasUnsafeBitpatterns() override;
     TypeBasic* isTypeBasic() override;
     void accept(Visitor* v) override;
 };
@@ -4355,19 +4259,13 @@ public:
     AliasThisRec att;
     CPPMANGLE cppmangle;
     const char* kind() const override;
-    uinteger_t size(const Loc& loc) override;
     TypeClass* syntaxCopy() override;
-    Dsymbol* toDsymbol(Scope* sc) override;
     ClassDeclaration* isClassHandle() override;
-    bool isBaseOf(Type* t, int32_t* poffset) override;
-    MATCH implicitConvTo(Type* to) override;
     MATCH constConv(Type* to) override;
     uint8_t deduceWild(Type* t, bool isRef) override;
-    Type* toHeadMutable() override;
     bool isZeroInit(const Loc& loc) override;
     bool isscope() override;
     bool isBoolean() override;
-    bool hasPointers() override;
     void accept(Visitor* v) override;
 };
 
@@ -4376,13 +4274,10 @@ class TypeDArray final : public TypeArray
 public:
     const char* kind() const override;
     TypeDArray* syntaxCopy() override;
-    uinteger_t size(const Loc& loc) override;
     uint32_t alignsize() override;
     bool isString() override;
     bool isZeroInit(const Loc& loc) override;
     bool isBoolean() override;
-    MATCH implicitConvTo(Type* to) override;
-    bool hasPointers() override;
     void accept(Visitor* v) override;
 };
 
@@ -4392,13 +4287,9 @@ public:
     static TypeDelegate* create(TypeFunction* t);
     const char* kind() const override;
     TypeDelegate* syntaxCopy() override;
-    Type* addStorageClass(StorageClass stc) override;
-    uinteger_t size(const Loc& loc) override;
     uint32_t alignsize() override;
-    MATCH implicitConvTo(Type* to) override;
     bool isZeroInit(const Loc& loc) override;
     bool isBoolean() override;
-    bool hasPointers() override;
     void accept(Visitor* v) override;
 };
 
@@ -4408,10 +4299,8 @@ public:
     EnumDeclaration* sym;
     const char* kind() const override;
     TypeEnum* syntaxCopy() override;
-    uinteger_t size(const Loc& loc) override;
-    Type* memType(const Loc& loc = Loc::initial);
+    Type* memType();
     uint32_t alignsize() override;
-    Dsymbol* toDsymbol(Scope* sc) override;
     bool isintegral() override;
     bool isfloating() override;
     bool isreal() override;
@@ -4425,12 +4314,10 @@ public:
     bool needsDestruction() override;
     bool needsCopyOrPostblit() override;
     bool needsNested() override;
-    MATCH implicitConvTo(Type* to) override;
     MATCH constConv(Type* to) override;
     bool isZeroInit(const Loc& loc) override;
-    bool hasPointers() override;
     bool hasVoidInitPointers() override;
-    bool hasSystemFields() override;
+    bool hasUnsafeBitpatterns() override;
     bool hasInvariant() override;
     Type* nextOf() override;
     void accept(Visitor* v) override;
@@ -4441,7 +4328,6 @@ class TypeError final : public Type
 public:
     const char* kind() const override;
     TypeError* syntaxCopy() override;
-    uinteger_t size(const Loc& loc) override;
     Expression* defaultInitLiteral(const Loc& loc) override;
     void accept(Visitor* v) override;
 };
@@ -4452,6 +4338,14 @@ enum class TRUST : uint8_t
     system = 1u,
     trusted = 2u,
     safe = 3u,
+};
+
+enum class PURE : uint8_t
+{
+    impure = 0u,
+    fwdref = 1u,
+    weak = 2u,
+    const_ = 3u,
 };
 
 class TypeFunction final : public TypeNext
@@ -4546,16 +4440,12 @@ public:
     TRUST trust;
     PURE purity;
     int8_t inuse;
-    Array<Expression* >* fargs;
+    ArgumentList inferenceArguments;
     static TypeFunction* create(Array<Parameter* >* parameters, Type* treturn, uint8_t varargs, LINK linkage, StorageClass stc = 0);
     const char* kind() const override;
     TypeFunction* syntaxCopy() override;
-    void purityLevel();
     bool hasLazyParameters();
     bool isDstyleVariadic() const;
-    StorageClass parameterStorageClass(Type* tthis, Parameter* p, Array<VarDeclaration* >* outerVars = nullptr, bool indirect = false);
-    Type* addStorageClass(StorageClass stc) override;
-    Type* substWildTo(uint32_t __param_0_) override;
     MATCH constConv(Type* to) override;
     bool iswild() const;
     void accept(Visitor* v) override;
@@ -4567,7 +4457,6 @@ public:
     Loc loc;
     Array<RootObject* > idents;
     TypeQualified* syntaxCopy() override = 0;
-    uinteger_t size(const Loc& loc) override;
     void accept(Visitor* v) override;
 };
 
@@ -4579,7 +4468,6 @@ public:
     static TypeIdentifier* create(const Loc& loc, Identifier* ident);
     const char* kind() const override;
     TypeIdentifier* syntaxCopy() override;
-    Dsymbol* toDsymbol(Scope* sc) override;
     void accept(Visitor* v) override;
 };
 
@@ -4589,7 +4477,6 @@ public:
     TemplateInstance* tempinst;
     const char* kind() const override;
     TypeInstance* syntaxCopy() override;
-    Dsymbol* toDsymbol(Scope* sc) override;
     void accept(Visitor* v) override;
 };
 
@@ -4601,7 +4488,6 @@ public:
     RootObject* obj;
     const char* kind() const override;
     TypeMixin* syntaxCopy() override;
-    Dsymbol* toDsymbol(Scope* sc) override;
     void accept(Visitor* v) override;
 };
 
@@ -4610,10 +4496,8 @@ class TypeNoreturn final : public Type
 public:
     const char* kind() const override;
     TypeNoreturn* syntaxCopy() override;
-    MATCH implicitConvTo(Type* to) override;
     MATCH constConv(Type* to) override;
     bool isBoolean() override;
-    uinteger_t size(const Loc& loc) override;
     uint32_t alignsize() override;
     void accept(Visitor* v) override;
 };
@@ -4623,10 +4507,7 @@ class TypeNull final : public Type
 public:
     const char* kind() const override;
     TypeNull* syntaxCopy() override;
-    MATCH implicitConvTo(Type* to) override;
-    bool hasPointers() override;
     bool isBoolean() override;
-    uinteger_t size(const Loc& loc) override;
     void accept(Visitor* v) override;
 };
 
@@ -4636,12 +4517,9 @@ public:
     static TypePointer* create(Type* t);
     const char* kind() const override;
     TypePointer* syntaxCopy() override;
-    uinteger_t size(const Loc& loc) override;
-    MATCH implicitConvTo(Type* to) override;
     MATCH constConv(Type* to) override;
     bool isscalar() override;
     bool isZeroInit(const Loc& loc) override;
-    bool hasPointers() override;
     void accept(Visitor* v) override;
 };
 
@@ -4650,7 +4528,6 @@ class TypeReference final : public TypeNext
 public:
     const char* kind() const override;
     TypeReference* syntaxCopy() override;
-    uinteger_t size(const Loc& loc) override;
     bool isZeroInit(const Loc& loc) override;
     void accept(Visitor* v) override;
 };
@@ -4660,7 +4537,6 @@ class TypeReturn final : public TypeQualified
 public:
     const char* kind() const override;
     TypeReturn* syntaxCopy() override;
-    Dsymbol* toDsymbol(Scope* sc) override;
     void accept(Visitor* v) override;
 };
 
@@ -4671,16 +4547,13 @@ public:
     const char* kind() const override;
     TypeSArray* syntaxCopy() override;
     bool isIncomplete();
-    uinteger_t size(const Loc& loc) override;
     uint32_t alignsize() override;
     bool isString() override;
     bool isZeroInit(const Loc& loc) override;
     structalign_t alignment() override;
     MATCH constConv(Type* to) override;
-    MATCH implicitConvTo(Type* to) override;
     Expression* defaultInitLiteral(const Loc& loc) override;
-    bool hasPointers() override;
-    bool hasSystemFields() override;
+    bool hasUnsafeBitpatterns() override;
     bool hasVoidInitPointers() override;
     bool hasInvariant() override;
     bool needsDestruction() override;
@@ -4707,10 +4580,8 @@ public:
     bool inuse;
     static TypeStruct* create(StructDeclaration* sym);
     const char* kind() const override;
-    uinteger_t size(const Loc& loc) override;
     uint32_t alignsize() override;
     TypeStruct* syntaxCopy() override;
-    Dsymbol* toDsymbol(Scope* sc) override;
     structalign_t alignment() override;
     Expression* defaultInitLiteral(const Loc& loc) override;
     bool isZeroInit(const Loc& loc) override;
@@ -4719,14 +4590,11 @@ public:
     bool needsDestruction() override;
     bool needsCopyOrPostblit() override;
     bool needsNested() override;
-    bool hasPointers() override;
     bool hasVoidInitPointers() override;
-    bool hasSystemFields() override;
+    bool hasUnsafeBitpatterns() override;
     bool hasInvariant() override;
-    MATCH implicitConvTo(Type* to) override;
     MATCH constConv(Type* to) override;
     uint8_t deduceWild(Type* t, bool isRef) override;
-    Type* toHeadMutable() override;
     void accept(Visitor* v) override;
 };
 
@@ -4754,9 +4622,7 @@ public:
     RootObject* obj;
     const char* kind() const override;
     TypeTraits* syntaxCopy() override;
-    Dsymbol* toDsymbol(Scope* sc) override;
     void accept(Visitor* v) override;
-    uinteger_t size(const Loc& loc) override;
 };
 
 class TypeTuple final : public Type
@@ -4771,7 +4637,6 @@ public:
     const char* kind() const override;
     TypeTuple* syntaxCopy() override;
     bool equals(const RootObject* const o) const override;
-    MATCH implicitConvTo(Type* to) override;
     void accept(Visitor* v) override;
 };
 
@@ -4782,8 +4647,6 @@ public:
     int32_t inuse;
     const char* kind() const override;
     TypeTypeof* syntaxCopy() override;
-    Dsymbol* toDsymbol(Scope* sc) override;
-    uinteger_t size(const Loc& loc) override;
     void accept(Visitor* v) override;
 };
 
@@ -4794,21 +4657,17 @@ public:
     static TypeVector* create(Type* basetype);
     const char* kind() const override;
     TypeVector* syntaxCopy() override;
-    uinteger_t size(const Loc& loc) override;
     uint32_t alignsize() override;
     bool isintegral() override;
     bool isfloating() override;
     bool isscalar() override;
     bool isunsigned() override;
     bool isBoolean() override;
-    MATCH implicitConvTo(Type* to) override;
     Expression* defaultInitLiteral(const Loc& loc) override;
     TypeBasic* elementType();
     bool isZeroInit(const Loc& loc) override;
     void accept(Visitor* v) override;
 };
-
-extern AggregateDeclaration* isAggregate(Type* t);
 
 class Nspace final : public ScopeDsymbol
 {
@@ -5439,21 +5298,15 @@ public:
     void accept(Visitor* v) override;
 };
 
-extern Expression* defaultInit(Type* mt, const Loc& loc, const bool isCfile = false);
-
-extern Type* merge(Type* type);
-
-extern Type* typeSemantic(Type* type, const Loc& loc, Scope* sc);
-
 struct UnionExp final
 {
     #pragma pack(push, 8)
 private:
     union _AnonStruct_u
     {
-        char exp[29LLU];
+        char exp[30LLU];
         char integerexp[40LLU];
-        char errorexp[29LLU];
+        char errorexp[30LLU];
         char realexp[48LLU];
         char complexexp[64LLU];
         char symoffexp[64LLU];
@@ -5462,7 +5315,7 @@ private:
         char assocarrayliteralexp[56LLU];
         char structliteralexp[76LLU];
         char compoundliteralexp[40LLU];
-        char nullexp[29LLU];
+        char nullexp[30LLU];
         char dotvarexp[49LLU];
         char addrexp[40LLU];
         char indexexp[74LLU];
@@ -5656,6 +5509,7 @@ struct ASTCodegen final
     using UnionDeclaration = ::UnionDeclaration;
     using AliasAssign = ::AliasAssign;
     using ArrayScopeSymbol = ::ArrayScopeSymbol;
+    using CAsmDeclaration = ::CAsmDeclaration;
     using Dsymbol = ::Dsymbol;
     using DsymbolTable = ::DsymbolTable;
     using ExpressionDsymbol = ::ExpressionDsymbol;
@@ -5669,6 +5523,7 @@ struct ASTCodegen final
     using Ungag = ::Ungag;
     using Visibility = ::Visibility;
     using WithScopeSymbol = ::WithScopeSymbol;
+    using MATCHpair = ::MATCHpair;
     using TemplateAliasParameter = ::TemplateAliasParameter;
     using TemplateDeclaration = ::TemplateDeclaration;
     using TemplateInstance = ::TemplateInstance;
@@ -5745,6 +5600,7 @@ struct ASTCodegen final
     using InExp = ::InExp;
     using IndexExp = ::IndexExp;
     using IntegerExp = ::IntegerExp;
+    using InterpExp = ::InterpExp;
     using IntervalExp = ::IntervalExp;
     using IsExp = ::IsExp;
     using LineInitExp = ::LineInitExp;
@@ -5816,11 +5672,9 @@ struct ASTCodegen final
     using FuncAliasDeclaration = ::FuncAliasDeclaration;
     using FuncDeclaration = ::FuncDeclaration;
     using FuncLiteralDeclaration = ::FuncLiteralDeclaration;
-    using FuncResolveFlag = ::FuncResolveFlag;
     using ILS = ::ILS;
     using InvariantDeclaration = ::InvariantDeclaration;
     using NewDeclaration = ::NewDeclaration;
-    using NrvoWalker = ::NrvoWalker;
     using PostBlitDeclaration = ::PostBlitDeclaration;
     using SharedStaticCtorDeclaration = ::SharedStaticCtorDeclaration;
     using SharedStaticDtorDeclaration = ::SharedStaticDtorDeclaration;
@@ -6014,13 +5868,48 @@ public:
     virtual void visit(LoweredAssignExp* e);
 };
 
-enum class JsonFieldFlags : uint32_t
+class SemanticTimePermissiveVisitor : public Visitor
 {
-    none = 0u,
-    compilerInfo = 1u,
-    buildInfo = 2u,
-    modules = 4u,
-    semantics = 8u,
+public:
+    using Visitor::visit;
+    void visit(Dsymbol* __param_0_) override;
+    void visit(Parameter* __param_0_) override;
+    void visit(Statement* __param_0_) override;
+    void visit(Type* __param_0_) override;
+    void visit(Expression* __param_0_) override;
+    void visit(TemplateParameter* __param_0_) override;
+    void visit(Condition* __param_0_) override;
+    void visit(Initializer* __param_0_) override;
+};
+
+class StatementRewriteWalker : public SemanticTimePermissiveVisitor
+{
+public:
+    using SemanticTimePermissiveVisitor::visit;
+    Statement** ps;
+    void visitStmt(Statement*& s);
+    void replaceCurrent(Statement* s);
+    void visit(PeelStatement* s) override;
+    void visit(CompoundStatement* s) override;
+    void visit(CompoundDeclarationStatement* s) override;
+    void visit(UnrolledLoopStatement* s) override;
+    void visit(ScopeStatement* s) override;
+    void visit(WhileStatement* s) override;
+    void visit(DoStatement* s) override;
+    void visit(ForStatement* s) override;
+    void visit(ForeachStatement* s) override;
+    void visit(ForeachRangeStatement* s) override;
+    void visit(IfStatement* s) override;
+    void visit(SwitchStatement* s) override;
+    void visit(CaseStatement* s) override;
+    void visit(CaseRangeStatement* s) override;
+    void visit(DefaultStatement* s) override;
+    void visit(SynchronizedStatement* s) override;
+    void visit(WithStatement* s) override;
+    void visit(TryCatchStatement* s) override;
+    void visit(TryFinallyStatement* s) override;
+    void visit(DebugStatement* s) override;
+    void visit(LabelStatement* s) override;
 };
 
 class StoppableVisitor : public Visitor
@@ -6036,21 +5925,19 @@ struct TargetC final
     {
         Unspecified = 0u,
         Bionic = 1u,
-        DigitalMars = 2u,
-        Glibc = 3u,
-        Microsoft = 4u,
-        Musl = 5u,
-        Newlib = 6u,
-        UClibc = 7u,
-        WASI = 8u,
+        Glibc = 2u,
+        Microsoft = 3u,
+        Musl = 4u,
+        Newlib = 5u,
+        UClibc = 6u,
+        WASI = 7u,
     };
 
     enum class BitFieldStyle : uint8_t
     {
         Unspecified = 0u,
-        DM = 1u,
-        MS = 2u,
-        Gcc_Clang = 3u,
+        MS = 1u,
+        Gcc_Clang = 2u,
     };
 
     bool crtDestructorsSupported;
@@ -6093,11 +5980,10 @@ struct TargetCPP final
     enum class Runtime : uint8_t
     {
         Unspecified = 0u,
-        Clang = 1u,
-        DigitalMars = 2u,
-        Gcc = 3u,
-        Microsoft = 4u,
-        Sun = 5u,
+        LLVM = 1u,
+        GNU = 2u,
+        Microsoft = 3u,
+        Sun = 4u,
     };
 
     bool reverseOverloads;
@@ -6208,6 +6094,24 @@ enum class CHECKACTION : uint8_t
     context = 3u,
 };
 
+enum class CLIIdentifierTable : uint8_t
+{
+    default_ = 0u,
+    C99 = 1u,
+    C11 = 2u,
+    UAX31 = 3u,
+    All = 4u,
+};
+
+enum class JsonFieldFlags : uint32_t
+{
+    none = 0u,
+    compilerInfo = 1u,
+    buildInfo = 2u,
+    modules = 4u,
+    semantics = 8u,
+};
+
 struct CompileEnv final
 {
     uint32_t versionNumber;
@@ -6218,6 +6122,8 @@ struct CompileEnv final
     bool previewIn;
     bool ddocOutput;
     bool masm;
+    IdentifierCharLookup cCharLookupTable;
+    IdentifierCharLookup dCharLookupTable;
     CompileEnv() :
         versionNumber(),
         date(),
@@ -6226,10 +6132,12 @@ struct CompileEnv final
         timestamp(),
         previewIn(),
         ddocOutput(),
-        masm()
+        masm(),
+        cCharLookupTable(),
+        dCharLookupTable()
     {
     }
-    CompileEnv(uint32_t versionNumber, _d_dynamicArray< const char > date = {}, _d_dynamicArray< const char > time = {}, _d_dynamicArray< const char > vendor = {}, _d_dynamicArray< const char > timestamp = {}, bool previewIn = false, bool ddocOutput = false, bool masm = false) :
+    CompileEnv(uint32_t versionNumber, _d_dynamicArray< const char > date = {}, _d_dynamicArray< const char > time = {}, _d_dynamicArray< const char > vendor = {}, _d_dynamicArray< const char > timestamp = {}, bool previewIn = false, bool ddocOutput = false, bool masm = false, IdentifierCharLookup cCharLookupTable = IdentifierCharLookup(), IdentifierCharLookup dCharLookupTable = IdentifierCharLookup()) :
         versionNumber(versionNumber),
         date(date),
         time(time),
@@ -6237,7 +6145,9 @@ struct CompileEnv final
         timestamp(timestamp),
         previewIn(previewIn),
         ddocOutput(ddocOutput),
-        masm(masm)
+        masm(masm),
+        cCharLookupTable(cCharLookupTable),
+        dCharLookupTable(dCharLookupTable)
         {}
 };
 
@@ -6304,14 +6214,6 @@ public:
     bool isDeprecated() const override;
 };
 
-extern TypeTuple* toArgTypes_x86(Type* t);
-
-extern TypeTuple* toArgTypes_sysv_x64(Type* t);
-
-extern TypeTuple* toArgTypes_aarch64(Type* t);
-
-extern bool isHFVA(Type* t, int32_t maxNumElements = 4, Type** rewriteType = nullptr);
-
 struct structalign_t final
 {
 private:
@@ -6335,6 +6237,15 @@ public:
         value(value),
         pack(pack)
         {}
+};
+
+template <typename T>
+struct DArray final
+{
+    _d_dynamicArray< T > data;
+    DArray()
+    {
+    }
 };
 
 class AttribDeclaration : public Dsymbol
@@ -6525,7 +6436,6 @@ public:
     Array<Expression* >* atts;
     UserAttributeDeclaration* syntaxCopy(Dsymbol* s) override;
     Scope* newScope(Scope* sc) override;
-    Array<Expression* >* getAttributes();
     const char* kind() const override;
     void accept(Visitor* v) override;
     static bool isGNUABITag(Expression* e);
@@ -6617,23 +6527,7 @@ public:
     const char* toChars() const override;
 };
 
-extern const char* toCppMangleItanium(Dsymbol* s);
-
-extern const char* cppTypeInfoMangleItanium(Dsymbol* s);
-
-extern const char* cppThunkMangleItanium(FuncDeclaration* fd, int32_t offset);
-
-extern const char* toCppMangleMSVC(Dsymbol* s);
-
-extern const char* cppTypeInfoMangleMSVC(Dsymbol* s);
-
-extern const char* toCppMangleDMC(Dsymbol* s);
-
-extern const char* cppTypeInfoMangleDMC(Dsymbol* s);
-
-extern FileName preprocess(FileName csrcfile, const Loc& loc, bool& ifile, OutBuffer* defines);
-
-extern MATCH implicitConvTo(Expression* e, Type* t);
+extern DArray<uint8_t > preprocess(FileName csrcfile, const Loc& loc, OutBuffer& defines);
 
 struct BaseClass final
 {
@@ -6718,8 +6612,6 @@ public:
     InterfaceDeclaration* isInterfaceDeclaration() override;
     void accept(Visitor* v) override;
 };
-
-extern void ObjectNotFound(Identifier* id);
 
 class Declaration : public Dsymbol
 {
@@ -7067,6 +6959,7 @@ public:
 private:
     uint8_t bitFields;
 public:
+    Symbol* sinit;
     EnumDeclaration* syntaxCopy(Dsymbol* s) override;
     bool oneMember(Dsymbol*& ps, Identifier* ident) override;
     Type* getType() override;
@@ -7074,10 +6967,7 @@ public:
     bool isDeprecated() const override;
     Visibility visible() override;
     bool isSpecial() const;
-    Expression* getDefaultValue(const Loc& loc);
-    Type* getMemtype(const Loc& loc);
     EnumDeclaration* isEnumDeclaration() override;
-    Symbol* sinit;
     void accept(Visitor* v) override;
 };
 
@@ -7116,19 +7006,7 @@ public:
     void accept(Visitor* v) override;
 };
 
-extern Expression* ctfeInterpret(Expression* e);
-
 extern void printCtfePerformanceStats();
-
-extern const char* mangleExact(FuncDeclaration* fd);
-
-extern void mangleToBuffer(Type* t, OutBuffer& buf);
-
-extern void mangleToBuffer(Expression* e, OutBuffer& buf);
-
-extern void mangleToBuffer(Dsymbol* s, OutBuffer& buf);
-
-extern void mangleToBuffer(TemplateInstance* ti, OutBuffer& buf);
 
 class Package : public ScopeDsymbol
 {
@@ -7169,6 +7047,7 @@ public:
     FileType filetype;
     bool hasAlwaysInlines;
     bool isPackageFile;
+    Edition edition;
     Package* pkg;
     Array<const char* > contentImportedFiles;
     int32_t needmoduleinfo;
@@ -7249,12 +7128,6 @@ struct ModuleDeclaration final
     }
 };
 
-extern void getLocalClasses(Module* mod, Array<ClassDeclaration* >& aclasses);
-
-extern FuncDeclaration* findGetMembers(ScopeDsymbol* dsym);
-
-extern void gendocfile(Module* m, const char* const ddoctext_ptr, size_t ddoctext_length, const char* const datetime, ErrorSink* eSink, OutBuffer& outbuf);
-
 struct Scope final
 {
     Scope* enclosing;
@@ -7275,6 +7148,7 @@ struct Scope final
     Dsymbol* inunion;
     bool nofree;
     bool inLoop;
+    bool inDefaultArg;
     int32_t intypeof;
     VarDeclaration* lastVar;
     ErrorSink* eSink;
@@ -7316,6 +7190,7 @@ struct Scope final
         inunion(),
         nofree(),
         inLoop(),
+        inDefaultArg(),
         intypeof(),
         lastVar(),
         eSink(),
@@ -7338,7 +7213,7 @@ struct Scope final
         aliasAsg()
     {
     }
-    Scope(Scope* enclosing, Module* _module = nullptr, ScopeDsymbol* scopesym = nullptr, FuncDeclaration* func = nullptr, VarDeclaration* varDecl = nullptr, Dsymbol* parent = nullptr, LabelStatement* slabel = nullptr, SwitchStatement* sw = nullptr, Statement* tryBody = nullptr, TryFinallyStatement* tf = nullptr, ScopeGuardStatement* os = nullptr, Statement* sbreak = nullptr, Statement* scontinue = nullptr, ForeachStatement* fes = nullptr, Scope* callsc = nullptr, Dsymbol* inunion = nullptr, bool nofree = false, bool inLoop = false, int32_t intypeof = 0, VarDeclaration* lastVar = nullptr, ErrorSink* eSink = nullptr, Module* minst = nullptr, TemplateInstance* tinst = nullptr, CtorFlow ctorflow = CtorFlow(), AlignDeclaration* aligndecl = nullptr, CPPNamespaceDeclaration* namespace_ = nullptr, LINK linkage = (LINK)1u, CPPMANGLE cppmangle = (CPPMANGLE)0u, PragmaDeclaration* inlining = nullptr, Visibility visibility = Visibility((Visibility::Kind)5u, nullptr), int32_t explicitVisibility = 0, uint64_t stc = 0LLU, DeprecatedDeclaration* depdecl = nullptr, uint32_t flags = 0u, UserAttributeDeclaration* userAttribDecl = nullptr, DocComment* lastdc = nullptr, void* anchorCounts = nullptr, Identifier* prevAnchor = nullptr, AliasDeclaration* aliasAsg = nullptr) :
+    Scope(Scope* enclosing, Module* _module = nullptr, ScopeDsymbol* scopesym = nullptr, FuncDeclaration* func = nullptr, VarDeclaration* varDecl = nullptr, Dsymbol* parent = nullptr, LabelStatement* slabel = nullptr, SwitchStatement* sw = nullptr, Statement* tryBody = nullptr, TryFinallyStatement* tf = nullptr, ScopeGuardStatement* os = nullptr, Statement* sbreak = nullptr, Statement* scontinue = nullptr, ForeachStatement* fes = nullptr, Scope* callsc = nullptr, Dsymbol* inunion = nullptr, bool nofree = false, bool inLoop = false, bool inDefaultArg = false, int32_t intypeof = 0, VarDeclaration* lastVar = nullptr, ErrorSink* eSink = nullptr, Module* minst = nullptr, TemplateInstance* tinst = nullptr, CtorFlow ctorflow = CtorFlow(), AlignDeclaration* aligndecl = nullptr, CPPNamespaceDeclaration* namespace_ = nullptr, LINK linkage = (LINK)1u, CPPMANGLE cppmangle = (CPPMANGLE)0u, PragmaDeclaration* inlining = nullptr, Visibility visibility = Visibility((Visibility::Kind)5u, nullptr), int32_t explicitVisibility = 0, uint64_t stc = 0LLU, DeprecatedDeclaration* depdecl = nullptr, uint32_t flags = 0u, UserAttributeDeclaration* userAttribDecl = nullptr, DocComment* lastdc = nullptr, void* anchorCounts = nullptr, Identifier* prevAnchor = nullptr, AliasDeclaration* aliasAsg = nullptr) :
         enclosing(enclosing),
         _module(_module),
         scopesym(scopesym),
@@ -7357,6 +7232,7 @@ struct Scope final
         inunion(inunion),
         nofree(nofree),
         inLoop(inLoop),
+        inDefaultArg(inDefaultArg),
         intypeof(intypeof),
         lastVar(lastVar),
         eSink(eSink),
@@ -7380,8 +7256,6 @@ struct Scope final
         aliasAsg(aliasAsg)
         {}
 };
-
-extern FuncDeclaration* search_toString(StructDeclaration* sd);
 
 class StructDeclaration : public AggregateDeclaration
 {
@@ -7412,8 +7286,8 @@ public:
     bool hasPointerField(bool v);
     bool hasVoidInitPointers() const;
     bool hasVoidInitPointers(bool v);
-    bool hasSystemFields() const;
-    bool hasSystemFields(bool v);
+    bool hasUnsafeBitpatterns() const;
+    bool hasUnsafeBitpatterns(bool v);
     bool hasFieldWithInvariant() const;
     bool hasFieldWithInvariant(bool v);
     bool computedTypeProperties() const;
@@ -7513,15 +7387,13 @@ public:
     DsymbolTable();
 };
 
-extern void dsymbolSemantic(Dsymbol* dsym, Scope* sc);
-
-extern void addMember(Dsymbol* dsym, Scope* sc, ScopeDsymbol* sds);
-
-extern Dsymbol* search(Dsymbol* d, const Loc& loc, Identifier* ident, uint32_t flags = 0u);
-
-extern void setScope(Dsymbol* d, Scope* sc);
-
-extern void importAll(Dsymbol* d, Scope* sc);
+class CAsmDeclaration final : public Dsymbol
+{
+public:
+    Expression* code;
+    CAsmDeclaration* isCAsmDeclaration() override;
+    void accept(Visitor* v) override;
+};
 
 class ImportAllVisitor : public Visitor
 {
@@ -7537,27 +7409,15 @@ public:
     void visit(StaticForeachDeclaration* _) override;
 };
 
-extern void setFieldOffset(Dsymbol* d, AggregateDeclaration* ad, FieldState* fieldState, bool isunion);
-
-extern void genCppHdrFiles(Array<Module* >& ms);
-
-extern Expression* resolveProperties(Scope* sc, Expression* e);
-
-extern Expression* expressionSemantic(Expression* e, Scope* sc);
-
-extern Expression* toLvalue(Expression* _this, Scope* sc, const char* action);
-
-extern Expression* modifiableLvalue(Expression* _this, Scope* sc);
-
-extern const char* toChars(const Expression* const e);
-
-extern const char* toChars(const Initializer* const i);
-
-extern const char* toChars(const Type* const t);
-
-extern void json_generate(Array<Module* >& modules, OutBuffer& buf);
-
-extern JsonFieldFlags tryParseJsonField(const char* fieldName);
+class NrvoWalker final : public StatementRewriteWalker
+{
+public:
+    using StatementRewriteWalker::visit;
+    FuncDeclaration* fd;
+    Scope* sc;
+    void visit(ReturnStatement* s) override;
+    void visit(TryFinallyStatement* s) override;
+};
 
 class NOGCVisitor final : public StoppableVisitor
 {
@@ -7607,8 +7467,6 @@ public:
     virtual void checkTupleof(Expression* expression, TypeClass* type) const = 0;
 };
 
-extern Expression* optimize(Expression* e, int32_t result, bool keepLvalue = false);
-
 template <typename AST>
 class PermissiveVisitor : public ParseTimeVisitor<AST >
 {
@@ -7623,14 +7481,6 @@ public:
     virtual void visit(typename AST::Condition ) override;
     virtual void visit(typename AST::Initializer ) override;
 };
-
-extern void semantic2(Dsymbol* dsym, Scope* sc);
-
-extern void semantic3(Dsymbol* dsym, Scope* sc);
-
-extern void semanticTypeInfoMembers(StructDeclaration* sd);
-
-extern Statement* statementSemantic(Statement* s, Scope* sc);
 
 struct Target final
 {
@@ -7662,12 +7512,12 @@ struct Target final
     _d_dynamicArray< const char > architectureName;
     CPU cpu;
     bool isX86_64;
+    bool isX86;
     bool isLP64;
     _d_dynamicArray< const char > obj_ext;
     _d_dynamicArray< const char > lib_ext;
     _d_dynamicArray< const char > dll_ext;
     bool run_noext;
-    bool omfobj;
     template <typename T>
     struct FPTypeProperties final
     {
@@ -7722,8 +7572,7 @@ public:
     bool libraryObjectMonitors(FuncDeclaration* fd, Statement* fbody);
     bool supportsLinkerDirective() const;
     Target() :
-        os((OS)1u),
-        osMajor(0u),
+        osMajor(),
         ptrsize(),
         realsize(),
         realpad(),
@@ -7734,14 +7583,13 @@ public:
         cpp(),
         objc(),
         architectureName(),
-        cpu((CPU)11u),
-        isX86_64(true),
+        isX86_64(),
+        isX86(),
         isLP64(),
         obj_ext(),
         lib_ext(),
         dll_ext(),
         run_noext(),
-        omfobj(false),
         FloatProperties(),
         DoubleProperties(),
         RealProperties(),
@@ -7749,7 +7597,7 @@ public:
         params()
     {
     }
-    Target(OS os, uint8_t osMajor = 0u, uint8_t ptrsize = 0u, uint8_t realsize = 0u, uint8_t realpad = 0u, uint8_t realalignsize = 0u, uint8_t classinfosize = 0u, uint64_t maxStaticDataSize = 0LLU, TargetC c = TargetC(), TargetCPP cpp = TargetCPP(), TargetObjC objc = TargetObjC(), _d_dynamicArray< const char > architectureName = {}, CPU cpu = (CPU)11u, bool isX86_64 = true, bool isLP64 = false, _d_dynamicArray< const char > obj_ext = {}, _d_dynamicArray< const char > lib_ext = {}, _d_dynamicArray< const char > dll_ext = {}, bool run_noext = false, bool omfobj = false, FPTypeProperties<float > FloatProperties = FPTypeProperties<float >(), FPTypeProperties<double > DoubleProperties = FPTypeProperties<double >(), FPTypeProperties<_d_real > RealProperties = FPTypeProperties<_d_real >(), Type* tvalist = nullptr, const Param* params = nullptr) :
+    Target(OS os, uint8_t osMajor = 0u, uint8_t ptrsize = 0u, uint8_t realsize = 0u, uint8_t realpad = 0u, uint8_t realalignsize = 0u, uint8_t classinfosize = 0u, uint64_t maxStaticDataSize = 0LLU, TargetC c = TargetC(), TargetCPP cpp = TargetCPP(), TargetObjC objc = TargetObjC(), _d_dynamicArray< const char > architectureName = {}, CPU cpu = (CPU)0u, bool isX86_64 = false, bool isX86 = false, bool isLP64 = false, _d_dynamicArray< const char > obj_ext = {}, _d_dynamicArray< const char > lib_ext = {}, _d_dynamicArray< const char > dll_ext = {}, bool run_noext = false, FPTypeProperties<float > FloatProperties = FPTypeProperties<float >(), FPTypeProperties<double > DoubleProperties = FPTypeProperties<double >(), FPTypeProperties<_d_real > RealProperties = FPTypeProperties<_d_real >(), Type* tvalist = nullptr, const Param* params = nullptr) :
         os(os),
         osMajor(osMajor),
         ptrsize(ptrsize),
@@ -7764,12 +7612,12 @@ public:
         architectureName(architectureName),
         cpu(cpu),
         isX86_64(isX86_64),
+        isX86(isX86),
         isLP64(isLP64),
         obj_ext(obj_ext),
         lib_ext(lib_ext),
         dll_ext(dll_ext),
         run_noext(run_noext),
-        omfobj(omfobj),
         FloatProperties(FloatProperties),
         DoubleProperties(DoubleProperties),
         RealProperties(RealProperties),
@@ -7780,15 +7628,7 @@ public:
 
 extern Target target;
 
-extern bool tpsemantic(TemplateParameter* tp, Scope* sc, Array<TemplateParameter* >* parameters);
-
-extern bool genTypeInfo(Expression* e, const Loc& loc, Type* torig, Scope* sc);
-
-extern Type* getTypeInfoType(const Loc& loc, Type* t, Scope* sc, bool genObjCode = true);
-
-extern bool isSpeculativeType(Type* t);
-
-extern bool builtinTypeInfo(Type* t);
+extern Type* getTypeInfoType(const Loc& loc, Type* t, Scope* sc);
 
 class SemanticTimeTransitiveVisitor : public SemanticTimePermissiveVisitor
 {
@@ -7932,6 +7772,7 @@ public:
     void visit(DebugStatement* s) override;
     void visit(ForwardingStatement* s) override;
     void visit(StructLiteralExp* e) override;
+    void visit(ClassReferenceExp* e) override;
     void visit(CompoundLiteralExp* e) override;
     void visit(DotTemplateExp* e) override;
     void visit(DotVarExp* e) override;
@@ -7954,6 +7795,56 @@ extern _d_real creall(complex_t x);
 extern _d_real cimagl(complex_t x);
 
 extern void browse(const char* url);
+
+enum class IdentifierTable
+{
+    UAX31 = 0,
+    C99 = 1,
+    C11 = 2,
+    LR = 3,
+};
+
+struct IdentifierCharLookup final
+{
+    bool(*isStart)(char32_t );
+    bool(*isContinue)(char32_t );
+    static IdentifierCharLookup forTable(IdentifierTable table);
+    IdentifierCharLookup() :
+        isStart(),
+        isContinue()
+    {
+    }
+    IdentifierCharLookup(bool(*isStart)(char32_t ), bool(*isContinue)(char32_t ) = nullptr) :
+        isStart(isStart),
+        isContinue(isContinue)
+        {}
+};
+
+extern bool isAnyIdentifierCharacter(char32_t c);
+
+extern bool isAnyStart(char32_t c);
+
+extern bool isAnyContinue(char32_t c);
+
+enum : int32_t { LS = 8232 };
+
+enum : int32_t { PS = 8233 };
+
+extern bool isoctal(const char c);
+
+extern bool ishex(const char c);
+
+extern bool isidchar(const char c);
+
+extern bool isZeroSecond(const char c);
+
+extern bool isDigitSecond(const char c);
+
+extern bool issinglechar(const char c);
+
+extern bool c_isxdigit(const int32_t c);
+
+extern bool c_isalnum(const int32_t c);
 
 extern void error(const Loc& loc, const char* format, ...);
 
@@ -8164,10 +8055,12 @@ struct Param final
     CHECKENABLE useSwitchError;
     CHECKENABLE boundscheck;
     CHECKACTION checkAction;
+    CLIIdentifierTable dIdentifierTable;
+    CLIIdentifierTable cIdentifierTable;
     _d_dynamicArray< const char > argv0;
     Array<const char* > modFileAliasStrings;
-    Array<const char* >* imppath;
-    Array<const char* >* fileImppath;
+    Array<const char* > imppath;
+    Array<const char* > fileImppath;
     _d_dynamicArray< const char > objdir;
     _d_dynamicArray< const char > objname;
     _d_dynamicArray< const char > libname;
@@ -8239,6 +8132,8 @@ struct Param final
         useSwitchError((CHECKENABLE)0u),
         boundscheck((CHECKENABLE)0u),
         checkAction((CHECKACTION)0u),
+        dIdentifierTable((CLIIdentifierTable)0u),
+        cIdentifierTable((CLIIdentifierTable)0u),
         argv0(),
         modFileAliasStrings(),
         imppath(),
@@ -8270,7 +8165,7 @@ struct Param final
         mapfile()
     {
     }
-    Param(bool obj, bool multiobj = false, bool trace = false, bool tracegc = false, bool vcg_ast = false, DiagnosticReporting useDeprecated = (DiagnosticReporting)1u, bool useUnitTests = false, bool useInline = false, bool release = false, bool preservePaths = false, DiagnosticReporting warnings = (DiagnosticReporting)2u, bool cov = false, uint8_t covPercent = 0u, bool ctfe_cov = false, bool ignoreUnsupportedPragmas = true, bool useModuleInfo = true, bool useTypeInfo = true, bool useExceptions = true, bool useGC = true, bool betterC = false, bool addMain = false, bool allInst = false, bool bitfields = false, CppStdRevision cplusplus = (CppStdRevision)201103u, Help help = Help(), Verbose v = Verbose(), FeatureState useDIP25 = (FeatureState)2u, FeatureState useDIP1000 = (FeatureState)0u, bool ehnogc = false, bool useDIP1021 = false, FeatureState fieldwise = (FeatureState)0u, bool fixAliasThis = false, FeatureState rvalueRefParam = (FeatureState)0u, FeatureState noSharedAccess = (FeatureState)0u, bool previewIn = false, bool inclusiveInContracts = false, bool shortenedMethods = true, bool fixImmutableConv = false, bool fix16997 = true, FeatureState dtorFields = (FeatureState)0u, FeatureState systemVariables = (FeatureState)0u, CHECKENABLE useInvariants = (CHECKENABLE)0u, CHECKENABLE useIn = (CHECKENABLE)0u, CHECKENABLE useOut = (CHECKENABLE)0u, CHECKENABLE useArrayBounds = (CHECKENABLE)0u, CHECKENABLE useAssert = (CHECKENABLE)0u, CHECKENABLE useSwitchError = (CHECKENABLE)0u, CHECKENABLE boundscheck = (CHECKENABLE)0u, CHECKACTION checkAction = (CHECKACTION)0u, _d_dynamicArray< const char > argv0 = {}, Array<const char* > modFileAliasStrings = Array<const char* >(), Array<const char* >* imppath = nullptr, Array<const char* >* fileImppath = nullptr, _d_dynamicArray< const char > objdir = {}, _d_dynamicArray< const char > objname = {}, _d_dynamicArray< const char > libname = {}, Output ddoc = Output(), Output dihdr = Output(), Output cxxhdr = Output(), Output json = Output(), JsonFieldFlags jsonFieldFlags = (JsonFieldFlags)0u, Output makeDeps = Output(), Output mixinOut = Output(), Output moduleDeps = Output(), uint32_t debuglevel = 0u, uint32_t versionlevel = 0u, bool run = false, Array<const char* > runargs = Array<const char* >(), Array<const char* > cppswitches = Array<const char* >(), const char* cpp = nullptr, Array<const char* > objfiles = Array<const char* >(), Array<const char* > linkswitches = Array<const char* >(), Array<bool > linkswitchIsForCC = Array<bool >(), Array<const char* > libfiles = Array<const char* >(), Array<const char* > dllfiles = Array<const char* >(), _d_dynamicArray< const char > deffile = {}, _d_dynamicArray< const char > resfile = {}, _d_dynamicArray< const char > exefile = {}, _d_dynamicArray< const char > mapfile = {}) :
+    Param(bool obj, bool multiobj = false, bool trace = false, bool tracegc = false, bool vcg_ast = false, DiagnosticReporting useDeprecated = (DiagnosticReporting)1u, bool useUnitTests = false, bool useInline = false, bool release = false, bool preservePaths = false, DiagnosticReporting warnings = (DiagnosticReporting)2u, bool cov = false, uint8_t covPercent = 0u, bool ctfe_cov = false, bool ignoreUnsupportedPragmas = true, bool useModuleInfo = true, bool useTypeInfo = true, bool useExceptions = true, bool useGC = true, bool betterC = false, bool addMain = false, bool allInst = false, bool bitfields = false, CppStdRevision cplusplus = (CppStdRevision)201103u, Help help = Help(), Verbose v = Verbose(), FeatureState useDIP25 = (FeatureState)2u, FeatureState useDIP1000 = (FeatureState)0u, bool ehnogc = false, bool useDIP1021 = false, FeatureState fieldwise = (FeatureState)0u, bool fixAliasThis = false, FeatureState rvalueRefParam = (FeatureState)0u, FeatureState noSharedAccess = (FeatureState)0u, bool previewIn = false, bool inclusiveInContracts = false, bool shortenedMethods = true, bool fixImmutableConv = false, bool fix16997 = true, FeatureState dtorFields = (FeatureState)0u, FeatureState systemVariables = (FeatureState)0u, CHECKENABLE useInvariants = (CHECKENABLE)0u, CHECKENABLE useIn = (CHECKENABLE)0u, CHECKENABLE useOut = (CHECKENABLE)0u, CHECKENABLE useArrayBounds = (CHECKENABLE)0u, CHECKENABLE useAssert = (CHECKENABLE)0u, CHECKENABLE useSwitchError = (CHECKENABLE)0u, CHECKENABLE boundscheck = (CHECKENABLE)0u, CHECKACTION checkAction = (CHECKACTION)0u, CLIIdentifierTable dIdentifierTable = (CLIIdentifierTable)0u, CLIIdentifierTable cIdentifierTable = (CLIIdentifierTable)0u, _d_dynamicArray< const char > argv0 = {}, Array<const char* > modFileAliasStrings = Array<const char* >(), Array<const char* > imppath = Array<const char* >(), Array<const char* > fileImppath = Array<const char* >(), _d_dynamicArray< const char > objdir = {}, _d_dynamicArray< const char > objname = {}, _d_dynamicArray< const char > libname = {}, Output ddoc = Output(), Output dihdr = Output(), Output cxxhdr = Output(), Output json = Output(), JsonFieldFlags jsonFieldFlags = (JsonFieldFlags)0u, Output makeDeps = Output(), Output mixinOut = Output(), Output moduleDeps = Output(), uint32_t debuglevel = 0u, uint32_t versionlevel = 0u, bool run = false, Array<const char* > runargs = Array<const char* >(), Array<const char* > cppswitches = Array<const char* >(), const char* cpp = nullptr, Array<const char* > objfiles = Array<const char* >(), Array<const char* > linkswitches = Array<const char* >(), Array<bool > linkswitchIsForCC = Array<bool >(), Array<const char* > libfiles = Array<const char* >(), Array<const char* > dllfiles = Array<const char* >(), _d_dynamicArray< const char > deffile = {}, _d_dynamicArray< const char > resfile = {}, _d_dynamicArray< const char > exefile = {}, _d_dynamicArray< const char > mapfile = {}) :
         obj(obj),
         multiobj(multiobj),
         trace(trace),
@@ -8320,6 +8215,8 @@ struct Param final
         useSwitchError(useSwitchError),
         boundscheck(boundscheck),
         checkAction(checkAction),
+        dIdentifierTable(dIdentifierTable),
+        cIdentifierTable(cIdentifierTable),
         argv0(argv0),
         modFileAliasStrings(modFileAliasStrings),
         imppath(imppath),
@@ -8358,19 +8255,20 @@ struct Global final
     _d_dynamicArray< const char > inifilename;
     _d_dynamicArray< const char > copyright;
     _d_dynamicArray< const char > written;
-    Array<const char* >* path;
-    Array<const char* >* filePath;
+    Array<const char* > path;
+    Array<const char* > filePath;
     char datetime[26LLU];
     CompileEnv compileEnv;
     Param params;
     uint32_t errors;
+    uint32_t deprecations;
     uint32_t warnings;
     uint32_t gag;
     uint32_t gaggedErrors;
     uint32_t gaggedWarnings;
     void* console;
-    Array<Identifier* >* versionids;
-    Array<Identifier* >* debugids;
+    Array<Identifier* > versionids;
+    Array<Identifier* > debugids;
     bool hasMainFunction;
     uint32_t varSequenceNumber;
     FileManager* fileManager;
@@ -8378,7 +8276,7 @@ struct Global final
 
     ErrorSink* errorSink;
     ErrorSink* errorSinkNull;
-    FileName(*preprocess)(FileName , const Loc& , bool& , OutBuffer* );
+    DArray<uint8_t >(*preprocess)(FileName , const Loc& , OutBuffer& );
     uint32_t startGagging();
     bool endGagging(uint32_t oldGagged);
     void increaseErrorCount();
@@ -8394,6 +8292,7 @@ struct Global final
         compileEnv(),
         params(),
         errors(),
+        deprecations(),
         warnings(),
         gag(),
         gaggedErrors(),
@@ -8409,7 +8308,7 @@ struct Global final
         preprocess()
     {
     }
-    Global(_d_dynamicArray< const char > inifilename, _d_dynamicArray< const char > copyright = { 73, "Copyright (C) 1999-2024 by The D Language Foundation, All Rights Reserved" }, _d_dynamicArray< const char > written = { 24, "written by Walter Bright" }, Array<const char* >* path = nullptr, Array<const char* >* filePath = nullptr, CompileEnv compileEnv = CompileEnv(), Param params = Param(), uint32_t errors = 0u, uint32_t warnings = 0u, uint32_t gag = 0u, uint32_t gaggedErrors = 0u, uint32_t gaggedWarnings = 0u, void* console = nullptr, Array<Identifier* >* versionids = nullptr, Array<Identifier* >* debugids = nullptr, bool hasMainFunction = false, uint32_t varSequenceNumber = 1u, FileManager* fileManager = nullptr, ErrorSink* errorSink = nullptr, ErrorSink* errorSinkNull = nullptr, FileName(*preprocess)(FileName , const Loc& , bool& , OutBuffer* ) = nullptr) :
+    Global(_d_dynamicArray< const char > inifilename, _d_dynamicArray< const char > copyright = { 73, "Copyright (C) 1999-2024 by The D Language Foundation, All Rights Reserved" }, _d_dynamicArray< const char > written = { 24, "written by Walter Bright" }, Array<const char* > path = Array<const char* >(), Array<const char* > filePath = Array<const char* >(), CompileEnv compileEnv = CompileEnv(), Param params = Param(), uint32_t errors = 0u, uint32_t deprecations = 0u, uint32_t warnings = 0u, uint32_t gag = 0u, uint32_t gaggedErrors = 0u, uint32_t gaggedWarnings = 0u, void* console = nullptr, Array<Identifier* > versionids = Array<Identifier* >(), Array<Identifier* > debugids = Array<Identifier* >(), bool hasMainFunction = false, uint32_t varSequenceNumber = 1u, FileManager* fileManager = nullptr, ErrorSink* errorSink = nullptr, ErrorSink* errorSinkNull = nullptr, DArray<uint8_t >(*preprocess)(FileName , const Loc& , OutBuffer& ) = nullptr) :
         inifilename(inifilename),
         copyright(copyright),
         written(written),
@@ -8418,6 +8317,7 @@ struct Global final
         compileEnv(compileEnv),
         params(params),
         errors(errors),
+        deprecations(deprecations),
         warnings(warnings),
         gag(gag),
         gaggedErrors(gaggedErrors),
@@ -8473,6 +8373,8 @@ struct Id final
     static Identifier* dollar;
     static Identifier* ctfe;
     static Identifier* offset;
+    static Identifier* bitoffsetof;
+    static Identifier* bitwidth;
     static Identifier* ModuleInfo;
     static Identifier* ClassInfo;
     static Identifier* classinfo;
@@ -8667,6 +8569,11 @@ struct Id final
     static Identifier* _d_arraysetassign;
     static Identifier* _d_arrayassign_l;
     static Identifier* _d_arrayassign_r;
+    static Identifier* imported;
+    static Identifier* InterpolationHeader;
+    static Identifier* InterpolationFooter;
+    static Identifier* InterpolatedLiteral;
+    static Identifier* InterpolatedExpression;
     static Identifier* Pinline;
     static Identifier* lib;
     static Identifier* linkerDirective;
@@ -8754,9 +8661,12 @@ struct Id final
     static Identifier* outp;
     static Identifier* outpl;
     static Identifier* outpw;
+    static Identifier* builtinsModuleName;
+    static Identifier* ctfeWrite;
     static Identifier* isAbstractClass;
     static Identifier* isArithmetic;
     static Identifier* isAssociativeArray;
+    static Identifier* isBitfield;
     static Identifier* isFinalClass;
     static Identifier* isTemplate;
     static Identifier* isPOD;
@@ -8843,7 +8753,7 @@ struct Id final
     static Identifier* _deprecated;
     static Identifier* _align;
     static Identifier* aligned;
-    static Identifier* builtins;
+    static Identifier* importc_builtins;
     static Identifier* builtin_va_list;
     static Identifier* builtin_va_arg;
     static Identifier* va_list_tag;
@@ -8856,6 +8766,7 @@ struct Id final
     static Identifier* define;
     static Identifier* undef;
     static Identifier* ident;
+    static Identifier* packed;
     static void initialize();
     Id()
     {
@@ -8894,7 +8805,11 @@ struct Token final
         _d_real floatvalue;
         struct
         {
-            const char* ustring;
+            union
+            {
+                const char* ustring;
+                InterpolatedSet* interpolatedSet;
+            };
             uint32_t len;
             uint8_t postfix;
         };

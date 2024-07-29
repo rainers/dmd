@@ -71,13 +71,12 @@ There are currently 49 checks.
 - Azure pipelines (Windows_Coverage x64)
 - Azure pipelines (Windows_DMD_bootstrap x64)
 - Azure pipelines (Windows_DMD_latest x64)
-- Azure pipelines (Windows_DMD_latest x86-OMF)
 - Azure pipelines (Windows_VisualD_LDC x64_Debug)
 - Azure pipelines (Windows_VisualD_LDC x86-mscoff)
 - Azure pipelines (Windows_VisualD_LDC x86-mscoff_MinGW)
 
 Azure pipelines run on Windows platforms, and build DMD, Phobos and Druntime, and run their unittests.
-Windows has three binary formats: 32-bit OMF (deprecated), 32-bit COFF, and 64-bit COFF.
+Windows has two binary formats: 32-bit COFF, and 64-bit COFF.
 
 ### DAutoTest
 
@@ -113,12 +112,12 @@ The auto tester tests DMD on various Posix platforms.
 **Config**: [azure-pipelines.yml](https://github.com/dlang/dmd/blob/master/.github/workflows/runnable_cxx.yml)
 
 **Checks**:
-- C++ interop tests / Run (macOS-11, clang-13.0.0)
-- C++ interop tests / Run (macOS-11, clang-12.0.0)
-- C++ interop tests / Run (macOS-11, clang-11.0.0)
-- C++ interop tests / Run (macOS-11, clang-10.0.0)
-- C++ interop tests / Run (macOS-11, clang-9.0.0)
-- C++ interop tests / Run (macOS-11, clang-8.0.0)
+- C++ interop tests / Run (macOS-12, clang-13.0.0)
+- C++ interop tests / Run (macOS-12, clang-12.0.0)
+- C++ interop tests / Run (macOS-12, clang-11.0.0)
+- C++ interop tests / Run (macOS-12, clang-10.0.0)
+- C++ interop tests / Run (macOS-12, clang-9.0.0)
+- C++ interop tests / Run (macOS-12, clang-8.0.0)
 - C++ interop tests / Run (ubuntu-20.04, clang-13.0.0)
 - C++ interop tests / Run (ubuntu-20.04, clang-12.0.0)
 - C++ interop tests / Run (ubuntu-20.04, clang-11.0.0)

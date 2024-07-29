@@ -18,13 +18,16 @@ import dmd.errors;
 import dmd.expression;
 import dmd.expressionsem;
 import dmd.func;
+import dmd.funcsem;
 import dmd.globals;
+import dmd.id;
 import dmd.identifier;
 import dmd.init;
 import dmd.location;
 import dmd.mtype;
 import dmd.postordervisitor;
 import dmd.tokens;
+import dmd.typesem;
 import dmd.visitor;
 
 /**************************************************
@@ -270,6 +273,15 @@ bool discardValue(Expression e)
             break;
         }
     case EXP.call:
+        // https://issues.dlang.org/show_bug.cgi?id=24359
+        auto ce = e.isCallExp();
+        if (const f = ce.f)
+        {
+            if (f.ident == Id.__equals && ce.arguments && ce.arguments.length == 2)
+            {
+                return discardValue(new EqualExp(EXP.equal, e.loc, (*ce.arguments)[0], (*ce.arguments)[1]));
+            }
+        }
         return false;
     case EXP.andAnd:
     case EXP.orOr:

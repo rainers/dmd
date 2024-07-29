@@ -160,6 +160,11 @@ extern (C++) class SemanticTimeTransitiveVisitor : SemanticTimePermissiveVisitor
         }
     }
 
+    override void visit(ASTCodegen.ClassReferenceExp e)
+    {
+        e.value.accept(this);
+    }
+
     override void visit(ASTCodegen.CompoundLiteralExp e)
     {
         if (e.initializer)
