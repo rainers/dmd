@@ -645,7 +645,7 @@ void enumMemberSemantic(Scope* sc, EnumMember em)
             Previously this used getProperty, which doesn't consider anything user defined,
             this construct does do that and thus fixes the bug.
         */
-        Expression emax = DotIdExp.create(em.ed.loc, new TypeExp(em.ed.loc, tprev), Id.max);
+        Expression emax = DotIdExp.create(em.ed.loc, new TypeExp(em.ed.loc, tprev), makeIdentifierAtLoc(Id.max));
         emax = emax.expressionSemantic(sc);
         emax = emax.ctfeInterpret();
 
@@ -658,7 +658,7 @@ void enumMemberSemantic(Scope* sc, EnumMember em)
             // display an introductory error before showing what actually failed
             error(em.loc, "cannot check `%s` value for overflow", em.toPrettyChars());
             // rerun to show errors
-            Expression e2 = DotIdExp.create(em.ed.loc, new TypeExp(em.ed.loc, tprev), Id.max);
+            Expression e2 = DotIdExp.create(em.ed.loc, new TypeExp(em.ed.loc, tprev), makeIdentifierAtLoc(Id.max));
             e2 = e2.expressionSemantic(sc);
             e2 = e2.ctfeInterpret();
             e2 = new EqualExp(EXP.equal, em.loc, eprev, e2);

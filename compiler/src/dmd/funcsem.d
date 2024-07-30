@@ -138,7 +138,7 @@ public:
             }
 
             auto catches = new Catches();
-            auto ctch = new Catch(Loc.initial, getThrowable(), id, handler);
+            auto ctch = new Catch(Loc.initial, getThrowable(), makeIdentifierAtLoc(id), handler);
             ctch.internalCatch = true;
             ctch.catchSemantic(sc); // Run semantic to resolve identifier '__o'
             catches.push(ctch);
@@ -2406,7 +2406,7 @@ Statement mergeFrequire(FuncDeclaration fd, Statement sf, Expressions* params)
         params = Expression.arraySyntaxCopy(params);
         Expression e = new CallExp(fd.loc, new VarExp(fd.loc, fdv.fdrequire, false), params);
         Statement s2 = new ExpStatement(fd.loc, e);
-        auto c = new Catch(fd.loc, getThrowable(), null, sf);
+        auto c = new Catch(fd.loc, getThrowable(), makeIdentifierAtLoc(null), sf);
         c.internalCatch = true;
         auto catches = new Catches();
         catches.push(c);
@@ -2469,7 +2469,7 @@ Statement mergeFrequireInclusivePreview(FuncDeclaration fd, Statement sf, Expres
             Expression msg = new StringExp(loc, "Logic error: in-contract was tighter than parent in-contract");
             Statement fail = new ExpStatement(loc, new AssertExp(loc, IntegerExp.literal!0, msg));
             Statement s3 = new CompoundStatement(loc, s2, fail);
-            auto c = new Catch(loc, getThrowable(), id, s3);
+            auto c = new Catch(loc, getThrowable(), makeIdentifierAtLoc(id), s3);
             c.internalCatch = true;
             auto catches = new Catches();
             catches.push(c);
@@ -2606,7 +2606,7 @@ void buildEnsureRequire(FuncDeclaration thisfd)
         auto fparams = new Parameters();
         if (thisfd.canBuildResultVar())
         {
-            Parameter p = new Parameter(loc, STC.ref_ | STC.const_, f.nextOf(), Id.result, null, null);
+            Parameter p = new Parameter(loc, STC.ref_ | STC.const_, f.nextOf(), makeIdentifierAtLoc(Id.result), null, null);
             fparams.push(p);
         }
         auto fo = cast(TypeFunction)(thisfd.originalType ? thisfd.originalType : f);
