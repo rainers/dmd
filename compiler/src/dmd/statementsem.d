@@ -208,7 +208,7 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
         if (checkMustUse(s.exp, sc))
             s.exp = ErrorExp.get(s.exp);
         if (!(sc.flags & SCOPE.Cfile) && discardValue(s.exp))
-            s.exp = ErrorExp.get();
+            s.exp = ErrorExp.get(s.exp);
 
         s.exp = s.exp.optimize(WANTvalue);
         s.exp = checkGC(sc, s.exp);

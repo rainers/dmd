@@ -8812,6 +8812,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
 
                 if (stc == 0 && token.value == TOK.dot)
                 {
+                    Loc dotloc = loc;
                     nextToken();
                     if (token.value != TOK.identifier)
                     {
@@ -8819,7 +8820,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                             t.toChars(), token.toChars());
                         return AST.ErrorExp.get();
                     }
-                    e = new AST.DotIdExp(loc, new AST.TypeExp(loc, t), makeIdentifierAtLoc(token.ident, token.loc));
+                    e = new AST.DotIdExp(loc, new AST.TypeExp(loc, t), makeIdentifierAtLoc(token.ident, token.loc), dotloc);
                     nextToken();
                     e = parsePostExp(e);
                 }
@@ -9002,6 +9003,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
             switch (token.value)
             {
             case TOK.dot:
+                Loc dotloc = loc;
                 nextToken();
                 if (token.value == TOK.identifier)
                 {
@@ -9016,7 +9018,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                     }
                     else
                     {
-                        e = new AST.DotIdExp(loc, e, makeIdentifierAtLoc(id, identloc));
+                        e = new AST.DotIdExp(loc, e, makeIdentifierAtLoc(id, identloc), dotloc);
                     }
                     continue;
                 }
@@ -9025,7 +9027,13 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                     e = parseNewExp(e);
                     continue;
                 }
-                e = new AST.DotExp(loc, e, AST.ErrorExp.get());
+                version(LanguageServer)
+                {
+                    //e = new AST.DotExp(loc, e, AST.ErrorExp.get(new AST.DotIdExp(loc, e, makeIdentifierAtLoc(Id.dotdotdot, dotloc))));
+                    e = new AST.DotIdExp(loc, e, makeIdentifierAtLoc(Id.dotdotdot, token.loc), dotloc);
+                }
+                else
+                    e = new AST.DotExp(loc, e, AST.ErrorExp.get());
                 error("identifier or `new` expected following `.`, not `%s`", token.toChars());
                 continue;
 

@@ -1588,7 +1588,7 @@ Lagain:
             return ErrorExp.get();
 
         if (v.needThis() && hasThis(sc))
-            e = new DotVarExp(loc, new ThisExp(loc), v);
+            e = new DotVarExp(loc, new ThisExp(loc), loc, v);
         else
             e = new VarExp(loc, v);
         e = e.expressionSemantic(sc);

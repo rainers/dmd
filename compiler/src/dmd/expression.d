@@ -3502,7 +3502,10 @@ extern (C++) final class DotIdExp : UnaExp
 {
     IdentifierAtLoc ident;
     version (LanguageServer)
+    {
+        Loc dotloc;
         Expression resolvedTo;
+    }
 
     bool noderef;       // true if the result of the expression will never be dereferenced
     bool wantsym;       // do not replace Symbol with its initializer during semantic()
@@ -3512,6 +3515,14 @@ extern (C++) final class DotIdExp : UnaExp
     {
         super(loc, EXP.dotIdentifier, e);
         this.ident = ident;
+    }
+
+    extern (D) this(const ref Loc loc, Expression e, IdentifierAtLoc ident, const ref Loc dotloc) @safe
+    {
+        super(loc, EXP.dotIdentifier, e);
+        this.ident = ident;
+        version (LanguageServer)
+            this.dotloc = dotloc;
     }
 
     static DotIdExp create(const ref Loc loc, Expression e, IdentifierAtLoc ident) @safe

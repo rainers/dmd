@@ -3196,6 +3196,10 @@ Expression getProperty(Type t, Scope* scope_, const ref Loc loc, Identifier iden
             sc.eSink = global.errorSink;
             e = e.expressionSemantic(&sc);
         }
+        else if (ident == Id.dotdotdot)
+        {
+            return ErrorExp.get(); // error marked by the parser for LanguageServer
+        }
         else if (flag && mt != Type.terror)
         {
             return null;
