@@ -1360,6 +1360,8 @@ extern (C++) struct Target
  */
 struct TargetC
 {
+    import dmd.declaration : BitFieldDeclaration;
+
     enum Runtime : ubyte
     {
         Unspecified,
@@ -1448,6 +1450,24 @@ struct TargetC
         {
             crtDestructorsSupported = false;
         }
+    }
+
+    /**
+     * Indicates whether the specified bit-field contributes to the alignment
+     * of the containing aggregate.
+     * E.g., (not all) ARM ABIs do NOT ignore anonymous (incl. 0-length)
+     * bit-fields.
+     */
+    extern (C++) bool contributesToAggregateAlignment(BitFieldDeclaration bfd)
+    {
+        if (bitFieldStyle == BitFieldStyle.MS)
+            return true;
+        if (bitFieldStyle == BitFieldStyle.Gcc_Clang)
+        {
+            // sufficient for DMD's currently supported architectures
+            return !bfd.isAnonymous();
+        }
+        assert(0);
     }
 }
 

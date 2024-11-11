@@ -5950,6 +5950,7 @@ struct TargetC final
     uint8_t wchar_tsize;
     Runtime runtime;
     BitFieldStyle bitFieldStyle;
+    bool contributesToAggregateAlignment(BitFieldDeclaration* bfd);
     TargetC() :
         crtDestructorsSupported(true),
         boolsize(),
@@ -8605,6 +8606,7 @@ struct Id final
     static Identifier* va_start;
     static Identifier* std;
     static Identifier* core;
+    static Identifier* internal;
     static Identifier* config;
     static Identifier* c_complex_float;
     static Identifier* c_complex_double;

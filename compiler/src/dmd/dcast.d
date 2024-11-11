@@ -709,7 +709,7 @@ MATCH implicitConvTo(Expression e, Type t)
                     return MATCH.nomatch;
                 m = MATCH.constant;
             }
-            if (e.hexString && tn.isintegral && (tn.size == e.sz || (!e.committed && (e.len % tn.size) == 0)))
+            if (e.type != t && e.hexString && tn.isintegral && (tn.size == e.sz || (!e.committed && (e.len % tn.size) == 0)))
             {
                 m = MATCH.convert;
                 return m;
@@ -2341,7 +2341,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
         Type tb = t.toBasetype();
         Type typeb = e.type.toBasetype();
 
-        if (e.hexString && !e.committed)
+        if (e.hexString && !e.committed && tb.nextOf().isintegral)
         {
             const szx = cast(ubyte) tb.nextOf().size();
             if (szx != se.sz && (e.len % szx) == 0)
