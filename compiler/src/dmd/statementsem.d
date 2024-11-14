@@ -1918,6 +1918,8 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
         sc = sc.push();
         sc.sbreak = ss;
         sc.sw = ss;
+        version(LanguageServer)
+            sc.scopesym = sc.enclosing.scopesym; // needed n _body's ScopeStatement
 
         ss.cases = new CaseStatements();
         const inLoopSave = sc.inLoop;

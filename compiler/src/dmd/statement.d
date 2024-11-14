@@ -281,7 +281,7 @@ extern (C++) abstract class Statement : ASTNode
     {
         version(LanguageServer)
         {
-            if (!s || s is this)
+            if (!s || s is this || s is original)
                 return;
 
             if (!original)

@@ -6434,6 +6434,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
 
                 if (flags & ParseStatementFlags.curlyScope)
                 {
+                    auto scopeloc = token.loc;
                     auto statements = new AST.Statements();
                     while (token.value != TOK.case_ && token.value != TOK.default_ && token.value != TOK.endOfFile && token.value != TOK.rightCurly)
                     {
@@ -6448,13 +6449,13 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                         if (cur && cur.isBreakStatement())
                             break;
                     }
-                    s = new AST.CompoundStatement(loc, statements);
+                    s = new AST.CompoundStatement(scopeloc, statements);
                 }
                 else
                 {
                     s = parseStatement(0);
                 }
-                s = new AST.ScopeStatement(loc, s, token.loc);
+                s = new AST.ScopeStatement(s.loc, s, token.loc);
 
                 if (last)
                 {
