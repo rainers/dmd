@@ -123,6 +123,11 @@ test_dmd() {
         local args=(ARGS="-O -inline -release")
     fi
 
+    if type -P apk &>/dev/null; then
+        # Alpine: no TLS variables support with gdb, https://gitlab.alpinelinux.org/alpine/aports/-/issues/11154
+        rm compiler/test/runnable/gdb4181.d
+    fi
+
     $build_path/dmd -g -i -Icompiler/test -release compiler/test/run.d -ofgenerated/run
     generated/run -j$N --environment MODEL=$MODEL HOST_DMD=$build_path/dmd "${args[@]}"
 }
@@ -135,6 +140,27 @@ test_druntime() {
 # build and run Phobos unit tests
 test_phobos() {
     make -j$N -C ../phobos MODEL=$MODEL unittest
+
+    if [ "$OS_NAME" == "windows" ]; then
+        echo "FIXME: Skipping publictests on Windows (test failures)"
+    elif [ "${HOST_DMD:0:5}" == "gdmd-" ]; then
+        echo "Skipping publictests with GDC host compiler (no installed dub)"
+    elif [ "$HOST_DMD" == "dmd-2.079.0" ]; then
+        echo "Skipping publictests with DMD v2.079 host compiler (dub too old)"
+    else
+        source ~/dlang/*/activate # activate host compiler - need dub
+
+        make -j$N -C ../phobos MODEL=$MODEL publictests
+        make -j$N -C ../phobos MODEL=$MODEL publictests NO_BOUNDSCHECKS=1
+
+        if [ "$OS_NAME" == "osx" ]; then
+            echo "FIXME: Skipping betterc on macOS (Apple linker assertions)"
+        else
+            make -j$N -C ../phobos MODEL=$MODEL betterc
+        fi
+
+        deactivate # deactivate host compiler
+    fi
 }
 
 # test dub package
@@ -241,6 +267,11 @@ install_host_compiler() {
         echo "export DMD=gdmd-$gdc_version" > ~/dlang/gdc-$gdc_version/activate
         echo "deactivate(){ echo;}" >> ~/dlang/gdc-$gdc_version/activate
     fi
+  elif type -P apk &>/dev/null; then
+    # fake install script and create a fake 'activate' script
+    mkdir -p ~/dlang/$HOST_DMD
+    echo "export DMD=$HOST_DMD" > ~/dlang/$HOST_DMD/activate
+    echo "deactivate(){ echo;}" >> ~/dlang/$HOST_DMD/activate
   else
     local install_sh="install.sh"
     download_install_sh "$install_sh"

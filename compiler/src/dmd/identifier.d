@@ -1,7 +1,7 @@
 /**
  * Defines an identifier, which is the name of a `Dsymbol`.
  *
- * Copyright:   Copyright (C) 1999-2024 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/identifier.d, _identifier.d)
@@ -108,7 +108,8 @@ nothrow:
         const(char)* p = null;
         if (this == Id.ctor)
             p = "this";
-        else if (this == Id.dtor)
+        else if (this == Id.dtor || this == Id.__xdtor || this == Id.__fieldDtor ||
+            this == Id.__aggrDtor || this == Id.cppdtor || this == Id.ticppdtor)
             p = "~this";
         else if (this == Id.unitTest)
             p = "unittest";
@@ -120,6 +121,8 @@ nothrow:
             p = "result";
         else if (this == Id.returnLabel)
             p = "return";
+        else if (this == Id.postblit)
+            p = "this(this)";
         else
         {
             p = toChars();
@@ -211,19 +214,23 @@ nothrow:
      * Params:
      *      prefix      = first part of the identifier name.
      *      loc         = source location to use in the identifier name.
+     *      parent      = (optional) extra part to be used in uniqueness check,
+     *                    if (prefix1, loc1) == (prefix2, loc2), but
+     *                    parent1 != parent2, no new name will be generated.
      * Returns:
      *      Identifier (inside Identifier.idPool) with deterministic name based
      *      on the source location.
      */
-    extern (D) static Identifier generateIdWithLoc(string prefix, const ref Loc loc)
+    extern (D) static Identifier generateIdWithLoc(string prefix, Loc loc, string parent = "")
     {
         // generate `<prefix>_L<line>_C<col>`
+        auto sl = SourceLoc(loc);
         OutBuffer idBuf;
         idBuf.writestring(prefix);
         idBuf.writestring("_L");
-        idBuf.print(loc.linnum);
+        idBuf.print(sl.line);
         idBuf.writestring("_C");
-        idBuf.print(loc.charnum);
+        idBuf.print(sl.column);
 
         /**
          * Make sure the identifiers are unique per filename, i.e., per module/mixin
@@ -234,14 +241,21 @@ nothrow:
          * https://issues.dlang.org/show_bug.cgi?id=18880
          * https://issues.dlang.org/show_bug.cgi?id=18868
          * https://issues.dlang.org/show_bug.cgi?id=19058
+         *
+         * It is a bit trickier for lambdas/dgliterals: we want them to be unique per
+         * module/mixin + function/template instantiation context. So we use extra parent
+         * argument for that when dealing with lambdas. We could have added it to prefix
+         * directly, but that would unnecessary lengthen symbols names. See issue:
+         * https://issues.dlang.org/show_bug.cgi?id=23722
          */
-        static struct Key { Loc loc; string prefix; }
+        static struct Key { string locKey; string prefix; string parent; }
         __gshared uint[Key] counters;
 
+        string locKey = cast(string) (sl.filename ~ idBuf[]);
         static if (__traits(compiles, counters.update(Key.init, () => 0u, (ref uint a) => 0u)))
         {
             // 2.082+
-            counters.update(Key(loc, prefix),
+            counters.update(Key(locKey, prefix, parent),
                 () => 1u,          // insertion
                 (ref uint counter) // update
                 {
@@ -253,7 +267,7 @@ nothrow:
         }
         else
         {
-            const key = Key(loc, prefix);
+            const key = Key(locKey, prefix, parent);
             if (auto pCounter = key in counters)
             {
                 idBuf.writestring("_");

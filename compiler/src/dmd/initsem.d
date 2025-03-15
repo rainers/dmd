@@ -1,7 +1,7 @@
 /**
  * Semantic analysis of initializers.
  *
- * Copyright:   Copyright (C) 1999-2024 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/initsem.d, _initsem.d)
@@ -41,6 +41,7 @@ import dmd.location;
 import dmd.mtype;
 import dmd.opover;
 import dmd.optimize;
+import dmd.safe : setUnsafe;
 import dmd.statement;
 import dmd.target;
 import dmd.tokens;
@@ -106,6 +107,9 @@ Expression toAssocArrayLiteral(ArrayInitializer ai)
 Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedInterpret needInterpret)
 {
     //printf("initializerSemantic() tx: %p %s\n", tx, tx.toChars());
+    if (init.semanticDone)
+        return init;
+
     Type t = tx;
 
     static Initializer err(Initializer i)
@@ -161,7 +165,7 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
                 // Convert initializer to Expression `ex`
                 auto tm = fieldType.addMod(t.mod);
                 auto iz = i.value[j].initializerSemantic(sc, tm, needInterpret);
-                auto ex = iz.initializerToExpression(null, (sc.flags & SCOPE.Cfile) != 0);
+                auto ex = iz.initializerToExpression(null, sc.inCfile);
                 if (ex.op != EXP.error)
                     i.value[j] = iz;
                 return ex;
@@ -204,11 +208,6 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
         const(uint) amax = 0x80000000;
         bool errors = false;
         //printf("ArrayInitializer::semantic(%s), ai: %s\n", t.toChars(), toChars(i));
-        if (i.sem) // if semantic() already run
-        {
-            return i;
-        }
-        i.sem = true;
         t = t.toBasetype();
         switch (t.ty)
         {
@@ -306,7 +305,7 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
         }
         if (auto tsa = t.isTypeSArray())
         {
-            if (sc.flags & SCOPE.Cfile && tsa.isIncomplete())
+            if (sc.inCfile && tsa.isIncomplete())
             {
                 // Change to array of known length
                 auto tn = tsa.next.toBasetype();
@@ -370,7 +369,7 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
             // If the result will be implicitly cast, move the cast into CTFE
             // to avoid premature truncation of polysemous types.
             // eg real [] x = [1.1, 2.2]; should use real precision.
-            if (i.exp.implicitConvTo(t) && !(sc.flags & SCOPE.Cfile))
+            if (i.exp.implicitConvTo(t) && !sc.inCfile)
             {
                 i.exp = i.exp.implicitCastTo(sc, t);
             }
@@ -378,7 +377,7 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
             {
                 return i;
             }
-            if (sc.flags & SCOPE.Cfile)
+            if (sc.inCfile)
             {
                 /* the interpreter turns (char*)"string" into &"string"[0] which then
                  * it cannot interpret. Resolve that case by doing optimize() first
@@ -441,7 +440,7 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
             Type typeb = se.type.toBasetype();
             TY tynto = tb.nextOf().ty;
             if (!se.committed &&
-                (typeb.ty == Tarray || typeb.ty == Tsarray) && tynto.isSomeChar &&
+                typeb.isStaticOrDynamicArray() && tynto.isSomeChar &&
                 se.numberOfCodeUnits(tynto) < tb.isTypeSArray().dim.toInteger())
             {
                 i.exp = se.castTo(sc, t);
@@ -451,7 +450,7 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
             /* Lop off terminating 0 of initializer for:
              *  static char s[5] = "hello";
              */
-            if (sc.flags & SCOPE.Cfile &&
+            if (sc.inCfile &&
                 typeb.ty == Tsarray &&
                 tynto.isSomeChar &&
                 tb.isTypeSArray().dim.toInteger() + 1 == typeb.isTypeSArray().dim.toInteger())
@@ -464,7 +463,7 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
          * Initialize an array of unknown size with a string.
          * Change to static array of known size
          */
-        if (sc.flags & SCOPE.Cfile && i.exp.isStringExp() &&
+        if (sc.inCfile && i.exp.isStringExp() &&
             tb.isTypeSArray() && tb.isTypeSArray().isIncomplete())
         {
             StringExp se = i.exp.isStringExp();
@@ -491,7 +490,7 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
                 else
                     i.exp = e.optimize(WANTvalue);
             }
-            else if (search_function(sd, Id.call))
+            else if (search_function(sd, Id.opCall))
             {
                 /* https://issues.dlang.org/show_bug.cgi?id=1547
                  *
@@ -501,7 +500,7 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
                  *  i.exp = typeof(sd).opCall(arguments)
                  */
 
-                Expression e = typeDotIdExp(i.loc, sd.type, makeIdentifierAtLoc(Id.call));
+                Expression e = typeDotIdExp(i.loc, sd.type, makeIdentifierAtLoc(Id.opCall));
                 e = new CallExp(i.loc, e, i.exp);
                 e = e.expressionSemantic(sc);
                 e = resolveProperties(sc, e);
@@ -550,7 +549,7 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
         {
             i.exp = i.exp.implicitCastTo(sc, t);
         }
-        else if (sc.flags & SCOPE.Cfile && i.exp.isStringExp() &&
+        else if (sc.inCfile && i.exp.isStringExp() &&
             tta && (tta.next.ty == Tint8 || tta.next.ty == Tuns8) &&
             ti.ty == Tsarray && ti.nextOf().ty == Tchar)
         {
@@ -587,7 +586,7 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
             const errors = global.startGagging();
             i.exp = i.exp.implicitCastTo(sc, t);
             if (global.endGagging(errors))
-                error(currExp.loc, "cannot implicitly convert expression `%s` of type `%s` to `%s`", currExp.toChars(), et.toChars(), t.toChars());
+                error(currExp.loc, "cannot implicitly convert expression `%s` of type `%s` to `%s`", currExp.toErrMsg(), et.toChars(), t.toChars());
         }
         }
     L1:
@@ -693,51 +692,49 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
                 auto di = ci.initializerList[index];
                 if (di.designatorList && fieldi != 0)
                     break;          // back to top level
-                else
+
+                VarDeclaration field;
+                while (1)   // skip field if it overlaps with previously seen fields
                 {
-                    VarDeclaration field;
-                    while (1)   // skip field if it overlaps with previously seen fields
+                    field = sd.fields[fieldi];
+                    ++fieldi;
+                    if (!overlaps(field, sd.fields[], si))
+                        break;
+                    if (fieldi == nfields)
+                        break;
+                }
+                auto tn = field.type.toBasetype();
+                auto tnsa = tn.isTypeSArray();
+                auto tns = tn.isTypeStruct();
+                auto ix = di.initializer;
+                if (tnsa && ix.isExpInitializer())
+                {
+                    ExpInitializer ei = ix.isExpInitializer();
+                    if (ei.exp.isStringExp() && tnsa.nextOf().isIntegral())
                     {
-                        field = sd.fields[fieldi];
-                        ++fieldi;
-                        if (!overlaps(field, sd.fields[], si))
-                            break;
-                        if (fieldi == nfields)
-                            break;
-                    }
-                    auto tn = field.type.toBasetype();
-                    auto tnsa = tn.isTypeSArray();
-                    auto tns = tn.isTypeStruct();
-                    auto ix = di.initializer;
-                    if (tnsa && ix.isExpInitializer())
-                    {
-                        ExpInitializer ei = ix.isExpInitializer();
-                        if (ei.exp.isStringExp() && tnsa.nextOf().isintegral())
-                        {
-                            si.addInit(field.ident, ei);
-                            ++index;
-                        }
-                        else
-                            si.addInit(field.ident, subArray(tnsa, index)); // fwd ref of subArray is why subStruct is a template
-                    }
-                    else if (tns && ix.isExpInitializer())
-                    {
-                        /* Disambiguate between an exp representing the entire
-                         * struct, and an exp representing the first field of the struct
-                         */
-                        if (representsStruct(ix.isExpInitializer(), tns)) // initializer represents the entire struct
-                        {
-                            si.addInit(field.ident, initializerSemantic(ix, sc, tn, needInterpret));
-                            ++index;
-                        }
-                        else                                // field initializers for struct
-                            si.addInit(field.ident, subStruct(tns, index)); // the first field
-                    }
-                    else
-                    {
-                        si.addInit(field.ident, ix);
+                        si.addInit(field.ident, ei);
                         ++index;
                     }
+                    else
+                        si.addInit(field.ident, subArray(tnsa, index)); // fwd ref of subArray is why subStruct is a template
+                }
+                else if (tns && ix.isExpInitializer())
+                {
+                    /* Disambiguate between an exp representing the entire
+                     * struct, and an exp representing the first field of the struct
+                     */
+                    if (representsStruct(ix.isExpInitializer(), tns)) // initializer represents the entire struct
+                    {
+                        si.addInit(field.ident, initializerSemantic(ix, sc, tn, needInterpret));
+                        ++index;
+                    }
+                    else                                // field initializers for struct
+                        si.addInit(field.ident, subStruct(tns, index)); // the first field
+                }
+                else
+                {
+                    si.addInit(field.ident, ix);
+                    ++index;
                 }
             }
             //printf("subStruct() returns ai: %s, index: %d\n", si.toChars(), cast(int)index);
@@ -775,7 +772,7 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
                 else if (tnsa && di.initializer.isExpInitializer())
                 {
                     ExpInitializer ei = di.initializer.isExpInitializer();
-                    if (ei.exp.isStringExp() && tnsa.nextOf().isintegral())
+                    if (ei.exp.isStringExp() && tnsa.nextOf().isIntegral())
                     {
                         ai.addInit(null, ei);
                         ++index;
@@ -838,112 +835,110 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
                     error(ci.loc, "`.%s` is not a field of `%s`\n", id.toChars(), sd.toChars());
                     return err(ci);
                 }
-                else
+
+                if (fieldi == nfields)
+                    break;
+
+                auto ix = di.initializer;
+
+                /* If a C initializer is wrapped in a C initializer, with no designators,
+                 * peel off the outer one
+                 */
+                if (ix.isCInitializer())
                 {
-                    if (fieldi == nfields)
-                        break;
-
-                    auto ix = di.initializer;
-
-                    /* If a C initializer is wrapped in a C initializer, with no designators,
-                     * peel off the outer one
-                     */
-                    if (ix.isCInitializer())
+                    CInitializer cix = ix.isCInitializer();
+                    if (cix.initializerList.length == 1)
                     {
-                        CInitializer cix = ix.isCInitializer();
-                        if (cix.initializerList.length == 1)
+                        DesigInit dix = cix.initializerList[0];
+                        if (!dix.designatorList)
                         {
-                            DesigInit dix = cix.initializerList[0];
-                            if (!dix.designatorList)
-                            {
-                                Initializer inix = dix.initializer;
-                                if (inix.isCInitializer())
-                                    ix = inix;
-                            }
+                            Initializer inix = dix.initializer;
+                            if (inix.isCInitializer())
+                                ix = inix;
                         }
                     }
+                }
 
-                    if (auto cix = ix.isCInitializer())
+                if (auto cix = ix.isCInitializer())
+                {
+                    /* ImportC loses the structure from anonymous structs, but this is retained
+                     * by the initializer syntax. if a CInitializer has a Designator, it is probably
+                     * a nested anonymous struct
+                     */
+                    int found;
+                    foreach (dix; cix.initializerList)
                     {
-                        /* ImportC loses the structure from anonymous structs, but this is retained
-                         * by the initializer syntax. if a CInitializer has a Designator, it is probably
-                         * a nested anonymous struct
-                         */
-                        int found;
-                        foreach (dix; cix.initializerList)
+                        Designators* dlistx = dix.designatorList;
+                        if (!dlistx)
+                            continue;
+                        if ((*dlistx).length == 1 && (*dlistx)[0].ident)
                         {
-                            Designators* dlistx = dix.designatorList;
-                            if (!dlistx)
-                                continue;
-                            if ((*dlistx).length == 1 && (*dlistx)[0].ident)
+                            auto id = (*dlistx)[0].ident;
+                            foreach (k, f; sd.fields[])         // linear search for now
                             {
-                                auto id = (*dlistx)[0].ident;
-                                foreach (k, f; sd.fields[])         // linear search for now
+                                if (f.ident == id)
                                 {
-                                    if (f.ident == id)
-                                    {
-                                        fieldi = k;
-                                        si.addInit(id, dix.initializer);
-                                        ++fieldi;
-                                        ++index;
-                                        ++found;
-                                        break;
-                                    }
+                                    fieldi = k;
+                                    si.addInit(id, dix.initializer);
+                                    ++fieldi;
+                                    ++index;
+                                    ++found;
+                                    break;
                                 }
                             }
-                            else {
-                                error(ci.loc, "only 1 designator currently allowed for C struct field initializer `%s`", toChars(ci));
-                            }
                         }
-
-                        if (found == cix.initializerList.length)
-                            continue Loop1;
-                    }
-
-                    VarDeclaration field;
-                    while (1)   // skip field if it overlaps with previously seen fields
-                    {
-                        field = sd.fields[fieldi];
-                        ++fieldi;
-                        if (!overlaps(field, sd.fields[], si))
-                            break;
-                        if (fieldi == nfields)
-                            break;
-                    }
-
-                    auto tn = field.type.toBasetype();
-                    auto tnsa = tn.isTypeSArray();
-                    auto tns = tn.isTypeStruct();
-
-                    if (tnsa && ix.isExpInitializer())
-                    {
-                        ExpInitializer ei = ix.isExpInitializer();
-                        if (ei.exp.isStringExp() && tnsa.nextOf().isintegral())
-                        {
-                            si.addInit(field.ident, ei);
-                            ++index;
+                        else {
+                            error(ci.loc, "only 1 designator currently allowed for C struct field initializer `%s`", toChars(ci));
                         }
-                        else
-                            si.addInit(field.ident, subArray(tnsa, index));
                     }
-                    else if (tns && ix.isExpInitializer())
+
+                    if (found == cix.initializerList.length)
+                        continue Loop1;
+                }
+
+                VarDeclaration field;
+                while (1)   // skip field if it overlaps with previously seen fields
+                {
+                    field = sd.fields[fieldi];
+                    ++fieldi;
+                    if (!overlaps(field, sd.fields[], si))
+                        break;
+                    if (fieldi == nfields)
+                        break;
+                }
+
+                auto tn = field.type.toBasetype();
+                auto tnsa = tn.isTypeSArray();
+                auto tns = tn.isTypeStruct();
+
+                if (tnsa && ix.isExpInitializer())
+                {
+                    ExpInitializer ei = ix.isExpInitializer();
+                    if (ei.exp.isStringExp() && tnsa.nextOf().isIntegral())
                     {
-                        /* Disambiguate between an exp representing the entire
-                         * struct, and an exp representing the first field of the struct
-                         */
-                        if (representsStruct(ix.isExpInitializer(), tns)) // initializer represents the entire struct
-                        {
-                            si.addInit(field.ident, initializerSemantic(ix, sc, tn, needInterpret));
-                            ++index;
-                        }
-                        else                                // field initializers for struct
-                            si.addInit(field.ident, subStruct(tns, index)); // the first field
-                    }
-                    else
-                    {
-                        si.addInit(field.ident, di.initializer);
+                        si.addInit(field.ident, ei);
                         ++index;
                     }
+                    else
+                        si.addInit(field.ident, subArray(tnsa, index));
+                }
+                else if (tns && ix.isExpInitializer())
+                {
+                    /* Disambiguate between an exp representing the entire
+                     * struct, and an exp representing the first field of the struct
+                     */
+                    if (representsStruct(ix.isExpInitializer(), tns)) // initializer represents the entire struct
+                    {
+                        si.addInit(field.ident, initializerSemantic(ix, sc, tn, needInterpret));
+                        ++index;
+                    }
+                    else                                // field initializers for struct
+                        si.addInit(field.ident, subStruct(tns, index)); // the first field
+                }
+                else
+                {
+                    si.addInit(field.ident, di.initializer);
+                    ++index;
                 }
             }
             return initializerSemantic(si, sc, t, needInterpret);
@@ -955,7 +950,7 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
             /* If it's an array of integral being initialized by `{ string }`
              * replace with `string`
              */
-            if (tn.isintegral())
+            if (tn.isIntegral())
             {
                 if (ExpInitializer ei = isBraceExpression())
                 {
@@ -1018,7 +1013,7 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
                 else if (tnsa && di.initializer.isExpInitializer())
                 {
                     ExpInitializer ei = di.initializer.isExpInitializer();
-                    if (ei.exp.isStringExp() && tnsa.nextOf().isintegral())
+                    if (ei.exp.isStringExp() && tnsa.nextOf().isIntegral())
                     {
                         ai.addInit(null, ei);
                         ++index;
@@ -1060,6 +1055,7 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
 
     mixin VisitInitializer!Initializer visit;
     auto result = visit.VisitInitializer(init);
+    result.semanticDone = true;
     return (result !is null) ? result : new ErrorInitializer(init);
 }
 
@@ -1100,64 +1096,50 @@ Initializer inferType(Initializer init, Scope* sc)
     {
         //printf("ArrayInitializer::inferType() %s\n", toChars());
         Expressions* keys = null;
-        Expressions* values;
-        if (init.isAssociativeArray())
+        Expressions* values = new Expressions(init.value.length);
+        Initializer no()
         {
+            if (keys)
+                error(init.loc, "not an associative array initializer");
+            else
+                error(init.loc, "cannot infer type from array initializer");
+            return new ErrorInitializer();
+        }
+        const bool isAssoc = init.isAssociativeArray();
+        if (isAssoc)
             keys = new Expressions(init.value.length);
-            values = new Expressions(init.value.length);
-            for (size_t i = 0; i < init.value.length; i++)
+        else
+            values.zero();
+
+        for (size_t i = 0; i < init.value.length; i++)
+        {
+            if (isAssoc)
             {
                 Expression e = init.index[i];
                 if (!e)
-                    goto Lno;
+                    return no();
                 (*keys)[i] = e;
-                Initializer iz = init.value[i];
-                if (!iz)
-                    goto Lno;
-                iz = iz.inferType(sc);
-                if (iz.isErrorInitializer())
-                {
-                    return iz;
-                }
-                (*values)[i] = iz.isExpInitializer().exp;
-                assert(!(*values)[i].isErrorExp());
             }
-            Expression e = new AssocArrayLiteralExp(init.loc, keys, values);
-            auto ei = new ExpInitializer(init.loc, e);
-            return ei.inferType(sc);
-        }
-        else
-        {
-            auto elements = new Expressions(init.value.length);
-            elements.zero();
-            for (size_t i = 0; i < init.value.length; i++)
-            {
+            else
                 assert(!init.index[i]); // already asserted by isAssociativeArray()
-                Initializer iz = init.value[i];
-                if (!iz)
-                    goto Lno;
-                iz = iz.inferType(sc);
-                if (iz.isErrorInitializer())
-                {
-                    return iz;
-                }
-                (*elements)[i] = iz.isExpInitializer().exp;
-                assert(!(*elements)[i].isErrorExp());
+            Initializer iz = init.value[i];
+            if (!iz)
+                return no();
+            iz = iz.inferType(sc);
+            if (iz.isErrorInitializer())
+            {
+                return iz;
             }
-            Expression e = new ArrayLiteralExp(init.loc, null, elements);
-            auto ei = new ExpInitializer(init.loc, e);
-            return ei.inferType(sc);
+            (*values)[i] = iz.isExpInitializer().exp;
+            assert(!(*values)[i].isErrorExp());
         }
-    Lno:
-        if (keys)
-        {
-            error(init.loc, "not an associative array initializer");
-        }
-        else
-        {
-            error(init.loc, "cannot infer type from array initializer");
-        }
-        return new ErrorInitializer(init);
+
+        Expression e;
+        e = isAssoc
+            ? new AssocArrayLiteralExp(init.loc, keys, values)
+            : new ArrayLiteralExp(init.loc, null, values);
+        auto ei = new ExpInitializer(init.loc, e);
+        return ei.inferType(sc);
     }
 
     Initializer visitExp(ExpInitializer init)
@@ -1492,10 +1474,10 @@ private bool hasNonConstPointers(Expression e)
         }
         if (auto se = ae.e1.isStructLiteralExp())
         {
-            if (!(se.stageflags & stageSearchPointers))
+            if (!(se.stageflags & StructLiteralExp.StageFlags.searchPointers))
             {
                 const old = se.stageflags;
-                se.stageflags |= stageSearchPointers;
+                se.stageflags |= StructLiteralExp.StageFlags.searchPointers;
                 bool ret = checkArray(se.elements);
                 se.stageflags = old;
                 return ret;
@@ -1616,7 +1598,7 @@ Expressions* resolveStructLiteralNamedArgs(StructDeclaration sd, Type t, Scope* 
                     (vd.offset & (target.ptrsize - 1))))
             {
                 if (sc.setUnsafe(false, argLoc,
-                    "field `%s.%s` cannot assign to misaligned pointers in `@safe` code", sd, vd))
+                    "field `%s.%s` assigning to misaligned pointers", sd, vd))
                 {
                     errors = true;
                     elems[fieldi] = ErrorExp.get(); // for better diagnostics on multiple errors
@@ -1654,7 +1636,7 @@ Expressions* resolveStructLiteralNamedArgs(StructDeclaration sd, Type t, Scope* 
             continue;
         }
 
-        elems[fieldi] = doCopyOrMove(sc, ex);
+        elems[fieldi] = doCopyOrMove(sc, ex, null, false);
         ++fieldi;
     }
     if (errors)
