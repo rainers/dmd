@@ -113,6 +113,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
 
         const loc = token.loc;
         nextToken();
+        Loc idloc = token.loc;
 
         /* parse ModuleFullyQualifiedName
          * https://dlang.org/spec/module.html#ModuleFullyQualifiedName
@@ -125,7 +126,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
         }
 
         IdentifierAtLoc[] a;
-        IdentifierAtLoc id = makeIdentifierAtLoc(token.ident, loc);
+        IdentifierAtLoc id = makeIdentifierAtLoc(token.ident, idloc);
 
         while (nextToken() == TOK.dot)
         {
@@ -136,10 +137,11 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                 error("identifier expected following `package`");
                 return false;
             }
-            id = makeIdentifierAtLoc(token.ident, token.loc);
+            idloc = token.loc;
+            id = makeIdentifierAtLoc(token.ident, idloc);
         }
 
-        md = new AST.ModuleDeclaration(loc, a, id, msg, isdeprecated);
+        md = new AST.ModuleDeclaration(idloc, a, id, msg, isdeprecated);
 
         if (token.value != TOK.semicolon)
             error("`;` expected following module declaration instead of `%s`", token.toChars());

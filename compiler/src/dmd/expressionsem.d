@@ -1659,6 +1659,8 @@ Lagain:
             e = v.expandInitializer(loc);
             v.inuse++;
             e = e.expressionSemantic(sc);
+            version(LanguageServer)
+                e.saveOriginal(new VarExp(loc, v));
             v.inuse--;
             return e;
         }
@@ -14196,6 +14198,8 @@ Expression dotIdSemanticProp(DotIdExp exp, Scope* sc, bool gag)
                     auto e = v.expandInitializer(exp.loc);
                     v.inuse++;
                     e = e.expressionSemantic(sc);
+                    version(LanguageServer)
+                        e.saveOriginal(new VarExp(exp.ident.loc, v));
                     v.inuse--;
                     return e;
                 }
