@@ -4041,7 +4041,7 @@ extern (C++) final class Parameter : ASTNode
     Expression defaultArg;
     UserAttributeDeclaration userAttribDecl; // user defined attributes
 
-    extern (D) this(Loc loc, StorageClass storageClass, Type type, IdentifierAtLoc ident, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
+    extern (D) this(Loc loc, STC storageClass, Type type, IdentifierAtLoc ident, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
     {
         this.loc = loc;
         this.type = type;
@@ -4054,12 +4054,12 @@ extern (C++) final class Parameter : ASTNode
     }
 
     // anonymous parameter
-    extern (D) this(Loc loc, StorageClass storageClass, Type type, typeof(null), typeof(null), typeof(null))
+    extern (D) this(Loc loc, STC storageClass, Type type, typeof(null), typeof(null), typeof(null))
     {
         this(loc, storageClass, type, makeIdentifierAtLoc(null), null, null);
     }
 
-    static Parameter create(Loc loc, StorageClass storageClass, Type type, IdentifierAtLoc ident, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
+    static Parameter create(Loc loc, STC storageClass, Type type, IdentifierAtLoc ident, Expression defaultArg, UserAttributeDeclaration userAttribDecl)
     {
         return new Parameter(loc, storageClass, type, ident, defaultArg, userAttribDecl);
     }

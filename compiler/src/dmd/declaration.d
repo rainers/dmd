@@ -870,7 +870,7 @@ extern (C++) class VarDeclaration : Declaration
     version (LanguageServer)
         Type parsedType;                // before semantic analysis
 
-    final extern (D) this(Loc loc, Type type, Identifier ident, Initializer _init, StorageClass storage_class = STC.none)
+    final extern (D) this(Loc loc, Type type, Identifier ident, Initializer _init, STC storage_class = STC.none)
     in
     {
         assert(ident);

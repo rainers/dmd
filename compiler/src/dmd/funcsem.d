@@ -2546,7 +2546,7 @@ Statement mergeFrequireInclusivePreview(FuncDeclaration fd, Statement sf, Expres
         Expression msg = new StringExp(loc, "Logic error: in-contract was tighter than parent in-contract");
         Statement fail = new ExpStatement(loc, new AssertExp(loc, IntegerExp.literal!0, msg));
         Statement s3 = new CompoundStatement(loc, s2, fail);
-        auto c = new Catch(loc, getThrowable(), id, s3);
+        auto c = new Catch(loc, getThrowable(), makeIdentifierAtLoc(id), s3);
         c.internalCatch = true;
         auto catches = new Catches();
         catches.push(c);

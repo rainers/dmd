@@ -356,7 +356,7 @@ struct ASTBase
             v.visit(this);
         }
 
-        void setEndLoc(const ref Loc endloc)
+        void setEndLoc(Loc endloc)
         {
             endlinnum = endloc.linnum;
             endcharnum = endloc.charnum;
@@ -5650,7 +5650,7 @@ struct ASTBase
 
     extern (C++) final class DotExp : BinExp
     {
-        extern (D) this(const ref Loc loc, Expression e1, Expression e2)
+        extern (D) this(Loc loc, Expression e1, Expression e2)
         {
             super(loc, EXP.dot, __traits(classInstanceSize, DotExp), e1, e2);
         }
@@ -6011,7 +6011,7 @@ struct ASTBase
 
     extern (C++) final class InExp : BinExp
     {
-        extern (D) this(Loc loc, Expression e1, Expression e2, const ref Loc oploc)
+        extern (D) this(Loc loc, Expression e1, Expression e2, Loc oploc)
         {
             super(loc, EXP.in_, __traits(classInstanceSize, InExp), e1, e2);
         }
@@ -6024,7 +6024,7 @@ struct ASTBase
 
     extern (C++) final class IdentityExp : BinExp
     {
-        extern (D) this(EXP op, Loc loc, Expression e1, Expression e2, const ref Loc oploc)
+        extern (D) this(EXP op, Loc loc, Expression e1, Expression e2, Loc oploc)
         {
             super(loc, op, __traits(classInstanceSize, IdentityExp), e1, e2);
         }

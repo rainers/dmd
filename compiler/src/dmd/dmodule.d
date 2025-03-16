@@ -438,9 +438,8 @@ extern (C++) final class Module : Package
     size_t nameoffset;          // offset of module name from start of ModuleInfo
     size_t namelen;             // length of module name in characters
 
-    extern (D) this(const(char)[] filename, Identifier ident, int doDocComment, int doHdrGen)
+    extern (D) this(Loc loc, const(char)[] filename, Identifier ident, int doDocComment, int doHdrGen)
     {
-        this.dsym = DSYM.module_;
         const(char)[] srcfilename;
         //printf("Module::Module(filename = '%.*s', ident = '%s')\n", cast(int)filename.length, filename.ptr, ident.toChars());
         this.arg = filename;
@@ -466,9 +465,9 @@ extern (C++) final class Module : Package
                   cast(int)mars_ext.length, mars_ext.ptr);
             fatal();
         }
-        const mloc = Loc(srcfilename.ptr, 0, 0);
+        Loc mloc = Loc.singleFilename(srcfilename);
         super(mloc, ident);
-
+        this.dsym = DSYM.module_;
         srcfile = FileName(srcfilename);
         objfile = setOutfilename(global.params.objname, global.params.objdir, filename, target.obj_ext);
         if (doDocComment)
@@ -486,7 +485,7 @@ extern (C++) final class Module : Package
 
     extern (D) static Module create(const(char)[] filename, Identifier ident, int doDocComment, int doHdrGen)
     {
-        return new Module(filename, ident, doDocComment, doHdrGen);
+        return new Module(Loc.initial, filename, ident, doDocComment, doHdrGen);
     }
 
     static const(char)* find(const(char)* filename)
@@ -508,13 +507,18 @@ extern (C++) final class Module : Package
     extern(D) alias LoadModuleHandler = Module delegate(const ref Loc location, IdentifierAtLoc[] packages, Identifier ident);
     extern(D) __gshared LoadModuleHandler loadModuleHandler;
 
-    extern (D) static Module load(Loc loc, IdentifierAtLoc[] packages, Identifier ident)
+    extern (C++) static Module load(Loc loc, IdentifiersAtLoc* packages, Identifier ident)
+    {
+        return load(loc, packages ? (*packages)[] : null, ident);
+    }
+
+    extern (D) static Module load(Loc loc, IdentifierAtLoc[] packages, Identifier ident, ImportPathInfo pathInfo = ImportPathInfo.init)
     {
         Module m;
         if (loadModuleHandler)
             m = loadModuleHandler(loc, packages, ident);
         else
-            m = loadFromFile(loc, packages, ident, 0, 0);
+            m = loadFromFile(loc, packages, ident, 0, 0, pathInfo);
 
         if (!m)
             return null;
@@ -524,7 +528,8 @@ extern (C++) final class Module : Package
         return m;
     }
 
-    extern (D) static Module loadFromFile(Loc loc, IdentifierAtLoc[] packages, Identifier ident, int doDocComment, int doHdrGen)
+    extern (D) static Module loadFromFile(Loc loc, IdentifierAtLoc[] packages, Identifier ident,
+                                          int doDocComment, int doHdrGen, ImportPathInfo pathInfo = ImportPathInfo.init)
     {
         //printf("Module::load(ident = '%s')\n", ident.toChars());
         // Build module filename by turning:
@@ -540,7 +545,7 @@ extern (C++) final class Module : Package
             pathInfo = importPathThatFindUs;
         }
 
-        auto m = new Module(filename, ident, doDocComment, doHdrGen);
+        auto m = new Module(loc, filename, ident, doDocComment, doHdrGen);
 
         // TODO: apply import path information (pathInfo) on to module
 

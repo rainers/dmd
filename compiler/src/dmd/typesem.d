@@ -5136,9 +5136,9 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, DotExpFlag fla
                         }
                         /* Rewrite e.s as e.(tid.ident).(tid.idents)
                          */
-                        Expression die = new DotIdExp(e.loc, e, tid.ident);
+                        Expression die = new DotIdExp(e.loc, e, makeIdentifierAtLoc(tid.ident));
                         foreach (id; tid.idents) // maybe use typeToExpressionHelper()
-                            die = new DotIdExp(e.loc, die, cast(Identifier)id);
+                            die = new DotIdExp(e.loc, die, id);
                         /* Ambiguous syntax, only way to disambiguate it to try it
                          */
                         die = dmd.expressionsem.trySemantic(die, sc);

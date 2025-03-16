@@ -997,41 +997,23 @@ extern (C++) class Dsymbol : ASTNode
     {
     }
 
-    version(LanguageServer)
-    {
-        // a global hash table doesn't work well if parsing should be separated from semantic analysis
-        const(char)* comment;
-        UnitTestDeclaration ddocUnittest;
-
-        /****************************************
-        * Add documentation comment to Dsymbol.
-        * Ignore NULL comments.
-        */
-        void addComment(const(char)* comment)
-        {
-            //if (comment)
-            //    printf("adding comment '%s' to symbol %p '%s'\n", comment, this, toChars());
-            if (!this.comment)
-                this.comment = comment;
-            else if (comment && strcmp(cast(char*)comment, cast(char*)this.comment) != 0)
-            {
-                // Concatenate the two
-                this.comment = Lexer.combineComments(this.comment.toDString(), comment.toDString(), true);
-            }
-        }
-    }
-    else
-    {
     /****************************************
-     * Add documentation comment to Dsymbol.
-     * Ignore NULL comments.
-     */
+    * Add documentation comment to Dsymbol.
+    * Ignore NULL comments.
+    */
     void addComment(const(char)* comment)
     {
         import dmd.dsymbolsem;
         dmd.dsymbolsem.addComment(this, comment);
     }
 
+    version(LanguageServer)
+    {
+        const(char)* comment;
+        UnitTestDeclaration ddocUnittest;
+    }
+    else
+    {
     /// get documentation comment for this Dsymbol
     final const(char)* comment()
     {
@@ -1540,6 +1522,19 @@ public:
     override void accept(Visitor v)
     {
         v.visit(this);
+    }
+
+    /****************************************
+    * Save the end location of the scope to be used for debug information
+    * and language server
+    */
+    void setEndLoc(const ref Loc endloc)
+    {
+        if (!loc.filename)
+            return;
+        assert(!endloc.filename || endloc.filename is loc.filename);
+        endlinnum = endloc.linnum;
+        endcharnum = endloc.charnum;
     }
 }
 

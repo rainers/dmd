@@ -20,6 +20,7 @@ import dmd.dstruct;
 import dmd.errors;
 import dmd.expression;
 import dmd.globals;
+import dmd.identifier;
 import dmd.location;
 import dmd.mtype;
 import dmd.typesem;
@@ -181,8 +182,8 @@ TypeInfoDeclaration getTypeInfoAssocArrayDeclaration(TypeAArray t, Scope* sc)
     tiargs.push(t.next);
 
     Expression id = new IdentifierExp(loc, Id.empty);
-    id = new DotIdExp(loc, id, Id.object);
-    id = new DotIdExp(loc, id, Id.TypeInfo_AssociativeArray);
+    id = new DotIdExp(loc, id, makeIdentifierAtLoc(Id.object));
+    id = new DotIdExp(loc, id, makeIdentifierAtLoc(Id.TypeInfo_AssociativeArray));
     auto tempinst = new DotTemplateInstanceExp(loc, id, Id.Entry, tiargs);
     auto e = expressionSemantic(tempinst, sc);
     assert(e.type);

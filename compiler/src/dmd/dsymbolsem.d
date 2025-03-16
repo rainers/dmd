@@ -7915,6 +7915,19 @@ extern (C++) class AddCommentVisitor: Visitor
             return;
 
         //printf("addComment '%s' to Dsymbol %p '%s'\n", comment, this, toChars());
+        version(LanguageServer)
+        {
+            // a global hash table doesn't work well if parsing should be separated from semantic analysis
+            if (!d.comment)
+                d.comment = comment;
+            else if (comment && strcmp(cast(char*)comment, cast(char*)d.comment) != 0)
+            {
+                // Concatenate the two
+                d.comment = Lexer.combineComments(d.comment.toDString(), comment.toDString(), true);
+            }
+        }
+        else
+        {
         void* h = cast(void*)d;      // just the pointer is the key
         auto p = h in d.commentHashTable;
         if (!p)
@@ -7927,6 +7940,7 @@ extern (C++) class AddCommentVisitor: Visitor
             // Concatenate the two
             *p = Lexer.combineComments((*p).toDString(), comment.toDString(), true);
         }
+        } // version(LanguageServer)
     }
     override void visit(AttribDeclaration atd)
     {

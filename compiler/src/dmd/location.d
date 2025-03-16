@@ -63,8 +63,14 @@ nothrow:
     /// Returns: a Loc that simply holds a filename, with no line / column info
     extern (C++) static Loc singleFilename(const char* filename)
     {
+        return singleFilename(filename.toDString);
+    }
+
+    /// Returns: a Loc that simply holds a filename, with no line / column info
+    static Loc singleFilename(const(char)[] filename)
+    {
         Loc result;
-        locFileTable ~= new BaseLoc(filename.toDString, locIndex, 0, [0]);
+        locFileTable ~= new BaseLoc(filename, locIndex, 0, [0]);
         result.index = locIndex++;
         return result;
     }

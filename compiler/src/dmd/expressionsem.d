@@ -861,7 +861,7 @@ extern (D) Expression doCopyOrMove(Scope* sc, Expression e, Type t, bool nrvo, b
         Expression ve = new VarExp(e.loc, vd);
 
         Expression er;
-        er = new DotIdExp(e.loc, ve, Id.ctor);  // ve.ctor
+        er = new DotIdExp(e.loc, ve, makeIdentifierAtLoc(Id.ctor));  // ve.ctor
         er = new CallExp(e.loc, er, e);         // ve.ctor(e)
         er = new CommaExp(e.loc, er, new VarExp(e.loc, vd)); // ve.ctor(e),vd
         er = Expression.combine(de, er);        // de,ve.ctor(e),vd
@@ -4094,7 +4094,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             {
                 Expression e;
                 e = new VarExp(exp.loc, ss.withstate.wthis);
-                e = new DotIdExp(exp.loc, e, exp.ident);
+                e = new DotIdExp(exp.loc, e, makeIdentifierAtLoc(exp.ident, exp.loc));
                 e = e.trySemantic(sc);
                 if (e)
                 {
@@ -4111,7 +4111,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
 
                 Expression e;
                 e = new TypeExp(exp.loc, t);
-                e = new DotIdExp(exp.loc, e, exp.ident);
+                e = new DotIdExp(exp.loc, e, makeIdentifierAtLoc(exp.ident, exp.loc));
                 e = e.trySemantic(sc);
                 if (e)
                 {
@@ -6874,7 +6874,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                 }
             }
 
-            / use ve.loc for error reporting
+            // use ve.loc for error reporting
             checkFunctionAttributes(ve, sc, exp.f);
             checkAccess(ve.loc, sc, null, exp.f);
             if (exp.f.checkNestedFuncReference(sc, ve.loc))
@@ -10905,7 +10905,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                             einit.type = e1x.type;
 
                             Expression e;
-                            e = new DotIdExp(exp.loc, e1x, Id.ctor);
+                            e = new DotIdExp(exp.loc, e1x, makeIdentifierAtLoc(Id.ctor));
                             e = new CallExp(exp.loc, e, e2x);
                             e = new CommaExp(exp.loc, einit, e);
 

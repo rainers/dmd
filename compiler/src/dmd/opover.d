@@ -356,7 +356,7 @@ Expression opOverloadArray(ArrayExp ae, Scope* sc)
              *      e1.opIndex(arguments)
              */
             Expressions* a = ae.arguments.copy();
-            Expression result = new DotIdExp(ae.loc, ae.e1, Id.opIndex);
+            Expression result = new DotIdExp(ae.loc, ae.e1, makeIdentifierAtLoc(Id.opIndex));
             result = new CallExp(ae.loc, result, a);
             if (maybeSlice) // a[] might be: a.opSlice()
                 result = result.trySemantic(sc);
@@ -394,7 +394,7 @@ Expression opOverloadArray(ArrayExp ae, Scope* sc)
                 a.push(ie.lwr);
                 a.push(ie.upr);
             }
-            Expression result = new DotIdExp(ae.loc, ae.e1, Id.opSlice);
+            Expression result = new DotIdExp(ae.loc, ae.e1, makeIdentifierAtLoc(Id.opSlice));
             result = new CallExp(ae.loc, result, a);
             result = result.expressionSemantic(sc);
             return Expression.combine(e0, result);
@@ -726,8 +726,8 @@ Expression opOverloadEqual(EqualExp e, Scope* sc, Type[2] aliasThisStop)
                 e2x = new CastExp(e.loc, e.e2, t2.isMutable() ? to : to.constOf());
 
             Expression result = new IdentifierExp(e.loc, Id.empty);
-            result = new DotIdExp(e.loc, result, Id.object);
-            result = new DotIdExp(e.loc, result, Id.opEquals);
+            result = new DotIdExp(e.loc, result, makeIdentifierAtLoc(Id.object));
+            result = new DotIdExp(e.loc, result, makeIdentifierAtLoc(Id.opEquals));
             result = new CallExp(e.loc, result, e1x, e2x);
             if (e.op == EXP.notEqual)
                 result = new NotExp(e.loc, result);
@@ -760,7 +760,7 @@ Expression opOverloadEqual(EqualExp e, Scope* sc, Type[2] aliasThisStop)
          * as the backend input.
          */
         auto op2 = e.op == EXP.equal ? EXP.identity : EXP.notIdentity;
-        Expression r = new IdentityExp(op2, e.loc, e.e1, e.e2);
+        Expression r = new IdentityExp(op2, e.loc, e.e1, e.e2, Loc.initial);
         return r.expressionSemantic(sc);
     }
 
@@ -777,7 +777,7 @@ Expression opOverloadEqual(EqualExp e, Scope* sc, Type[2] aliasThisStop)
         {
             // Use bitwise equality.
             auto op2 = e.op == EXP.equal ? EXP.identity : EXP.notIdentity;
-            Expression r = new IdentityExp(op2, e.loc, e.e1, e.e2);
+            Expression r = new IdentityExp(op2, e.loc, e.e1, e.e2, Loc.initial);
             return r.expressionSemantic(sc);
         }
 
@@ -793,8 +793,8 @@ Expression opOverloadEqual(EqualExp e, Scope* sc, Type[2] aliasThisStop)
          * the identity of parent context through void*.
          */
         e = e.copy().isEqualExp();
-        e.e1 = new DotIdExp(e.loc, e.e1, Id._tupleof);
-        e.e2 = new DotIdExp(e.loc, e.e2, Id._tupleof);
+        e.e1 = new DotIdExp(e.loc, e.e1, makeIdentifierAtLoc(Id._tupleof));
+        e.e2 = new DotIdExp(e.loc, e.e2, makeIdentifierAtLoc(Id._tupleof));
 
         auto sc2 = sc.push();
         sc2.noAccessCheck = true;
@@ -873,8 +873,8 @@ Expression opOverloadCmp(CmpExp exp, Scope* sc, Type[2] aliasThisStop)
 
     // Lower to object.__cmp(e1, e2)
     Expression cl = new IdentifierExp(exp.loc, Id.empty);
-    cl = new DotIdExp(exp.loc, cl, Id.object);
-    cl = new DotIdExp(exp.loc, cl, Id.__cmp);
+    cl = new DotIdExp(exp.loc, cl, makeIdentifierAtLoc(Id.object));
+    cl = new DotIdExp(exp.loc, cl, makeIdentifierAtLoc(Id.__cmp));
     cl = cl.expressionSemantic(sc);
 
     auto arguments = new Expressions();

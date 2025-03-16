@@ -1103,7 +1103,7 @@ Initializer inferType(Initializer init, Scope* sc)
                 error(init.loc, "not an associative array initializer");
             else
                 error(init.loc, "cannot infer type from array initializer");
-            return new ErrorInitializer();
+            return new ErrorInitializer(init);
         }
         const bool isAssoc = init.isAssociativeArray();
         if (isAssoc)

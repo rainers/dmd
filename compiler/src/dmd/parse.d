@@ -124,8 +124,8 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
             return false;
         }
 
-        Identifier[] a;
-        Identifier id = token.ident;
+        IdentifierAtLoc[] a;
+        IdentifierAtLoc id = makeIdentifierAtLoc(token.ident, loc);
 
         while (nextToken() == TOK.dot)
         {
@@ -136,7 +136,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                 error("identifier expected following `package`");
                 return false;
             }
-            id = token.ident;
+            id = makeIdentifierAtLoc(token.ident, token.loc);
         }
 
         md = new AST.ModuleDeclaration(loc, a, id, msg, isdeprecated);

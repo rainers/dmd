@@ -1651,7 +1651,7 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
         else
         {
             ie = new ExpInitializer(loc, new CastExp(loc, new VarExp(loc, fs.key), fs.param.type));
-            auto v = new VarDeclaration(identLoc(loc, fs.prm.ident), fs.param.type, fs.param.ident, ie);
+            auto v = new VarDeclaration(identLoc(loc, fs.param.ident), fs.param.type, fs.param.ident, ie);
             v.storage_class |= STC.temp | STC.foreach_ | (fs.param.storageClass & STC.ref_);
             fs._body = new CompoundStatement(loc, new ExpStatement(loc, v), fs._body);
             if (fs.key.range && !fs.param.type.isMutable())
@@ -1694,7 +1694,7 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
             /* Declare param, which we will set to be the
              * result of condition.
              */
-            auto varloc = identLoc(ifs.loc, ifs.prm.ident);
+            auto varloc = identLoc(ifs.loc, ifs.param.ident);
             auto ei = new ExpInitializer(ifs.loc, ifs.condition);
             ifs.match = new VarDeclaration(varloc, ifs.param.type, ifs.param.ident, ei);
             ifs.match.parent = scd.func;

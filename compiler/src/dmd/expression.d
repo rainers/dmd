@@ -2600,7 +2600,7 @@ extern (C++) final class TemplateExp : Expression
     {
         this(loc, td, fd, loc);
     }
-    extern (D) this(const ref Loc loc, TemplateDeclaration td, FuncDeclaration fd, const ref Loc identloc) @safe
+    extern (D) this(Loc loc, TemplateDeclaration td, FuncDeclaration fd, Loc identloc) @safe
     {
         super(loc, EXP.template_);
         //printf("TemplateExp(): %s\n", td.toChars());
@@ -3312,7 +3312,7 @@ extern (C++) final class DotIdExp : UnaExp
         this.ident = ident;
     }
 
-    extern (D) this(Loc loc, Expression e, IdentifierAtLoc ident, const ref Loc dotloc) @safe
+    extern (D) this(Loc loc, Expression e, IdentifierAtLoc ident, Loc dotloc) @safe
     {
         super(loc, EXP.dotIdentifier, e);
         this.ident = ident;
@@ -3344,14 +3344,14 @@ extern (C++) final class DotTemplateExp : UnaExp
     else
         ref const(Loc) identloc() const { return loc; }
 
-    extern (D) this(Loc loc, Expression e, TemplateDeclaration td, const ref Loc identloc) @safe
+    extern (D) this(Loc loc, Expression e, TemplateDeclaration td, Loc identloc) @safe
     {
         super(loc, EXP.dotTemplateDeclaration, e);
         this.td = td;
         version (LanguageServer)
             this.identloc = identloc;
     }
-    extern (D) this(const ref Loc loc, Expression e, TemplateDeclaration td)
+    extern (D) this(Loc loc, Expression e, TemplateDeclaration td)
     {
         this(loc, e, td, loc);
     }
@@ -3389,7 +3389,7 @@ extern (C++) final class DotVarExp : UnaExp
         this.var = var;
         this.hasOverloads = hasOverloads;
     }
-    extern (D) this(const ref Loc loc, Expression e, const ref Loc varloc, Declaration var, bool hasOverloads = true)
+    extern (D) this(Loc loc, Expression e, Loc varloc, Declaration var, bool hasOverloads = true)
     {
         this(loc, e, var, hasOverloads);
         version (LanguageServer)
