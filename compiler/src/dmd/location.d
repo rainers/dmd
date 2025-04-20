@@ -4,9 +4,9 @@
  * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/location.d, _location.d)
+ * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/location.d, _location.d)
  * Documentation:  https://dlang.org/phobos/dmd_location.html
- * Coverage:    https://codecov.io/gh/dlang/dmd/src/master/src/dmd/location.d
+ * Coverage:    https://codecov.io/gh/dlang/dmd/src/master/compiler/src/dmd/location.d
  */
 
 module dmd.location;
@@ -70,7 +70,7 @@ nothrow:
     static Loc singleFilename(const(char)[] filename)
     {
         Loc result;
-        locFileTable ~= new BaseLoc(filename, locIndex, 0, [0]);
+        locFileTable ~= new BaseLoc(filename, null, locIndex, 0, [0]);
         result.index = locIndex++;
         return result;
     }
@@ -130,6 +130,12 @@ nothrow:
         return this.index - locFileTable[i].startIndex;
     }
 
+    /// Returns: this location as a SourceLoc
+    extern (C++) SourceLoc toSourceLoc() const @nogc @safe
+    {
+        return SourceLoc(this);
+    }
+
     /**
      * Checks for equivalence by comparing the filename contents (not the pointer) and character location.
      *
@@ -137,7 +143,7 @@ nothrow:
      *  - Uses case-insensitive comparison on Windows
      *  - Ignores `charnum` if `Columns` is false.
      */
-    extern (C++) bool equals(ref const(Loc) loc) const
+    extern (C++) bool equals(Loc loc) const
     {
         SourceLoc lhs = SourceLoc(this);
         SourceLoc rhs = SourceLoc(loc);
@@ -235,16 +241,20 @@ struct SourceLoc
     uint column; /// column number (starts at 1)
     uint fileOffset; /// byte index into file
 
+    /// Index `fileOffset` into this to to obtain source code context of this location
+    const(char)[] fileContent;
+
     // aliases for backwards compatibility
     alias linnum = line;
     alias charnum = column;
 
-    this(const(char)[] filename, uint line, uint column, uint fileOffset = 0) nothrow @nogc pure @safe
+    this(const(char)[] filename, uint line, uint column, uint fileOffset = 0, const(char)[] fileContent = null) nothrow @nogc pure @safe
     {
         this.filename = filename;
         this.line = line;
         this.column = column;
         this.fileOffset = fileOffset;
+        this.fileContent = fileContent;
     }
 
     this(Loc loc) nothrow @nogc @trusted
@@ -300,15 +310,15 @@ private size_t fileTableIndex(uint index) nothrow @nogc
  * Create a new source location map for a file
  * Params:
  *   filename = source file name
- *   size = space to reserve for locations, equal to the file size in bytes
+ *   fileContent = content of source file
  * Returns: new BaseLoc
  */
-BaseLoc* newBaseLoc(const(char)* filename, size_t size) nothrow
+BaseLoc* newBaseLoc(const(char)* filename, const(char)[] fileContent) nothrow
 {
-    locFileTable ~= new BaseLoc(filename.toDString, locIndex, 1, [0]);
+    locFileTable ~= new BaseLoc(filename.toDString, fileContent, locIndex, 1, [0]);
     // Careful: the endloc of a FuncDeclaration can
     // point to 1 past the very last byte in the file, so account for that
-    locIndex += size + 1;
+    locIndex += fileContent.length + 1;
     return locFileTable[$ - 1];
 }
 
@@ -354,6 +364,7 @@ struct BaseLoc
 @safe nothrow:
 
     const(char)[] filename; /// Source file name
+    const(char)[] fileContents; /// Source file contents
     uint startIndex; /// Subtract this from Loc.index to get file offset
     int startLine = 1; /// Line number at index 0
     uint[] lines; /// For each line, the file offset at which it starts. At index 0 there's always a 0 entry.
@@ -384,11 +395,11 @@ struct BaseLoc
     {
         auto fname = filename.toDString;
         if (substitutions.length == 0)
-            substitutions ~= BaseLoc(this.filename, 0, 0);
+            substitutions ~= BaseLoc(this.filename, null, 0, 0);
 
         if (fname.length == 0)
             fname = substitutions[$ - 1].filename;
-        substitutions ~= BaseLoc(fname, offset, cast(int) (line - lines.length + startLine - 2));
+        substitutions ~= BaseLoc(fname, null, offset, cast(int) (line - lines.length + startLine - 2));
     }
 
     /// Returns: `loc` modified by substitutions from #file / #line directives
@@ -408,7 +419,7 @@ struct BaseLoc
     private SourceLoc getSourceLoc(uint offset) @nogc
     {
         const i = getLineIndex(offset);
-        const sl = SourceLoc(filename, cast(int) (i + startLine), cast(int) (1 + offset - lines[i]), offset);
+        const sl = SourceLoc(filename, cast(int) (i + startLine), cast(int) (1 + offset - lines[i]), offset, fileContents);
         return substitute(sl);
     }
 

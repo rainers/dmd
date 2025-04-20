@@ -4,9 +4,9 @@
  * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/cxxfrontend.d, _cxxfrontend.d)
+ * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/cxxfrontend.d, _cxxfrontend.d)
  * Documentation:  https://dlang.org/phobos/dmd_cxxfrontend.html
- * Coverage:    https://codecov.io/gh/dlang/dmd/src/master/src/dmd/cxxfrontend.d
+ * Coverage:    https://codecov.io/gh/dlang/dmd/src/master/compiler/src/dmd/cxxfrontend.d
  */
 module dmd.cxxfrontend;
 
@@ -16,6 +16,7 @@ import dmd.astenums;
 import dmd.attrib;
 import dmd.common.outbuffer : OutBuffer;
 import dmd.dclass : ClassDeclaration;
+import dmd.declaration : TypeInfoDeclaration;
 import dmd.denum : EnumDeclaration;
 import dmd.dmodule /*: Module*/;
 import dmd.dscope : Scope;
@@ -274,6 +275,19 @@ bool fill(StructDeclaration sd, Loc loc,
 {
     import dmd.expressionsem;
     return dmd.expressionsem.fill(sd, loc, elements, ctorinit);
+}
+
+/***********************************************************
+ * func.d
+ */
+FuncDeclaration genCfunc(Parameters* fparams, Type treturn, const(char)* name, StorageClass stc = STC.none)
+{
+    return FuncDeclaration.genCfunc(fparams, treturn, name, cast(STC) stc);
+}
+
+FuncDeclaration genCfunc(Parameters* fparams, Type treturn, Identifier id, StorageClass stc = STC.none)
+{
+    return FuncDeclaration.genCfunc(fparams, treturn, id, cast(STC) stc);
 }
 
 /***********************************************************
@@ -713,6 +727,18 @@ bool builtinTypeInfo(Type t)
 {
     import dmd.typinf;
     return dmd.typinf.builtinTypeInfo(t);
+}
+
+Type makeNakedAssociativeArray(TypeAArray t)
+{
+    import dmd.typinf;
+    return dmd.typinf.makeNakedAssociativeArray(t);
+}
+
+TypeInfoDeclaration getTypeInfoAssocArrayDeclaration(TypeAArray t, Scope* sc)
+{
+    import dmd.typinf;
+    return dmd.typinf.getTypeInfoAssocArrayDeclaration(t, sc);
 }
 
 version (IN_LLVM)

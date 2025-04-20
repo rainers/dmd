@@ -4,9 +4,9 @@
  * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/enumsem.d, _enumsem.d)
+ * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/enumsem.d, _enumsem.d)
  * Documentation:  https://dlang.org/phobos/dmd_enumsem.html
- * Coverage:    https://codecov.io/gh/dlang/dmd/src/master/src/dmd/enumsem.d
+ * Coverage:    https://codecov.io/gh/dlang/dmd/src/master/compiler/src/dmd/enumsem.d
  */
 
 module dmd.enumsem;
@@ -158,9 +158,10 @@ void enumSemantic(Scope* sc, EnumDeclaration ed)
                 ed.semanticRun = PASS.initial;
                 return;
             }
-            else
-                // Ensure that semantic is run to detect. e.g. invalid forward references
-                sym.dsymbolSemantic(sc);
+            // Ensure that semantic is run to detect. e.g. invalid forward references
+            sym.dsymbolSemantic(sc);
+            if (ed.errors)
+                ed.memtype = Type.terror; // avoid infinite recursion in toBaseType
         }
         if (ed.memtype.ty == Tvoid)
         {
@@ -175,6 +176,8 @@ void enumSemantic(Scope* sc, EnumDeclaration ed)
             ed.semanticRun = PASS.semanticdone;
             return;
         }
+        if (global.params.useTypeInfo && Type.dtypeinfo && !ed.inNonRoot())
+            semanticTypeInfo(sc, ed.memtype);
     }
 
     if (!ed.members) // enum ident : memtype;
@@ -341,6 +344,9 @@ void enumSemantic(Scope* sc, EnumDeclaration ed)
         if (EnumMember em = s.isEnumMember())
             em.dsymbolSemantic(em._scope);
     });
+
+    if (global.params.useTypeInfo && Type.dtypeinfo && !ed.inNonRoot())
+        semanticTypeInfo(sc, ed.memtype);
     //printf("ed.defaultval = %lld\n", ed.defaultval);
 
     //if (ed.defaultval) printf("ed.defaultval: %s %s\n", ed.defaultval.toChars(), ed.defaultval.type.toChars());

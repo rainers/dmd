@@ -4,9 +4,9 @@
  * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/errors.d, _errors.d)
+ * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/errors.d, _errors.d)
  * Documentation:  https://dlang.org/phobos/dmd_errors.html
- * Coverage:    https://codecov.io/gh/dlang/dmd/src/master/src/dmd/errors.d
+ * Coverage:    https://codecov.io/gh/dlang/dmd/src/master/compiler/src/dmd/errors.d
  */
 
 module dmd.errors;
@@ -442,7 +442,7 @@ private struct ErrorInfo
         this.kind = kind;
     }
 
-    const SourceLoc loc;              // location of error
+    const SourceLoc loc;        // location of error
     Classification headerColor; // color to set `header` output to
     const(char)* p1;            // additional message prefix
     const(char)* p2;            // additional message prefix
@@ -731,13 +731,9 @@ private void verrorPrint(const(char)* format, va_list ap, ref ErrorInfo info)
         !loc.filename.startsWith(".d-mixin-") &&
         !global.params.mixinOut.doOutput)
     {
-        import dmd.root.filename : FileName;
-        if (auto text = cast(const(char[])) global.fileManager.getFileContents(FileName(loc.filename)))
-        {
-            tmp.reset();
-            printErrorLineContext(tmp, text, loc.fileOffset);
-            fputs(tmp.peekChars(), stderr);
-        }
+        tmp.reset();
+        printErrorLineContext(tmp, loc.fileContent, loc.fileOffset);
+        fputs(tmp.peekChars(), stderr);
     }
     old_loc = loc;
     fflush(stderr);     // ensure it gets written out in case of compiler aborts
@@ -750,7 +746,7 @@ private void printErrorLineContext(ref OutBuffer buf, const(char)[] text, size_t
     import dmd.root.utf : utf_decodeChar;
 
     if (offset >= text.length)
-        return; // Out of bounds (can happen in pre-processed C files currently)
+        return; // Out of bounds (missing source content in SourceLoc)
 
     // Scan backwards for beginning of line
     size_t s = offset;

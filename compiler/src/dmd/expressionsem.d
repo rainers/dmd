@@ -6,9 +6,9 @@
  * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/expressionsem.d, _expressionsem.d)
+ * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/expressionsem.d, _expressionsem.d)
  * Documentation:  https://dlang.org/phobos/dmd_expressionsem.html
- * Coverage:    https://codecov.io/gh/dlang/dmd/src/master/src/dmd/expressionsem.d
+ * Coverage:    https://codecov.io/gh/dlang/dmd/src/master/compiler/src/dmd/expressionsem.d
  */
 
 module dmd.expressionsem;
@@ -641,21 +641,25 @@ TupleDeclaration isAliasThisTuple(Expression e)
     Type t = e.type.toBasetype();
     while (true)
     {
-        Dsymbol s = t.toDsymbol(null);
-        if (!s)
-            return null;
-        auto ad = s.isAggregateDeclaration();
-        if (!ad)
-            return null;
-        s = ad.aliasthis ? ad.aliasthis.sym : null;
-        if (s && s.isVarDeclaration())
+        if (Dsymbol s = t.toDsymbol(null))
         {
-            TupleDeclaration td = s.isVarDeclaration().toAlias().isTupleDeclaration();
-            if (td && td.isexp)
-                return td;
+            if (auto ad = s.isAggregateDeclaration())
+            {
+                s = ad.aliasthis ? ad.aliasthis.sym : null;
+                if (s && s.isVarDeclaration())
+                {
+                    TupleDeclaration td = s.isVarDeclaration().toAlias().isTupleDeclaration();
+                    if (td && td.isexp)
+                        return td;
+                }
+                if (Type att = t.aliasthisOf())
+                {
+                    t = att;
+                    continue;
+                }
+            }
         }
-        if (Type att = t.aliasthisOf())
-            t = att;
+        return null;
     }
 }
 
@@ -1252,6 +1256,9 @@ private Expression resolveUFCS(Scope* sc, CallExp ce)
         }
         else
         {
+            if (arrayExpressionSemantic(ce.arguments.peekSlice(), sc))
+                return ErrorExp.get();
+
             if (Expression ey = die.dotIdSemanticProp(sc, 1))
             {
                 ey.saveOriginal(die);
@@ -1260,18 +1267,10 @@ private Expression resolveUFCS(Scope* sc, CallExp ce)
                 ce.e1 = ey;
                 if (isDotOpDispatch(ey))
                 {
-                    // even opDispatch and UFCS must have valid arguments,
-                    // so now that we've seen indication of a problem,
-                    // check them for issues.
-                    Expressions* originalArguments = Expression.arraySyntaxCopy(ce.arguments);
-
                     const errors = global.startGagging();
                     e = ce.expressionSemantic(sc);
                     if (!global.endGagging(errors))
                         return e;
-
-                    if (arrayExpressionSemantic(originalArguments.peekSlice(), sc))
-                        return ErrorExp.get();
 
                     /* fall down to UFCS */
                 }
@@ -4561,7 +4560,13 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         {
             printf("AssocArrayLiteralExp::semantic('%s')\n", e.toChars());
         }
-
+        if (e.type)
+        {
+            // already done, but we might have missed generating type info
+            semanticTypeInfo(sc, e.type);
+            result = e;
+            return;
+        }
         // Run semantic() on each element
         bool err_keys = arrayExpressionSemantic(e.keys.peekSlice(), sc);
         bool err_vals = arrayExpressionSemantic(e.values.peekSlice(), sc);
@@ -7005,10 +7010,10 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         while (1)
         {
             AttribDeclaration ad = s.isAttribDeclaration();
-            if (!ad)
-                break;
-            if (ad.decl && ad.decl.length == 1)
+            if (ad && ad.decl && ad.decl.length == 1)
                 s = (*ad.decl)[0];
+            else
+                break;
         }
 
         //printf("inserting '%s' %p into sc = %p\n", s.toChars(), s, sc);
@@ -13907,6 +13912,7 @@ private bool expressionSemanticDone(Expression e)
         || e.isTypeExp() // stores its type in the Expression.type field
         || e.isCompoundLiteralExp() // stores its `(type) {}` in type field, gets rewritten to struct literal
         || e.isVarExp() // type sometimes gets set already before semantic
+        || (e.isAssocArrayLiteralExp() && !e.type.vtinfo) // semanticTypeInfo not run during initialization
     );
 }
 

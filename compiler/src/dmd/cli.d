@@ -8,9 +8,9 @@
  * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/cli.d, _cli.d)
+ * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/cli.d, _cli.d)
  * Documentation:  https://dlang.org/phobos/dmd_cli.html
- * Coverage:    https://codecov.io/gh/dlang/dmd/src/master/src/dmd/cli.d
+ * Coverage:    https://codecov.io/gh/dlang/dmd/src/master/compiler/src/dmd/cli.d
  */
 module dmd.cli;
 
@@ -359,6 +359,8 @@ dmd -cov -unittest myprog.d
                     Sets `__traits(getTargetInfo, \"cppStd\")` to `201703`)
                 $(LI $(I c++20): Use C++20 name mangling,
                     Sets `__traits(getTargetInfo, \"cppStd\")` to `202002`)
+                $(LI $(I c++23): Use C++23 name mangling,
+                    Sets `__traits(getTargetInfo, \"cppStd\")` to `202302`)
             )",
         ),
         Option("extern-std=[h|help|?]",
@@ -1122,6 +1124,7 @@ struct CLIUsage
   =c++14                Sets `__traits(getTargetInfo, \"cppStd\")` to `201402`
   =c++17                Sets `__traits(getTargetInfo, \"cppStd\")` to `201703`
   =c++20                Sets `__traits(getTargetInfo, \"cppStd\")` to `202002`
+  =c++23                Sets `__traits(getTargetInfo, \"cppStd\")` to `202302`
 ";
 
     /// Options supported by -HC

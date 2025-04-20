@@ -4,9 +4,9 @@
  * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/typesem.d, _typesem.d)
+ * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/typesem.d, _typesem.d)
  * Documentation:  https://dlang.org/phobos/dmd_typesem.html
- * Coverage:    https://codecov.io/gh/dlang/dmd/src/master/src/dmd/typesem.d
+ * Coverage:    https://codecov.io/gh/dlang/dmd/src/master/compiler/src/dmd/typesem.d
  */
 
 module dmd.typesem;
@@ -3278,9 +3278,19 @@ Type merge(Type type)
 
         case Tsarray:
             // prevents generating the mangle if the array dim is not yet known
-            if (!type.isTypeSArray().dim.isIntegerExp())
-                return type;
-            goto default;
+            if (auto ie = type.isTypeSArray().dim.isIntegerExp())
+            {
+                // After TypeSemantic, the length is always converted to size_t, but the parser
+                // usually generates regular integer types (e.g. in cast(const ubyte[2])) which
+                // it may try to merge, which then leads to failing implicit conversions as 2LU != 2
+                // according to Expression.equals. Only merge array types with size_t lengths for now.
+                // https://github.com/dlang/dmd/issues/21179
+                if (ie.type != Type.tsize_t)
+                    return type;
+
+                goto default;
+            }
+            return type;
 
         case Tenum:
             break;
@@ -3460,8 +3470,16 @@ Expression getProperty(Type t, Scope* scope_, Loc loc, Identifier ident, int fla
                 auto s2 = scope_.search_correct(ident);
                 // UFCS
                 if (s2 && s2.isFuncDeclaration)
-                    errorSupplemental(loc, "did you mean %s `%s`?",
-                        s2.kind(), s2.toChars());
+                {
+                    if (s2.ident == ident)
+                    {
+                        errorSupplemental(s2.loc, "cannot call %s `%s` with UFCS because it is not declared at module scope",
+                            s2.kind(), s2.toChars());
+                    }
+                    else
+                        errorSupplemental(s2.loc, "did you mean %s `%s`?",
+                            s2.kind(), s2.toChars());
+                }
                 else if (src.type.ty == Tpointer)
                 {
                     // structPtr.field
@@ -3470,7 +3488,7 @@ Expression getProperty(Type t, Scope* scope_, Loc loc, Identifier ident, int fla
                     {
                         if (auto s3 = as.search_correct(ident))
                         {
-                            errorSupplemental(loc, "did you mean %s `%s`?",
+                            errorSupplemental(s3.loc, "did you mean %s `%s`?",
                                 s3.kind(), s3.toChars());
                         }
                     }
