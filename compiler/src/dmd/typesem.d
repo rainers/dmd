@@ -5864,7 +5864,11 @@ Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, DotExpFlag fla
     }();
     if (ex && ex != die)
     {
-        die.type = ex.type;
+        version (LanguageServer)
+        {
+            die = die.copy().isDotIdExp();
+            die.type = ex.type;
+        }
         ex.saveOriginal(die);
     }
     return ex;

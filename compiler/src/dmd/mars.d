@@ -1987,6 +1987,7 @@ Module moduleWithEmptyMain()
     auto data = arraydup("version(D_BetterC)extern(C)int main(){return 0;}else int main(){return 0;}\0\0\0\0");
     result.src = cast(ubyte[]) data[0 .. $-4];
     result.parse();
+    result.resolvePackage();
     result.importedFrom = result;
     result.importAll(null);
     result.dsymbolSemantic(null);

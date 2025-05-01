@@ -1725,9 +1725,9 @@ struct ASTBase
             this.userAttribDecl = userAttribDecl;
         }
 
-        extern (D) this(StorageClass storageClass, Type type)
+        extern (D) this(Loc loc, StorageClass storageClass, Type type)
         {
-            this(storageClass, type, makeIdentifierAtLoc(null), null, null);
+            this(loc, storageClass, type, makeIdentifierAtLoc(null), null, null);
         }
 
         static size_t dim(Parameters* parameters)

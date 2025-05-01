@@ -494,7 +494,8 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
 //        if (!driverParams.oneobj || modi == 0 || m.isDocFile)
 //            m.deleteObjFile();
 
-        m.parse();
+        if (m.parse())
+            m.resolvePackage();
 
         // Finalize output filenames. Update if `-oq` was specified (only feasible after parsing).
         if (params.fullyQualifiedObjectFiles && m.md)

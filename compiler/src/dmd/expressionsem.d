@@ -3930,7 +3930,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             printf("IdentifierExp::semantic('%s')\n", exp.ident.toChars());
         }
 
-        scope (exit) result.rvalue = exp.rvalue;
+        scope (exit) if (result) result.rvalue = exp.rvalue;
 
         Dsymbol scopesym;
         Dsymbol s = sc.search(exp.loc, exp.ident, scopesym);
@@ -5911,7 +5911,8 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         {
             if (TypeFunction tf = exp.f ? cast(TypeFunction)exp.f.type : null)
             {
-                result.rvalue = tf.isRvalue;
+                if (result)
+                    result.rvalue = tf.isRvalue;
                 if (tf.isRvalue && !tf.isRef)
                 {
                     error(exp.f.loc, "`__rvalue` only valid on functions that return by `ref`");
