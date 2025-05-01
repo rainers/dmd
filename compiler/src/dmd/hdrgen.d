@@ -4329,7 +4329,8 @@ private void typeToBufferx(Type t, ref OutBuffer buf, ref HdrGenState hgs)
     {
         foreach (id; t.idents)
         {
-            switch (id.dyncast()) with (DYNCAST)
+            RootObject ido = id; // force virtual call dyncast
+            switch (ido.dyncast()) with (DYNCAST)
             {
             case dsymbol:
                 buf.writeByte('.');
