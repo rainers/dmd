@@ -3250,7 +3250,8 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
         else
         {
             id = token.ident;
-            loc = token.loc;
+            version(LanguageServer) // loc verified in tests!
+                loc = token.loc;
             nextToken();
 
             if (token.value == TOK.leftParenthesis)

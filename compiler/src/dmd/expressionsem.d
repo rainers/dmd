@@ -1070,7 +1070,7 @@ private Expression searchUFCS(Scope* sc, UnaExp ue, IdentifierAtLoc ident)
 
     if (!s)
     {
-        auto propexp = ue.e1.type.getProperty(sc, loc, ident, 0);
+        auto propexp = ue.e1.type.getProperty(sc, loc, ident, 0, ue.e1);
         if (propexp && propexp.op == EXP.error)
             propexp.saveOriginal(ue);
         return propexp;

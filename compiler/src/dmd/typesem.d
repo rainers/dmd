@@ -4524,6 +4524,9 @@ void resolve(Type mt, Loc loc, Scope* sc, out Expression pe, out Type pt, out Ds
  */
 Expression dotExp(Type mt, Scope* sc, Expression e, DotIdExp die, DotExpFlag flag)
 {
+    enum LOGDOTEXP = false;
+    if (LOGDOTEXP)
+        printf("dotExp()\n");
     Identifier ident = die.ident;
     Loc idloc = identLoc(e.loc, die.ident);
 
