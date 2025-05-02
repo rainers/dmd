@@ -476,6 +476,11 @@ extern (C++) final class Module : Package
         this.edition = Edition.legacy;
     }
 
+    extern (D) this(const(char)[] filename, Identifier ident, int doDocComment, int doHdrGen)
+    {
+        this(Loc.initial, filename, ident, doDocComment, doHdrGen);
+    }
+
     static Module create(const(char)* filename, Identifier ident, int doDocComment, int doHdrGen)
     {
         return create(filename.toDString, ident, doDocComment, doHdrGen);

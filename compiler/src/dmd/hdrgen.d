@@ -2575,8 +2575,11 @@ private void expressionPrettyPrint(Expression e, ref OutBuffer buf, ref HdrGenSt
 
     void visitSymOff(SymOffExp e)
     {
-        auto varIdent = (e.var.isStatic() ? e.var.toPrettyChars(true) : e.var.toChars());
-            
+        version(LanguageServer)
+            auto varIdent = (e.var.isStatic() ? e.var.toPrettyChars(true) : e.var.toChars());
+        else
+            auto varIdent = e.var.toChars();
+
         if (e.offset)
             buf.printf("(& %s% + llu)", varIdent, e.offset);
         else if (e.var.isTypeInfoDeclaration())

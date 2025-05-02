@@ -740,16 +740,19 @@ extern (C++) class Dsymbol : ASTNode
             if (p.parent)
             {
                 // don't repeat name in one-member template instances
-                Dsymbol sym;
-                if (auto ti = p.parent.isTemplateInstance())
-                    if (auto ident = p.getIdent())
-                        if (ident is ti.name)
-                            if (Dsymbol.oneMembers(ti.members, sym, ident) && sym is p)
-                                show = false;
+                version(LanguageServer)
+                {
+                    Dsymbol sym;
+                    if (auto ti = p.parent.isTemplateInstance())
+                        if (auto ident = p.getIdent())
+                            if (ident is ti.name)
+                                if (Dsymbol.oneMembers(ti.members, sym, ident) && sym is p)
+                                    show = false;
 
-                if (auto td = p.parent.isTemplateDeclaration())
-                    if (td.onemember is p)
-                        show = false;
+                    if (auto td = p.parent.isTemplateDeclaration())
+                        if (td.onemember is p)
+                            show = false;
+                }
 
                 addQualifiers(p.parent);
                 if (show)
@@ -998,9 +1001,9 @@ extern (C++) class Dsymbol : ASTNode
     }
 
     /****************************************
-    * Add documentation comment to Dsymbol.
-    * Ignore NULL comments.
-    */
+     * Add documentation comment to Dsymbol.
+     * Ignore NULL comments.
+     */
     void addComment(const(char)* comment)
     {
         import dmd.dsymbolsem;
