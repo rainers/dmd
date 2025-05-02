@@ -5642,6 +5642,11 @@ struct ASTBase
             this.ident = ident;
         }
 
+        extern (D) this(Loc loc, Expression e, IdentifierAtLoc ident, Loc dotloc)
+        {
+            this(loc, e, ident);
+        }
+
         override void accept(Visitor v)
         {
             v.visit(this);
