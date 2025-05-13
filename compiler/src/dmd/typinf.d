@@ -194,8 +194,11 @@ TypeInfoDeclaration getTypeInfoAssocArrayDeclaration(TypeAArray t, Scope* sc)
         if (auto tmpl = ts.sym.isInstantiated())
             tmpl.minst = sc._module.importedFrom; // ensure it get's emitted
     }
-    getTypeInfoType(loc, ti.entry, sc);
-    assert(ti.entry.vtinfo);
+    if (ti.entry.ty != Terror)
+    {
+        getTypeInfoType(loc, ti.entry, sc);
+        assert(ti.entry.vtinfo);
+    }
 
     return ti;
 }

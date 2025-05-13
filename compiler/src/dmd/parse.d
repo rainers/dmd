@@ -4565,10 +4565,11 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
             bool isThis = (t.ty == Tident && (cast(AST.TypeIdentifier)t).ident == Id.This && token.value == TOK.assign);
             if (ident)
                 checkCstyleTypeSyntax(loc, t, alt, ident);
-            else if (!isThis && (t != AST.Type.terror))
-                noIdentifierForDeclarator(t, token);
 
-            if (isAliasDeclaration)
+            if (!ident && !isThis && (t != AST.Type.terror))
+                noIdentifierForDeclarator(t, token); // skip the rest on error
+
+            else if (isAliasDeclaration)
             {
                 AST.Declaration v;
                 AST.Initializer _init = null;
