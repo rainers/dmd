@@ -5999,11 +5999,12 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                     tiargs = ti.tiargs;
                     assert(ti.tempdecl);
                     if (TemplateDeclaration td = ti.tempdecl.isTemplateDeclaration())
-                        exp.e1 = new TemplateExp(exp.loc, td);
+                        exp.e1 = new TemplateExp(ti.loc, td);
                     else if (OverDeclaration od = ti.tempdecl.isOverDeclaration())
-                        exp.e1 = new VarExp(exp.loc, od);
+                        exp.e1 = new VarExp(ti.loc, od);
                     else
-                        exp.e1 = new OverExp(exp.loc, ti.tempdecl.isOverloadSet());
+                        exp.e1 = new OverExp(ti.loc, ti.tempdecl.isOverloadSet());
+                    exp.e1.saveOriginal(se);
                 }
                 else
                 {
