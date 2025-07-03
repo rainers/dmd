@@ -111,7 +111,7 @@ bool genTypeInfo(Expression e, Loc loc, Type torig, Scope* sc)
 extern (C++) Type getTypeInfoType(Loc loc, Type t, Scope* sc)
 {
     assert(t.ty != Terror);
-    if (genTypeInfo(null, loc, t, sc))
+    if (genTypeInfo(null, loc, t, sc) && sc)
     {
         // Find module that will go all the way to an object file
         Module m = sc._module.importedFrom;
@@ -172,10 +172,14 @@ TypeInfoDeclaration getTypeInfoAssocArrayDeclaration(TypeAArray t, Scope* sc)
     import dmd.expressionsem;
     import dmd.id;
 
-    assert(sc); // must not be called in the code generation phase
-
     auto ti = TypeInfoAssociativeArrayDeclaration.create(t);
     t.vtinfo = ti; // assign it early to avoid recursion in expressionSemantic
+
+    version(LanguageServer) // can also be called from DoInlineAs
+        if (!sc) // be more lenient as we don't need the full TypeInfo for semantics
+            return ti;
+    assert(sc); // must not be called in the code generation phase
+
     Loc loc = t.loc;
     auto tiargs = new Objects();
     tiargs.push(t.index); // always called with naked types
