@@ -61,8 +61,8 @@ if (__traits(isUnsigned, T))
         enum shift = toString!(bitInfo.offset[i]);
         enum sizeMask = toString!((1 << bitInfo.size[i]) - 1); // 0x01 for bool, 0xFF for ubyte etc.
         result ~= "
-        "~typeName~" "~mem~"() const scope { return cast("~typeName~") ((bitFields >>> "~shift~") & "~sizeMask~"); }
-        "~typeName~" "~mem~"("~typeName~" v) scope
+        "~typeName~" "~mem~"() const scope @property { return cast("~typeName~") ((bitFields >>> "~shift~") & "~sizeMask~"); }
+        "~typeName~" "~mem~"("~typeName~" v) scope @property
         {
             bitFields &= ~("~sizeMask~" << "~shift~");
             bitFields |= v << "~shift~";
