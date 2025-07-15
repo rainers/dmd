@@ -132,6 +132,8 @@ public:
         const(size_t) hash = calcHash(str);
         const(size_t) i = findSlot(hash, str);
         // printf("lookup %.*s %p\n", cast(int)str.length, str.ptr, table[i].value ?: null);
+        if (table[i].vptr & vptrDeleted)
+            return null;
         return getValue(table[i].vptr);
     }
 
@@ -159,6 +161,13 @@ public:
     {
         const(size_t) hash = calcHash(str);
         size_t i = findSlot(hash, str);
+        if (table[i].vptr & vptrDeleted)
+        {
+            table[i].vptr &= ~vptrDeleted;
+            auto sv = getValue(table[i].vptr);
+            sv.value = value;
+            return sv;
+        }
         if (table[i].vptr)
             return null; // already in table
         if (++count > countTrigger)
@@ -182,7 +191,9 @@ public:
     {
         const(size_t) hash = calcHash(str);
         size_t i = findSlot(hash, str);
-        if (!table[i].vptr)
+        if (table[i].vptr & vptrDeleted)
+            table[i].vptr &= ~vptrDeleted;
+        else if (!table[i].vptr)
         {
             if (++count > countTrigger)
             {
@@ -201,6 +212,19 @@ public:
         return update(s[0 .. length]);
     }
 
+    bool remove(scope const(char)[] str) @nogc nothrow pure
+    {
+        const(size_t) hash = calcHash(str);
+        const(size_t) i = findSlot(hash, str);
+        // printf("remove %.*s %p\n", cast(int)str.length, str.ptr, table[i].value ?: null);
+        if (!i || (table[i].vptr & vptrDeleted))
+            return false;
+        auto sv = getValue(table[i].vptr);
+        sv.value = T.init;
+        table[i].vptr |= vptrDeleted;
+        return true;
+    }
+
     /********************************
      * Walk the contents of the string table,
      * calling fp for each entry.
@@ -213,7 +237,7 @@ public:
     {
         foreach (const se; table)
         {
-            if (!se.vptr)
+            if (!se.vptr || (se.vptr & vptrDeleted))
                 continue;
             const sv = getValue(se.vptr);
             int result = (*fp)(sv);
@@ -228,7 +252,7 @@ public:
     {
         foreach (const se; table)
         {
-            if (!se.vptr)
+            if (!se.vptr || (se.vptr & vptrDeleted))
                 continue;
             const sv = getValue(se.vptr);
             int result = dg(sv);
@@ -239,6 +263,8 @@ public:
     }
 
 private:
+    enum uint vptrDeleted = 1 << 31;
+
     /// Free all memory in use by this StringTable
     void freeMem() nothrow pure
     {
@@ -276,6 +302,7 @@ private:
     {
         if (!vptr)
             return null;
+        vptr &= ~vptrDeleted;
         const(size_t) idx = (vptr >> POOL_BITS) - 1;
         const(size_t) off = vptr & POOL_SIZE - 1;
         return cast(inout(StringValue!T)*)&pools[idx][off];
@@ -290,7 +317,7 @@ private:
             const(StringValue!T)* sv;
             auto vptr = table[i].vptr;
             if (!vptr || table[i].hash == hash && (sv = getValue(vptr)).length == str.length && .memcmp(str.ptr, sv.toDchars(), str.length) == 0)
-                return i;
+                return i; // includes deleted entries
             i = (i + j) & (table.length - 1);
         }
     }
