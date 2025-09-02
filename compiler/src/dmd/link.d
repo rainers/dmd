@@ -1030,7 +1030,10 @@ public int runPreprocessor(Loc loc, const(char)[] cpp, const(char)[] filename, c
 
                             case '\n':
                                 if (print)
-                                    printf("%s\n", linebuf.peekChars());
+                                    version(LanguageServer)
+                                        eSink.error(loc, linebuf.peekChars());
+                                    else
+                                        printf("%s\n", linebuf.peekChars());
 
                                 // set up for next line
                                 linebuf.setsize(0);
@@ -1114,7 +1117,10 @@ public int runPreprocessor(Loc loc, const(char)[] cpp, const(char)[] filename, c
                 int exitCode = runProcessCollectStdout(szCommand.ptr, buffer[], &sink);
 
                 if (linebuf.length && print)  // anything leftover from stdout collection
-                    printf("%s\n", defines.peekChars());
+                    version(LanguageServer)
+                        eSink.error(loc, linebuf.peekChars());
+                    else
+                        printf("%s\n", defines.peekChars());
 
                 return returnResult(exitCode);
             }
@@ -1326,7 +1332,7 @@ int runProcessCollectStdout(const(wchar)* szCommand, ubyte[] buffer, void delega
                           null,          // process security attributes
                           null,          // primary thread security attributes
                           TRUE,          // handles are inherited
-                          CREATE_SUSPENDED,             // creation flags
+                          CREATE_SUSPENDED | CREATE_NO_WINDOW,             // creation flags
                           null,          // use parent's environment
                           null,          // use parent's current directory
                           &siStartInfo,  // STARTUPINFO pointer

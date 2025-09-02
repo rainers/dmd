@@ -117,8 +117,9 @@ private const(char)[] cppCommand()
     {
         if (target.objectFormat() == Target.ObjectFormat.coff)
         {
-            VSOptions vsopt;
-            vsopt.initialize();
+            static VSOptions vsopt;
+            if (!vsopt.VSInstallDir)
+                vsopt.initialize();
             const path = vsopt.compilerPath(target.isX86_64);
             return toDString(path);
         }
