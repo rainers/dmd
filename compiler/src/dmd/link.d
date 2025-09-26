@@ -1030,10 +1030,12 @@ public int runPreprocessor(Loc loc, const(char)[] cpp, const(char)[] filename, c
 
                             case '\n':
                                 if (print)
+                                {
                                     version(LanguageServer)
                                         eSink.error(loc, linebuf.peekChars());
                                     else
                                         printf("%s\n", linebuf.peekChars());
+                                }
 
                                 // set up for next line
                                 linebuf.setsize(0);
@@ -1117,10 +1119,12 @@ public int runPreprocessor(Loc loc, const(char)[] cpp, const(char)[] filename, c
                 int exitCode = runProcessCollectStdout(szCommand.ptr, buffer[], &sink);
 
                 if (linebuf.length && print)  // anything leftover from stdout collection
+                {
                     version(LanguageServer)
                         eSink.error(loc, linebuf.peekChars());
                     else
                         printf("%s\n", defines.peekChars());
+                }
 
                 return returnResult(exitCode);
             }

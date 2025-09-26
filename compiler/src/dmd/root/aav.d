@@ -39,7 +39,16 @@ version(GC)
         auto getLvalue(const(K) key)
         {
             auto pk = cast(KEY)key;
-            void* pv = _aaGetY(cast(void**)&aa, typeid(V[void*]), V.sizeof, &pk);
+            static if (__VERSION__ >= 2_112)
+            {
+                bool found;
+                auto pv = _d_aaGetY!(KEY, V)(aa, pk, found);
+            }
+            else
+            {
+                return &(aa.require(pk), null);
+                auto pv = _aaGetY(cast(void**)&aa, typeid(V[void*]), V.sizeof, &pk);
+            }
             return cast(V*)pv;
         }
 
