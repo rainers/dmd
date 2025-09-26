@@ -886,6 +886,7 @@ void staticAssertFail(StaticAssert sa, Scope* sc)
             if (e.op == EXP.error)
             {
                 errorSupplemental(sa.loc, "while evaluating `static assert` argument `%s`", (*sa.msgs)[i].toChars());
+                version(LanguageServer) {} else
                 if (!global.gag)
                     fatal();
                 return;
@@ -908,6 +909,7 @@ void staticAssertFail(StaticAssert sa, Scope* sc)
         error(sa.loc, "static assert:  `%s` is false", sa.exp.toChars());
     if (sc.tinst)
         sc.tinst.printInstantiationTrace();
+    version(LanguageServer) {} else
     if (!global.gag)
         fatal();
 }
