@@ -46,8 +46,7 @@ version(GC)
             }
             else
             {
-                return &(aa.require(pk), null);
-                auto pv = _aaGetY(cast(void**)&aa, typeid(V[void*]), V.sizeof, &pk);
+                auto pv = _aaGetY(cast(void**)&aa, typeid(V[KEY]), V.sizeof, &pk);
             }
             return cast(V*)pv;
         }
