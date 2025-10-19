@@ -3172,7 +3172,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
             cldec.parent = sc.parent;
         }
 
-        if (cldec.errors)
+        if (cldec.errors || !cldec.type)
             cldec.type = Type.terror;
         if (cldec.semanticRun == PASS.initial)
             cldec.type = cldec.type.addSTC(sc.stc | cldec.storage_class);
@@ -7873,7 +7873,7 @@ bool determineSize(AggregateDeclaration ad, Loc loc)
         ad.finalizeSize();
 
     // this aggregate type has:
-    if (ad.type.ty == Terror)
+    if (ad.type.ty == Terror || ad.errors)
         return false;   // marked as invalid during the finalizing.
     if (ad.sizeok == Sizeok.done)
         return true;    // succeeded to calculate instance size.
