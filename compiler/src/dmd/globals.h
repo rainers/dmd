@@ -1,4 +1,3 @@
-
 /* Compiler implementation of the D programming language
  * Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
  * written by Walter Bright
@@ -159,9 +158,17 @@ struct Verbose
 struct ImportPathInfo
 {
     const char* path;
+    d_bool isOutOfBinary;
 
-    ImportPathInfo() : path(NULL) { }
-    ImportPathInfo(const char* p) : path(p) { }
+    ImportPathInfo() :
+        path(),
+        isOutOfBinary()
+    {
+    }
+    ImportPathInfo(const char* path, d_bool isOutOfBinary = false) :
+        path(path),
+        isOutOfBinary(isOutOfBinary)
+        {}
 };
 
 // Put command line switches in here
@@ -191,10 +198,14 @@ struct Param
     d_bool addMain;       // add a default main() function
     d_bool allInst;       // generate code for all template instantiations
     d_bool bitfields;         // support C style bit fields
+    d_bool rewriteNoExceptionToSeq;
     CppStdRevision cplusplus;  // version of C++ name mangling to support
 
     Help help;
     Verbose v;
+
+    unsigned short edition;      // edition year
+    void* editionFiles;          // Edition corresponding to a filespec
 
     // Options for `-preview=/-revert=`
     FeatureState useDIP25;       // implement https://wiki.dlang.org/DIP25
@@ -278,9 +289,10 @@ struct Param
 
 struct structalign_t
 {
-    unsigned short value;
-    d_bool pack;
-
+private:
+    uint16_t value;
+    uint8_t flags;
+public:
     bool isDefault() const;
     void setDefault();
     bool isUnknown() const;
@@ -288,7 +300,9 @@ struct structalign_t
     void set(unsigned value);
     unsigned get() const;
     bool isPack() const;
-    void setPack(bool pack);
+    void setPack();
+    bool fromAlignas() const;
+    void setAlignas();
 };
 
 // magic value means "match whatever the underlying C compiler does"
@@ -337,7 +351,7 @@ struct Global
     unsigned warnings;       // number of warnings reported so far
     unsigned gag;            // !=0 means gag reporting of errors & warnings
     unsigned gaggedErrors;   // number of errors reported while gagged
-    unsigned gaggedWarnings; // number of warnings reported while gagged
+    unsigned gaggedDeprecations; // number of deprecations reported while gagged
 
     void* console;         // opaque pointer to console for controlling text attributes
 

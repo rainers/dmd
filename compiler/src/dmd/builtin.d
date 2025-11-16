@@ -17,8 +17,8 @@ import dmd.arraytypes;
 import dmd.astenums;
 import dmd.errors;
 import dmd.expression;
+import dmd.expressionsem : toInteger, toReal;
 import dmd.func;
-import dmd.globals;
 import dmd.location;
 import dmd.mangle;
 import dmd.mtype;
@@ -178,6 +178,7 @@ Expression eval_ctfeWrite(Loc loc, FuncDeclaration fd, Expression[] arguments)
     import core.stdc.stdio: fprintf, stderr;
     import dmd.expression: CTFEExp;
     import dmd.ctfeexpr: resolveSlice;
+    import dmd.expressionsem : toStringExp;
 
     Expression e = arguments[0];
     const se = resolveSlice(e).toStringExp();
@@ -374,7 +375,7 @@ Expression eval_bsf(Loc loc, FuncDeclaration fd, Expression[] arguments)
 {
     Expression arg0 = arguments[0];
     assert(arg0.op == EXP.int64);
-    uinteger_t n = arg0.toInteger();
+    auto n = arg0.toInteger();
     if (n == 0)
         error(loc, "`bsf(0)` is undefined");
     return new IntegerExp(loc, core.bitop.bsf(n), Type.tint32);
@@ -384,7 +385,7 @@ Expression eval_bsr(Loc loc, FuncDeclaration fd, Expression[] arguments)
 {
     Expression arg0 = arguments[0];
     assert(arg0.op == EXP.int64);
-    uinteger_t n = arg0.toInteger();
+    auto n = arg0.toInteger();
     if (n == 0)
         error(loc, "`bsr(0)` is undefined");
     return new IntegerExp(loc, core.bitop.bsr(n), Type.tint32);
@@ -394,7 +395,7 @@ Expression eval_bswap(Loc loc, FuncDeclaration fd, Expression[] arguments)
 {
     Expression arg0 = arguments[0];
     assert(arg0.op == EXP.int64);
-    uinteger_t n = arg0.toInteger();
+    auto n = arg0.toInteger();
     TY ty = arg0.type.toBasetype().ty;
     if (ty == Tint64 || ty == Tuns64)
         return new IntegerExp(loc, core.bitop.bswap(cast(ulong) n), arg0.type);
@@ -406,7 +407,7 @@ Expression eval_popcnt(Loc loc, FuncDeclaration fd, Expression[] arguments)
 {
     Expression arg0 = arguments[0];
     assert(arg0.op == EXP.int64);
-    uinteger_t n = arg0.toInteger();
+    auto n = arg0.toInteger();
     return new IntegerExp(loc, core.bitop.popcnt(n), Type.tint32);
 }
 

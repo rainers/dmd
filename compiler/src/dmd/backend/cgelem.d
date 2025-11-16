@@ -1092,6 +1092,7 @@ private elem* elmul(elem* e, Goal goal)
         }
     }
 
+    bool useNegass = useOPnegass(tym) && e.Eoper == OPmulass;
     elem* e2 = e.E2;
     if (e2.Eoper == OPconst)           // try to replace multiplies with shifts
     {
@@ -1129,7 +1130,7 @@ private elem* elmul(elem* e, Goal goal)
                 }
             }
 
-            if (elemisnegone(e2))
+            if (elemisnegone(e2) && (e.Eoper == OPmul || useNegass))
             {
                 e.Eoper = (e.Eoper == OPmul) ? OPneg : OPnegass;
                 e.E2 = null;
@@ -1149,10 +1150,10 @@ private elem* elmul(elem* e, Goal goal)
                 again = 1;
                 return e;
             }
-            else if (el_allbits(e2,-1))
+            else if (el_allbits(e2,-1) && (e.Eoper == OPmul || useNegass))
                 goto Lneg;
         }
-        else if (elemisnegone(e2) && !tycomplex(e.E1.Ety))
+        else if (elemisnegone(e2) && !tycomplex(e.E1.Ety) && (e.Eoper == OPmul || useNegass))
         {
             goto Lneg;
         }
@@ -1861,7 +1862,7 @@ private elem* elor(elem* e, Goal goal)
      */
     if (sz == 4 && OPTIMIZER)
     {
-        elem*[4] ops = void;
+        elem*[4] ops;
         size_t opsi = 0;
         if (fillinops(ops, opsi, OPor, e) && opsi == ops.length)
         {
@@ -3217,16 +3218,20 @@ L1:
 @trusted
 private elem* elbit(elem* e, Goal goal)
 {
+    //printf("elbit()\n");
+    //elem_print(e);
     tym_t tym1 = e.E1.Ety;
     uint sz = tysize(tym1) * 8;
     elem* e2 = e.E2;
     uint wb = e2.Vuns;
 
     uint w = (wb >> 8) & 0xFF;               // width in bits of field
-    targ_ullong m = (cast(targ_ullong)1 << w) - 1;   // mask w bits wide
+    ulong m = (cast(ulong)1 << w) - 1;       // mask w bits wide
+    if (w == 64)                             // undefined behavior
+        m = ~0L;                             // fix it
     uint b = wb & 0xFF;                      // bits to right of field
     uint c = 0;
-    //printf("w %u + b %u <= sz %u\n", w, b, sz);
+    //printf("wb x%x w x%x + b x%x <= sz x%x\n", wb, w, b, sz);
     assert(w + b <= sz);
 
     if (tyuns(tym1))                      // if uint bit field
@@ -3286,6 +3291,8 @@ private elem* elind(elem* e, Goal goal)
     switch (e1.Eoper)
     {
         case OPrelconst:
+            if (sytab[e1.Vsym.Sclass] & SCDATA && e1.Vsym.Sfl != FL.func && cgstate.AArch64)
+                break;
             e.E1.ET = e.ET;
             e = el_selecte1(e);
             e.Eoper = OPvar;
@@ -3602,7 +3609,7 @@ elem* elstruct(elem* e, Goal goal)
             goto Ldefault;
 
         case 16:
-            if (I64 && (ty == TYstruct || (ty == TYarray && config.exe == EX_WIN64)))
+            if (I64 && (ty == TYstruct || (ty == TYarray && config.exe == EX_WIN64)) /*&& !cgstate.AArch64*/)
             {
                 tym = TYucent;
                 goto L1;
@@ -3639,6 +3646,8 @@ elem* elstruct(elem* e, Goal goal)
                 {
                     if (tyfloating(tybasic(targ1.Tty)))
                         tym = TYcdouble;
+                    else if (0 && cgstate.AArch64)
+                        goto Ldefault;
                     else
                         tym = TYucent;
                     if ((0 == tyfloating(targ1.Tty)) ^ (0 == tyfloating(targ2.Tty)))
@@ -3891,7 +3900,7 @@ static if (0)  // Doesn't work too well, removed
             }
         }
 
-        if (op2 == OPneg && el_match(e1,e2.E1) && !el_sideeffect(e1))
+        if (op2 == OPneg && el_match(e1,e2.E1) && !el_sideeffect(e1) && useOPnegass(e.Ety))
         {
             // Replace (i = -i) with (negass i)
             e.Eoper = OPnegass;
@@ -4050,13 +4059,17 @@ static if (0)  // Doesn't work too well, removed
     if (e1.E1.Eoper == OPcomma || OTassign(e1.E1.Eoper))
         return cgel_lvalue(e);
 
+    //printf("elbitassign()\n");
+    //elem_print(e);
     uint t = e.Ety;
     elem* l = e1.E1;                           // lvalue
     elem* r = e.E2;
     tym_t tyl = l.Ety;
     uint sz = tysize(tyl) * 8;
     uint w = (e1.E2.Vuns >> 8);        // width in bits of field
-    targ_ullong m = (cast(targ_ullong)1 << w) - 1;  // mask w bits wide
+    ulong m = (cast(ulong)1 << w) - 1;  // mask w bits wide
+    if (w == 64)                        // undefined behavior
+        m = ~0L;                        // fix it
     uint b = e1.E2.Vuns & 0xFF;        // bits to shift
 
     elem* l2;
@@ -4158,6 +4171,8 @@ private elem* elopass(elem* e, Goal goal)
     Goal wantres = goal;
     if (e1.Eoper == OPbit)
     {
+        //printf("OPbitass()\n");
+        //elem_print(e);
         const op = opeqtoop(e.Eoper);
 
         // Make sure t is uint
@@ -4169,8 +4184,11 @@ private elem* elopass(elem* e, Goal goal)
         tym_t tyl = l.Ety;
         elem* r = e.E2;
         uint w = (e1.E2.Vuns >> 8) & 0xFF; // width in bits of field
-        targ_llong m = (cast(targ_llong)1 << w) - 1;    // mask w bits wide
+        ulong m = (cast(ulong)1 << w) - 1; // mask w bits wide
+        if (w == 64)                       // undefined behavior
+            m = ~0L;                       // fix it
         uint b = e1.E2.Vuns & 0xFF;        // bits to shift
+        //printf("m x%llx w x%x + b x%x <= sz x%x\n", m, w, b, tysize(tyl) * 8);
 
         elem* l2,l3,op2,eres;
 
@@ -4326,7 +4344,9 @@ private elem* elpost(elem* e, Goal goal)
     targ_llong r = el_tolong(e.E2);
 
     uint w = (e1.E2.Vuns >> 8) & 0xFF;  // width in bits of field
-    targ_llong m = (cast(targ_llong)1 << w) - 1;     // mask w bits wide
+    ulong m = (cast(ulong)1 << w) - 1;  // mask w bits wide
+    if (w == 64)                        // undefined behavior
+        m = ~0L;                        // fix it
 
     tym_t ty = e.Ety;
     if (e.Eoper != OPpostinc)
@@ -4430,13 +4450,19 @@ private elem* elcmp(elem* e, Goal goal)
         tym_t tym;
         int sz = tysize(e2.Ety);
 
-        if (e1.Eoper == OPu16_32 && e2.Vulong <= cast(targ_ulong) SHORTMASK ||
-            e1.Eoper == OPs16_32 &&
-            e2.Vlong == cast(targ_short) e2.Vlong)
+        /* The AArch64 does not have a compare short instruction, so the comparisons
+         * have to be done with the LDRH, etc., instructions
+         */
+        if (config.target_cpu != TARGET_AArch64)
         {
-            tym = (uns || e1.Eoper == OPu16_32) ? TYushort : TYshort;
-            e.E2 = el_una(OP32_16,tym,e2);
-            goto L2;
+            if (e1.Eoper == OPu16_32 && e2.Vulong <= cast(targ_ulong) SHORTMASK ||
+                e1.Eoper == OPs16_32 &&
+                e2.Vlong == cast(targ_short) e2.Vlong)
+            {
+                tym = (uns || e1.Eoper == OPu16_32) ? TYushort : TYshort;
+                e.E2 = el_una(OP32_16,tym,e2);
+                goto L2;
+            }
         }
 
         /* Try to convert to byte/word comparison for ((x & c)==d)
@@ -5434,7 +5460,8 @@ elem* elmsw(elem* e, Goal goal)
             e = evalu8(e, goal);
         }
     }
-    else if (OPTIMIZER && I64 &&
+    else if ((OPTIMIZER || config.target_cpu == TARGET_AArch64) &&
+        I64 &&
         tysize(e1.Ety) == CENTSIZE &&
         tysize(ty) == LLONGSIZE)
     {
@@ -5513,11 +5540,13 @@ private elem* elclassinit(elem* e, Goal goal)
 }
 
 /********************************************
- * Handle OPva_start
+ * OPva_start
+ *     /  \
+ *   ap    parmn
  */
 
 @trusted
-private elem* elvalist(elem* e, Goal goal)
+private elem* elva_start(elem* e, Goal goal)
 {
     assert(e.Eoper == OPva_start);
 
@@ -5591,14 +5620,47 @@ if (config.exe & EX_windos)
     else
         e.E2 = el_long(TYnptr, 0);
     //elem_print(e);
-
+    return e;
 }
+
+    if (cgstate.AArch64 && config.exe & EX_OSX64)
+    {
+        assert(I64); // va_start is not an intrinsic on 32-bit
+
+        /* from stdarg.d:  void va_start(T)(out va_list ap, ref T parmn);
+         *
+         * parmn is ignored, and is replaced with __va_argsave.
+         * __va_argsave is initialized with a pointer to where the first variadic
+         * arg is
+         */
+        //elem_print(e);
+
+        // Find __va_argsave
+        Symbol* va_argsave = null;
+        foreach (s; globsym[])
+        {
+            if (s.Sident[0] == '_' && strcmp(s.Sident.ptr, "__va_argsave") == 0)
+            {
+                va_argsave = s;
+                break;
+            }
+        }
+
+        e.Eoper = OPeq;
+        e.E1 = el_una(OPind, TYnptr, ap);  // since ap is an `out` parameter
+        if (va_argsave)
+            e.E2 = el_var(va_argsave);  // *ap = __va_argsave
+        else
+            e.E2 = el_long(TYnptr, 0);
+        //elem_print(e);
+        return e;
+    }
 
 if (config.exe & EX_posix)
 {
     assert(I64); // va_start is not an intrinsic on 32-bit
     // (OPva_start &va)
-    // (OPeq (OPind E1) __va_argsave+offset)
+    // (OPeq (OPind E1) &__va_argsave+offset)
     //elem_print(e);
 
     // Find __va_argsave
@@ -5626,9 +5688,10 @@ if (config.exe & EX_posix)
     else
         e.E2 = el_long(TYnptr, 0);
     //elem_print(e);
+    return e;
 }
 
-    return e;
+    assert(0);
 }
 
 /******************************************
@@ -6410,6 +6473,19 @@ private bool canHappenAfter(elem* a, elem* b)
            !(el_sideeffect(a) || el_sideeffect(b));
 }
 
+/***************************************************
+ * See if we want conversion of (e = -e) to OPnegass
+ * Params:
+ *      tym = the type of e in (e = -e)
+ * Returns:
+ *      true if convert to OPnegass
+ */
+@trusted private
+bool useOPnegass(tym_t tym)
+{
+    const ty = tybasic(tym);
+    return !(config.target_cpu == TARGET_AArch64 && (ty == TYldouble || ty == TYildouble));
+}
 
 /***************************************************
  * Call table, index is OPER
@@ -6607,6 +6683,6 @@ private immutable elfp_t[OPMAX] elxxx =
     OPvector:  &elzot,
     OPvecsto:  &elzot,
     OPvecfill: &elzot,
-    OPva_start: &elvalist,
+    OPva_start: &elva_start,
     OPprefetch: &elzot,
 ];

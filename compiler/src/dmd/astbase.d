@@ -13,6 +13,7 @@ module dmd.astbase;
 import dmd.astenums;
 import dmd.visitor.parsetime;
 import dmd.tokens : EXP;
+import dmd.expression;
 
 /** The ASTBase  family defines a family of AST nodes appropriate for parsing with
   * no semantic information. It defines all the AST nodes that the parser needs
@@ -46,6 +47,7 @@ struct ASTBase
     alias Dsymbols              = Array!(Dsymbol);
     alias Objects               = Array!(RootObject);
     alias Expressions           = Array!(Expression);
+    alias ArgumentLabels        = Array!(ArgumentLabel);
     alias Types                 = Array!(Type);
     alias TemplateParameters    = Array!(TemplateParameter);
     alias BaseClasses           = Array!(BaseClass*);
@@ -1166,8 +1168,7 @@ struct ASTBase
             this.loc = loc;
             if (exp)
             {
-                exps = new Expressions();
-                exps.push(exp);
+                exps = new Expressions(exp);
             }
         }
 
@@ -1391,7 +1392,7 @@ struct ASTBase
 
         const FileName srcfile;
         const(char)[] arg;
-        Edition edition = Edition.legacy;
+        Edition edition = Edition.min;
 
         extern (D) this(Loc loc, const(char)[] filename, Identifier ident, int doDocComment, int doHdrGen)
         {
@@ -3790,13 +3791,14 @@ struct ASTBase
         TOK tok;
         Identifier id;
         structalign_t packalign;
+        Expressions* alignExps;
         Dsymbols* members;
         Type base;
 
         Type resolved;
         MOD mod;
 
-        extern (D) this(Loc loc, TOK tok, Identifier id, structalign_t packalign, Type base, Dsymbols* members)
+        extern (D) this(Loc loc, TOK tok, Identifier id, structalign_t packalign, Expressions* alignExps, Type base, Dsymbols* members)
         {
             //printf("TypeTag %p\n", this);
             super(Ttag);
@@ -3804,6 +3806,7 @@ struct ASTBase
             this.tok = tok;
             this.id = id;
             this.packalign = packalign;
+            this.alignExps = alignExps;
             this.base = base;
             this.members = members;
             this.mod = 0;
@@ -4969,6 +4972,8 @@ struct ASTBase
 
         /// If the string is parsed from a hex string literal
         bool hexString = false;
+        /// If the string is from a collected C macro
+        bool cMacro = false;
 
         extern (D) this(Loc loc, const(void)[] string)
         {
@@ -4978,13 +4983,14 @@ struct ASTBase
             this.sz = 1;                    // work around LDC bug #1286
         }
 
-        extern (D) this(Loc loc, const(void)[] string, size_t len, ubyte sz, char postfix = 0)
+        extern (D) this(Loc loc, const(void)[] string, size_t len, ubyte sz, char postfix = 0, bool cMacro=false)
         {
             super(loc, EXP.string_, __traits(classInstanceSize, StringExp));
             this.string = cast(char*)string;
             this.len = len;
             this.postfix = postfix;
             this.sz = 1;                    // work around LDC bug #1286
+            this.cMacro = cMacro;
         }
 
         /**********************************************
@@ -5036,10 +5042,10 @@ struct ASTBase
         Expression thisexp;         // if !=null, 'this' for class being allocated
         Type newtype;
         Expressions* arguments;     // Array of Expression's
-        Identifiers* names;         // Array of names corresponding to expressions
+        ArgumentLabels* names;      // Array of names & loc corresponding to expressions
         Expression placement;       // if != null, then PlacementExpression
 
-        extern (D) this(Loc loc, Expression placement, Expression thisexp, Type newtype, Expressions* arguments, Identifiers* names = null)
+        extern (D) this(Loc loc, Expression placement, Expression thisexp, Type newtype, Expressions* arguments, ArgumentLabels* names = null)
         {
             super(loc, EXP.new_, __traits(classInstanceSize, NewExp));
             this.placement = placement;
@@ -5088,8 +5094,7 @@ struct ASTBase
         extern (D) this(Loc loc, Expression e)
         {
             super(loc, EXP.arrayLiteral, __traits(classInstanceSize, ArrayLiteralExp));
-            elements = new Expressions();
-            elements.push(e);
+            elements = new Expressions(e);
         }
 
         extern (D) this(Loc loc, Expression basis, Expressions* elements)
@@ -5594,9 +5599,9 @@ struct ASTBase
     extern (C++) final class CallExp : UnaExp
     {
         Expressions* arguments;
-        Identifiers* names;
+        ArgumentLabels* names;
 
-        extern (D) this(Loc loc, Expression e, Expressions* exps, Identifiers* names = null)
+        extern (D) this(Loc loc, Expression e, Expressions* exps, ArgumentLabels* names = null)
         {
             super(loc, EXP.call, __traits(classInstanceSize, CallExp), e);
             this.arguments = exps;

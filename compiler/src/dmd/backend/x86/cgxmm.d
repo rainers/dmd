@@ -119,7 +119,7 @@ void movxmmconst(ref CodeBuilder cdb, reg_t xreg, tym_t ty, Vconst* pev, regm_t 
         regm_t rm = ALLREGS;
         const r = allocreg(cdb,rm,TYint);         // allocate scratch register
         static union U { targ_size_t s; targ_long[2] l; }
-        U u = void;
+        U u;
         u.l[1] = 0;
         u.s = value;
         targ_long* p = &u.l[0];
@@ -600,6 +600,8 @@ void xmmopass(ref CodeBuilder cdb,elem* e,ref regm_t pretregs)
 @trusted
 void xmmpost(ref CodeBuilder cdb,elem* e,ref regm_t pretregs)
 {
+    //printf("xmmpost() pretregs: %s\n", regm_str(pretregs));
+    //elem_print(e);
     elem* e1 = e.E1;
     elem* e2 = e.E2;
     tym_t ty1 = tybasic(e1.Ety);
@@ -625,9 +627,11 @@ void xmmpost(ref CodeBuilder cdb,elem* e,ref regm_t pretregs)
     }
 
     code cs;
+    regm_t idxregs = 0;
     if (!regvar)
     {
-        getlvalue(cdb,cs,e1,0,RM.rw);                // get EA
+        getlvalue(cdb,cs,e1,0,RM.rw);           // get EA
+        idxregs = idxregm(&cs);                 // index registers used
         retregs = XMMREGS & ~pretregs;
         if (!retregs)
             retregs = XMMREGS;
@@ -650,7 +654,7 @@ void xmmpost(ref CodeBuilder cdb,elem* e,ref regm_t pretregs)
     regm_t rretregs = XMMREGS & ~(pretregs | retregs | resultregs);
     if (!rretregs)
         rretregs = XMMREGS & ~(retregs | resultregs);
-    codelem(cgstate,cdb,e2,rretregs,false); // eval right leaf
+    scodelem(cgstate,cdb,e2,rretregs,idxregs,false);    // eval right leaf
     const rreg = findreg(rretregs);
 
     const op = xmmoperator(e1.Ety, e.Eoper);
@@ -1920,7 +1924,7 @@ void cloadxmm(ref CodeBuilder cdb, elem* e, ref regm_t pretregs)
     if (pretregs == (mXMM0 | mXMM1) &&
         e.Eoper != OPconst)
     {
-        code cs = void;
+        code cs;
         tym_t tym = tybasic(e.Ety);
         tym_t ty = tym == TYcdouble ? TYdouble : TYfloat;
         opcode_t opmv = xmmload(tym, xmmIsAligned(e));

@@ -283,10 +283,15 @@ void ensureToolsExists(const string[string] env, const TestTool[] tools ...)
             if (sourceFile is null)
                 sourceFile = toolsDir.buildPath(tool ~ ".d");
         }
-        if (targetBin.timeLastModified.ifThrown(SysTime.init) >= sourceFile.timeLastModified)
+        auto lastModifiedBin = targetBin.timeLastModified.ifThrown(SysTime.init);
+        if (lastModifiedBin >= sourceFile.timeLastModified)
         {
-            log("%s is already up-to-date", tool);
-            continue;
+            auto lastModifiedDmd = env["DMD"].timeLastModified.ifThrown(SysTime.init);
+            if (!tool.linksWithTests || lastModifiedBin >= lastModifiedDmd)
+            {
+                log("%s is already up-to-date", tool);
+                continue;
+            }
         }
 
         string[] buildCommand;
@@ -476,12 +481,16 @@ Target[] filterTargets(Target[] targets, const string[string] env)
         quitSilently(1);
 
     Target[] targetsThatNeedUpdating;
+    const dmdLastModified = env["DMD"].timeLastModified.ifThrown(SysTime.init);
     foreach (t; targets)
     {
         immutable testName = t.normalizedTestName;
-        auto resultRunTime = resultsDir.buildPath(testName ~ ".out").timeLastModified.ifThrown(SysTime.init);
-        if (!force && resultRunTime > testPath(testName).timeLastModified &&
-                resultRunTime > env["DMD"].timeLastModified.ifThrown(SysTime.init))
+        auto testResultPath = resultsDir.buildPath(testName ~ ".out");
+        auto resultRunTime = testResultPath.timeLastModified.ifThrown(SysTime.init);
+        auto testSourcePath = testPath(testName);
+        auto sourceLastModified = testSourcePath.timeLastModified.ifThrown(SysTime.init);
+        if (!force && resultRunTime > sourceLastModified &&
+                resultRunTime > dmdLastModified)
             log("%s is already up-to-date", testName);
         else
             targetsThatNeedUpdating ~= t;

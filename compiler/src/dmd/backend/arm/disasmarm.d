@@ -73,7 +73,7 @@ static if (0)
     else
         return false;
 }
-    return true;
+    return false;
 }
 
 /*************************
@@ -257,15 +257,16 @@ void disassemble(uint c) @trusted
     //printf("disassemble(c = %d, siz = %d)\n", c, siz);
     enum log = false;
     enum useAlias = true;  // decode to alias syntax
-    puts("   ");
+    puts(bObjectcode ? "   " : "        ");
 
     int i;
-    char[80] p0;
+    char[80] p0 = '\0';
     const(char)[] sep;
     const(char)[] s2;
     const(char)[] s3;
-    char[BUFMAX] buf = void;
-    char[14] rbuf = void;
+    char[BUFMAX] buf = '\0';
+    char[BUFMAX] url2buf = '\0';
+    char[14] rbuf = '\0';
 
     buf[0] = 0;
     sep = ",";
@@ -284,7 +285,7 @@ void disassemble(uint c) @trusted
         }
     }
 
-    char[8+1] p1buf = void;
+    char[8+1] p1buf = '\0';
     const p1len = snprintf(p1buf.ptr,p1buf.length,"%08x", ins);
     if (log) debug printf("ins: %s %d %d\n", p1buf.ptr, field(ins, 28, 24), field(ins, 21, 21));
     const(char)[] p1 = p1buf[0 .. p1len];
@@ -295,6 +296,7 @@ void disassemble(uint c) @trusted
     const(char)[] p6 = "";
     const(char)[] p7 = "";
     const(char)[] url = "";
+    const(char)[] url2 = "";
 
     string[4] addsubTab = [ "add", "adds", "sub", "subs" ];
     string[16] condstring =
@@ -385,6 +387,7 @@ void disassemble(uint c) @trusted
         uint imm = op ? ((immhi << 2) | immlo) << 12
                       : ((immhi << 2) | immlo);
         p3 = wordtostring(imm);
+        url2 = p1;
     }
     else if (field(ins, 28, 23) == 0x22) // https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#addsub_imm
     {
@@ -409,10 +412,13 @@ void disassemble(uint c) @trusted
 
         if (opS == 0 && sh == 0 && imm12 == 0 && (Rd == 31 || Rn == 31))
         {
-            p1 = "mov"; // https://www.scs.stanford.edu/~zyedidia/arm64/add_addsub_imm.html
+            p1 = "mov"; // https://www.scs.stanford.edu/~zyedidia/arm64/mov_add_addsub_imm.html
             p4 = "";
             p5 = "";
+            url2 = "mov_add_addsub_imm";
         }
+        else if (opS == 0 && sh == 0)
+            url2 = "add_addsub_imm"; // https://www.scs.stanford.edu/~zyedidia/arm64/add_addsub_imm.html
         else if (opS == 1 && Rd == 31) // adds
         {
             p1 = "cmn"; // https://www.scs.stanford.edu/~zyedidia/arm64/adds_addsub_imm.html
@@ -487,23 +493,29 @@ void disassemble(uint c) @trusted
             p3 = regString(sf, Rn);
             ulong imm = decodeNImmrImms(N,immr,imms);
             p4 = wordtostring(imm);
+
+            uint n = snprintf(url2buf.ptr, url2buf.length, "%s_log_imm", p1.ptr);
+            url2 = url2buf[0 .. n];
+
             if (opc == 3 && Rd == 0x1F)
             {
+                url2 = "tst_ands_log_imm";
                 p1 = "tst";
                 shiftP();
             }
             else if (opc == 1 && Rn == 0x1F)
             {
+                url2 = "mov_orr_log_imm";
                 p1 = "mov";
                 p3 = p4;
                 p4 = "";
             }
         }
     }
-    else if (field(ins, 28, 23) == 0x25) // https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#movewidex
+    else if (field(ins, 28, 23) == 0x25) // https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#movewide
     {
         if (log) printf("Move wide (immediate)\n");
-        url        = "movewidex";
+        url        = "movewide";
         uint sf    = field(ins, 31, 31);
         uint opc   = field(ins, 30, 29);
         uint hw    = field(ins, 22, 21);
@@ -511,6 +523,7 @@ void disassemble(uint c) @trusted
         uint Rd    = field(ins, 4, 0);
         if (opc == 0) // https://www.scs.stanford.edu/~zyedidia/arm64/movn.html
         {
+            url2 = "movn";
             if (useAlias)
             {
                 bool mov = !(imm16 == 0 && hw != 0) && imm16 != 0xFFFF;
@@ -522,6 +535,8 @@ void disassemble(uint c) @trusted
                     imm &= 0xFFFF_FFFF;
                 p3 = wordtostring(imm);
                 hw = 0;
+                if (mov)
+                    url2 = "mov_movn";
             }
             else
             {
@@ -531,18 +546,20 @@ void disassemble(uint c) @trusted
         }
         else if (opc == 2)
         {
+            url2 = (imm16 || hw == 0) ? "mov_movz" : "movz";
             p1 = (imm16 || hw == 0) ? "mov" : "movz";
             p3 = wordtostring(imm16);
         }
         else if (opc == 3)
         {
+            url2 = "movk";
             p1 = "movk";
             p3 = wordtostring(imm16);
         }
         p2 = regString(sf, Rd);
         if (hw)
         {
-            __gshared char[5 + hw.sizeof * 3 + 1 + 1] P4 = void;
+            __gshared char[5 + hw.sizeof * 3 + 1 + 1] P4 = '\0';
             const n = snprintf(P4.ptr, P4.length, "lsl #%d", hw * 16);
             p4 = P4[0 .. n];
         }
@@ -652,8 +669,8 @@ void disassemble(uint c) @trusted
            else if (imms < immr)
            {
                 p1 = "ubfiz";                      // https://www.scs.stanford.edu/~zyedidia/arm64/ubfiz_ubfm.html
-                p4 = wordtostring(-immr);
-                p5 = wordtostring2(imms - 1);
+                p4 = wordtostring(-immr & (((sf == 1) ? 64 : 32) - 1));
+                p5 = wordtostring2(imms + 1);
            }
            else if (immr == 0 && imms == 7)
            {
@@ -726,7 +743,9 @@ void disassemble(uint c) @trusted
         const char* format = oO ? "bc.%s" : "b.%s";
         const n = sprintf(buf.ptr, format, condstring[cond].ptr);
         p1 = buf[0 .. n];
-        p2 = wordtostring(imm19);
+        if (imm19 & (1 << 18))  // if bit 19 is set
+            imm19 |= -1 << 18;  // sign extend
+        p2 = signedWordtostring(imm19);
     }
     else if (field(ins, 31, 24) == 0x55) // http://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#miscbranch
     {
@@ -1176,6 +1195,7 @@ void disassemble(uint c) @trusted
 
         p1 = op ? "bl" : "b";
         p2 = wordtostring(imm26 * 4);
+        url2 = op ? "bl" : "b_uncond";
     }
     else if (field(ins, 30, 25) == 0x1A) // http://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#compbranch
     {
@@ -1430,7 +1450,7 @@ void disassemble(uint c) @trusted
         string[4] shiftstring = [ "", "lsr ", "asr ", "ror " ];
         if (imm6)
         {
-            __gshared char[4 + 3 + imm6.sizeof * 3 + 1 + 1] P5 = void;
+            __gshared char[4 + 3 + imm6.sizeof * 3 + 1 + 1] P5 = '\0';
             const n = snprintf(P5.ptr, P5.length, ((imm6 < 10) ? "%s #%d" : "#0x%X"), shiftstring[shift].ptr, imm6);
             p5 = P5[0 .. n];
         }
@@ -1471,7 +1491,7 @@ void disassemble(uint c) @trusted
         if (immed6) // defaults to 0
         {
             string[4] tab2 = [ "lsl", "lsr", "asr", "reserved" ];
-            __gshared char[1 + 8 + 1 + 3 + immed6.sizeof * 3 + 1 + 1] P5buf = void;
+            __gshared char[1 + 8 + 1 + 3 + immed6.sizeof * 3 + 1 + 1] P5buf = '\0';
             const n = snprintf(P5buf.ptr, P5buf.length, ((immed6 < 10) ? "%s #%d".ptr : "#0x%X".ptr), tab2[shift].ptr, immed6);
             p5 = P5buf[0 .. n];
         }
@@ -1534,7 +1554,7 @@ void disassemble(uint c) @trusted
         else
             p4 = regString(sf, Rm);
 
-        __gshared char[1 + 4 + 1 + 3 + imm3.sizeof * 3 + 1 + 1] P5buf2 = void;
+        __gshared char[1 + 4 + 1 + 3 + imm3.sizeof * 3 + 1 + 1] P5buf2 = '\0';
         if (imm3 == 0)
             p5 = extend;
         else
@@ -1593,7 +1613,7 @@ void disassemble(uint c) @trusted
             p4 = regString(sf, Rm);
             if (imm3)
             {
-                __gshared char[7 + imm3.sizeof * 3 + 1] P5buf3 = void;
+                __gshared char[7 + imm3.sizeof * 3 + 1] P5buf3 = '\0';
                 size_t n = snprintf(P5buf3.ptr, P5buf3.length, ((imm3 < 10) ? "LSL #%d" : "LSL #0x%X"), imm3);
                 assert(n <= P5buf3.length);
                 p5 = P5buf3[0 .. n];
@@ -1774,7 +1794,7 @@ void disassemble(uint c) @trusted
     // Cryptographic AES
     if (field(ins, 31, 24) == 0x4E && field(ins, 21, 17) == 0x14 && field(ins, 11, 10) == 2) // https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#cryptoaes
     {
-        url = "cryptoes";
+        url = "cryptoaes";
         uint size   = field(ins, 23, 22);
         uint opcode = field(ins, 16, 12);
         uint Rn     = field(ins, 9, 5);
@@ -1796,11 +1816,47 @@ void disassemble(uint c) @trusted
     else
 
     // Cryptographic three-register SHA https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#cryptosha3
+    if (field(ins,31,24) == 0x5E && field(ins,21,21) == 0 && field(ins,15,15) == 0 && field(ins,11,10) == 0)
+    {
+        url = "cryptosha3";
+    }
+    else
+
     // Cryptographic two-register SHA https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#cryptosha2
+    if (field(ins,31,24) == 0x5E && field(ins,21,17) == 0x14 && field(ins,11,10) == 2)
+    {
+        url = "cryptosha2";
+    }
+    else
+
     // Advanced SIMD scalar copy https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asisdone
+    if (field(ins,31,30) == 1 && field(ins,28,21) == 0xF0 && field(ins,15,15) == 0 && field(ins,10,10) == 1)
+    {
+        url = "asisdone";
+    }
+    else
+
     // Advanced SIMD scalar three same FP16 https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asisdsamefp16
+    if (field(ins,31,30) == 1 && field(ins,28,24) == 0x1E && field(ins,22,21) == 2 && field(ins,11,10) == 1)
+    {
+        url = "asisdsamefp16";
+    }
+    else
+
     // Advanced SIMD scalar two-register miscellaneous FP16 https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asisdmiscfp16
+    if (field(ins,31,30) == 1 && field(ins,28,24) == 0x1E && field(ins,22,17) == 0x3C && field(ins,15,14) == 0 && field(ins,11,10) == 2)
+    {
+        url = "asisdmiscfp16";
+    }
+    else
+
     // Advanced SIMD scalar three same extra https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asisdsame2
+    if (field(ins,31,30) == 1 && field(ins,28,24) == 0x1E && field(ins,21,21) == 0 && field(ins,15,15) == 1 && field(ins,10,10) == 1)
+    {
+        url = "asisdsame2";
+    }
+    else
+
     // Advanced SIMD scalar two-register miscellaneous http://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asisdmisc
     if (field(ins,31,30) == 1 && field(ins,28,24) == 0x1E && field(ins,21,17) == 0x10 && field(ins,11,10) == 2)
     {
@@ -1817,10 +1873,20 @@ void disassemble(uint c) @trusted
                         : "fcvtzu"; // fcvtzu <V><d>, <V><n> Scalar single-precision and double-precision
             p2 = fregString(rbuf[0 .. 4],"sd h"[size & 1],Rd);
             p3 = fregString(rbuf[4 .. 8],"sd h"[size & 1],Rn);
+
+            uint n = snprintf(url2buf.ptr, url2buf.length, "%s_advsimd_int", p1.ptr);
+            url2 = url2buf[0 .. n];
         }
     }
     else
+
     // Advanced SIMD scalar pairwise https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asisdpair
+    if (field(ins,31,30) == 1 && field(ins,28,24) == 0x1E && field(ins,21,17) == 0x18 && field(ins,11,10) == 2)
+    {
+        url = "asisdpair";
+    }
+    else
+
     // Advanced SIMD scalar three different https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asisddiff
     // Advanced SIMD scalar three same https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asisdsame
     // Advanced SIMD scalar shift by immediate https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asisdshf
@@ -1828,7 +1894,20 @@ void disassemble(uint c) @trusted
     // Advanced SIMD table lookup https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asimdtbl
     // Advanced SIMD permute https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asimdperm
     // Advanced SIMD extract https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asimdext
+
     // Advanced SIMD copy https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asimdins
+    if (field(ins,31,31) == 0 && field(ins,28,21) == 0x70 && field(ins,15,15) == 0 && field(ins,10,10) == 1)
+    {
+        url = "asimdins";
+        uint Q    = field(ins,30,30);
+        uint op   = field(ins,29,29);
+        uint imm5 = field(ins,20,16);
+        uint imm4 = field(ins,14,11);
+        uint Rn   = field(ins, 9, 5);
+        uint Rd   = field(ins, 4, 0);
+    }
+    else
+
     // Advanced SIMD three same (FP16) https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asimdsamefp16
     // Advanced SIMD two-register miscellaneous (FP16) https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asimdmiscfp16
     // Advanced SIMD three-register extension https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asimdsame2
@@ -1905,8 +1984,71 @@ void disassemble(uint c) @trusted
     else
 
     // Advanced SIMD three different https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asimddiff
+
     // Advanced SIMD three same https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asimdsame
+    if (field(ins,31,31) == 0 && field(ins,28,24) == 0x0E && field(ins,21,21) == 1 && field(ins,10,10) == 1)
+    {
+        url = "asimdsame";
+
+        uint Q      = field(ins,30,30);
+        uint U      = field(ins,29,29);
+        uint size   = field(ins,23,22);
+        uint Rm     = field(ins,20,16);
+        uint opcode = field(ins,15,11);
+        uint Rn     = field(ins, 9, 5);
+        uint Rd     = field(ins, 4, 0);
+        //printf("ins:%08x Q:%d U:%d size:%d opcode:%x Rm:%d Rn:%d Rd:%d\n", ins, Q, U, size, opcode, Rm, Rn, Rd);
+
+        uint Qn = (Q + 1) * 8;
+        switch (opcode)
+        {
+            case 3:
+                if (U == 0 && size == 2)
+                {
+                    if (Rm == Rn)
+                    {
+                        p1 = "mov"; // https://www.scs.stanford.edu/~zyedidia/arm64/mov_orr_advsimd_reg.html
+                        uint n = snprintf(buf.ptr, cast(uint)buf.length, "v%d.%db,v%d.%db", Rd, Qn, Rn, Qn);
+                        p2 = buf[0 .. n];
+                    }
+                    else
+                    {
+                        p1 = "orr"; // https://www.scs.stanford.edu/~zyedidia/arm64/orr_advsimd.html
+                        uint n = snprintf(buf.ptr, cast(uint)buf.length, "v%d.%db,v%d.%db,v%d.%db", Rd, Qn, Rn, Qn, Rm, Qn);
+                        p2 = buf[0 .. n];
+                    }
+                }
+                break;
+
+            default:
+                break;
+        }
+    }
+    else
+
     // Advanced SIMD modified immediate https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asimdimm
+    if (field(ins,31,31) == 0 && field(ins,28,19) == 0x1E0 && field(ins,10,10) == 1)
+    {
+        url = "asimdimm";
+
+        uint Q = field(ins,30,30);
+        uint op = field(ins,29,29);
+        uint abcdefgh = (field(ins,18,16) << 5) | field(ins,9,5);
+        uint cmode = field(ins,15,12);
+        uint o2 = field(ins,11,11);
+        uint Rd = field(ins,4,0);
+
+        if (Q == 1 && op == 1 && cmode == 0xE)
+        {
+            url2 = "movi_advsimd";
+            p1 = "movi";    // https://www.scs.stanford.edu/~zyedidia/arm64/movi_advsimd.html
+            // TODO AArch64 implement https://www.scs.stanford.edu/~zyedidia/arm64/shared_pseudocode.html#impl-shared.AdvSIMDExpandImm.3
+            uint n = snprintf(buf.ptr, cast(uint)buf.length, "v%d.2d,#0x%x", Rd, abcdefgh);
+            p2 = buf[0 .. n];
+        }
+    }
+    else
+
     // Advanced SIMD shift by immediate https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asimdshf
     // Advanced SIMD vector x indexed element https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asimdelem
     // Cryptographic three-register, imm2 https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#crypto3_imm2
@@ -1953,7 +2095,7 @@ void disassemble(uint c) @trusted
 
         if (S == 0)
         {
-            p1 = "fmov";
+            p1 = "fmov"; // https://www.scs.stanford.edu/~zyedidia/arm64/fmov_float_gen.html
 
             if (sf == 0 && ftype == 0 && rmode == 0 && opcode == 7)
             {
@@ -1987,6 +2129,20 @@ void disassemble(uint c) @trusted
                 p2 = fregString(rbuf[4 .. 8],"sd h"[ftype],Rd);
                 p3 = regString(sf,Rn);
             }
+            else if (sf == 1 && ftype == 2 && rmode == 1 && opcode == 6) // top half to 64 bit
+            {
+                p2 = regString(sf,Rd);
+                const n = snprintf(rbuf.ptr, rbuf.length, "v%d.d[1]", Rn);
+                p3 = rbuf[0 .. n];
+            }
+            else if (sf == 1 && ftype == 2 && rmode == 1 && opcode == 7) // 64 bit to top half
+            {
+                const n = snprintf(rbuf.ptr, rbuf.length, "v%d.d[1]", Rd);
+                p2 = rbuf[0 .. n];
+                p3 = regString(sf,Rn);
+            }
+            uint n = snprintf(url2buf.ptr, url2buf.length, "%s_float", p1.ptr);
+            url2 = url2buf[0 .. n];
         }
     }
     else
@@ -2065,10 +2221,7 @@ void disassemble(uint c) @trusted
 
         p1 = "fmov";
         p2 = fregString(rbuf[0..4],"sd h"[ftype],Rd);
-        uint sz = ftype == 0 ? 32 : ftype == 1 ? 64 : 16;
         float f = decodeImm8ToFloat(imm8);
-        if (sz == 16)
-            p1 = "";   // no support half-float literals
         p3 = doubletostring(f);
     }
     else
@@ -2097,6 +2250,9 @@ void disassemble(uint c) @trusted
             p2 = fregString(rbuf[0 .. 4],prefix,Rd);
             p3 = fregString(rbuf[4 .. 8],prefix,Rn);
             p4 = fregString(rbuf[8 ..12],prefix,Rm);
+
+            uint n = snprintf(url2buf.ptr, url2buf.length, "%s_float.html", p1.ptr);
+            url2 = url2buf[0 .. n];
         }
     }
 
@@ -2177,13 +2333,18 @@ void disassemble(uint c) @trusted
             case decode2(0,1,0):
             case decode2(1,1,0):
             case decode2(2,0,0):
-            case decode2(2,1,0): p1 = op24 == 0 ? "stnp" : "stp"; break;
+            case decode2(2,1,0): p1 = op24 == 0 ? "stnp" : "stp"; goto Lurl2;
 
             case decode2(0,0,1):
             case decode2(0,1,1):
             case decode2(1,1,1):
             case decode2(2,0,1):
-            case decode2(2,1,1): p1 = op24 == 0 ? "ldnp" : "ldp"; break;
+            case decode2(2,1,1): p1 = op24 == 0 ? "ldnp" : "ldp"; goto Lurl2;
+
+            Lurl2:
+                uint n = snprintf(url2buf.ptr, url2buf.length, "%s_gen", p1.ptr);
+                url2 = url2buf[0 .. n];
+                break;
 
             case decode2(1,0,0): if (op24) p1 = "stgp"; break;
             case decode2(1,0,1): if (op24) p1 = "ldpsw"; break;
@@ -2209,12 +2370,188 @@ void disassemble(uint c) @trusted
         p4 = eaString(op24, cast(ubyte)Rn, offset);
     }
 
-    // Load/store register pair (unscaled immediate) https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#ldst_unscaled
-    // Load/store register pair (immediate post-indexed) https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#ldst_immpost
-    // Load/store register pair (unprivileged) https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#ldst_unpriv
-    // Load/store register pair (immediate pre-indexed) https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#ldst_immpre
+    // Load/store register (unscaled immediate) https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#ldst_unscaled
+    if (field(ins,29,27) == 7 && field(ins,25,24) == 0 && field(ins,21,21) == 0 && field(ins,11,10) == 0)
+    {
+        url = "ldst_unscaled";
+
+        uint size = field(ins, 31, 30);
+        uint VR   = field(ins, 26, 26);
+        uint opc  = field(ins, 23, 22);
+         int imm9 = field(ins, 20, 12);
+        uint Rn   = field(ins,  9,  5);
+        uint Rt   = field(ins,  4,  0);
+
+        uint ldur(uint size, uint VR, uint opc) { return (size << 3) | (VR << 2) | opc; }
+
+        if (imm9 & 0x100)
+            imm9 |= 0xFFFF_FE00;        // sign extend
+        bool is64 = false;
+        const(char)* format = "%s";
+        switch (ldur(size,VR,opc))
+        {
+            case ldur(0,0,0): p1 = "sturb";  goto Lldur8;       // STURB  <Wt>, [<Xn|SP>{, #<simm>}]
+            case ldur(0,0,1): p1 = "ldurb";  goto Lldur8;       // LDURB  <Wt>, [<Xn|SP>{, #<simm>}]
+            Lldur8:
+                p2 = regString(is64, Rt);
+                p3 = eaString(0, cast(ubyte)Rn, imm9);
+                break;
+
+            case ldur(0,0,2): p1 = "ldursb"; goto Lldur64;                     // LDURSB <Xt>, [<Xn|SP>{, #<simm>}]
+            case ldur(0,0,3): p1 = "ldursb"; goto Lldur;                       // LDURSB <Wt>, [<Xn|SP>{, #<simm>}]
+            case ldur(1,0,0): p1 = "sturh";  goto Lldur;                       // STURH  <Wt>, [<Xn|SP>{, #<simm>}]
+            case ldur(1,0,1): p1 = "ldurh";  goto Lldur;                       // LTURH  <Wt>, [<Xn|SP>{, #<simm>}]
+            case ldur(1,0,2): p1 = "ldursh"; goto Lldur64;                     // LDURSH <Xt>, [<Xn|SP>{, #<simm>}]
+            case ldur(1,0,3): p1 = "ldursh"; goto Lldur;                       // LDURSH <Wt>, [<Xn|SP>{, #<simm>}]
+            case ldur(2,0,0): p1 = "stur";   format = "%s_gen"; goto Lldur;    // STUR   <Wt>, [<Xn|SP>{, #<simm>}]
+            case ldur(2,0,1): p1 = "ldur";   format = "%s_gen"; goto Lldur;    // LDUR   <Wt>, [<Xn|SP>{, #<simm>}]
+            case ldur(2,0,2): p1 = "ldursw"; goto Lldursw;                     // LDURSW <Xt>, [<Xn|SP>{, #<simm>}]
+            case ldur(3,0,0): p1 = "stur";   format = "%s_gen"; goto Lldur64;  // STUR   <Xt>, [<Xn|SP>{, #<simm>}]
+            case ldur(3,0,1): p1 = "ldur";   format = "%s_gen"; goto Lldur64;  // LDUR   <Xt>, [<Xn|SP>{, #<simm>}]
+            //case ldur(3,0,2): p1 = "prfum";
+            Lldursw:
+                p2 = regString(true, Rt);
+                p3 = eaString(0, cast(ubyte)Rn, imm9);
+                break;
+
+            Lldur64:
+                is64 = true;
+            Lldur:
+                p2 = regString(is64, Rt);
+                p3 = eaString(0, cast(ubyte)Rn, imm9);
+                break;
+
+            case ldur(0,1,0): p1 = "stur";   goto LdursimdFp;    // STUR   <Bt>, [<Xn|SP>{, #<simm>}]
+            case ldur(0,1,1): p1 = "ldur";   goto LdursimdFp;    // LDUR   <Bt>, [<Xn|SP>{, #<simm>}]
+            case ldur(0,1,2): p1 = "stur";   goto LdursimdFp;    // STUR   <Qt>, [<Xn|SP>{, #<simm>}]
+            case ldur(0,1,3): p1 = "ldur";   goto LdursimdFp;    // LDUR   <Qt>, [<Xn|SP>{, #<simm>}]
+            case ldur(1,1,0): p1 = "stur";   goto LdursimdFp;    // STUR   <Ht>, [<Xn|SP>{, #<simm>}]
+            case ldur(1,1,1): p1 = "ldur";   goto LdursimdFp;    // LDUR   <Ht>, [<Xn|SP>{, #<simm>}]
+            case ldur(2,1,0): p1 = "stur";   goto LdursimdFp;    // STUR   <St>, [<Xn|SP>{, #<simm>}]
+            case ldur(2,1,1): p1 = "ldur";   goto LdursimdFp;    // LDUR   <St>, [<Xn|SP>{, #<simm>}]
+            case ldur(3,1,0): p1 = "stur";   goto LdursimdFp;    // STUR   <Dt>, [<Xn|SP>{, #<simm>}]
+            case ldur(3,1,1): p1 = "ldur";   goto LdursimdFp;    // LDUR   <Dt>, [<Xn|SP>{, #<simm>}]
+            LdursimdFp:
+                format = "%s_fpsimd";
+                uint shift = size + ((opc & 2) << 1);
+                p2 = fregString(buf[0..4], fpPrefix[shift], Rt);
+                uint offset = imm9;
+                p3 = eaString(0, cast(ubyte)Rn, offset);
+                break;
+
+            default:
+                format = null;
+                break;
+        }
+        if (format)
+        {
+            uint n = snprintf(url2buf.ptr, url2buf.length, format, p1.ptr);
+            url2 = url2buf[0 .. n];
+        }
+    }
+    else
+
+    // Load/store register (immediate post-indexed) https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#ldst_immpost
+    if (field(ins, 29, 27) == 7 && field(ins, 25, 24) == 0 && field(ins, 21, 21) == 0 && field(ins, 11,10) == 1)
+    {
+        url = "ldst_immpost";
+
+        uint size = field(ins, 31, 30);
+        uint VR   = field(ins, 26, 26);
+        uint opc  = field(ins, 23, 22);
+        uint imm9 = field(ins, 20, 12);
+        uint Rn   = field(ins, 9, 5);
+        uint Rt   = field(ins, 4, 0);
+
+        uint ldst(uint size, uint VR, uint opc) { return (size << 3) | (VR << 2) | opc; }
+        switch (ldst(size, VR, opc))
+        {
+            case ldst(0,0,0):
+                url2 = "strb_imm";
+                p1 = "strb";
+                p2 = regString(size & 1, Rt);
+                if (Rt == 0x1F)
+                    p2 = size & 1 ? "xzr" : "wzr";
+                p3 = eaString(1, cast(ubyte)Rn, imm9);
+                break;
+
+            case ldst(2,0,0):
+            case ldst(3,0,0):
+                url2 = "str_imm_gen";
+                p1 = "str";
+                p2 = regString(size & 1, Rt);
+                if (Rt == 0x1F)
+                    p2 = size & 1 ? "xzr" : "wzr";
+                p3 = eaString(1, cast(ubyte)Rn, imm9);
+                break;
+
+            default:
+                break;
+        }
+    }
+    else
+
+    // Load/store register (unprivileged) https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#ldst_unpriv
+    // Load/store register (immediate pre-indexed) https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#ldst_immpre
     // Atomic memory operations https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#memop
+
     // Load/store register (register offset) https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#ldst_regoff
+    if (field(ins, 29, 27) == 7 && field(ins, 25, 24) == 0 && field(ins, 21, 21) == 1 && field(ins, 11,10) == 2)
+    {
+        url = "ldst_regoff";
+
+        uint size   = field(ins, 31, 30);
+        uint VR     = field(ins, 26, 26);
+        uint opc    = field(ins, 23, 22);
+        uint Rm     = field(ins, 20, 16);
+        uint option = field(ins, 15, 13);
+        uint S      = field(ins, 12, 12);
+        uint Rn     = field(ins, 9, 5);
+        uint Rt     = field(ins, 4, 0);
+
+        string[4] tab = [ "uxtw", "lsl", "sxtw", "sxtx" ];
+
+        uint cases(uint size, uint VR, uint opc) { return (size << 3) | (VR << 2) | opc; }
+        switch (cases(size, VR, opc))
+        {
+            case cases(0,0,0):  p1 = "strb";  url2 = "strb_reg";      goto Lldst;
+            case cases(0,0,1):  p1 = "ldrb";  url2 = "ldrb_reg";      goto Lldst;
+            case cases(0,0,2):  p1 = "ldrsb"; url2 = "ldrsb_reg";     goto Lldst;
+            case cases(0,0,3):  p1 = "ldrsb"; url2 = "ldrsb_reg";     goto Lldst;
+
+            case cases(1,0,0):  p1 = "strh";  url2 = "strh_reg";      goto Lldst2;
+            case cases(1,0,1):  p1 = "ldrh";  url2 = "ldrh_reg";      goto Lldst2;
+            Lldst2:
+                p2 = regString(0,Rt);
+                goto Lldst3;
+
+            case cases(2,0,0):  p1 = "str";   url2 = "str_reg_gen";   goto Lldst;
+            case cases(2,0,1):  p1 = "ldr";   url2 = "ldr_reg_gen";   goto Lldst;
+            case cases(2,0,2):  p1 = "ldrsw"; url2 = "ldrsw_reg_gen"; goto Lldst;
+            case cases(3,0,0):  p1 = "str";   url2 = "str_reg_gen";   goto Lldst;
+            case cases(3,0,1):  p1 = "ldr";   url2 = "ldr_reg_gen";   goto Lldst;
+            Lldst:
+                p2 = regString(size & 1,Rt);
+            Lldst3:
+                __gshared char[1 + 2 + 2 + 2 + 2 + 2 + 4 + 4 + 1] P5buf5;
+                if (option == 3 && !S)
+                {
+                    const n = snprintf(P5buf5.ptr, P5buf5.length, "[%s, %s]", regString(1,Rn).ptr, regString(1,Rm).ptr);
+                    p3 = P5buf5[0 .. n];
+                    break;
+                }
+
+                const(char)[] extend = tab[option];
+                const n = snprintf(P5buf5.ptr, P5buf5.length, "[%s, %s, %s #%d]", regString(1,Rn).ptr, regString(1,Rm).ptr, extend.ptr, S * (2 + (size & 1)));
+                p3 = P5buf5[0 .. n];
+                break;
+
+            default:
+                break;
+        }
+    }
+    else
+
     // Load/store register (pac) https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#ldst_pac
 
     // Load/store register (unsigned immediate)
@@ -2234,29 +2571,39 @@ void disassemble(uint c) @trusted
 
         uint ldr(uint size, uint VR, uint opc) { return (size << 3) | (VR << 2) | opc; }
 
-        bool is64 = false;
+        uint factor = 4;
+        const(char)* format = "%s_imm";
         switch (ldr(size, VR, opc))
         {
-            case ldr(0,0,0): p1 = "strb";  goto Lldr;
-            case ldr(0,0,1): p1 = "ldrb";  goto Lldr;
+            case ldr(0,0,0): p1 = "strb";  goto Lldr8;  // https://www.scs.stanford.edu/~zyedidia/arm64/strb_imm.html
+            case ldr(0,0,1): p1 = "ldrb";  goto Lldr8;
+            Lldr8:
+                p2 = regString(factor == 8, Rt);
+                p3 = eaString(0, cast(ubyte)Rn, imm12);
+                break;
+
             case ldr(0,0,2): p1 = "ldrsb"; goto Lldr64;
             case ldr(0,0,3): p1 = "ldrsb"; goto Lldr;
-            case ldr(1,0,0): p1 = "strh";  goto Lldr;
+            case ldr(1,0,0): p1 = "strh";  factor = 2; goto Lldr;
             case ldr(1,0,1): p1 = "ldrh";  goto Lldr;
             case ldr(1,0,2): p1 = "ldrsh"; goto Lldr64;
             case ldr(1,0,3): p1 = "ldrsh"; goto Lldr;
-            case ldr(2,0,0): p1 = "str";   goto Lldr;
-            case ldr(2,0,1): p1 = "ldr";   goto Lldr;
-            case ldr(2,0,2): p1 = "ldrsw"; goto Lldr64;
-            case ldr(3,0,0): p1 = "str";   goto Lldr64;
-            case ldr(3,0,1): p1 = "ldr";   goto Lldr64;
+            case ldr(2,0,0): p1 = "str";   format = "%s_imm_gen"; goto Lldr;
+            case ldr(2,0,1): p1 = "ldr";   format = "%s_imm_gen"; goto Lldr;
+            case ldr(2,0,2): p1 = "ldrsw"; goto Lldrsw;
+            case ldr(3,0,0): p1 = "str";   format = "%s_imm_gen"; goto Lldr64;
+            case ldr(3,0,1): p1 = "ldr";   format = "%s_imm_gen"; goto Lldr64;
             //case ldr(3,0,2): p1 = "prfm";
+            Lldrsw:
+                p2 = regString(true, Rt);
+                p3 = eaString(0, cast(ubyte)Rn, imm12 * 4);
+                break;
+
             Lldr64:
-                is64 = true;
+                factor = 8;
             Lldr:
-                p2 = regString(is64, Rt);
-                uint offset = imm12 * (is64 ? 8 : 4);
-                p3 = eaString(0, cast(ubyte)Rn, offset);
+                p2 = regString(factor == 8, Rt);
+                p3 = eaString(0, cast(ubyte)Rn, imm12 * factor);
                 break;
 
             case ldr(0,1,0): p1 = "str";  goto LsimdFp;
@@ -2270,6 +2617,7 @@ void disassemble(uint c) @trusted
             case ldr(3,1,0): p1 = "str";  goto LsimdFp;
             case ldr(3,1,1): p1 = "ldr";  goto LsimdFp;
             LsimdFp:
+                format = "%s_imm_fpsimd";
                 uint shift = size + ((opc & 2) << 1);
                 p2 = fregString(buf[0..4], fpPrefix[shift], Rt);
                 uint offset = imm12 << shift;
@@ -2277,42 +2625,62 @@ void disassemble(uint c) @trusted
                 break;
 
             default:
+                format = null;
                 break;
+        }
+        if (format)
+        {
+            uint n = snprintf(url2buf.ptr, url2buf.length, format, p1.ptr);
+            url2 = url2buf[0 .. n];
         }
     }
     }
     //printf("%x\n", field(ins, 31, 25));
     //printf("p1: %s\n", p1);
 
-    put(' ');
+    auto plen = 1 + p1.length;
+    if (bObjectcode)
+        put(' ');
     puts(p1);
     if (p2.length > 0)
     {
         foreach (len1; p1.length .. 9)
+        {
+            ++plen;
             put(' ');
+        }
+        plen += 1 + s2.length;
         put(' ');
         puts(s2);
         if (p2[0] != ' ')
+        {
+            plen += p2.length;
             puts(p2);
+        }
         if (p3.length > 0)
         {
+            plen += sep.length + s3.length + p3.length;
             puts(sep);
             puts(s3);
             puts(p3);
             if (p4.length > 0)
             {
+                plen += 1 + p4.length;
                 put(',');
                 puts(p4);
                 if (p5.length > 0)
                 {
+                    plen += 1 + p5.length;
                     put(',');
                     puts(p5);
                     if (p6.length > 0)
                     {
+                        plen += 1 + p6.length;
                         put(',');
                         puts(p6);
                         if (p7.length > 0)
                         {
+                            plen += 1 + p7.length;
                             put(',');
                             puts(p7);
                         }
@@ -2324,8 +2692,19 @@ void disassemble(uint c) @trusted
 
     if (bURL && url)
     {
-        puts("    // https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#");
-        puts(url);
+        for (; plen < 29; ++plen)
+            put(' ');
+        puts(" // https://www.scs.stanford.edu/~zyedidia/arm64/");
+        if (url2.length)
+        {
+            puts(url2);
+            puts(".html");
+        }
+        else
+        {
+            puts("encodingindex.html#");
+            puts(url);
+        }
     }
 }
 }
@@ -2471,9 +2850,15 @@ const(char)[] wordtostring2(uint w)
 @trusted
 const(char)[] signedWordtostring(int w)
 {
-    __gshared char[1 + 3 + 1 + w.sizeof * 3 + 1 + 1] EA;
+    __gshared char[1 + 3 + 1 + 1 + w.sizeof * 3 + 1 + 1] EA;
 
-    const n = snprintf(EA.ptr, EA.length, ((w <= 16 && w >= -32) ? "#%d" : "#0x%X"), w);
+    if (w < 0)
+    {
+        w = -w;
+        const n = snprintf(EA.ptr, EA.length, ((w < 10) ? "#-%d" : "#-0x%X"), w);
+        return EA[0 .. n];
+    }
+    const n = snprintf(EA.ptr, EA.length, ((w <= 10) ? "#%d" : "#0x%X"), w);
     return EA[0 .. n];
 }
 
@@ -2528,7 +2913,7 @@ const(char)[] eaString(uint op, ubyte Rn, int offset)
     switch (op)
     {
         case 1:
-            if (offset)
+            if (1 || offset)
             {
                 uint n = snprintf(EA.ptr, cast(uint)EA.length, "[%s],%s", regString(1, Rn).ptr, signedWordtostring(offset).ptr);
                 p = EA[0 .. n];
@@ -2831,8 +3216,22 @@ unittest
 unittest
 {
     int line64 = __LINE__;
-    string[80] cases64 =      // 64 bit code gen
+    string[95] cases64 =      // 64 bit code gen
     [
+        "F8 1F 03 A8         stur   x8,[x29,#-0x10]",
+        "B8 00 04 62         str    w2,[x3],#0",
+        "78 64 68 23         ldrh   w3,[x1, x4]",
+        "78 24 68 43         strh   w3,[x2, x4]",
+        "38 64 68 23         ldrb   w3,[x1, x4]",
+        "38 24 68 43         strb   w3,[x2, x4] ",
+        "38 00 14 3F         strb   wzr,[x1],#1",
+        "79 00 5B A2         strh   w2,[x29,#0x2C]",
+        "D3 7E 7C 43         ubfiz  x3,x2,#2,#0x20",
+        "B8 00 93 E0         stur   w0,[sp,#9]",
+        "F8 00 84 5F         str    xzr,[x2],#8",
+        "6F 00 E4 01         movi   v1.2d,#0x0",
+        "9E AF 00 3E         fmov   v30.d[1],x1",
+        "4E BE 1F C0         mov    v0.16b,v30.16b",
         "D4 20 00 20         brk    #1",
         "D6 3F 00 00         blr    x0",
         "1E 21 43 FF         fneg   s31,s31",
@@ -2867,10 +3266,10 @@ unittest
         "1A 9F A7 E0         cset  w0,lt",
         "91 40 00 00         add   x0,x0,#0,lsl #12",
         "D5 3B D0 40         mrs   x0,S3_3_c13_c0_2",
-        "A8 C1 7B FD         ldp   x29,x30,[sp],#16",
+        "A8 C1 7B FD         ldp   x29,x30,[sp],#0x10",
         "90 00 00 00         adrp  x0,#0",
-        "A9 01 7B FD         stp   x29,x30,[sp,#16]",
-        "A9 41 7B FD         ldp   x29,x30,[sp,#16]",
+        "A9 01 7B FD         stp   x29,x30,[sp,#0x10]",
+        "A9 41 7B FD         ldp   x29,x30,[sp,#0x10]",
         "B9 40 0B E0         ldr   w0,[sp,#8]",
         "F9 00 5F E3         str   x3,[sp,#0xB8]",
 
@@ -2897,6 +3296,8 @@ unittest
         "9A C1 20 02         lsl  x2,x0,x1",
         "9A C1 24 02         lsr  x2,x0,x1",
         "D3 43 FC 01         lsr  x1,x0,#3",
+
+        "D2 80 00 20         mov  x0,#1",
         "D2 80 01 C0         mov  x0,#0xE",
         "92 80 01 A1         mov  x1,#0xFFFFFFFFFFFFFFF2",
         "D2 80 02 02         mov  x2,#0x10",
@@ -2923,6 +3324,7 @@ unittest
     ubyte[BUFMAX] buf2;
     bool errors;
 
+    @trusted
     void testcase(int line, string s, uint size)
     {
         //printf("testcase(line %d s: '%.*s'\n", cast(int)line, cast(int)s.length, s.ptr);

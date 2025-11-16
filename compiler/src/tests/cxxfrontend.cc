@@ -78,7 +78,7 @@ static void frontend_init()
     target.cpu = CPU::native;
     target._init(global.params);
 
-    Type::_init();
+    dmd::Type_init();
     Id::initialize();
     Module::_init();
     Expression::_init();
@@ -337,7 +337,7 @@ void test_expression()
     assert(e);
     assert(e->isConst());
 
-    Optional<bool> res = e->toBool();
+    Optional<bool> res = dmd::toBool(e);
     assert(res.get());
 }
 
@@ -635,7 +635,7 @@ public:
     {
         if (t->dim->isConst() && t->dim->type->isIntegral())
         {
-            (void)t->dim->toUInteger();
+            (void)dmd::toUInteger(t->dim);
             t->next->accept(this);
             (void)t->ctype;
         }
@@ -644,7 +644,7 @@ public:
     }
     void visit(TypeVector *t) override
     {
-        (void)t->basetype->isTypeSArray()->dim->toUInteger();
+        (void)dmd::toUInteger(t->basetype->isTypeSArray()->dim);
         t->elementType()->accept(this);
         if (t->ty == TY::Tvoid)
             Type::tuns8->accept(this);
@@ -750,7 +750,7 @@ public:
                     if (member == NULL)
                         continue;
                     (void)member->ident->toChars();
-                    (void)member->value()->toInteger();
+                    (void)dmd::toInteger(member->value());
                 }
             }
         }
@@ -767,7 +767,7 @@ public:
             (void)t->sym->alignment.isDefault();
             (void)t->sym->alignsize;
             (void)t->sym->alignment.get();
-            (void)t->sym->isPOD();
+            (void)dmd::isPOD(t->sym);
             for (size_t i = 0; i < t->sym->members->length; i++)
             {
                 Dsymbol *sym = (*t->sym->members)[i];
@@ -1038,7 +1038,7 @@ public:
             if (sle != NULL)
             {
                 type->baseElemOf()->isTypeStruct()->sym->accept(this);
-                sle->sym = func->shidden;
+                sle->sym = (Symbol*)func->shidden;
             }
             s->exp->accept(this);
         }
@@ -1137,7 +1137,7 @@ public:
             for (size_t i = 0; i < s->args->length; i++)
             {
                 (void)(*s->names)[i]->toChars();
-                (*s->constraints)[i]->toStringExp()->accept(this);
+                dmd::toStringExp((*s->constraints)[i])->accept(this);
                 (*s->args)[i]->accept(this);
                 (void)s->outputargs;
             }
@@ -1145,7 +1145,7 @@ public:
         if (s->clobbers)
         {
             for (size_t i = 0; i < s->clobbers->length; i++)
-                (*s->clobbers)[i]->toStringExp()->accept(this);
+                dmd::toStringExp((*s->clobbers)[i])->accept(this);
         }
         if (s->labels)
         {
@@ -1190,12 +1190,6 @@ public:
                     mi->accept(this);
             }
             (void)dmd::findGetMembers(d);
-            (void)d->sctor;
-            (void)d->sdtor;
-            (void)d->ssharedctor;
-            (void)d->sshareddtor;
-            (void)d->sictor;
-            (void)d->stest;
             (void)d->needmoduleinfo;
         }
         d->semanticRun(PASS::obj);
@@ -1275,7 +1269,9 @@ public:
     {
         if (dmd::isError(d) || !d->members)
             return;
-        if (!d->needsCodegen())
+        if (!dmd::needsCodegen(d))
+            return;
+        if (dmd::isDiscardable(d))
             return;
         for (size_t i = 0; i < d->members->length; i++)
             (*d->members)[i]->accept(this);
@@ -1325,7 +1321,7 @@ public:
         for (size_t i = d->vtblOffset(); i < d->vtbl.length; i++)
         {
             FuncDeclaration *fd = d->vtbl[i]->isFuncDeclaration();
-            if (!fd || (!fd->fbody && d->isAbstract()))
+            if (!fd || (!fd->fbody && dmd::isAbstract(d)))
                 continue;
             if (!dmd::functionSemantic(fd))
                 return;
@@ -1378,7 +1374,7 @@ public:
                         for (size_t k = 0; k < cd3->vtblInterfaces->length; k++)
                         {
                             BaseClass *bs = (*cd3->vtblInterfaces)[k];
-                            if (bs->fillVtbl(cd2, NULL, 0))
+                            if (dmd::fillVtbl(bs, cd2, NULL, 0))
                             {
                                 if (bc == bs)
                                     break;
@@ -1403,7 +1399,7 @@ public:
         for (size_t i = d->vtblOffset(); i < d->vtbl.length; i++)
         {
             FuncDeclaration *fd = d->vtbl[i]->isFuncDeclaration();
-            if (fd && (fd->fbody || !d->isAbstract()))
+            if (fd && (fd->fbody || !dmd::isAbstract(d)))
                 visitDeclaration(fd);
         }
         d->type->accept(this);
@@ -1540,14 +1536,15 @@ public:
             if (!d->isDataseg() && !d->isMember() &&
                 d->_init && !d->_init->isVoidInitializer())
             {
-                Expression *e = d->type->defaultInitLiteral(d->loc);
+                Expression *e = dmd::defaultInitLiteral(d->type, d->loc);
                 e->accept(this);
             }
             return;
         }
         if (d->aliasTuple)
         {
-            d->toAlias()->accept(this);
+            dmd::toAlias(d)->accept(this);
+            (void) dmd::toAlias2(d);
             return;
         }
         if (!d->canTakeAddressOf())
@@ -1569,7 +1566,7 @@ public:
             }
             else
             {
-                Expression *e = d->type->defaultInitLiteral(d->loc);
+                Expression *e = dmd::defaultInitLiteral(d->type, d->loc);
                 e->accept(this);
             }
         }
@@ -1622,7 +1619,7 @@ public:
         if (d->semanticRun() < PASS::semantic3)
         {
             dmd::functionSemantic3(d);
-            Module::runDeferredSemantic3();
+            dmd::runDeferredSemantic3();
         }
         if (global.errors)
             return;
@@ -1721,10 +1718,11 @@ int main(int argc, char **argv)
 /**********************************/
 // Link Tests
 
-void aggregate_h(StructDeclaration *sd)
+void aggregate_h(StructDeclaration *sd, ClassDeclaration *cd, FuncDeclaration *fd)
 {
     dmd::search_toString(sd);
     dmd::semanticTypeInfoMembers(sd);
+    dmd::isFuncHidden(cd, fd);
 }
 
 void argtypes_h(Type *t)
@@ -1736,7 +1734,8 @@ void argtypes_h(Type *t)
     //dmd::isHFVA(t);
 }
 
-void declaration_h(FuncDeclaration *fd, Loc loc, Expressions* args, Parameters* params)
+void declaration_h(FuncDeclaration *fd, Loc loc, Expressions* args, Parameters* params,
+		   ClassDeclaration *cd)
 {
     dmd::functionSemantic(fd);
     dmd::functionSemantic3(fd);
@@ -1744,6 +1743,7 @@ void declaration_h(FuncDeclaration *fd, Loc loc, Expressions* args, Parameters* 
     ::isBuiltin(fd);
     dmd::genCfunc(params, fd->type, "test");
     dmd::genCfunc(params, fd->type, Identifier::idPool("test"));
+    dmd::isAbstract(cd);
 }
 
 void doc_h(Module *m, const char *ptr, d_size_t length, const char *date,
@@ -1761,6 +1761,7 @@ void dsymbol_h(Dsymbol *d, Scope *sc, ScopeDsymbol *sds, Loc loc, Identifier *id
     dmd::search(d, loc, ident);
     dmd::setScope(d, sc);
     dmd::importAll(d, sc);
+    dmd::include(d, sc);
 }
 
 void expression_h(Expression *e, Scope *sc, Type *t, Loc loc, Expressions *es)
@@ -1773,10 +1774,10 @@ void expression_h(Expression *e, Scope *sc, Type *t, Loc loc, Expressions *es)
 }
 
 void hdrgen_h(Module *m, OutBuffer &buf, Modules &ms, ParameterList pl,
-              Expression *e, Initializer *i, Statement *s, Type *t)
+              Expression *e, Initializer *i, Statement *s, Type *t, ErrorSink *sink)
 {
     dmd::genhdrfile(m, true, buf);
-    dmd::genCppHdrFiles(ms);
+    dmd::genCppHdrFiles(ms, sink);
     dmd::moduleToBuffer(buf, true, m);
     dmd::parametersTypeToChars(pl);
     dmd::toChars(e);

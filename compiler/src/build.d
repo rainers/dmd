@@ -1558,10 +1558,10 @@ auto sourceFiles()
     }
     DmdSources dmd = {
         glue: fileArray(env["D"], "
-            dmsc.d e2ir.d iasmdmd.d glue.d objc_glue.d
-            s2ir.d tocsym.d toctype.d tocvdebug.d todt.d toir.d toobj.d
+            dmsc.d iasm/dmdx86.d iasm/dmdaarch64.d glue/package.d glue/e2ir.d glue/objc.d
+            glue/s2ir.d glue/tocsym.d glue/toctype.d glue/tocvdebug.d glue/todt.d glue/toir.d glue/toobj.d
         "),
-        driver: fileArray(env["D"], "dinifile.d dmdparams.d gluelayer.d lib/package.d lib/elf.d lib/mach.d lib/mscoff.d
+        driver: fileArray(env["D"], "dinifile.d dmdparams.d lib/package.d lib/elf.d lib/mach.d lib/mscoff.d
             link.d mars.d main.d sarif.d lib/scanelf.d lib/scanmach.d lib/scanmscoff.d timetrace.d vsoptions.d
         "),
         frontend: fileArray(env["D"], "
@@ -1570,17 +1570,19 @@ auto sourceFiles()
             cli.d clone.d compiler.d cond.d constfold.d  cpreprocess.d ctfeexpr.d
             ctorflow.d dcast.d dclass.d declaration.d delegatize.d denum.d deps.d dimport.d
             dinterpret.d dmacro.d dmodule.d doc.d dscope.d dstruct.d dsymbol.d dsymbolsem.d
-            dtemplate.d dtoh.d dversion.d enumsem.d escape.d expression.d expressionsem.d func.d funcsem.d hdrgen.d iasm.d iasmgcc.d
+            dtemplate.d dtoh.d dversion.d enumsem.d escape.d expression.d expressionsem.d func.d funcsem.d hdrgen.d
             impcnvtab.d imphint.d importc.d init.d initsem.d inline.d inlinecost.d intrange.d json.d lambdacomp.d
             mtype.d mustuse.d nogc.d nspace.d ob.d objc.d opover.d optimize.d
             parse.d pragmasem.d printast.d rootobject.d safe.d
             semantic2.d semantic3.d sideeffect.d statement.d
-            statementsem.d staticassert.d staticcond.d stmtstate.d target.d templatesem.d templateparamsem.d traits.d
+            statementsem.d staticassert.d staticcond.d stmtstate.d target.d targetcompiler.d templatesem.d templateparamsem.d traits.d
             typesem.d typinf.d utils.d
+            iasm/package.d iasm/gcc.d
             mangle/package.d mangle/basic.d mangle/cpp.d mangle/cppwin.d
             visitor/package.d visitor/foreachvar.d visitor/parsetime.d visitor/permissive.d visitor/postorder.d visitor/statement_rewrite_walker.d
             visitor/strict.d visitor/transitive.d
             cparse.d
+            dfa/entry.d dfa/utils.d dfa/fast/structure.d dfa/fast/analysis.d dfa/fast/report.d dfa/fast/expression.d dfa/fast/statement.d
         "),
         backendHeaders: fileArray(env["C"], "
             cc.d cdef.d cgcv.d code.d dt.d el.d global.d

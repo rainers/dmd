@@ -310,7 +310,7 @@ idx_t cv_debtyp(debtyp_t* d)
         {
             // Hash consists of the sum of the first 4 bytes with the last 4 bytes
             union U { ubyte* cp; uint* up; }
-            U un = void;
+            U un;
             un.cp = d.data.ptr;
             hash += *un.up;
             un.cp += length - uint.sizeof;
@@ -915,7 +915,7 @@ idx_t cv4_struct(Classsym* s,int flags)
                 }
                 else
                 {   db = debtyp_alloc(8);
-                    TOWORD(db.data.ptr,LF_BITFIELD);
+                    TOWORD(db.data.ptr,LF_BITFIELD_V2);
                     db.data.ptr[6] = sf.Swidth;
                     db.data.ptr[7] = sf.Sbit;
                     TOLONG(db.data.ptr + 2,cv4_symtypidx(sf));
@@ -1140,7 +1140,7 @@ L1:
                     break;
                 }
             }
-            if ((next & 0xFF00) == 0 && !(attribute & 0xE0))
+            if ((next < 0x100) && !(attribute & 0xE0)) // basic type?
                 typidx = next | dt;
             else
             {
@@ -1883,11 +1883,12 @@ private void cv4_func(Funcsym* s, ref symtab_t symtab)
         }
     }
 
-    varStats_writeSymbolTable(symtab, &cv4_outsym, &cv4.endArgs, &cv4.beginBlock, &cv4.endBlock);
+    varStats_writeSymbolTable(sfunc, symtab, &cv4_outsym, &cv4.endArgs, &cv4.beginBlock, &cv4.endBlock);
 
     // Put out function return record
     if (1)
-    {   ubyte[2+2+2+1+1+4] sreturn = void;
+    {
+        ubyte[2+2+2+1+1+4] sreturn;
         ushort flags;
         ubyte style;
         tym_t ty;

@@ -12,8 +12,10 @@
 module dmd.argtypes_aarch64;
 
 import dmd.astenums;
+import dmd.dsymbolsem : isPOD;
 import dmd.mtype;
 import dmd.typesem;
+import dmd.expressionsem : toUInteger;
 
 /****************************************************
  * This breaks a type down into 'simpler' types that can be passed to a function

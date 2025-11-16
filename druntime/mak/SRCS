@@ -28,6 +28,7 @@ SRCS=\
 	src\core\internal\abort.d \
 	src\core\internal\atomic.d \
 	src\core\internal\attributes.d \
+	src\core\internal\cast_.d \
 	src\core\internal\convert.d \
 	src\core\internal\dassert.d \
 	src\core\internal\destruction.d \
@@ -85,8 +86,9 @@ SRCS=\
 	src\core\internal\util\array.d \
 	src\core\internal\util\math.d \
 	\
-	src\core\internal\vararg\aarch64.d \
+	src\core\internal\vararg\aapcs64.d \
 	src\core\internal\vararg\sysv_x64.d \
+	src\core\internal\vararg\gnu.d \
 	\
 	src\core\stdc\assert_.d \
 	src\core\stdc\stdatomic.d \
@@ -238,6 +240,7 @@ SRCS=\
 	src\core\sys\linux\sched.d \
 	src\core\sys\linux\stdio.d \
 	src\core\sys\linux\string.d \
+	src\core\sys\linux\syscall.d \
 	src\core\sys\linux\termios.d \
 	src\core\sys\linux\time.d \
 	src\core\sys\linux\timerfd.d \
@@ -258,6 +261,7 @@ SRCS=\
 	src\core\sys\linux\sys\mount.d \
 	src\core\sys\linux\sys\signalfd.d \
 	src\core\sys\linux\sys\socket.d \
+	src\core\sys\linux\sys\syscall.d \
 	src\core\sys\linux\sys\sysinfo.d \
 	src\core\sys\linux\sys\xattr.d \
 	src\core\sys\linux\sys\time.d \
@@ -304,6 +308,7 @@ SRCS=\
 	src\core\sys\posix\config.d \
 	src\core\sys\posix\dirent.d \
 	src\core\sys\posix\dlfcn.d \
+	src\core\sys\posix\endian.d \
 	src\core\sys\posix\fcntl.d \
 	src\core\sys\posix\grp.d \
 	src\core\sys\posix\iconv.d \
@@ -365,6 +370,7 @@ SRCS=\
 	src\core\sys\solaris\libelf.d \
 	src\core\sys\solaris\link.d \
 	src\core\sys\solaris\stdlib.d \
+	src\core\sys\solaris\thread.d \
 	src\core\sys\solaris\time.d \
 	src\core\sys\solaris\sys\elf.d \
 	src\core\sys\solaris\sys\elf_386.d \
@@ -374,7 +380,9 @@ SRCS=\
 	src\core\sys\solaris\sys\elftypes.d \
 	src\core\sys\solaris\sys\link.d \
 	src\core\sys\solaris\sys\priocntl.d \
+	src\core\sys\solaris\sys\procfs.d \
 	src\core\sys\solaris\sys\procset.d \
+	src\core\sys\solaris\sys\regset.d \
 	src\core\sys\solaris\sys\types.d \
 	\
 	src\core\sys\windows\accctrl.d \
@@ -558,11 +566,8 @@ SRCS=\
 	\
 	src\rt\aApply.d \
 	src\rt\aApplyR.d \
-	src\rt\aaA.d \
-	src\rt\adi.d \
 	src\rt\alloca.d \
 	src\rt\arraycat.d \
-	src\rt\cast_.d \
 	src\rt\cmath2.d \
 	src\rt\config.d \
 	src\rt\cover.d \

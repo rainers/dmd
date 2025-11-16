@@ -150,6 +150,9 @@ void addDefaultVersionIdentifiers(const ref Param params, const ref Target tgt)
 
     VersionCondition.addPredefinedGlobalIdent("D_HardFloat");
 
+    if (params.trace)
+        VersionCondition.addPredefinedGlobalIdent("D_Profile");
+
     if (params.tracegc)
         VersionCondition.addPredefinedGlobalIdent("D_ProfileGC");
 
@@ -196,7 +199,8 @@ void addPredefinedGlobalIdentifiers(const ref Target tgt)
             }
             case OS.OSX:
             {
-                predef("OSX");
+                predef("OSX");          // macOS
+                predef("Apple");        // macOS is one of Apple's operating systems
                 // For legacy compatibility
                 predef("darwin");
                 break;
@@ -433,7 +437,7 @@ extern (C++) struct Target
         DoubleProperties.initialize();
         RealProperties.initialize();
 
-        isLP64 = isX86_64;
+        isLP64 = isX86_64 || isAArch64;
 
         // These have default values for 32 bit code, they get
         // adjusted for 64 bit code.
@@ -616,6 +620,7 @@ extern (C++) struct Target
      */
     extern (C++) uint fieldalign(Type type)
     {
+        import dmd.typesem : alignsize;
         const size = type.alignsize();
 
         if ((isX86_64 || isAArch64 || os == Target.OS.OSX) && (size == 16 || size == 32))
@@ -638,6 +643,10 @@ extern (C++) struct Target
             return tvalist;
 
         if (os == Target.OS.Windows)
+        {
+            tvalist = Type.tchar.pointerTo();
+        }
+        else if (os == Target.OS.OSX && isAArch64)
         {
             tvalist = Type.tchar.pointerTo();
         }
@@ -991,6 +1000,7 @@ extern (C++) struct Target
     {
         import dmd.id : Id;
         import dmd.argtypes_sysv_x64 : toArgTypes_sysv_x64;
+        import dmd.dsymbolsem : isPOD;
         import dmd.typesem : castMod;
 
         if (tf.isRef)
@@ -1465,10 +1475,10 @@ struct TargetC
     }
 
     /**
-     * Indicates whether the specified bit-field contributes to the alignment
+     * Indicates whether the specified bitfield contributes to the alignment
      * of the containing aggregate.
      * E.g., (not all) ARM ABIs do NOT ignore anonymous (incl. 0-length)
-     * bit-fields.
+     * bitfields.
      */
     extern (C++) bool contributesToAggregateAlignment(BitFieldDeclaration bfd)
     {

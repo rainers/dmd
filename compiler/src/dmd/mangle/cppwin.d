@@ -20,6 +20,9 @@ import dmd.declaration;
 import dmd.denum : isSpecialEnumIdent;
 import dmd.dstruct;
 import dmd.dsymbol;
+import dmd.dsymbolsem : toAlias;
+import dmd.expressionsem : toStringExp, toInteger, toUInteger;
+import dmd.templatesem : computeOneMember;
 import dmd.dtemplate;
 import dmd.errors;
 import dmd.errorsink;
@@ -582,6 +585,9 @@ extern(D):
         Dsymbol d = isDsymbol(o);
         Expression e = isExpression(o);
 
+        if (d && d.isTemplateDeclaration())
+            d.isTemplateDeclaration().computeOneMember();
+
         if (d && d.isFuncDeclaration())
         {
             buf.writeByte('$');
@@ -798,7 +804,7 @@ extern(D):
             }
             if (id == name) // ok, we've found same name. use index instead of name
             {
-                buf.writeByte(cast(uint)i + '0');
+                buf.writeByte(cast(char)(i + '0'));
                 return true;
             }
         }
@@ -892,7 +898,7 @@ extern(D):
             }
             if (ty.equals(type)) // ok, we've found same type. use index instead of type
             {
-                buf.writeByte(cast(uint)i + '0');
+                buf.writeByte(cast(char)(i + '0'));
                 isNotTopType = false;
                 ignoreConst = false;
                 return true;

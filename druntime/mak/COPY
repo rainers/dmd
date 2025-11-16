@@ -30,6 +30,7 @@ COPY=\
 	$(IMPDIR)\core\internal\abort.d \
 	$(IMPDIR)\core\internal\atomic.d \
 	$(IMPDIR)\core\internal\attributes.d \
+	$(IMPDIR)\core\internal\cast_.d \
 	$(IMPDIR)\core\internal\convert.d \
 	$(IMPDIR)\core\internal\dassert.d \
 	$(IMPDIR)\core\internal\destruction.d \
@@ -87,8 +88,9 @@ COPY=\
 	$(IMPDIR)\core\internal\util\array.d \
 	$(IMPDIR)\core\internal\util\math.d \
 	\
-	$(IMPDIR)\core\internal\vararg\aarch64.d \
+	$(IMPDIR)\core\internal\vararg\aapcs64.d \
 	$(IMPDIR)\core\internal\vararg\sysv_x64.d \
+	$(IMPDIR)\core\internal\vararg\gnu.d \
 	\
 	$(IMPDIR)\core\stdc\assert_.d \
 	$(IMPDIR)\core\stdc\stdatomic.d \
@@ -243,6 +245,7 @@ COPY=\
 	$(IMPDIR)\core\sys\linux\sched.d \
 	$(IMPDIR)\core\sys\linux\stdio.d \
 	$(IMPDIR)\core\sys\linux\string.d \
+	$(IMPDIR)\core\sys\linux\syscall.d \
 	$(IMPDIR)\core\sys\linux\termios.d \
 	$(IMPDIR)\core\sys\linux\time.d \
 	$(IMPDIR)\core\sys\linux\timerfd.d \
@@ -263,6 +266,7 @@ COPY=\
 	$(IMPDIR)\core\sys\linux\sys\mount.d \
 	$(IMPDIR)\core\sys\linux\sys\signalfd.d \
 	$(IMPDIR)\core\sys\linux\sys\socket.d \
+	$(IMPDIR)\core\sys\linux\sys\syscall.d \
 	$(IMPDIR)\core\sys\linux\sys\sysinfo.d \
 	$(IMPDIR)\core\sys\linux\sys\xattr.d \
 	$(IMPDIR)\core\sys\linux\sys\time.d \
@@ -309,6 +313,7 @@ COPY=\
 	$(IMPDIR)\core\sys\posix\config.d \
 	$(IMPDIR)\core\sys\posix\dirent.d \
 	$(IMPDIR)\core\sys\posix\dlfcn.d \
+	$(IMPDIR)\core\sys\posix\endian.d \
 	$(IMPDIR)\core\sys\posix\fcntl.d \
 	$(IMPDIR)\core\sys\posix\grp.d \
 	$(IMPDIR)\core\sys\posix\iconv.d \
@@ -370,6 +375,7 @@ COPY=\
 	$(IMPDIR)\core\sys\solaris\libelf.d \
 	$(IMPDIR)\core\sys\solaris\link.d \
 	$(IMPDIR)\core\sys\solaris\stdlib.d \
+	$(IMPDIR)\core\sys\solaris\thread.d \
 	$(IMPDIR)\core\sys\solaris\time.d \
 	\
 	$(IMPDIR)\core\sys\solaris\sys\elf.d \
@@ -380,7 +386,9 @@ COPY=\
 	$(IMPDIR)\core\sys\solaris\sys\elftypes.d \
 	$(IMPDIR)\core\sys\solaris\sys\link.d \
 	$(IMPDIR)\core\sys\solaris\sys\priocntl.d \
+	$(IMPDIR)\core\sys\solaris\sys\procfs.d \
 	$(IMPDIR)\core\sys\solaris\sys\procset.d \
+	$(IMPDIR)\core\sys\solaris\sys\regset.d \
 	$(IMPDIR)\core\sys\solaris\sys\types.d \
 	\
 	$(IMPDIR)\core\sys\windows\accctrl.d \

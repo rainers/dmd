@@ -140,6 +140,7 @@ enum
     SCSCT = 4,      // storage class is valid for use in static ctor
     SCSS  = 8,      // storage class is on the stack
     SCRD  = 0x10,   // we can do reaching definitions on these
+    SCDATA = 0x20,  // goes in data segment
 }
 
 // Determine if Symbol has a Ssymnum associated with it.
@@ -671,7 +672,8 @@ enum
     SFLnodebug      = 0x20000,     // don't generate debug info
     SFLwasstatic    = 0x800000,    // was an uninitialized static
     SFLweak         = 0x1000000,   // resolve to NULL if not found
-    SFLhidden       = 0x2000000,   // not visible outside of DSOs (-fvisibility=hidden)
+    SFLhidden       = 0x2000000,   // SC.static_/SC.global: not visible outside of DSOs (-fvisibility=hidden)
+                                   // SC.parameter: hidden return value parameter
     SFLartifical    = 0x4000000,   // compiler generated symbol
     SFLnounderscore = 0x8000_0000, // don't prepend an _ to identifiers in object file
 

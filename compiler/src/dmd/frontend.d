@@ -125,6 +125,7 @@ void initDMD(
     import dmd.mtype : Type;
     import dmd.objc : Objc;
     import dmd.target : target, defaultTargetOS, addDefaultVersionIdentifiers;
+    import dmd.typesem : Type_init;
 
     .diagnosticHandler = diagnosticHandler;
     .fatalErrorHandler = fatalErrorHandler;
@@ -147,11 +148,12 @@ void initDMD(
     target.isX86_64 = (size_t.sizeof == 8);
     target.isX86 = !target.isX86_64;
     target._init(global.params);
-    Type._init();
+    Type_init();
     Id.initialize();
     Module._init();
     Expression._init();
     Objc._init();
+    Loc._init();
     EscapeState.reset();
 
     addDefaultVersionIdentifiers(global.params, target);
@@ -182,6 +184,7 @@ void deinitializeDMD()
     import dmd.objc : Objc;
     import dmd.target : target;
     import dmd.errors : diagnostics;
+    import dmd.dfa.fast.structure : DFAAllocator;
 
     diagnosticHandler = null;
     fatalErrorHandler = null;
@@ -197,6 +200,7 @@ void deinitializeDMD()
     Objc.deinitialize();
     Dsymbol.deinitialize();
     EscapeState.reset();
+    DFAAllocator.deinitialize();
 
     diagnostics.length = 0;
 }
@@ -427,7 +431,7 @@ Run full semantic analysis on a module.
 */
 void fullSemantic(Module m)
 {
-    import dmd.dsymbolsem : dsymbolSemantic, importAll;
+    import dmd.dsymbolsem : dsymbolSemantic, importAll, runDeferredSemantic, runDeferredSemantic2, runDeferredSemantic3;
     import dmd.semantic2 : semantic2;
     import dmd.semantic3 : semantic3;
 
@@ -435,13 +439,13 @@ void fullSemantic(Module m)
     m.importAll(null);
 
     m.dsymbolSemantic(null);
-    Module.runDeferredSemantic();
+    runDeferredSemantic();
 
     m.semantic2(null);
-    Module.runDeferredSemantic2();
+    runDeferredSemantic2();
 
     m.semantic3(null);
-    Module.runDeferredSemantic3();
+    runDeferredSemantic3();
 }
 
 /**

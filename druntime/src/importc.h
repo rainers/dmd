@@ -56,10 +56,10 @@
  */
 #define __fastcall
 
-#define __forceinline
+#define __forceinline __attribute__((always_inline))
 #undef _Check_return_
 //#define _Check_return_
-#define __pragma(x)
+#define __pragma(x) _Pragma(#x)
 
 #undef _GLIBCXX_USE_FLOAT128
 
@@ -138,6 +138,13 @@ typedef unsigned long long __uint64_t;
 #define __volatile volatile
 #define __sync_synchronize()
 #define __sync_swap(A, B) 1
+
+// For whatever reason, sys/cdefs.h has to be included first even though
+// it doesn't undef __sym_compat. But without #including sys/cdefs.h first and
+// then undefing __sym_compat, the normal __sym_compat gets used.
+#include "sys/cdefs.h"
+#undef __sym_compat
+#define __sym_compat(sym, impl, verid)
 #endif
 
 #if _MSC_VER
@@ -149,11 +156,11 @@ typedef unsigned long long __uint64_t;
 #define __unaligned
 #define _NO_CRT_STDIO_INLINE 1
 #define _stdcall __stdcall
+#define _declspec __declspec
 
-// This header disables the Windows API Annotations macros
-// Need to include sal.h to get the pragma once to prevent macro redefinition.
-#include "sal.h"
-#include "no_sal2.h"
+// disable the Microsoft Source Code Annotation macros in "sal.h"
+#define _USE_DECLSPECS_FOR_SAL 0
+#define _USE_ATTRIBUTES_FOR_SAL 0
 #endif
 
 /****************************
@@ -166,14 +173,19 @@ typedef unsigned long long __uint64_t;
 /***************************
  * C11 6.10.8.3 Conditional feature macros
  */
+#if !(defined(_MSC_VER) && defined(__STDC_NO_VLA__)) // pre-defined to 1 by MS when using /std:cXX and causing warning C4117
 #define __STDC_NO_VLA__ 1
+#endif
 
 #define _Float16 float
-#if linux  // Microsoft won't allow the following macro
+#ifdef __linux__  // Microsoft won't allow the following macro
 // Ubuntu's assert.h uses this
 #define __PRETTY_FUNCTION__ __func__
 
-#ifndef __aarch64__
+#ifndef __clang__
+// Glibc with clang gets upset when some _Float* is defined:
+// /usr/include/bits/floatn-common.h(214): Error: illegal combination of type specifiers
+// typedef float float;
 #define _Float32 float
 #define _Float32x double
 #define _Float64 double
@@ -181,7 +193,15 @@ typedef unsigned long long __uint64_t;
 #define _Float128 long double
 #define __float128 long double
 #endif
+
+#ifdef __aarch64__
+// glibc's math.h needs these types to be defined
+typedef struct {} __SVBool_t;
+typedef struct {} __SVFloat32_t;
+typedef struct {} __SVFloat64_t;
 #endif
+
+#endif // __linux__
 
 #if __APPLE__
 #undef __SIZEOF_INT128__

@@ -35,9 +35,10 @@ import dmd.dinifile;
 import dmd.dinterpret;
 import dmd.dmdparams;
 import dmd.dsymbolsem;
+import dmd.typesem : Type_init;
 import dmd.dtemplate;
 import dmd.dtoh;
-import dmd.glue : generateCodeAndWrite;
+import dmd.glue : generateCodeAndWrite, ObjcGlue_initialize;
 import dmd.dmodule;
 import dmd.dmsc : backend_init, backend_term;
 import dmd.doc;
@@ -95,7 +96,10 @@ extern (C) int main(int argc, char** argv)
     }
     if (!lowmem)
     {
-        __gshared string[] disable_options = [ "gcopt=disable:1" ];
+        static if(__VERSION__ < 2085)
+            __gshared string[] disable_options = [ "gcopt=disable:1" ];
+        else
+            __gshared string[] disable_options = [ "gcopt=disable:1 cleanup:none" ];
         rt_options = disable_options;
         mem.disableGC();
     }
@@ -108,7 +112,7 @@ extern (C) int main(int argc, char** argv)
  * Returns:
  * Return code of the application
  */
-extern (C) int _Dmain(char[][])
+extern (C) int _Dmain(const(char)[][] dargs)
 {
     // possibly install memory error handler
     version (DigitalMars)
@@ -118,29 +122,30 @@ extern (C) int _Dmain(char[][])
     import core.runtime;
     version(D_Coverage)
     {
-        // for now we need to manually set the source path
-        string dirName(string path, char separator)
+        // set the source path
+        string dirName(string path)
         {
             for (size_t i = path.length - 1; i > 0; i--)
             {
-                if (path[i] == separator)
+                if (isDirSeparator(path[i]))
                     return path[0..i];
             }
             return path;
         }
-        version (Windows)
-            enum sourcePath = dirName(dirName(dirName(__FILE_FULL_PATH__, '\\'), '\\'), '\\');
-        else
-            enum sourcePath = dirName(dirName(dirName(__FILE_FULL_PATH__, '/'), '/'), '/');
+        enum sourcePath = dirName(dirName(dirName(__FILE_FULL_PATH__)));
         dmd_coverSourcePath(sourcePath);
         dmd_coverDestPath(sourcePath);
         dmd_coverSetMerge(true);
     }
     version (D_Exceptions)
-        scope(failure) stderr.printInternalFailure;
+        scope(failure)
+        {
+            OutBuffer buf;
+            printInternalFailure(buf);
+            fputs(buf.peekChars(), stderr);
+        }
 
-    auto args = Runtime.cArgs();
-    return tryMain(args.argc, cast(const(char)**)args.argv, global.params);
+    return tryMain(dargs, global.params);
 }
 
 /************************************************************************************/
@@ -154,13 +159,13 @@ private:
  * provided source file and do semantic analysis on them.
  *
  * Params:
- *   argc = Number of arguments passed via command line
  *   argv = Array of string arguments passed via command line
+ *   params = set based on argc, argv
  *
  * Returns:
  *   Application return code
  */
-private int tryMain(size_t argc, const(char)** argv, ref Param params)
+private int tryMain(const(char)[][] argv, out Param params)
 {
     import dmd.common.charactertables;
     import dmd.sarif;
@@ -184,12 +189,12 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
 
     target.setTargetBuildDefaults();
 
-    if (parseCommandlineAndConfig(argc, argv, params, files))
+    if (parseCommandlineAndConfig(argv, params, files))
         return EXIT_FAILURE;
 
-    global.compileEnv.previewIn        = global.params.previewIn;
-    global.compileEnv.transitionIn     = global.params.v.vin;
-    global.compileEnv.ddocOutput       = global.params.ddoc.doOutput;
+    global.compileEnv.previewIn        = params.previewIn;
+    global.compileEnv.transitionIn     = params.v.vin;
+    global.compileEnv.ddocOutput       = params.ddoc.doOutput;
 
     final switch(global.params.cIdentifierTable)
     {
@@ -371,11 +376,12 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
 
     // Initialization
     target._init(params);
-    Type._init();
+    Type_init();
     Id.initialize();
     Module._init();
     Expression._init();
     Objc._init();
+    Loc._init();
 
     reconcileLinkRunLib(params, files.length, target.obj_ext);
     version(CRuntime_Microsoft)
@@ -391,8 +397,10 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
 
     if (params.v.verbose)
     {
-        stdout.printPredefinedVersions();
-        stdout.printGlobalConfigs();
+        OutBuffer buf;
+        printPredefinedVersions(buf);
+        printGlobalConfig(buf);
+        fputs(buf.peekChars(), stdout);
     }
     //printf("%d source files\n", cast(int) files.length);
 
@@ -443,12 +451,11 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
     if (params.timeTrace)
     {
         import dmd.timetrace;
-        initializeTimeTrace(params.timeTraceGranularityUs, argv[0]);
+        initializeTimeTrace(params.timeTraceGranularityUs, toCString(argv[0]).ptr);
     }
 
     // Create Modules
     Modules modules;
-    modules.reserve(files.length);
     if (createModules(files, libmodules, params, target, global.errorSink, modules))
         fatal();
 
@@ -608,7 +615,7 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
     }
     //if (global.errors)
     //    fatal();
-    Module.runDeferredSemantic();
+    runDeferredSemantic();
     if (Module.deferred.length)
     {
         for (size_t i = 0; i < Module.deferred.length; i++)
@@ -626,7 +633,7 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
             message("semantic2 %s", m.toChars());
         m.semantic2(null);
     }
-    Module.runDeferredSemantic2();
+    runDeferredSemantic2();
     if (global.errors)
         removeHdrFilesAndFail(params, modules);
 
@@ -651,7 +658,7 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
             modules.push(m);
         }
     }
-    Module.runDeferredSemantic3();
+    runDeferredSemantic3();
     if (global.errors)
         removeHdrFilesAndFail(params, modules);
 
@@ -662,7 +669,7 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
         {
             if (params.v.verbose)
                 message("inline scan %s", m.toChars());
-            inlineScanModule(m);
+            inlineScanModule(m, global.errorSink);
         }
     }
 
@@ -682,7 +689,7 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
     {
         foreach (i; 1 .. modules[0].aimports.length)
             semantic3OnDependencies(modules[0].aimports[i]);
-        Module.runDeferredSemantic3();
+        runDeferredSemantic3();
 
         const data = (*ob)[];
         if (params.moduleDeps.name)
@@ -734,7 +741,7 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
     }
 
     if (global.params.cxxhdr.doOutput)
-        genCppHdrFiles(modules);
+        genCppHdrFiles(modules, global.errorSink);
 
     if (global.errors)
         fatal();
@@ -754,6 +761,7 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
     }
 
     {
+        ObjcGlue_initialize();
         timeTraceBeginEvent(TimeTraceEventType.codegenGlobal);
         scope (exit) timeTraceEndEvent(TimeTraceEventType.codegenGlobal);
         generateCodeAndWrite(modules[], libmodules[], params.libname, params.objdir,
@@ -865,13 +873,12 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
  * Parses the command line arguments and configuration files
  *
  * Params:
- *   argc = Number of arguments passed via command line
  *   argv = Array of string arguments passed via command line
  *   params = parameters from argv
  *   files = files from argv
  * Returns: true on failure
  */
-bool parseCommandlineAndConfig(size_t argc, const(char)** argv, ref Param params, ref Strings files)
+bool parseCommandlineAndConfig(const(char)[][] argv, out Param params, ref Strings files)
 {
     // Detect malformed input
     static bool badArgs()
@@ -880,21 +887,22 @@ bool parseCommandlineAndConfig(size_t argc, const(char)** argv, ref Param params
         return true;
     }
 
-    if (argc < 1 || !argv)
+    const size_t argc = argv.length;
+    if (argc < 1)
         return badArgs();
     // Convert argc/argv into arguments[] for easier handling
-    Strings arguments = Strings(argc);
-    for (size_t i = 0; i < argc; i++)
+    Strings arguments = Strings(argv.length);
+    for (size_t i = 0; i < argv.length; i++)
     {
         if (!argv[i])
             return badArgs();
-        arguments[i] = argv[i];
+        arguments[i] = toCString(argv[i]).ptr;
     }
     if (const(char)* missingFile = responseExpand(arguments)) // expand response files
         error(Loc.initial, "cannot open response file '%s'", missingFile);
     //for (size_t i = 0; i < arguments.length; ++i) printf("arguments[%d] = '%s'\n", i, arguments[i]);
     // Set default values
-    params.argv0 = arguments[0].toDString;
+    auto argv0 = arguments[0].toDString;
 
     version (Windows)
         enum iniName = "sc.ini";
@@ -913,7 +921,7 @@ bool parseCommandlineAndConfig(size_t argc, const(char)** argv, ref Param params
     }
     else
     {
-        global.inifilename = findConfFile(params.argv0, iniName);
+        global.inifilename = findConfFile(argv0, iniName);
     }
     // Read the configuration file
     OutBuffer inifileBuffer;
@@ -933,7 +941,7 @@ bool parseCommandlineAndConfig(size_t argc, const(char)** argv, ref Param params
     if (parseConfFile(environment, global.inifilename, inifilepath, cast(ubyte[])inifileBuffer[], &sections))
         return true;
 
-    const(char)[] arch = target.isX86_64 ? "64" : "32"; // use default
+    const(char)[] arch = (target.isX86_64 || target.isAArch64) ? "64" : "32"; // use default
     arch = parse_arch_arg(&arguments, arch);
 
     // parse architecture from DFLAGS read from [Environment] section
@@ -981,7 +989,7 @@ bool parseCommandlineAndConfig(size_t argc, const(char)** argv, ref Param params
 
 
 // in druntime:
-alias MainFunc = extern(C) int function(char[][] args);
+alias MainFunc = extern(C) int function(const(char)[][] args);
 extern (C) int _d_run_main(int argc, char** argv, MainFunc dMain);
 
 

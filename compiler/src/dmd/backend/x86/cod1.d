@@ -36,6 +36,8 @@ import dmd.backend.rtlsym;
 import dmd.backend.ty;
 import dmd.backend.type;
 import dmd.backend.x86.xmm;
+import dmd.backend.arm.cod1;
+import dmd.backend.arm.instr : INSTR;
 
 import dmd.backend.cg : segfl, stackfl;
 
@@ -342,13 +344,13 @@ void genEEcode()
 uint gensaverestore(regm_t regm,ref CodeBuilder cdbsave,ref CodeBuilder cdbrestore)
 {
     //printf("gensaverestore2(%s)\n", regm_str(regm));
-    code *[regm.sizeof * 8] restore = void;
+    code *[regm.sizeof * 8] restore;
     reg_t i;
     uint stackused = 0;
 
     if (cgstate.AArch64)
     {
-        regm &= cgstate.allregs | mask(cgstate.BP);
+        regm &= cgstate.allregs | mask(cgstate.BP) | INSTR.FLOATREGS;
         if (!regm)
             return 0;
 
@@ -646,6 +648,9 @@ void logexp(ref CodeBuilder cdb, elem* e, int jcond, FL fltarg, code* targ)
 void loadea(ref CodeBuilder cdb,elem* e,ref code cs,uint op,reg_t reg,targ_size_t offset,
             regm_t keepmsk,regm_t desmsk, RM rmx = RM.rw)
 {
+    if (cgstate.AArch64)
+        return dmd.backend.arm.cod1.loadea(cdb,e,cs,op,reg,offset,keepmsk,desmsk,rmx);
+
     code* c, cg, cd;
 
     debug
@@ -2088,6 +2093,7 @@ void fixresult(ref CodeBuilder cdb, elem* e, regm_t retregs, ref regm_t outretre
  * Extra information about each CLIB runtime library function.
  */
 
+private
 enum
 {
     INF32         = 1,      /// if 32 bit only
@@ -2098,6 +2104,7 @@ enum
     INFpusheabcdx = 0x20,   /// pass EAX/EBX/ECX/EDX on stack, callee does ret 16
 }
 
+private
 struct ClibInfo
 {
     regm_t retregs16;   /* registers that 16 bit result is returned in  */
@@ -2110,6 +2117,7 @@ struct ClibInfo
 
 int clib_inited = false;          // true if initialized
 
+private
 Symbol* symboly(string name, regm_t desregs)
 {
     Symbol* s = symbol_calloc(name);
@@ -2121,6 +2129,7 @@ Symbol* symboly(string name, regm_t desregs)
     return s;
 }
 
+private
 void initClibInfo(ref Symbol*[CLIB.MAX] clibsyms, ref ClibInfo[CLIB.MAX] clibinfo)
 {
     for (size_t i = 0; i < CLIB.MAX; ++i)
@@ -2135,6 +2144,7 @@ void initClibInfo(ref Symbol*[CLIB.MAX] clibsyms, ref ClibInfo[CLIB.MAX] clibinf
     }
 }
 
+private
 void getClibFunction(uint clib, ref Symbol* s, ref ClibInfo* cinfo, objfmt_t objfmt, exefmt_t exe)
 {
     const uint ex_unix = (EX_LINUX   | EX_LINUX64   |
@@ -2801,6 +2811,7 @@ void getClibFunction(uint clib, ref Symbol* s, ref ClibInfo* cinfo, objfmt_t obj
     }
 }
 
+private
 void getClibInfo(uint clib, Symbol** ps, ClibInfo** pinfo, objfmt_t objfmt, exefmt_t exe)
 {
     static Symbol*[CLIB.MAX] clibsyms;
@@ -2937,7 +2948,7 @@ void callclib(ref CodeBuilder cdb, elem* e, uint clib, ref regm_t pretregs, regm
 /*************************************************
  * Helper function for converting OPparam's into array of Parameters.
  */
-struct Parameter { elem* e; reg_t reg; reg_t reg2; uint numalign; }
+struct Parameter { elem* e; reg_t reg; reg_t reg2; uint size; uint numalign; bool isVariadic; bool isAp; }
 
 @trusted
 void fillParameters(elem* e, Parameter* parameters, int* pi)
@@ -2950,7 +2961,8 @@ void fillParameters(elem* e, Parameter* parameters, int* pi)
     }
     else
     {
-        parameters[*pi].e = e;
+        Parameter* p = &parameters[*pi];
+        p.e = e;
         (*pi)++;
     }
 }
@@ -3039,7 +3051,7 @@ FuncParamRegs FuncParamRegs_create(tym_t tyf)
 @trusted
 bool FuncParamRegs_alloc(ref FuncParamRegs fpr, type* t, tym_t ty, out reg_t preg1, out reg_t preg2)
 {
-    //printf("FuncParamRegs::alloc(ty: TY%sm t: %p)\n", tystring[tybasic(ty)], t);
+    //printf("FuncParamRegs::alloc(ty: %s t: %p)\n", tym_str(ty), t);
     //if (t) type_print(t);
 
     preg1 = NOREG;
@@ -3070,7 +3082,7 @@ bool FuncParamRegs_alloc(ref FuncParamRegs fpr, type* t, tym_t ty, out reg_t pre
     }
 
     if (tybasic(ty) == TYstruct && type_zeroSize(t, fpr.tyf))
-        return 0;               // don't allocate into registers
+        return false;               // don't allocate into registers
 
     ++fpr.i;
 
@@ -3113,7 +3125,7 @@ bool FuncParamRegs_alloc(ref FuncParamRegs fpr, type* t, tym_t ty, out reg_t pre
                 }
             }
             else if (I64 && !targ2)
-                return 0;
+                return false;
         }
     }
 
@@ -3193,7 +3205,13 @@ bool FuncParamRegs_alloc(ref FuncParamRegs fpr, type* t, tym_t ty, out reg_t pre
         }
         if (fpr.xmmcnt < fpr.numfloatregs)
         {
-            if (tyxmmreg(ty))
+            if (tyfloating(ty) && cgstate.AArch64)
+            {
+                *preg = fpr.floatregs[fpr.xmmcnt];
+                ++fpr.xmmcnt;
+                goto Lnext;
+            }
+            else if (tyxmmreg(ty))
             {
                 *preg = fpr.floatregs[fpr.xmmcnt];
                 if (config.exe == EX_WIN64)
@@ -3352,6 +3370,7 @@ void cdfunc(ref CGstate cg, ref CodeBuilder cdb, elem* e, ref regm_t pretregs)
     // Easier to deal with parameters as an array: parameters[0..np]
     int np = OTbinary(e.Eoper) ? el_nparams(e.E2) : 0;
     Parameter* parameters = cast(Parameter*)alloca(np * Parameter.sizeof);
+    memset(parameters, 0,Parameter.sizeof * np);
 
     if (np)
     {
@@ -3521,8 +3540,7 @@ void cdfunc(ref CGstate cg, ref CodeBuilder cdb, elem* e, ref regm_t pretregs)
         // https://msdn.microsoft.com/en-US/library/ew5tede7%28v=vs.100%29
     }
 
-    int[XMM7 + 1] regsaved = void;
-    memset(regsaved.ptr, -1, regsaved.sizeof);
+    int[XMM7 + 1] regsaved = ~0;
     CodeBuilder cdbrestore;
     cdbrestore.ctor();
     regm_t saved = 0;
@@ -4229,6 +4247,7 @@ static if (0)
 
 /***************************
  * Determine size of argument e that will be pushed.
+ * Takes into account 0-sized types, based on type of function.
  */
 
 @trusted

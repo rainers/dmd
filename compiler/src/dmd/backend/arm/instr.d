@@ -21,15 +21,22 @@ nothrow:
 
 enum Extend
 {
-    UXTB,
-    UXTH,
-    UXTW,
+    UXTB,       // extracts byte and zero extends it to size of register
+    UXTH,       // extracts half-word (16 bits) and zero extends it to size of register
+    UXTW,       // extracts word (32 bits) and zero extends it to size of register
     LSL,
-    UXTX = LSL,
-    SXTB,
+    UXTX = LSL, // extracts extended word (64 bits) and zero extends it to size of register, i.e. is a no-op
+    SXTB,       // signed versions...
     SXTH,
     SXTW,
-    SXTX,
+    SXTX,       // no practical difference from UXTX
+}
+
+@trusted
+const(char)* ExtendToStr(Extend e)
+{
+    static immutable char[8 * 5] table = "UXTB\0UXTH\0UXTW\0UXTX\0SXTB\0SXTH\0SXTW\0SXTX\0";
+    return &table[e * 5];
 }
 
 /************************
@@ -39,11 +46,24 @@ struct INSTR
 {
   pure nothrow:
 
+    /* Integer registers r0-r7, r9-15, r19-28, r29(?)
+     */
+    enum ALLREGS = 0x1FFF_FFFF & ~(1 << 8) & ~(1 << 16) & ~(1 << 17) & ~(1 << 18);
+
     /* Even though the floating point registers are 0..31, we call them V32..V63 so they fit
      * into regm_t. Remember to and them with 31 to generate an instruction
      */
     enum FLOATREGS = 0x01FF_FFFF_0000_0000;
     static assert((FLOATREGS & (1UL << 57 /*REGMAX*/)) == 0);
+
+    /* most and least significant register masks
+     */
+    enum LSW = 0x5555_5555_5555_5555;
+    enum MSW = LSW << 1;
+
+    enum BP = 29;
+    enum SP = 31;
+    enum mBP = 1 << BP;
 
     enum uint nop = 0xD503201F;
 
@@ -55,6 +75,22 @@ struct INSTR
                                             sz == 4 ? 0 :   // single-precision
                                                       3;    // half-precision
                                    }
+
+    /* Convert size of floating point type to size,opc
+     * https://www.scs.stanford.edu/~zyedidia/arm64/str_imm_fpsimd.html
+     */
+    static void szToSizeOpc(uint sz, ref uint size, ref uint opc)
+    {
+        switch (sz)
+        {
+            case 1:  size = 0; opc = 0; break;  // Bt byte
+            case 2:  size = 1; opc = 0; break;  // Ht half
+            case 4:  size = 2; opc = 0; break;  // St single
+            case 8:  size = 3; opc = 0; break;  // Dt double
+            case 16: size = 0; opc = 2; break;  // Qt quad
+            default: assert(0);
+        }
+    }
 
     /************************************ Reserved ***********************************************/
     /* https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#reserved                  */
@@ -114,7 +150,7 @@ struct INSTR
      * ADD/ADDS/SUB/SUBS Rd,Rn,#imm{, shift}
      * https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#addsub_imm
      */
-    static uint addsub_imm(uint sf, uint op, uint S, uint sh, uint imm12, ubyte Rn, ubyte Rd)
+    static uint addsub_imm(uint sf, uint op, uint S, uint sh, uint imm12, reg_t Rn, reg_t Rd)
     {
         assert(imm12 < 0x1000);
         return (sf     << 31) |
@@ -125,6 +161,33 @@ struct INSTR
                (imm12  << 10) |
                (Rn     <<  5) |
                 Rd;
+    }
+
+    /* add (immediate)
+     * ADD Rd,Rn,#imm,shift
+     * https://www.scs.stanford.edu/~zyedidia/arm64/add_addsub_imm.html
+     */
+    static uint add_addsub_imm(uint sf, uint sh, uint imm12, reg_t Rn, reg_t Rd)
+    {
+        return addsub_imm(sf, 0, 0, sh, imm12, Rn, Rd);
+    }
+
+    /* subtract (immediate)
+     * SUB Rd,Rn,#imm,shift
+     * https://www.scs.stanford.edu/~zyedidia/arm64/sub_addsub_imm.html
+     */
+    static uint sub_addsub_imm(uint sf, uint sh, uint imm12, reg_t Rn, reg_t Rd)
+    {
+        return addsub_imm(sf, 1, 0, sh, imm12, Rn, Rd);
+    }
+
+    /* MOV (to/from) SP)
+     * MOV <Rd|SP>,<Rn|SP>
+     * https://www.scs.stanford.edu/~zyedidia/arm64/mov_add_addsub_imm.html
+     */
+    static uint mov_add_addsub_imm(uint sf, reg_t Rn, reg_t Rd)
+    {
+        return addsub_imm(sf, 0, 0, 0, 0, Rn, Rd);
     }
 
     /* Add/subtract (immediate, with tags)
@@ -153,7 +216,16 @@ struct INSTR
                 Rd;
     }
 
-    /* Move wide (immediate)
+    /* NOV (bitmask immediate)
+     * MOV Rd,#<imm>
+     * https://www.scs.stanford.edu/~zyedidia/arm64/mov_orr_log_imm.html
+     */
+    static uint mov_orr_log_imm(uint sf, uint N, uint immr, uint imms, reg_t Rd)
+    {
+        return log_imm(sf, 1, N, immr, imms, 31, Rd);
+    }
+
+    /* move wide (immediate)
      * MOVN/MOVZ/MOVK Rd, #imm{, LSL #shift}
      * https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#movewide
      */
@@ -240,6 +312,24 @@ struct INSTR
         return sbfm(1, 1, 0, 31, Rn, Rd);
     }
 
+    /* UBFM Rd,Rn,#immr,#imms
+     * https://www.scs.stanford.edu/~zyedidia/arm64/ubfm.html
+     */
+    static uint ubfm(uint sf, uint N, uint immr, uint imms, reg_t Rn, reg_t Rd)
+    {
+        return bitfield(sf, 2, N, immr, imms, Rn, Rd);
+    }
+
+    /* UBFIZ Rd,Rn,#lsb,#width
+     * https://www.scs.stanford.edu/~zyedidia/arm64/ubfiz_ubfm.html
+     */
+    static uint ubfiz_ubfm(uint sf, uint N, uint lsb, uint width, reg_t Rn, reg_t Rd)
+    {
+        assert(sf == N);
+        uint mask = ((sf == 1) ? 64 : 32) - 1;
+        return ubfm(sf, N, -lsb & mask, width - 1, Rn, Rd);
+    }
+
     /* Extract
      * EXTR
      * https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#dpimm
@@ -264,7 +354,15 @@ struct INSTR
     /* https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#control                          */
 
     /* Conditional branch (immediate)
-     * Miscellaneous branch (immediate)
+     * B.<cond> <label> https://www.scs.stanford.edu/~zyedidia/arm64/b_cond.html
+     */
+    static uint b_cond(int imm19, uint cond) { return (0x54 << 24) | ((imm19 & 0x7FFFF) << 5) | cond; }
+
+    /* BC.<cond> <label> https://www.scs.stanford.edu/~zyedidia/arm64/bc_cond.html
+     */
+    static uint bc_cond(int imm19, uint cond) { return (0x54 << 24) | (1 << 4) | ((imm19 & 0x7FFFF) << 5) | cond; }
+
+    /* Miscellaneous branch (immediate)
      */
 
     /* Exception generation http://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#exception
@@ -324,14 +422,25 @@ struct INSTR
         return (0x6B << 25) | (opc << 21) | (op2 << 16) | (op3 << 10) | (Rn << 5) | op4;
     }
 
-    /* Unconditional branch (immediate)
-     * B/BL
+    /* Unconditional branch (immediate) */
+
+    /* B/BL
      * https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#branch_imm
      */
     static uint branch_imm(uint op, uint imm26)
     {
         return (op << 31) | (5 << 26) | imm26;
     }
+
+    /* B <label>
+     * https://www.scs.stanford.edu/~zyedidia/arm64/b_uncond.html
+     */
+    static uint b_uncond(uint imm26) { return branch_imm(0, imm26); }
+
+    /* BL <label> hint that it's a subroutine call
+     * https://www.scs.stanford.edu/~zyedidia/arm64/bl.html
+     */
+    static uint bl(uint imm26) { return branch_imm(1, imm26); }
 
     /* RET Xn
      * https://www.scs.stanford.edu/~zyedidia/arm64/ret.html
@@ -667,15 +776,34 @@ struct INSTR
     static uint uaddlv_advsimd(uint Q, uint size, reg_t Vn, reg_t Vd) { return asimdall(Q, 1, size, 3, Vn & 31, Vd & 31); }
 
     /* Advanced SIMD three different
-     * Advanced SIMD three same
      */
+
+    /* Advanced SIMD three same https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asimdsame
+     */
+    static uint asimdsame(uint Q, uint U, uint size, reg_t Rm, uint opcode, reg_t Rn, reg_t Rd)
+    { return (Q << 30) | (U << 29) | (0xE << 24) | (size << 22) | (1 << 21) | (Rm << 16) | (opcode << 11) | (1 << 10) | (Rn << 5) | Rd; }
+
+        /* ORR <Vd>.<T>, <Vn>.<T>, <Vm>.<T> https://www.scs.stanford.edu/~zyedidia/arm64/orr_advsimd_reg.html
+         */
+        static uint orr_advsimd_reg(uint Q, reg_t Vm, reg_t Vn, reg_t Vd) { return asimdsame(Q,0,2,Vm & 31,3,Vn & 31,Vd & 31); }
+
+            /* MOV <Vd>.<T>, <Vn>.<T>, <Vm>.<T> https://www.scs.stanford.edu/~zyedidia/arm64/mov_orr_advsimd_reg.html
+             */
+            static uint mov_orr_advsimd_reg(uint Q, reg_t Vn, reg_t Vd) { return orr_advsimd_reg(Q,Vn,Vn,Vd); }
 
     /* Advanced SIMD modified immediate
-     * http://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asimdimm
+     * https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#asimdimm
      */
+    static uint asimdimm(uint Q, uint op, uint cmode, uint o2, uint abcdefgh, reg_t Rd)
+    {
+        return (0 << 31) | (Q << 30) | (op << 29) | (0x1E0 << 19) | ((abcdefgh & 0xE0) << (16 - 5)) |
+               (cmode << 12) | (o2 << 11) | (1 << 10) | ((abcdefgh & 0x1F) << 5) | (Rd & 31);
+    }
 
-    // FMOV Rd, Rn  https://www.scs.stanford.edu/~zyedidia/arm64/fmov_float.html
-    static uint fmov(uint ftype, reg_t Vn, reg_t Vd) { return floatdp1(0,0,ftype,0,Vn & 31,Vd & 31); }
+        /* MOVI <Vd>.2D, #<imm> etc.
+         * http://www.scs.stanford.edu/~zyedidia/arm64/movi_advsimd.html
+         */
+        static uint movi_advsimd(uint Q, uint op, uint cmode, uint abcdefgh, reg_t Rd) { return asimdimm(Q,op,cmode,0,abcdefgh,Rd); }
 
     /* Advanced SIMD shift by immediate
      * Advanced SIMD vector x indexed element
@@ -691,7 +819,8 @@ struct INSTR
      */
     static uint float2int(uint sf, uint S, uint ftype, uint rmode, uint opcode, reg_t Rn, reg_t Rd)
     {
-        assert(Rn < 32 && Rd < 32);
+        assert(Rd < 32);
+        assert(Rn < 32);
         return (sf << 31) | (S << 29) | (0x1E << 24) | (ftype << 22) | (1 << 21) | (rmode << 19) | (opcode << 16) | (Rn << 5) | Rd;
     }
 
@@ -700,9 +829,15 @@ struct INSTR
     static uint fmov_float_gen(uint sf, uint ftype, uint rmode, uint opcode, reg_t Rn, reg_t Rd)
     {
         if (opcode == 7)
+        {
+            assert(Rd & 32);
             Rd &= 31;
+        }
         else if (opcode == 6)
+        {
+            assert(Rn & 32);
             Rn &= 31;
+        }
         return float2int(sf, 0, ftype, rmode, opcode, Rn, Rd);
     }
 
@@ -729,12 +864,14 @@ struct INSTR
     static uint fcvtzu(uint sf, uint ftype, reg_t Vn, reg_t Rd) { return float2int(sf, 0, ftype, 3, 1, Vn & 31, Rd); }
 
     /* SCVTF (scalar, integer) https://www.scs.stanford.edu/~zyedidia/arm64/scvtf_float_int.html
+     * SCVTF Vd,Rn // integer to floating point
      */
-    static uint scvtf_float_int(uint sf, uint ftype, reg_t Rn, reg_t Vd) { return float2int(sf,0,ftype,0,2,Rn,Vd & 31); }
+    static uint scvtf_float_int(uint sf, uint ftype, reg_t Rn, reg_t Vd) { assert(Rn < 32 && Vd >= 32); return float2int(sf,0,ftype,0,2,Rn,Vd & 31); }
 
     /* UCVTF (scalar, integer) https://www.scs.stanford.edu/~zyedidia/arm64/ucvtf_float_int.html
+     * UCVTF Vd,Rn // integer to floating point
      */
-    static uint ucvtf_float_int(uint sf, uint ftype, reg_t Rn, reg_t Vd) { return float2int(sf,0,ftype,0,3,Rn,Vd & 31); }
+    static uint ucvtf_float_int(uint sf, uint ftype, reg_t Rn, reg_t Vd) { assert(Rn < 32 && Vd >= 32); return float2int(sf,0,ftype,0,3,Rn,Vd & 31); }
 
 
     /* Floating-point data-processing (1 source)
@@ -746,9 +883,16 @@ struct INSTR
         return (M << 31) | (S << 29) | (0x1E << 24) | (ftype << 22) | (1 << 21) | (opcode << 15) | (0x10 << 10) | (Rn << 5) | Rd;
     }
 
+    // FMOV Rd, Rn  https://www.scs.stanford.edu/~zyedidia/arm64/fmov_float.html
+    static uint fmov(uint ftype, reg_t Vn, reg_t Vd) { return floatdp1(0,0,ftype,0,Vn & 31,Vd & 31); }
+
     /* FCVT fpreg,fpreg https://www.scs.stanford.edu/~zyedidia/arm64/fcvt_float.html
      */
     static uint fcvt_float(uint ftype, uint opcode, reg_t Vn, reg_t Vd) { return floatdp1(0,0,ftype,opcode,Vn & 31,Vd & 31); }
+
+    /* FABS fpreg,fpreg https://www.scs.stanford.edu/~zyedidia/arm64/fabs_float.html
+     */
+    static uint fabs_float(uint ftype, reg_t Vn, reg_t Vd) { return floatdp1(0,0,ftype,1,Vn & 31,Vd & 31); }
 
     /* FNEG fpreg,fpreg https://www.scs.stanford.edu/~zyedidia/arm64/fneg_float.html
      */
@@ -900,8 +1044,43 @@ struct INSTR
 
     /* Load/store register pair (offset)
      * Load/store register pair (pre-indexed)
-     * Load/store register pair (unscaled immediate)
      */
+
+    /* Load/store register (unscaled immediate) https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#ldst_unscaled
+     */
+    static uint ldst_unscaled(uint size, uint VR, uint opc, uint imm9, reg_t Rn, reg_t Rt)
+    {
+        assert(imm9 < 0x200);
+        return (size << 30) |
+               (7    << 27) |
+               (VR   << 26) |
+               (opc  << 22) |
+               (imm9 << 12) |
+               (Rn   <<  5) |
+                Rt;
+    }
+
+    /* https://www.scs.stanford.edu/~zyedidia/arm64/stur_imm_fpsimd.html
+     * STUR <Vt>,[<Xn|SP>,#<simm>]  Unsigned offset
+     */
+    static uint stur_imm_fpsimd(uint size, uint opc, uint imm9, reg_t Rn, reg_t Vt)
+    {
+        assert(imm9 < 0x200);
+        assert(size < 4);
+        assert(opc  < 4);
+        return ldst_unscaled(size,1,opc,imm9,Rn,Vt);
+    }
+
+    /* https://www.scs.stanford.edu/~zyedidia/arm64/ldur_imm_fpsimd.html
+     * LDUR <Vt>,[<Xn|SP>,#<simm>]  Unsigned offset
+     */
+    static uint ldur_imm_fpsimd(uint size, uint opc, uint imm9, reg_t Rn, reg_t Vt)
+    {
+        assert(imm9 < 0x200);
+        assert(size < 4);
+        assert(opc  < 4);
+        return ldst_unscaled(size,1,opc | 1,imm9,Rn,Vt);
+    }
 
     /* Load/store register (immediate post-indexed)
      * https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#ldst_immpost
@@ -913,6 +1092,7 @@ struct INSTR
                (VR   << 26) |
                (opc  << 22) |
                (imm9 << 12) |
+               (1    << 10) |
                (Rn   <<  5) |
                 Rt;
     }
@@ -975,26 +1155,29 @@ struct INSTR
     /* https://www.scs.stanford.edu/~zyedidia/arm64/str_imm_fpsimd.html
      * STR <Vt>,[<Xn|SP>,#<simm>]  Unsigned offset
      */
-    static uint str_imm_fpsimd(uint size, uint opc, uint offset, reg_t Rn, reg_t Vt)
+    static uint str_imm_fpsimd(uint size, uint opc, uint imm12, reg_t Rn, reg_t Vt)
     {
+        assert(imm12 < 0x1000);
         assert(size < 4);
         assert(opc  < 4);
-        uint scale = ((opc & 2) << 1) | size;
-        uint imm12 = (cast(uint)offset >> scale) & 0xFFF;
         return ldst_pos(size,1,opc,imm12,Rn,Vt);
     }
 
     /* https://www.scs.stanford.edu/~zyedidia/arm64/ldr_imm_fpsimd.html
      * LDR <Vt>,[<Xn|SP>,#<simm>]  Unsigned offset
      */
-    static uint ldr_imm_fpsimd(uint size, uint opc, uint offset, reg_t Rn, reg_t Vt)
+    static uint ldr_imm_fpsimd(uint size, uint opc, uint imm12, reg_t Rn, reg_t Vt)
     {
+        assert(imm12 < 0x1000);
         assert(size < 4);
         assert(opc  < 4);
-        uint scale = ((opc & 2) << 1) | size;
-        uint imm12 = (cast(uint)offset >> scale) & 0xFFF;
-        return ldst_pos(size,1,opc,imm12,Rn,Vt);
+        return ldst_pos(size,1,opc | 1,imm12,Rn,Vt);
     }
+
+    /* https://www.scs.stanford.edu/~zyedidia/arm64/ldrsw_imm.html
+     * LDRSW <Xt>, [<Xn|SP>{, #<pimm>}]
+     */
+    static uint ldrsw_imm(uint imm12, reg_t Rn, reg_t Rt) { return ldst_pos(2,0,2,imm12,Rn,Rt); }
 
     /* } */
 
@@ -1051,10 +1234,10 @@ struct INSTR
         return subs_imm(sf, sh, imm12, Rn, 31);
     }
 
-    /* SUBS Rd, Rn, Rm, shift, #imm6
+    /* SUBS Rd, Rn, Rm{, shift, #imm6}
      * http://www.scs.stanford.edu/~zyedidia/arm64/subs_addsub_shift.html
      */
-    static uint subs_shift(uint sf, ubyte Rm, uint shift, uint imm6, ubyte Rn, ubyte Rd)
+    static uint subs_addsub_shift(uint sf, ubyte Rm, uint shift, uint imm6, ubyte Rn, ubyte Rd)
     {
         return addsub_shift(sf, 1, 1, shift, Rm, imm6, Rn, Rd);
     }
@@ -1062,7 +1245,7 @@ struct INSTR
     /* CMP Rn, Rm, shift, #imm6
      * http://www.scs.stanford.edu/~zyedidia/arm64/cmp_subs_addsub_shift.html
      */
-    static uint cmp_shift(uint sf, ubyte Rm, uint shift, uint imm6, ubyte Rn)
+    static uint cmp_subs_addsub_shift(uint sf, ubyte Rm, uint shift, uint imm6, ubyte Rn)
     {
         return addsub_shift(sf, 1, 1, shift, Rm, imm6, Rn, 0x1F);
     }
@@ -1102,12 +1285,15 @@ struct INSTR
         return log_shift(sf, opc, shift, N, Rm, imm6, Rn, Rd);
     }
 
-    /* MOV Rd, Rn, Rm{, shift #amount}
+    /* MOV Rd, Rm
      * https://www.scs.stanford.edu/~zyedidia/arm64/mov_orr_log_shift.html
      */
     static uint mov_register(uint sf, ubyte Rm, ubyte Rd)
     {
-        return orr_shifted_register(sf, 0, Rm, 0, 31, Rd);
+        uint shift = 0;
+        uint imm6 = 0;
+        ubyte Rzr = 31; // zero register
+        return orr_shifted_register(sf, shift, Rm, imm6, Rzr, Rd);
     }
 
     /* CSINC Rd, Rn, Rm, <cond>?
@@ -1173,7 +1359,23 @@ struct INSTR
         // STRH Rt,[Xn,#offset]
         uint size = 1;
         uint imm12 = offset & 0xFFF;
-        return ldst_pos(0, 0, 0, imm12, Rn, Rt);
+        return ldst_pos(1, 0, 0, imm12, Rn, Rt);
+    }
+
+    /* STR (immediate) Post-index
+     * https://www.scs.stanford.edu/~zyedidia/arm64/str_imm_gen.html
+     */
+    static uint str_imm_gen_post_index(uint is64, int simm, ubyte Rn, ubyte Rt)
+    {
+        // STR Rt,[Xn],#simm
+        uint size = 2 + is64;
+        uint imm9 = simm & 0x1FF;
+        return (size << 30) |
+               (7    << 27) |
+               (imm9 << 12) |
+               (1    << 10) |
+               (Rn   <<  5) |
+                Rt;
     }
 
     /* STR (immediate) Unsigned offset
@@ -1259,7 +1461,7 @@ struct INSTR
     static uint strh_reg(reg_t Rindex,uint extend,uint S,reg_t Xbase,reg_t Rt)
     {
         // STRH Rt,Xbase,Rindex,extend S
-        return ldst_regoff(0, 1, 0, Rindex, extend, S, Xbase, Rt);
+        return ldst_regoff(1, 0, 0, Rindex, extend, S, Xbase, Rt);
     }
 
     /* STR (register)
@@ -1319,6 +1521,8 @@ struct INSTR
     static uint ldr_reg_gen(uint sz,reg_t Rindex,uint extend,uint S,reg_t Rbase,reg_t Rt)
     {
         // LDR Rt,Rbase,Rindex,extend S
+        assert(S <= 1);
+        assert((extend & 2) && extend < 8); // UXTW LSL SXTW SXTX
         return ldst_regoff(2 | sz, 0, 1, Rindex, extend, S, Rbase, Rt);
     }
 
