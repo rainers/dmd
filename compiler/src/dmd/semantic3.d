@@ -1629,8 +1629,8 @@ private extern(C++) final class Semantic3Visitor : Visitor
             auto tiargs = new Objects(t.index, t.next);
 
             Expression id = new IdentifierExp(loc, Id.empty);
-            id = new DotIdExp(loc, id, Id.object);
-            id = new DotIdExp(loc, id, Id.TypeInfo_AssociativeArray);
+            id = new DotIdExp(loc, id, makeIdentifierAtLoc(Id.object));
+            id = new DotIdExp(loc, id, makeIdentifierAtLoc(Id.TypeInfo_AssociativeArray));
             return new DotTemplateInstanceExp(loc, id, hook, tiargs);
         }
 

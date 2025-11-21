@@ -4156,7 +4156,7 @@ void asm_una_exp(ref OPND o1)
             if (asmstate.tokValue == TOK.identifier)
             {
                 TypeExp te = new TypeExp(asmstate.loc, ptype);
-                DotIdExp did = new DotIdExp(asmstate.loc, te, asmstate.tok.ident);
+                DotIdExp did = new DotIdExp(asmstate.loc, te, makeIdentifierAtLoc(asmstate.tok.ident));
                 Dsymbol s;
                 tryExpressionToOperand(did, o1, s);
             }

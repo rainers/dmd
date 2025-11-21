@@ -4720,7 +4720,7 @@ private void lowerCastExp(CastExp cex, Scope* sc)
 
     // Lower to .object._d_cast!(To)(exp.e1)
     Expression lowering = new IdentifierExp(cex.loc, Id.empty);
-    lowering = new DotIdExp(cex.loc, lowering, Id.object);
+    lowering = new DotIdExp(cex.loc, lowering, makeIdentifierAtLoc(Id.object));
 
     // Unqualify the type being casted to, avoiding multiple instantiations
     auto unqual_tob = tob.unqualify(MODFlags.wild | MODFlags.const_ |
@@ -4924,7 +4924,7 @@ Expression lowerArrayLiteral(ArrayLiteralExp ale, Scope* sc)
         return null;
 
     Expression lowering = new IdentifierExp(ale.loc, Id.empty);
-    lowering = new DotIdExp(ale.loc, lowering, Id.object);
+    lowering = new DotIdExp(ale.loc, lowering, makeIdentifierAtLoc(Id.object));
     // Remove `inout`, `const`, `immutable` and `shared` to reduce template instances
     auto t = ale.type.nextOf().unqualify(MODFlags.wild | MODFlags.const_ | MODFlags.immutable_ | MODFlags.shared_);
     auto tiargs = new Objects(t);
@@ -5794,7 +5794,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         auto aaType = aaExp.type.toBasetype().isTypeAArray();
         assert(aaType);
         Expression hookFunc = new IdentifierExp(aaExp.loc, Id.empty);
-        hookFunc = new DotIdExp(aaExp.loc, hookFunc, Id.object);
+        hookFunc = new DotIdExp(aaExp.loc, hookFunc, makeIdentifierAtLoc(Id.object));
         auto keytype = aaType.index.substWildTo(MODFlags.const_);
         auto valtype = aaType.nextOf().substWildTo(MODFlags.const_);
         auto tiargs = new Objects(keytype, valtype);
@@ -6199,7 +6199,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         * `_d_newAA!(V[K])()`.
         */
         Expression id = new IdentifierExp(ne.loc, Id.empty);
-        id = new DotIdExp(ne.loc, id, Id.object);
+        id = new DotIdExp(ne.loc, id, makeIdentifierAtLoc(Id.object));
         auto taa = ne.type.isTypeAArray();
         assert(taa);
         auto tiargs = new Objects(taa.index, taa.next);
@@ -13668,7 +13668,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         /* `_d_arraycatnTX` canot be used with `-betterC`, but `CatExp`s may be
          * used with `-betterC`, but only during CTFE.
          */
-        if (!global.params.useGC)
+        if (!global.params.useGC || !sc.needsCodegen())
             return;
 
         if (auto ce = exp.isCatExp())
@@ -14451,9 +14451,9 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             return ErrorExp.get();
 
         Expression id = new IdentifierExp(ie.loc, Id.empty);
-        id = new DotIdExp(ie.loc, id, Id.object);
+        id = new DotIdExp(ie.loc, id, makeIdentifierAtLoc(Id.object));
         auto tiargs = new Objects();
-        id = new DotIdExp(ie.loc, id, hook);
+        id = new DotIdExp(ie.loc, id, makeIdentifierAtLoc(hook));
 
         Expression e1;
         Expression ekey = extractSideEffect(sc, "__aakey", e1, ie.e1);
@@ -14479,9 +14479,9 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             return ErrorExp.get();
 
         Expression id = new IdentifierExp(re.loc, Id.empty);
-        id = new DotIdExp(re.loc, id, Id.object);
+        id = new DotIdExp(re.loc, id, makeIdentifierAtLoc(Id.object));
         auto tiargs = new Objects();
-        id = new DotIdExp(re.loc, id, hook);
+        id = new DotIdExp(re.loc, id, makeIdentifierAtLoc(hook));
 
         auto arguments = new Expressions(re.e1, re.e2);
         auto ce = new CallExp(re.loc, id, arguments);
@@ -14570,9 +14570,9 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             return ErrorExp.get();
 
         Expression id = new IdentifierExp(ee.loc, Id.empty);
-        id = new DotIdExp(ee.loc, id, Id.object);
+        id = new DotIdExp(ee.loc, id, makeIdentifierAtLoc(Id.object));
         auto tiargs = new Objects();
-        id = new DotIdExp(ee.loc, id, hook);
+        id = new DotIdExp(ee.loc, id, makeIdentifierAtLoc(hook));
 
         auto arguments = new Expressions(ee.e1, ee.e2);
         auto ce = new CallExp(ee.loc, id, arguments);
@@ -19457,7 +19457,7 @@ private Expression buildAAIndexRValueX(Type t, Expression eaa, Expression ekey, 
         return null;
 
     Expression func = new IdentifierExp(loc, Id.empty);
-    func = new DotIdExp(loc, func, Id.object);
+    func = new DotIdExp(loc, func, makeIdentifierAtLoc(Id.object));
     auto tiargs = new Objects(taa.index, taa.next);
     func = new DotTemplateInstanceExp(loc, func, hook, tiargs);
 
@@ -19476,8 +19476,8 @@ private Expression buildAAIndexRValueX(Type t, Expression eaa, Expression ekey, 
 
         //Expression idrange = new IdentifierExp(loc, Identifier.idPool("_d_arraybounds"));
         Expression idrange = new IdentifierExp(loc, Id.empty);
-        idrange = new DotIdExp(loc, idrange, Id.object);
-        idrange = new DotIdExp(loc, idrange, Identifier.idPool("_d_arraybounds"));
+        idrange = new DotIdExp(loc, idrange, makeIdentifierAtLoc(Id.object));
+        idrange = new DotIdExp(loc, idrange, makeIdentifierAtLoc(Identifier.idPool("_d_arraybounds")));
         auto locargs = new Expressions(new FileInitExp(loc, EXP.file), new LineInitExp(loc));
         auto ex = new CallExp(loc, idrange, locargs);
 
@@ -19530,7 +19530,7 @@ private Expression implicitConvertToStruct(Expression ev, StructDeclaration sd, 
         // Look for implicit constructor call
         // Rewrite as S().ctor(e2)
         ey = new StructLiteralExp(ev.loc, sd, null);
-        ey = new DotIdExp(ev.loc, ey, Id.ctor);
+        ey = new DotIdExp(ev.loc, ey, makeIdentifierAtLoc(Id.ctor));
         ey = new CallExp(ev.loc, ey, ev);
         ey = ey.trySemantic(sc);
     }
@@ -19596,7 +19596,7 @@ private Expression rewriteAAIndexAssign(BinExp exp, Scope* sc, ref Type[2] alias
         taa = eaa.type.isTypeAArray();
         assert (taa); // type must not have changed during rewrite
         Expression func = new IdentifierExp(loc, Id.empty);
-        func = new DotIdExp(loc, func, Id.object);
+        func = new DotIdExp(loc, func, makeIdentifierAtLoc(Id.object));
         auto tiargs = new Objects(taa.index, taa.next);
         func = new DotTemplateInstanceExp(loc, func, hook, tiargs);
 

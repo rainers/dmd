@@ -296,7 +296,7 @@ Dsymbol search(Scope* _this, Loc loc, Identifier ident, out Dsymbol pscopesym, S
         if (ret)
         {
             *exp = new DotIdExp(loc, *exp, ad.aliasthis.ident);
-            *exp = new DotIdExp(loc, *exp, ident);
+            *exp = new DotIdExp(loc, *exp, makeIdentifierAtLoc(ident));
             return ret;
         }
 
@@ -6901,9 +6901,9 @@ bool determineFields(AggregateDeclaration ad)
 Module loadCoreStdcConfig()
 {
     __gshared Module core_stdc_config;
-    auto pkgids = new Identifier[2];
-    pkgids[0] = Id.core;
-    pkgids[1] = Id.stdc;
+    auto pkgids = new IdentifierAtLoc[2];
+    pkgids[0] = makeIdentifierAtLoc(Id.core);
+    pkgids[1] = makeIdentifierAtLoc(Id.stdc);
     return loadModuleFromLibrary(core_stdc_config, pkgids, Id.config);
 }
 
@@ -6915,8 +6915,8 @@ Module loadCoreStdcConfig()
 private Module loadCoreAtomic()
 {
     __gshared Module core_atomic;
-    auto pkgids = new Identifier[1];
-    pkgids[0] = Id.core;
+    auto pkgids = new IdentifierAtLoc[1];
+    pkgids[0] = makeIdentifierAtLoc(Id.core);
     return loadModuleFromLibrary(core_atomic, pkgids, Id.atomic);
 }
 
@@ -6928,8 +6928,8 @@ private Module loadCoreAtomic()
 Module loadStdMath()
 {
     __gshared Module std_math;
-    auto pkgids = new Identifier[1];
-    pkgids[0] = Id.std;
+    auto pkgids = new IdentifierAtLoc[1];
+    pkgids[0] = makeIdentifierAtLoc(Id.std);
     return loadModuleFromLibrary(std_math, pkgids, Id.math);
 }
 
@@ -6942,12 +6942,12 @@ Module loadStdMath()
  * Returns:
  *  Module loaded, null if cannot load it
  */
-extern (D) private static Module loadModuleFromLibrary(ref Module mod, Identifier[] pkgids, Identifier modid)
+extern (D) private static Module loadModuleFromLibrary(ref Module mod, IdentifierAtLoc[] pkgids, Identifier modid)
 {
     if (mod)
         return mod;
 
-    auto imp = new Import(Loc.initial, pkgids[], modid, null, true);
+    auto imp = new Import(Loc.initial, pkgids[], modid, makeIdentifierAtLoc(null), true);
     // Module.load will call fatal() if there's no module available.
     // Gag the error here, pushing the error handling to the caller.
     const errors = global.startGagging();

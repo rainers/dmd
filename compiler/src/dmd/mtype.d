@@ -70,7 +70,7 @@ Expression typeToExpressionHelper(TypeQualified t, Expression e, size_t i = 0)
         {
             // ... '. ident'
             case DYNCAST.identifier:
-                e = new DotIdExp(e.loc, e, cast(Identifier)id);
+                e = new DotIdExp(e.loc, e, makeIdentifierAtLoc(cast(Identifier)id));
                 break;
 
             // ... '. name!(tiargs)'
@@ -628,68 +628,6 @@ extern (C++) abstract class Type : ASTNode
 
         toCBuffer(this, buf, null, hgs);
         return buf.extractChars();
-    }
-
-    static void _reinit()
-    {
-        // can the type be reused when throwing away a semantic analysis?
-        // this mostly depends on whether syntaxCopy actually creates a copy or returns `this`
-        bool isContextFree(const Type t)
-        {
-            final switch (t.ty)
-            {
-                case Tarray, Tpointer, Treference, Tdelegate:
-                    return isContextFree((cast(TypeNext)t).next);
-                case Taarray:             // associative array, aka T[type]
-                    return isContextFree((cast(TypeAArray)t).next)
-                        && isContextFree((cast(TypeAArray)t).index);
-                case Tfunction, Tsarray, Ttuple, Tvector:
-                    return false;         // always new'd in syntaxCopy
-
-                case Tclass:
-                case Tstruct:
-                case Tenum:
-                    return false;         // not syntaxCopied, but recreated when copying declarations
-
-                case Tvoid,
-                     Tint8, Tuns8, Tint16, Tuns16, Tint32, Tuns32, Tint64, Tuns64,
-                     Tint128, Tuns128,
-                     Tfloat32, Tfloat64, Tfloat80,
-                     Timaginary32, Timaginary64, Timaginary80,
-                     Tcomplex32, Tcomplex64, Tcomplex80,
-                     Tbool, Tchar, Twchar, Tdchar:
-                    return true;
-                case Tnone, Terror, Tnull, Tnoreturn:
-                    return true;
-
-                case Tident, Tinstance, Ttypeof, Ttraits, Tmixin, Tslice, Treturn:
-                    return false;         // should not appear as "merged"
-                case Ttag:
-                    return true;
-                case TMAX:
-                    assert(false);
-            }
-        }
-
-        // re-initialize, but keep basic types that might have been used by the parser
-        Types keep;
-        foreach (t; stringtable)
-            if (t.value && isContextFree(t.value))
-                keep.push(cast()t.value);
-        foreach (t; basic)
-            if (t && t.deco && !keep.contains(t))
-                keep.push(t);
-
-        stringtable._init(14000); // not reset, it frees the deco of types referenced by `keep`
-        foreach (t; keep)
-        {
-            t.vtinfo = null;
-            t.ctype = null;
-            assert(t.deco);
-            auto sv = stringtable.insert(t.deco, strlen(t.deco), t);
-            t.deco = sv.lstring;
-        }
-        _initTargetSpecific();
     }
 
     /**

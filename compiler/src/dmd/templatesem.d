@@ -6478,7 +6478,7 @@ private MATCH deduceTypeHelper(Type t, out Type at, Type tparam)
     }
 }
 
-private __gshared Expression emptyArrayElement = null;
+__gshared Expression emptyArrayElement = null;
 
 /*
  * Returns `true` if `t` is a reference type, or an array of reference types.

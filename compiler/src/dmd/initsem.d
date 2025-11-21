@@ -244,7 +244,7 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
             break;
 
         case Terror:
-            return err();
+            return err(i);
 
         default:
             error(i.loc, "cannot use array to initialize `%s`", t.toChars());
@@ -853,7 +853,7 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
                             if (!found)
                             {
                                 error(ci.loc, "`.%s` is not a field of `%s`\n", id.toChars(), nstsd.toChars());
-                                return err();
+                                return err(ci);
                             }
 
                             auto base = field.type.toBasetype();

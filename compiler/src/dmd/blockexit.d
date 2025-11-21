@@ -20,7 +20,7 @@ import dmd.dclass;
 import dmd.declaration;
 import dmd.errorsink;
 import dmd.expression;
-import dmd.expressionsem : toBool;
+import dmd.expressionsem : toBool, include;
 import dmd.func;
 import dmd.globals;
 import dmd.id;

@@ -1073,6 +1073,7 @@ extern (C++) class TemplateInstance : ScopeDsymbol
     {
         if (!ident && inst && !errors)
         {
+            import dmd.id;
             ident = Id.future;        // protect against recursion in error messages
             ident = genIdent(tiargs); // need an identifier for name mangling purposes.
         }

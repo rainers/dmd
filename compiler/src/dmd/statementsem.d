@@ -3980,7 +3980,7 @@ private extern(D) Expression applyAssocArray(ForeachStatement fs, Expression fld
     auto loc = fs.loc;
     Identifier hook = dim == 2 ? Id._d_aaApply2 : Id._d_aaApply;
     Expression func = new IdentifierExp(loc, Id.empty);
-    func = new DotIdExp(loc, func, Id.object);
+    func = new DotIdExp(loc, func, makeIdentifierAtLoc(Id.object));
     auto tiargs = new Objects(taa.index.substWildTo(MODFlags.const_),
                               taav.substWildTo(MODFlags.const_),
                               flde.type.substWildTo(MODFlags.const_));

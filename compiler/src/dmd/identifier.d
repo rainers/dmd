@@ -442,7 +442,7 @@ version(LanguageServer)
     }
     // compiler generated identifiers should not receive a location in the source, otherwise
     //  they will show up in code discovery
-    IdentifierAtLoc makeIdentifierAtLoc(Identifier ident, ref const Loc loc = Loc.initial)
+    IdentifierAtLoc makeIdentifierAtLoc(Identifier ident, const Loc loc = Loc.initial)
     {
         return IdentifierAtLoc(ident, loc);
     }

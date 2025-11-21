@@ -49,7 +49,11 @@ else
 /**********************************
  * Extra Fields for VarDeclaration
  */
-version (IN_GCC)
+version (NoBackend)
+{
+    mixin template VarDeclarationExtra() { }
+}
+else version (IN_GCC)
 {
     mixin template VarDeclarationExtra() { }
 }
@@ -71,7 +75,11 @@ else
 /**********************************
  * Extra Fields for FuncDeclaration
  */
-version (IN_GCC)
+version (NoBackend)
+{
+    mixin template FuncDeclarationExtra() { }
+}
+else version (IN_GCC)
 {
     mixin template FuncDeclarationExtra() { }
 }
@@ -84,7 +92,7 @@ else version (MARS)
     mixin template FuncDeclarationExtra()
     {
         VarDeclarations* alignSectionVars;  /// local variables with alignment needs larger than stackAlign
-	import dmd.backend.cc : Symbol;
+        import dmd.backend.cc : Symbol;
         Symbol* salignSection;              /// pointer to aligned section, if any
     }
 }
@@ -94,7 +102,11 @@ else
 /**********************************
  * Extra Fields for FuncDeclaration
  */
-version (IN_GCC)
+version (NoBackend)
+{
+    mixin template alignSectionVarsExtra() { void doAlign() { } }
+}
+else version (IN_GCC)
 {
     mixin template alignSectionVarsExtra() { void doAlign() { } }
 }
@@ -131,7 +143,11 @@ else
  */
 mixin template alignSectionVarsContains()
 {
-    version (IN_GCC)
+    version (NoBackend)
+    {
+        bool isAlignSectionVar(VarDeclaration v) { return false; }
+    }
+    else version (IN_GCC)
     {
         bool isAlignSectionVar(VarDeclaration v) { return false; }
     }
@@ -157,7 +173,11 @@ mixin template UseAnsiColors()
 {
     bool useAnsiColors()
     {
-        version (IN_GCC)
+        version (NoBackend)
+        {
+            return false;
+        }
+        else version (IN_GCC)
         {
             return false;
         }
@@ -191,6 +211,9 @@ mixin template HostObjectNotFound()
     void hostObjectNotFound(Loc loc, const(char)* id, const(char)[] configFile, ErrorSink eSink)
     {
         eSink.error(loc, "`%s` not found. object.d may be incorrectly installed or corrupt.", id);
+        version (NoBackend)
+        {
+        }
         version (IN_GCC)
         {
         }

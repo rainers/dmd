@@ -1886,7 +1886,7 @@ extern (C++) final class NewExp : Expression
 
     extern (D) ArgumentList argumentList() { return ArgumentList(arguments, names); }
 
-    extern (D) this(Loc loc, Expression placement, Expression thisexp, Type newtype, Expressions* arguments, ArgumentLabels* names = null) @safe
+    extern (D) this(Loc loc, Expression placement, Expression thisexp, Type newtype, Expressions* arguments, ArgumentLabels* names = null)
     {
         super(loc, EXP.new_);
         this.placement = placement;
