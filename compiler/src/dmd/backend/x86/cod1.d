@@ -7,7 +7,7 @@
  * $(LINK2 https://www.dlang.org, D programming language).
  *
  * Copyright:   Copyright (C) 1984-1998 by Symantec
- *              Copyright (C) 2000-2025 by The D Language Foundation, All Rights Reserved
+ *              Copyright (C) 2000-2026 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/backend/x86/cod1.d, backend/cod1.d)
@@ -2948,22 +2948,30 @@ void callclib(ref CodeBuilder cdb, elem* e, uint clib, ref regm_t pretregs, regm
 /*************************************************
  * Helper function for converting OPparam's into array of Parameters.
  */
-struct Parameter { elem* e; reg_t reg; reg_t reg2; uint size; uint numalign; bool isVariadic; bool isAp; }
+package(dmd.backend) struct Parameter
+{
+    elem* e;
+    reg_t reg, reg2;
+    uint size;
+    uint numalign;
+    uint offset;      // [sp + offset] is where parameter is
+    bool isVariadic;
+    bool isAp;
+}
 
 @trusted
-void fillParameters(elem* e, Parameter* parameters, int* pi)
+void fillParameters(elem* e, Parameter[] parameters, ref int i)
 {
     if (e.Eoper == OPparam)
     {
-        fillParameters(e.E1, parameters, pi);
-        fillParameters(e.E2, parameters, pi);
+        fillParameters(e.E1, parameters, i);
+        fillParameters(e.E2, parameters, i);
         freenode(e);
     }
     else
     {
-        Parameter* p = &parameters[*pi];
-        p.e = e;
-        (*pi)++;
+        parameters[i].e = e;
+        ++i;
     }
 }
 
@@ -3072,10 +3080,10 @@ bool FuncParamRegs_alloc(ref FuncParamRegs fpr, type* t, tym_t ty, out reg_t pre
         ty2 = TYdouble;
     }
 
-    // Treat array of 1 the same as its element type
-    // (Don't put volatile parameters in registers)
+    // Collapse single-element arrays to their element type, except for
+    // volatile parameters and SysV x86-64 (only Win64 or 32-bit platforms).
     if (tybasic(ty) == TYarray && tybasic(t.Tty) == TYarray && t.Tdim == 1 && !(t.Tty & mTYvolatile)
-        && type_size(t.Tnext) > 1)
+        && type_size(t.Tnext) > 1 && (I32 || config.exe == EX_WIN64))
     {
         t = t.Tnext;
         ty = t.Tty;
@@ -3323,7 +3331,8 @@ void argtypes(type* t, out type* arg1type, out type* arg2type)
                 }
                 else if (tybasic(tyn) == TYldouble || tybasic(tyn) == TYildouble)
                 {
-                    arg1type = tstypes[tybasic(tyn)];
+                    // `real` parameters (and arrays of `real`)
+                    // must be passed via memory
                     return;
                 }
             }
@@ -3375,7 +3384,7 @@ void cdfunc(ref CGstate cg, ref CodeBuilder cdb, elem* e, ref regm_t pretregs)
     if (np)
     {
         int n = 0;
-        fillParameters(e.E2, parameters, &n);
+        fillParameters(e.E2, parameters[0 .. np], n);
         assert(n == np);
     }
 

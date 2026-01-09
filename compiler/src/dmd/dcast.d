@@ -1,7 +1,7 @@
 /**
  * Semantic analysis for cast-expressions.
  *
- * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2026 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/dcast.d, _dcast.d)
@@ -49,6 +49,50 @@ import dmd.tokens;
 import dmd.typesem;
 
 enum LOG = false;
+
+IntRange _cast(IntRange _this, Type type)
+{
+    if (!type.isIntegral() || type.toBasetype().isTypeVector())
+        return _this;
+    if (!type.isUnsigned())
+        return _this.castSigned(type.sizemask());
+    if (type.toBasetype().ty == Tdchar)
+        return _this.castDchar();
+        return _this.castUnsigned(type.sizemask());
+}
+
+IntRange castUnsigned(IntRange _this, Type type)
+{
+    if (!type.isIntegral() || type.toBasetype().isTypeVector())
+        return _this.castUnsigned(ulong.max);
+    if (type.toBasetype().ty == Tdchar)
+        return _this.castDchar();
+    return _this.castUnsigned(type.sizemask());
+}
+
+IntRange intRangeFromType(Type type)
+{
+    return intRangeFromType(type, type.isUnsigned());
+}
+
+IntRange intRangeFromType(Type type, bool isUnsigned)
+{
+    if (!type.isIntegral() || type.toBasetype().isTypeVector())
+        return IntRange.widest();
+
+    uinteger_t mask = type.sizemask();
+    auto lower = SignExtendedNumber(0);
+    auto upper = SignExtendedNumber(mask);
+    if (type.toBasetype().ty == Tdchar)
+        upper.value = 0x10FFFFUL;
+    else if (!isUnsigned)
+    {
+        lower.value = ~(mask >> 1);
+        lower.negative = true;
+        upper.value = (mask >> 1);
+    }
+    return IntRange(lower, upper);
+}
 
 /**
  * Attempt to implicitly cast the expression into type `t`.
@@ -309,7 +353,7 @@ MATCH implicitConvTo(Expression e, Type t)
         if (e.type.isIntegral() && t.isIntegral() && e.type.isTypeBasic() && t.isTypeBasic())
         {
             IntRange src = getIntRange(e);
-            IntRange target = IntRange.fromType(t);
+            IntRange target = intRangeFromType(t);
             if (target.contains(src))
             {
                 return MATCH.convert;
@@ -685,7 +729,10 @@ MATCH implicitConvTo(Expression e, Type t)
                 {
                     if (e.committed && tynto != tyn)
                         return MATCH.nomatch;
-                    size_t fromlen = e.numberOfCodeUnits(tynto);
+                    string s;
+                    size_t fromlen = e.numberOfCodeUnits(tynto, s);
+                    if (s)
+                        error(e.loc, "%.*s", cast(int)s.length, s.ptr);
                     size_t tolen = cast(size_t)t.isTypeSArray().dim.toInteger();
                     if (tolen < fromlen)
                         return MATCH.nomatch;
@@ -707,7 +754,10 @@ MATCH implicitConvTo(Expression e, Type t)
                 {
                     if (e.committed && tynto != tyn)
                         return MATCH.nomatch;
-                    size_t fromlen = e.numberOfCodeUnits(tynto);
+                    string s;
+                    size_t fromlen = e.numberOfCodeUnits(tynto, s);
+                    if (s)
+                        error(e.loc, "%.*s", cast(int)s.length, s.ptr);
                     size_t tolen = cast(size_t)t.isTypeSArray().dim.toInteger();
                     if (tolen < fromlen)
                         return MATCH.nomatch;
@@ -3450,6 +3500,60 @@ Lagain:
     t1b = t1.toBasetype();
     t2b = t2.toBasetype();
 
+    static bool isComplexStruct(Type t)
+    {
+        if (t.ty != Tstruct)
+            return false;
+
+        TypeStruct ts = t.isTypeStruct();
+
+        return ts.sym.toString() == "_Complex";
+    }
+
+    static bool isComplexStructOfType(Type t, Type t2)
+    {
+        if (!isComplexStruct(t))
+            return false;
+
+        TypeStruct ts = t.toBasetype().isTypeStruct();
+
+        Type memberType = ts.sym.fields[0].type.toBasetype();
+
+        /* encure the complex member types fall under one of the complex types */
+        switch (memberType.toBasetype().ty)
+        {
+            case Tfloat32:
+            case Tfloat64:
+            case Tfloat80:
+                break;
+            default:
+                return false;
+        }
+
+        switch (t2.toBasetype().ty)
+        {
+            case Tfloat32:
+            case Tfloat64:
+            case Tfloat80:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /* check for complex structure and an associate complex type in a single condexp */
+    if (sc && sc.inCfile)
+    {
+        if (isComplexStructOfType(t1b, t2b))
+        {
+            return Lret(e1.type.toBasetype());
+        }
+        else if (isComplexStructOfType(t2b, t1b))
+        {
+            return Lret(e2.type.toBasetype());
+        }
+    }
+
     const ty = implicitConvCommonTy(t1b.ty, t2b.ty);
     if (ty != Terror)
     {
@@ -4267,13 +4371,14 @@ void fix16997(Scope* sc, UnaExp ue)
 }
 
 /***********************************
- * See if both types are arrays that can be compared
+ * See if an AA key can be compared
  * for equality without any casting. Return true if so.
  * This is to enable comparing things like an immutable
  * array with a mutable one.
  */
-extern (D) bool arrayTypeCompatibleWithoutCasting(Type t1, Type t2)
+extern (D) bool keyCompatibleWithoutCasting(Expression ekey, Type t2)
 {
+    Type t1 = ekey.type;
     t1 = t1.toBasetype();
     t2 = t2.toBasetype();
 
@@ -4281,8 +4386,15 @@ extern (D) bool arrayTypeCompatibleWithoutCasting(Type t1, Type t2)
     {
         if (t1.nextOf().implicitConvTo(t2.nextOf()) >= MATCH.constant || t2.nextOf().implicitConvTo(t1.nextOf()) >= MATCH.constant)
             return true;
+        return false;
     }
-    return false;
+    if (implicitConvTo(ekey, t2) < MATCH.constant)
+        return false;
+    if (auto ts = t1.isTypeStruct())
+        return implicitConvToThroughAliasThis(ts, t2) == MATCH.nomatch;
+    if (auto tc = t1.isTypeClass())
+        return implicitConvToThroughAliasThis(tc, t2) == MATCH.nomatch;
+    return true;
 }
 
 /******************************************************************/
@@ -4295,7 +4407,7 @@ IntRange getIntRange(Expression e)
 {
     IntRange visit(Expression e)
     {
-        return IntRange.fromType(e.type);
+        return intRangeFromType(e.type);
     }
 
     IntRange visitInteger(IntegerExp e)
@@ -4399,7 +4511,7 @@ IntRange getIntRange(Expression e)
 
     IntRange visitUshr(UshrExp e)
     {
-        IntRange ir1 = getIntRange(e.e1).castUnsigned(e.e1.type);
+        IntRange ir1 = castUnsigned(getIntRange(e.e1), e.e1.type);
         IntRange ir2 = getIntRange(e.e2);
 
         return (ir1 >>> ir2)._cast(e.type);
@@ -4423,7 +4535,7 @@ IntRange getIntRange(Expression e)
         Expression ie;
         VarDeclaration vd = e.var.isVarDeclaration();
         if (vd && vd.range)
-            return vd.range._cast(e.type);
+            return _cast(*vd.range, e.type);
         if (vd && vd._init && !vd.type.isMutable() && (ie = vd.getConstInitializer()) !is null)
             return getIntRange(ie);
         return visit(e);

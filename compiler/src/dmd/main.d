@@ -6,7 +6,7 @@
  * utilities needed for arguments parsing, path manipulation, etc...
  * This file is not shared with other compilers which use the DMD front-end.
  *
- * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2026 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/main.d, _main.d)
@@ -662,14 +662,25 @@ private int tryMain(const(char)[][] argv, out Param params)
     if (global.errors)
         removeHdrFilesAndFail(params, modules);
 
-    // Scan for functions to inline
+    // Scan for modules with always inline functions
     foreach (m; modules)
     {
-        if (params.useInline || m.hasAlwaysInlines)
+        if (m.hasAlwaysInlines)
         {
             if (params.v.verbose)
-                message("inline scan %s", m.toChars());
-            inlineScanModule(m, global.errorSink);
+                message("scan pragma(inline) in %s", m.toChars());
+            inlineScanPragmaInline(m, global.errorSink);
+        }
+    }
+
+    if (params.useInline)
+    {
+        // Scan for functions to inline
+        foreach (m; modules)
+        {
+            if (params.v.verbose)
+                message("scan all inlines in %s", m.toChars());
+            inlineScanAllFunctions(m, global.errorSink);
         }
     }
 

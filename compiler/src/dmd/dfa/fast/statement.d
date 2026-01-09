@@ -1,7 +1,14 @@
 /**
  * Statement walker for the fast Data Flow Analysis engine.
  *
- * Copyright: Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
+ * This module implements the AST visitor that handles Control Flow.
+ * It is responsible for:
+ * 1. Managing Scopes: Pushing and popping `DFAScope` as it enters/leaves blocks.
+ * 2. Handling Branching: Splitting execution for `if` and `switch` statements.
+ * 3. Handling Loops: Managing state for `for`, `while`, and `do` loops.
+ * 4. Handling Jumps: Resolving `break`, `continue`, `goto`, and `return`.
+ *
+ * Copyright: Copyright (C) 1999-2026 by The D Language Foundation, All Rights Reserved
  * Authors:   $(LINK2 https://cattermole.co.nz, Richard (Rikki) Andrew Cattermole)
  * License:   $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:    $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/dfa/fast/statement.d, dfa/fast/statement.d)
@@ -22,12 +29,24 @@ import dmd.func;
 import dmd.identifier;
 import dmd.statement;
 import dmd.expression;
+import dmd.typesem;
 import dmd.timetrace;
 import dmd.astenums;
 import dmd.mtype;
 import dmd.declaration;
 import core.stdc.stdio;
 
+/***********************************************************
+ * Visits Statement nodes to drive the Data Flow Analysis.
+ *
+ * This class navigates the structure of the function. When it encounters
+ * control flow (like an `if` statement), it acts as a traffic director:
+ * 1. It creates a new Scope for the "True" branch.
+ * 2. It analyzes that branch.
+ * 3. It creates a new Scope for the "False" branch.
+ * 4. It analyzes that branch.
+ * 5. It calls `analyzer.converge...` to merge the results back together.
+ */
 extern (D) class StatementWalker : SemanticTimeTransitiveVisitor
 {
     alias visit = SemanticTimeTransitiveVisitor.visit;
@@ -58,10 +77,35 @@ final:
         return this.endScope(loc);
     }
 
-    DFAScopeRef endScope(ref Loc endLoc)
+    DFAScopeRef endScope(ref Loc endLoc, bool handleLabelPopping = true)
     {
         DFAScopeRef ret = dfaCommon.popScope;
         dfaCommon.sdepth--;
+
+        if (handleLabelPopping)
+        {
+            while (ret.sc.label !is null)
+            {
+                Loc loc = *cast(Loc*)&ret.sc.label.loc;
+
+                dfaCommon.printStructure((ref OutBuffer ob, scope PrintPrefixType prefix) {
+                    ob.printf("End label scope %p:%p %s", ret.sc,
+                        dfaCommon.currentDFAScope, ret.sc.label.ident.toChars);
+                    if (loc.isValid)
+                        appendLoc(ob, loc);
+                    ob.writestring("\n");
+                });
+
+                ret.printStructure("*=", dfaCommon.sdepth, dfaCommon.currentFunction);
+                ret.check;
+
+                seeConvergeStatementLoopyLabels(ret, loc);
+                inLoopyLabel--;
+
+                ret = dfaCommon.popScope;
+                dfaCommon.sdepth--;
+            }
+        }
 
         dfaCommon.printStructure((ref OutBuffer ob, scope PrintPrefixType prefix) {
             ob.printf("End scope %p:%p", ret.sc, dfaCommon.currentDFAScope);
@@ -87,6 +131,28 @@ final:
 
         DFAScopeRef ret = dfaCommon.popScope;
         dfaCommon.sdepth--;
+
+        while (ret.sc.label !is null)
+        {
+            Loc loc = *cast(Loc*)&ret.sc.label.loc;
+
+            dfaCommon.printStructure((ref OutBuffer ob, scope PrintPrefixType prefix) {
+                ob.printf("End label scope %p:%p %s", ret.sc,
+                    dfaCommon.currentDFAScope, ret.sc.label.ident.toChars);
+                if (loc.isValid)
+                    appendLoc(ob, loc);
+                ob.writestring("\n");
+            });
+
+            ret.printStructure("*=", dfaCommon.sdepth, dfaCommon.currentFunction);
+            ret.check;
+
+            seeConvergeStatementLoopyLabels(ret, loc);
+            inLoopyLabel--;
+
+            ret = dfaCommon.popScope;
+            dfaCommon.sdepth--;
+        }
 
         dfaCommon.printStructure((ref OutBuffer ob, scope PrintPrefixType prefix) {
             ob.printf("End scope %p:%p", ret.sc, dfaCommon.currentDFAScope);
@@ -502,7 +568,7 @@ final:
         */
         version (none)
         {
-            if (st.loc.linnum == 342)
+            if (st.loc.linnum == 180)
             {
                 DFAScope* sc = dfaCommon.currentDFAScope;
                 while (sc !is null)
@@ -533,6 +599,8 @@ final:
                 expWalker.seeConvergeExpression(walkExpression(null,
                         dfaCommon.getReturnVariable, exp));
 
+            // Mark the current scope as having returned.
+            // This signals that no code after this point in the current block is reachable.
             dfaCommon.currentDFAScope.haveJumped = true;
             dfaCommon.currentDFAScope.haveReturned = true;
             analyzer.reporter.onEndOfScope(dfaCommon.currentFunction, exp.loc);
@@ -578,6 +646,13 @@ final:
                 appendLoc(ob, ifs.loc);
                 ob.writestring("\n");
             });
+
+            // CRITICAL: We split the analysis here.
+            // 1. We analyze the condition to see if it implies anything about variables
+            //    (e.g., `if (ptr)` implies `ptr` is NonNull in the true branch).
+            // 2. We visit the `ifbody` with that knowledge.
+            // 3. We visit the `elsebody` (if it exists).
+            // 4. We merge the resulting states from both branches.
 
             bool ignoreTrueBranch, ignoreFalseBranch;
             bool unknownBranchTaken;
@@ -701,17 +776,16 @@ final:
             break;
 
         case STMT.Label:
+            // Note: it is the responsibility of endScope to handle poping these scopes off
             auto ls = st.isLabelStatement;
             dfaCommon.printStructure((ref OutBuffer ob,
                     scope PrintPrefixType prefix) => ob.printf("label %s %p %p\n",
                     ls.ident !is null ? ls.ident.toChars : null, ls.gotoTarget, ls.gotoTarget));
 
             inLoopyLabel++;
-            scope (exit)
-                inLoopyLabel--;
 
             this.startScope;
-            dfaCommon.currentDFAScope.label = ls.ident;
+            dfaCommon.currentDFAScope.label = ls;
             dfaCommon.setScopeAsLoopyLabel;
             dfaCommon.currentDFAScope.isLoopyLabelKnownToHaveRun = true;
 
@@ -742,21 +816,20 @@ final:
             // by-pass scope statement processing with a dedicated variation here.
             if (ls.statement is null)
             {
-                // empty block, this is ok.
-                scr = this.endScope;
             }
             else if (auto scs = ls.statement.isScopeStatement)
             {
                 this.visit(scs.statement);
-                scr = this.endScope(*cast(Loc*)&ls.loc);
+                scr = this.endScope(*cast(Loc*)&ls.loc, false);
+                inLoopyLabel--;
             }
             else
             {
                 this.visit(ls.statement);
-                scr = this.endScope;
             }
 
-            seeConvergeStatementLoopyLabels(scr, *cast(Loc*)&ls.loc);
+            if (!scr.isNull)
+                seeConvergeStatementLoopyLabels(scr, *cast(Loc*)&ls.loc);
             break;
 
         case STMT.For:
@@ -768,6 +841,14 @@ final:
                 appendLoc(ob, fs.endloc);
                 ob.writestring("\n");
             });
+
+            // Loops are handled by creating a "LoopyLabel" scope.
+            // This allows `break` and `continue` statements inside the loop
+            // to find this scope and update the state accordingly.
+            //
+            // Since this is a single-pass engine, we do not iterate until convergence.
+            // Instead, we analyze the body once, and then use `convergeStatementLoopyLabels`
+            // to assume the worst-case scenario for variables modified in the loop.
 
             inLoopyLabel++;
             scope (exit)
@@ -784,6 +865,10 @@ final:
                 } else {
                     break;
                 }
+            }
+            May also be:
+            for(;condition;) {
+                ...
             }
             */
             if (theCondition !is null)
@@ -1279,7 +1364,7 @@ final:
             printf("Run finalizers up to scope %p", targetHeadScope);
 
             if (targetHeadScope !is null && targetHeadScope.label !is null)
-                printf("%s\n", targetHeadScope.label.toChars);
+                printf("%s\n", targetHeadScope.label.ident.toChars);
             else
                 printf("\n");
         }
@@ -1313,24 +1398,6 @@ final:
                 var.unmodellable = true;
         }
 
-        void perExpr(Expression expr)
-        {
-            if (auto ve = expr.isVarExp)
-            {
-                if (auto vd = ve.var.isVarDeclaration)
-                    perVar(vd);
-            }
-            else if (auto ue = expr.isUnaExp)
-            {
-                perExpr(ue.e1);
-            }
-            else if (auto be = expr.isBinExp)
-            {
-                perExpr(be.e1);
-                perExpr(be.e2);
-            }
-        }
-
-        foreachExpAndVar(s, &perExpr, &perVar);
+        foreachExpAndVar(s, &expWalker.markUnmodellable, &perVar);
     }
 }

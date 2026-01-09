@@ -3,7 +3,7 @@
  *
  * Specification: $(LINK2 https://dlang.org/spec/function.html, Functions)
  *
- * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2026 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/funcsem.d, _funcsem.d)
@@ -14,6 +14,7 @@
 module dmd.funcsem;
 
 import core.stdc.stdio;
+import core.stdc.string;
 
 import dmd.aggregate;
 import dmd.arraytypes;
@@ -65,6 +66,235 @@ import dmd.tokens;
 import dmd.typesem;
 import dmd.visitor;
 import dmd.visitor.statement_rewrite_walker;
+
+bool addPostInvariant(FuncDeclaration _this)
+{
+    static bool visitFuncDeclaration(FuncDeclaration _this)
+    {
+        auto ad = _this.isThis();
+        return (
+            ad &&
+            ad.inv &&
+            global.params.useInvariants == CHECKENABLE.on &&
+            (_this.visibility.kind == Visibility.Kind.protected_ ||
+            _this.visibility.kind == Visibility.Kind.public_ ||
+            _this.visibility.kind == Visibility.Kind.export_) &&
+            !_this.isNaked
+        );
+    }
+
+    switch(_this.dsym)
+    {
+        case DSYM.funcLiteralDeclaration:
+        case DSYM.dtorDeclaration:
+        case DSYM.staticCtorDeclaration:
+        case DSYM.sharedStaticCtorDeclaration:
+        case DSYM.staticDtorDeclaration:
+        case DSYM.sharedStaticDtorDeclaration:
+        case DSYM.invariantDeclaration:
+        case DSYM.unitTestDeclaration:
+        case DSYM.newDeclaration:
+            return false;
+        case DSYM.ctorDeclaration:
+        {
+            auto cd = _this.isCtorDeclaration();
+            return (cd.isThis() && cd.vthis && global.params.useInvariants == CHECKENABLE.on);
+        }
+        case DSYM.postBlitDeclaration:
+        {
+            auto dd = _this.isPostBlitDeclaration();
+            return (dd.isThis() && dd.vthis && global.params.useInvariants == CHECKENABLE.on);
+        }
+        default: return visitFuncDeclaration(_this);
+    }
+}
+
+bool addPreInvariant(FuncDeclaration _this)
+{
+    static bool visitFuncDeclaration(FuncDeclaration _this)
+    {
+        return (
+            _this.isThis() &&
+            global.params.useInvariants == CHECKENABLE.on &&
+            (_this.visibility.kind == Visibility.Kind.protected_ ||
+            _this.visibility.kind == Visibility.Kind.public_ ||
+            _this.visibility.kind == Visibility.Kind.export_) &&
+            !_this.isNaked
+        );
+    }
+
+    switch(_this.dsym)
+    {
+        case DSYM.funcLiteralDeclaration:
+        case DSYM.ctorDeclaration:
+        case DSYM.postBlitDeclaration:
+        case DSYM.staticCtorDeclaration:
+        case DSYM.sharedStaticCtorDeclaration:
+        case DSYM.staticDtorDeclaration:
+        case DSYM.sharedStaticDtorDeclaration:
+        case DSYM.invariantDeclaration:
+        case DSYM.unitTestDeclaration:
+        case DSYM.newDeclaration:
+            return false;
+        case DSYM.dtorDeclaration:
+        {
+            auto dd = _this.isDtorDeclaration();
+            return (dd.isThis() && dd.vthis && global.params.useInvariants == CHECKENABLE.on);
+        }
+        default: return visitFuncDeclaration(_this);
+    }
+}
+
+// Determine if function goes into virtual function pointer table
+bool isVirtual(const FuncDeclaration _this)
+{
+    static bool visitFuncDeclaration(const FuncDeclaration _this)
+    {
+       if (_this.toAliasFunc() != _this)
+            return _this.toAliasFunc().isVirtual();
+
+        auto p = _this.toParent();
+
+        if (!_this.isMember || !p.isClassDeclaration)
+            return false;
+
+        if (p.isClassDeclaration.classKind == ClassKind.objc)
+            return objc.isVirtual(_this);
+
+        version (none)
+        {
+            printf("FuncDeclaration::isVirtual(%s)\n", _this.toChars());
+            printf("isMember:%p isStatic:%d private:%d ctor:%d !Dlinkage:%d\n",
+                _this.isMember(),
+                _this.isStatic(),
+                _this.visibility.kind == Visibility.Kind.private_,
+                _this.isCtorDeclaration() !is null,
+                _this._linkage != LINK.d
+            );
+            printf("result is %d\n",
+                _this.isMember() &&
+                !(_this.isStatic() || _this.visibility.kind == Visibility.Kind.private_ || _this.visibility.kind == Visibility.Kind.package_) &&
+                p.isClassDeclaration() &&
+                !(p.isInterfaceDeclaration() && _this.isFinalFunc())
+            );
+        }
+
+        return !(_this.isStatic() ||
+                 _this.visibility.kind == Visibility.Kind.private_ ||
+                 _this.visibility.kind == Visibility.Kind.package_) &&
+                !(p.isInterfaceDeclaration() && _this.isFinalFunc());
+    }
+
+    switch(_this.dsym)
+    {
+        case DSYM.funcLiteralDeclaration:
+        case DSYM.ctorDeclaration:
+        case DSYM.postBlitDeclaration:
+        case DSYM.staticCtorDeclaration:
+        case DSYM.sharedStaticCtorDeclaration:
+        case DSYM.staticDtorDeclaration:
+        case DSYM.sharedStaticDtorDeclaration:
+        case DSYM.invariantDeclaration:
+        case DSYM.unitTestDeclaration:
+        case DSYM.newDeclaration:
+            return false;
+        // D dtor's don't get put into the vtbl[]
+        // this is a hack so that extern(C++) destructors report as virtual
+        // which are manually added to the vtable
+        case DSYM.dtorDeclaration: return _this.vtblIndex != -1;
+        default: return visitFuncDeclaration(_this);
+    }
+}
+
+// Determine if a function is pedantically virtual
+bool isVirtualMethod(FuncDeclaration _this)
+{
+    if (_this.toAliasFunc() != _this)
+        return _this.toAliasFunc().isVirtualMethod();
+
+    //printf("FuncDeclaration::isVirtualMethod() %s\n", toChars());
+    if (!_this.isVirtual())
+        return false;
+
+    // If it's a final method, and does not override anything, then it is not virtual
+    if (_this.isFinalFunc() && _this.foverrides.length == 0)
+    {
+        return false;
+    }
+    return true;
+}
+
+/***********************************************
+ * Determine if function's variables are referenced by a function
+ * nested within it.
+ */
+bool hasNestedFrameRefs(FuncDeclaration _this)
+{
+    if (_this.closureVars.length)
+        return true;
+
+    /* If a virtual function has contracts, assume its variables are referenced
+     * by those contracts, even if they aren't. Because they might be referenced
+     * by the overridden or overriding function's contracts.
+     * This can happen because frequire and fensure are implemented as nested functions,
+     * and they can be called directly by an overriding function and the overriding function's
+     * context had better match, or
+     * https://issues.dlang.org/show_bug.cgi?id=7335 will bite.
+     */
+    if (_this.fdrequire || _this.fdensure)
+        return true;
+
+    if (_this.foverrides.length && _this.isVirtualMethod())
+    {
+        for (size_t i = 0; i < _this.foverrides.length; i++)
+        {
+            FuncDeclaration fdv = _this.foverrides[i];
+            if (fdv.hasNestedFrameRefs())
+                return true;
+        }
+    }
+    return false;
+}
+
+/**********************************
+ * Generate a FuncDeclaration for a runtime library function.
+ */
+FuncDeclaration genCfunc(Parameters* fparams, Type treturn, const(char)* name, STC stc = STC.none)
+{
+    return genCfunc(fparams, treturn, Identifier.idPool(name[0 .. strlen(name)]), stc);
+}
+
+FuncDeclaration genCfunc(Parameters* fparams, Type treturn, Identifier id, STC stc = STC.none)
+{
+    FuncDeclaration fd;
+    TypeFunction tf;
+    Dsymbol s;
+    __gshared DsymbolTable st = null;
+
+    //printf("genCfunc(name = '%s')\n", id.toChars());
+    //printf("treturn\n\t"); treturn.print();
+
+    // See if already in table
+    if (!st)
+        st = new DsymbolTable();
+    s = st.lookup(id);
+    if (s)
+    {
+        fd = s.isFuncDeclaration();
+        assert(fd);
+        assert(fd.type.nextOf().equals(treturn));
+    }
+    else
+    {
+        tf = new TypeFunction(ParameterList(fparams), treturn, LINK.c, stc);
+        fd = new FuncDeclaration(Loc.initial, Loc.initial, id, STC.static_, tf);
+        fd.visibility = Visibility(Visibility.Kind.public_);
+        fd._linkage = LINK.c;
+
+        st.insert(fd);
+    }
+    return fd;
+}
 
 /* Tweak all return statements and dtor call for nrvo_var, for correct NRVO.
  */
@@ -1178,8 +1408,8 @@ Linterfaces:
                     functionToBufferFull(cast(TypeFunction)(fd.type), buf1,
                         new Identifier(fd.toPrettyChars()), hgs, null);
 
-                    error(funcdecl.loc, "function `%s` does not override any function, did you mean to override `%s`?",
-                        funcdeclToChars, buf1.peekChars());
+                    error(funcdecl.loc, "function `%s` does not override any function", funcdeclToChars);
+                    errorSupplemental(fd.loc, "did you mean to override `%s`?", buf1.peekChars());
 
                     // Supplemental error for parameter scope differences
                     auto tf1 = cast(TypeFunction)funcdecl.type;
@@ -1192,8 +1422,6 @@ Linterfaces:
 
                         if (params1.length == params2.length)
                         {
-                            bool hasScopeDifference = false;
-
                             for (size_t i = 0; i < params1.length; i++)
                             {
                                 auto p1 = params1[i];
@@ -1205,14 +1433,7 @@ Linterfaces:
                                 if (!(p2.storageClass & STC.scope_))
                                     continue;
 
-                                if (!hasScopeDifference)
-                                {
-                                    // Intended signature
-                                    errorSupplemental(funcdecl.loc, "Did you intend to override:");
-                                    errorSupplemental(funcdecl.loc, "`%s`", buf1.peekChars());
-                                    hasScopeDifference = true;
-                                }
-                                errorSupplemental(funcdecl.loc, "Parameter %d is missing `scope`",
+                                errorSupplemental(funcdecl.loc, "parameter %d is missing `scope`",
                                 cast(int)(i + 1));
                             }
                         }
@@ -2560,6 +2781,8 @@ void buildResultVar(FuncDeclaration fd, Scope* sc, Type tret)
         TypeFunction tf = fd.type.toTypeFunction();
         if (tf.isRef)
             fd.vresult.storage_class |= STC.ref_;
+        else if (target.isReturnOnStack(tf, fd.needThis()))
+            fd.vresult.nrvo = true;
         fd.vresult.type = tret;
         fd.vresult.dsymbolSemantic(sc);
         if (!sc.insert(fd.vresult))
@@ -3847,14 +4070,14 @@ extern (D) int overloadApply(Dsymbol fstart, scope int delegate(Dsymbol) dg, Sco
 
     int overloadApplyRecurse(Dsymbol fstart, scope int delegate(Dsymbol) dg, Scope* sc)
     {
-        // Detect cyclic calls.
-        if (visited.contains(fstart))
-            return 0;
-        visited.push(fstart);
-
         Dsymbol next;
         for (auto d = fstart; d; d = next)
         {
+            // Detect cyclic calls.
+            if (visited.contains(d))
+                return 0;
+            visited.push(d);
+
             import dmd.access : checkSymbolAccess;
             if (auto od = d.isOverDeclaration())
             {
@@ -3911,6 +4134,13 @@ extern (D) int overloadApply(Dsymbol fstart, scope int delegate(Dsymbol) dg, Sco
             }
             else if (auto td = d.isTemplateDeclaration())
             {
+                // Sometimes funcroot is not in the .overnext chain
+                // in such case we have to recurse into it
+                if(td.funcroot)
+                {
+                    if (int r = overloadApplyRecurse(td.funcroot, dg, sc))
+                        return r;
+                }
                 if (int r = dg(td))
                     return r;
                 next = td.overnext;

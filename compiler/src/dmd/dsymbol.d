@@ -1,7 +1,7 @@
 /**
  * The base class for a D symbol, which can be a module, variable, function, enum, etc.
  *
- * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2026 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/dsymbol.d, _dsymbol.d)
@@ -175,8 +175,8 @@ enum PASS : ubyte
     semantic2done,  // semantic2() done
     semantic3,      // semantic3() started
     semantic3done,  // semantic3() done
-    inline,         // inline started
-    inlinedone,     // inline done
+    inlinePragma,   // inline pragma(inline, true) functions started
+    inlineAll,      // inline all functions started
     obj,            // toObjFile() run
 }
 
@@ -789,10 +789,6 @@ extern (C++) class Dsymbol : ASTNode
     {
         printf("%s %s\n", kind(), toChars());
         assert(0);
-    }
-
-    void addObjcSymbols(ClassDeclarations* classes, ClassDeclarations* categories)
-    {
     }
 
     /****************************************

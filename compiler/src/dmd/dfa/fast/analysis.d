@@ -1,9 +1,18 @@
 /**
  * Analysis engine for the fast Data Flow Analysis engine.
  *
+ * This module implements the mathematical core of the DFA.
+ * It is responsible for:
+ * 1. Transfer Functions: Calculating how specific operations (Assign, Math, Equal)
+ * transform the abstract state (Lattice) of variables.
+ * 2. Convergence (Confluence): Merging states from different control flow paths
+ * (e.g., merging the "True" and "False" branches of an if-statement).
+ * 3. Loop Approximation: Handling loops in O(1) time by making conservative
+ * assumptions rather than iterating to a fixed point.
+ *
  * Has the convergence and transfer functions.
  *
- * Copyright: Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
+ * Copyright: Copyright (C) 1999-2026 by The D Language Foundation, All Rights Reserved
  * Authors:   $(LINK2 https://cattermole.co.nz, Richard (Rikki) Andrew Cattermole)
  * License:   $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:    $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/dfa/fast/analysis.d, dfa/fast/analysis.d)
@@ -21,10 +30,21 @@ import dmd.declaration;
 import dmd.astenums;
 import dmd.mtype;
 import dmd.root.array;
+import dmd.common.outbuffer;
 import core.stdc.stdio;
 
 //version = DebugJoinMeetOp;
 
+/***********************************************************
+ * The core analyzer that manipulates the Lattice state.
+ *
+ * This struct provides the overarching join/meet logic, while the specific
+ * merge logic is handled in `DFAConsequence`.
+ *
+ * It is responsible for:
+ * - Orchestrating the convergence of scopes (calculating the final state after a block exits).
+ * - Managing high-level state transfers between the AST walkers and the internal lattice.
+ */
 struct DFAAnalyzer
 {
     DFACommon* dfaCommon;
@@ -41,17 +61,34 @@ struct DFAAnalyzer
 
         lr.cleanupConstant(ctxVar);
 
+        version (DebugJoinMeetOp)
+        {
+            printf("converge expression for var %p isSideEffect=%d\n", ctxVar, isSideEffect);
+            lr.printState("after cleanup");
+            flush(stdout);
+        }
+
         DFAScope* sc = isSideEffect ? dfaCommon.getSideEffectScope() : dfaCommon.currentDFAScope;
         DFAScopeVar* ret = sc.getScopeVar(ctxVar);
 
         while (sc !is null)
         {
+            version (DebugJoinMeetOp)
+            {
+                printf("on sc %p\n", sc);
+                flush(stdout);
+            }
+
+            DFAScopeVar* scv;
+
             if (ctx.truthiness == Truthiness.Maybe)
             {
+                scv = sc.getScopeVar(ctxVar);
+
                 if (!ctx.maybeTopSeen && ctxVar !is null && !ctxVar.haveBase)
                 {
-                    ret.lr = join(ret.lr, lr.copy);
-                    assert(ret.lr.getContextVar() is ctxVar);
+                    scv.lr = join(scv.lr, lr.copy, 0, null, false, true);
+                    assert(scv.lr.getContextVar() is ctxVar);
                 }
             }
             else
@@ -60,12 +97,12 @@ struct DFAAnalyzer
                 {
                     if (!c.maybeTopSeen && c.var !is null && !c.var.haveBase)
                     {
-                        DFAScopeVar* scv = sc.getScopeVar(c.var);
+                        scv = sc.getScopeVar(c.var);
 
                         DFAConsequence* oldC = scv.lr.getContext;
                         assert(oldC !is null);
 
-                        oldC.joinConsequence(oldC, c, null, false, false, false);
+                        oldC.joinConsequence(oldC, c, null, false, false, true);
                         assert(scv.lr.getContextVar() is c.var);
                     }
                 }
@@ -77,6 +114,23 @@ struct DFAAnalyzer
         return ret;
     }
 
+    /***********************************************************
+     * Merges the states from the True and False branches of an If statement.
+     *
+     * This handles the "Diamond" control flow pattern.
+     * 1. It compares the state at the end of the "True" block vs the "False" block.
+     * 2. It identifies "Gates" (variables used in the condition, e.g., `if (ptr)`).
+     * 3. It calculates the union (Join) of the states to determine the state
+     * after the If statement completes.
+     *
+     * Params:
+     * condition = The lattice state of the condition expression.
+     * scrTrue = The final state of the True scope.
+     * scrFalse = The final state of the False scope.
+     * haveFalseBody = True if the if-statement has an `else` block.
+     * unknownBranchTaken = True if the condition result is not statically known (Maybe).
+     * predicateNegation = State of the predicate negation (0: unknown, 1: negated, 2: not negated).
+     */
     void convergeStatementIf(DFALatticeRef condition, DFAScopeRef scrTrue,
             DFAScopeRef scrFalse, bool haveFalseBody, bool unknownBranchTaken,
             int predicateNegation)
@@ -126,6 +180,8 @@ struct DFAAnalyzer
                     c.truthiness = Truthiness.Unknown;
                 if (c.nullable != cParent.nullable)
                     c.nullable = Nullable.Unknown;
+                if (c.pa != cParent.pa)
+                    c.pa = DFAPAValue.Unknown;
             }
         }
 
@@ -532,7 +588,18 @@ struct DFAAnalyzer
                 handle(scv.lrGateNegatedPredicate);
         }
     }
-
+    /***********************************************************
+     * Converges a loop or labelled block.
+     *
+     * Fast-DFA Optimization:
+     * Unlike traditional "Slow DFAs" which iterate a loop until the state settles
+     * (Fixed Point Iteration), this engine visits the loop body once.
+     *
+     * To ensure safety without iteration:
+     * 1. It checks if variables modified in the loop are used inconsistently.
+     * 2. If a variable is modified in a way that creates uncertainty (e.g., incrementing),
+     * it assumes the "Worst Case" (Unknown state) for that variable after the loop.
+     */
     void convergeStatementLoopyLabels(DFAScopeRef containing, ref Loc loc)
     {
         const scopeHaveRun = containing.sc.isLoopyLabelKnownToHaveRun;
@@ -867,10 +934,25 @@ struct DFAAnalyzer
         bool modellable = true;
 
         lr.walkMaybeTops((DFAConsequence* c) {
-            if (c.var !is null && !c.var.isModellable)
+            if (c.var is null)
+                return true;
+            else if (!c.var.isModellable)
             {
                 modellable = false;
                 return false;
+            }
+
+            if (c.var.isLength)
+            {
+                DFAConsequence* bCctx = lr.addConsequence(c.var.base1);
+                bCctx.pa = c.pa;
+
+                if ((c.pa.kind == DFAPAValue.Kind.Concrete
+                    || c.pa.kind == DFAPAValue.Kind.Lower) && c.pa.value > 0)
+                {
+                    bCctx.truthiness = Truthiness.True;
+                    bCctx.nullable = Nullable.NonNull;
+                }
             }
 
             return true;
@@ -1012,6 +1094,17 @@ struct DFAAnalyzer
         }
     }
 
+    /***********************************************************
+     * Updates the state of a variable after an assignment (`a = b`).
+     *
+     * This moves the state from the RHS (Right Hand Side) lattice to the
+     * LHS (Left Hand Side) variable.
+     *
+     * Logic:
+     * - Direct Assignment: `a = 5` (a becomes 5).
+     * - Pointer Assignment: `*p = 5` (We don't change `p`, we assume memory at `p` changed).
+     * - Construct: `int a = 5` (Initialization).
+     */
     DFALatticeRef transferAssign(DFALatticeRef assignTo, bool construct, bool isBlit,
             DFALatticeRef lr, int alteredState, DFALatticeRef indexLR = DFALatticeRef.init)
     {
@@ -1060,24 +1153,12 @@ struct DFAAnalyzer
                 // We're in a direct assignment
                 // Any effects from the lr directly apply to our lhs variable.
 
+                ret = dfaCommon.makeLatticeRef;
+                DFAConsequence* cctx = ret.addConsequence(assignToCtx, lrCctx);
+                ret.setContext(cctx);
+
                 if (!construct && noLR)
                     assignToCtx.unmodellable = true;
-
-                DFALatticeRef assignTo2 = assignTo.copy;
-                assignTo2.setContext(assignToCtx);
-
-                DFALatticeRef joined = join(assignTo2,
-                        lr.copyWithoutInfiniteLifetime, 0, assignToCtx);
-                DFAConsequence* c = joined.addConsequence(assignToCtx);
-                joined.setContext(c);
-
-                if (lrCtx !is null && lrCtx.haveInfiniteLifetime)
-                {
-                    c.truthiness = Truthiness.True;
-                    c.nullable = Nullable.NonNull;
-                }
-
-                ret = join(ret, joined, 0, null);
             }
         }
         else
@@ -1143,6 +1224,9 @@ struct DFAAnalyzer
         if (lrIsTruthy && assignToCtx !is null && assignToCtx.isNullable)
             retCctx.nullable = Nullable.NonNull;
 
+        if (retCctx.truthiness == Truthiness.Maybe)
+            retCctx.truthiness = Truthiness.Unknown;
+
         if (lrCtx !is null)
         {
             lrCtx.visitReferenceToAnotherVar((var) {
@@ -1177,12 +1261,15 @@ struct DFAAnalyzer
         return ret;
     }
 
-    DFALatticeRef transferNegate(DFALatticeRef lr, bool protectElseNegate = false)
+    DFALatticeRef transferNegate(DFALatticeRef lr, Type type,
+            bool protectElseNegate = false, bool limitToContext = false)
     {
         bool requireMaybeContext;
 
         bool negate(DFAConsequence* c)
         {
+            c.pa.negate(type);
+
             if (c.invertedOnce || (protectElseNegate && c.protectElseNegate))
             {
                 c.truthiness = Truthiness.Unknown;
@@ -1227,7 +1314,7 @@ struct DFAAnalyzer
         {
             // !(a && b) only negate the outer expression
             // !(a) want to negate the inner condition
-            if (cctx.var is null)
+            if (cctx.var is null || limitToContext)
                 negate(cctx);
             else
                 lr.walkMaybeTops(&negate);
@@ -1242,6 +1329,72 @@ struct DFAAnalyzer
         }
 
         return lr;
+    }
+
+    DFALatticeRef transferMathOp(DFALatticeRef lhs, DFALatticeRef rhs, Type type, PAMathOp op)
+    {
+        DFAConsequence* lhsCctx = lhs.getContext;
+        DFAConsequence* rhsCctx = rhs.getContext;
+
+        assert(lhsCctx !is null);
+        assert(rhsCctx !is null);
+
+        DFAPAValue newValue = lhsCctx.pa;
+
+        final switch (op)
+        {
+        case PAMathOp.add:
+            newValue.addFrom(rhsCctx.pa, type);
+            break;
+        case PAMathOp.sub:
+            newValue.subtractFrom(rhsCctx.pa, type);
+            break;
+        case PAMathOp.mul:
+            newValue.multiplyFrom(rhsCctx.pa, type);
+            break;
+        case PAMathOp.div:
+            newValue.divideFrom(rhsCctx.pa, type);
+            break;
+        case PAMathOp.mod:
+            newValue.modulasFrom(rhsCctx.pa, type);
+            break;
+        case PAMathOp.and:
+            newValue.bitwiseAndBy(rhsCctx.pa, type);
+            break;
+        case PAMathOp.or:
+            newValue.bitwiseOrBy(rhsCctx.pa, type);
+            break;
+        case PAMathOp.xor:
+            newValue.bitwiseXorBy(rhsCctx.pa, type);
+            break;
+        case PAMathOp.pow:
+            newValue.powerBy(rhsCctx.pa, type);
+            break;
+        case PAMathOp.leftShift:
+            newValue.leftShiftBy(rhsCctx.pa, type);
+            break;
+        case PAMathOp.rightShiftSigned:
+            newValue.rightShiftSignedBy(rhsCctx.pa, type);
+            break;
+        case PAMathOp.rightShiftUnsigned:
+            newValue.rightShiftUnsignedBy(rhsCctx.pa, type);
+            break;
+
+        case PAMathOp.postInc:
+        case PAMathOp.postDec:
+            assert(0);
+        }
+
+        DFALatticeRef ret = transferLogicalAnd(lhs, rhs);
+        ret.check;
+
+        if (ret.isNull)
+            ret = dfaCommon.makeLatticeRef;
+        DFAConsequence* cctx = ret.acquireConstantAsContext();
+        cctx.pa = newValue;
+
+        ret.check;
+        return ret;
     }
 
     DFALatticeRef transferDereference(DFALatticeRef lr, ref Loc loc)
@@ -1290,7 +1443,8 @@ struct DFAAnalyzer
                                 ctx.var.var.ident.toChars, loc.toChars);
 
                     ctx.nullable = Nullable.NonNull;
-                    ctx.var.param.notNullIn = ParameterDFAInfo.Fact.Guaranteed;
+                    if (!ctx.var.doNotInferNonNull)
+                        ctx.var.param.notNullIn = ParameterDFAInfo.Fact.Guaranteed;
                 }
             }
             else if (ctx.nullable == Nullable.Null)
@@ -1302,7 +1456,7 @@ struct DFAAnalyzer
 
     /// See_Also: equalityArgTypes
     DFALatticeRef transferEqual(DFALatticeRef lhs, DFALatticeRef rhs,
-            bool equalityIsTrue, int equalityType)
+            bool equalityIsTrue, EqualityArgType equalityType)
     {
         // struct
         // floating point
@@ -1314,81 +1468,103 @@ struct DFAAnalyzer
             return DFALatticeRef.init;
         DFAVar* lhsVar = lhsCctx.var, rhsVar = rhsCctx.var;
 
-        const treatAsPointer = equalityType == 6 || equalityType == 7 || equalityType == 8;
-        const treatAsBoolean = (lhsVar is null || lhsVar.isBoolean)
-            && (rhsVar is null || rhsVar.isBoolean);
-        Truthiness expectedTruthiness = Truthiness.Maybe;
+        bool couldBeUnknown;
+        checkVRPVar(lhsVar, couldBeUnknown);
+        checkVRPVar(rhsVar, couldBeUnknown);
 
-        if (equalityIsTrue)
+        const treatAsInteger = equalityType == EqualityArgType.Unknown;
+        const treatAsPointer = equalityType == EqualityArgType.DynamicArray
+            || equalityType == EqualityArgType.AssociativeArray
+            || equalityType == EqualityArgType.Nullable;
+
+        dfaCommon.printState((ref OutBuffer ob, scope PrintPrefixType prefix) {
+            ob.printf("Transfer equal treatAsInteger=%d, treatAsPointer=%d, couldBeUnknown=%d",
+                treatAsInteger, treatAsPointer, couldBeUnknown);
+            ob.writestring("\n");
+
+            prefix("");
+            ob.printf("lhs cctx %p, lhs var %p, rhs cctx %p, rhs var %p",
+                lhsCctx, lhsVar, rhsCctx, rhsVar);
+            ob.writestring("\n");
+        });
+
+        Truthiness expectedTruthiness;
+
+        if ((lhsVar is null || lhsVar.isModellable) && (rhsVar is null || rhsVar.isModellable))
         {
-            if (treatAsPointer)
+            expectedTruthiness = Truthiness.Maybe;
+
+            if (equalityIsTrue)
             {
-                if (lhsCctx.nullable == Nullable.Null && lhsCctx.nullable == rhsCctx.nullable)
-                    expectedTruthiness = Truthiness.True;
-                else if (lhsCctx.truthiness == Truthiness.False
-                        && lhsCctx.truthiness == rhsCctx.truthiness)
-                    expectedTruthiness = Truthiness.True;
-                else if (lhsCctx.truthiness != rhsCctx.truthiness && (lhsCctx.truthiness == Truthiness.False
-                        || rhsCctx.truthiness == Truthiness.False)
-                        && (lhsCctx.truthiness == Truthiness.True
-                            || rhsCctx.truthiness == Truthiness.True))
-                    expectedTruthiness = Truthiness.False;
-            }
-            else
-            {
-                if (lhsCctx.truthiness == Truthiness.False
-                        && lhsCctx.truthiness == rhsCctx.truthiness)
-                    expectedTruthiness = Truthiness.True;
-                else if (lhsCctx.truthiness != rhsCctx.truthiness && (lhsCctx.truthiness == Truthiness.False
-                        || rhsCctx.truthiness == Truthiness.False)
-                        && (lhsCctx.truthiness == Truthiness.True
-                            || rhsCctx.truthiness == Truthiness.True))
-                    expectedTruthiness = Truthiness.False;
-            }
-        }
-        else
-        {
-            if (treatAsPointer)
-            {
-                if ((lhsCctx.nullable == Nullable.NonNull
-                        || rhsCctx.nullable == Nullable.NonNull)
-                        && lhsCctx.nullable != rhsCctx.nullable)
-                    expectedTruthiness = Truthiness.True;
-                else if (lhsCctx.nullable == Nullable.NonNull && lhsCctx.nullable
-                        == rhsCctx.nullable)
-                    expectedTruthiness = Truthiness.Maybe;
-                else if (lhsCctx.nullable == Nullable.Null && lhsCctx.nullable == rhsCctx.nullable)
-                    expectedTruthiness = Truthiness.False;
-                else if (lhsCctx.truthiness < Truthiness.False
-                        || rhsCctx.truthiness < Truthiness.False)
-                    expectedTruthiness = Truthiness.Unknown;
-                else if (lhsCctx.truthiness != rhsCctx.truthiness)
-                    expectedTruthiness = Truthiness.Maybe;
-                else if (lhsCctx.truthiness == rhsCctx.truthiness)
+                if (treatAsPointer)
                 {
-                    // Can't know just by truthiness if lhs == rhs exactly if it isn't boolean.
-                    if (treatAsBoolean)
+                    if (lhsCctx.nullable == Nullable.Null && lhsCctx.nullable == rhsCctx.nullable)
+                        expectedTruthiness = Truthiness.True;
+                    else if (lhsCctx.truthiness == Truthiness.False
+                            && lhsCctx.truthiness == rhsCctx.truthiness)
+                        expectedTruthiness = Truthiness.True;
+                    else if (lhsCctx.truthiness != rhsCctx.truthiness && (lhsCctx.truthiness == Truthiness.False
+                            || rhsCctx.truthiness == Truthiness.False)
+                            && (lhsCctx.truthiness == Truthiness.True
+                                || rhsCctx.truthiness == Truthiness.True))
                         expectedTruthiness = Truthiness.False;
-                    else
-                        expectedTruthiness = Truthiness.Unknown;
+                }
+                else
+                {
+                    expectedTruthiness = lhsCctx.pa.compareEqual(rhsCctx.pa);
+
+                    if (expectedTruthiness < Truthiness.False)
+                    {
+                        if (lhsCctx.truthiness == Truthiness.False
+                                && lhsCctx.truthiness == rhsCctx.truthiness)
+                            expectedTruthiness = Truthiness.True;
+                        else if (!treatAsInteger && lhsCctx.truthiness != rhsCctx.truthiness
+                                && (lhsCctx.truthiness == Truthiness.False
+                                    || rhsCctx.truthiness == Truthiness.False)
+                                && (lhsCctx.truthiness == Truthiness.True
+                                    || rhsCctx.truthiness == Truthiness.True))
+                            expectedTruthiness = Truthiness.False;
+                        else
+                            expectedTruthiness = Truthiness.Maybe;
+                    }
+                    else if (couldBeUnknown || !treatAsInteger)
+                        expectedTruthiness = Truthiness.Maybe;
                 }
             }
             else
             {
-                if (lhsCctx.truthiness < Truthiness.False || rhsCctx.truthiness < Truthiness.False)
-                    expectedTruthiness = Truthiness.Unknown;
-                else if (lhsCctx.truthiness != rhsCctx.truthiness)
-                    expectedTruthiness = Truthiness.Maybe;
-                else if (lhsCctx.truthiness == rhsCctx.truthiness)
+                if (treatAsPointer)
                 {
-                    // Can't know just by truthiness if lhs == rhs exactly if it isn't boolean.
-                    if (treatAsBoolean)
+                    if ((lhsCctx.nullable == Nullable.NonNull
+                            || rhsCctx.nullable == Nullable.NonNull)
+                            && lhsCctx.nullable != rhsCctx.nullable)
+                        expectedTruthiness = Truthiness.True;
+                    else if (lhsCctx.nullable == Nullable.NonNull
+                            && lhsCctx.nullable == rhsCctx.nullable)
+                        expectedTruthiness = Truthiness.Maybe;
+                    else if (lhsCctx.nullable == Nullable.Null
+                            && lhsCctx.nullable == rhsCctx.nullable)
                         expectedTruthiness = Truthiness.False;
+                }
+                else
+                {
+                    expectedTruthiness = lhsCctx.pa.compareNotEqual(rhsCctx.pa);
+
+                    if (expectedTruthiness >= Truthiness.False)
+                    {
+                        if (couldBeUnknown || !treatAsInteger)
+                            expectedTruthiness = Truthiness.Maybe;
+                    }
                     else
-                        expectedTruthiness = Truthiness.Unknown;
+                        expectedTruthiness = Truthiness.Maybe;
                 }
             }
         }
+
+        dfaCommon.printState((ref OutBuffer ob, scope PrintPrefixType prefix) {
+            ob.printf("Expected truthiness of equality %d", expectedTruthiness);
+            ob.writestring("\n");
+        });
 
         if (expectedTruthiness == Truthiness.Maybe)
         {
@@ -1415,10 +1591,24 @@ struct DFAAnalyzer
 
                 if (copy)
                 {
-                    if (toEffectCctx.var.isTruthy)
-                        toEffectCctx.truthiness = fromEffectCctx.truthiness;
-                    if (toEffectCctx.var.isNullable)
-                        toEffectCctx.nullable = fromEffectCctx.nullable;
+                    if (equalityIsTrue)
+                    {
+                        if (toEffectCctx.var.isTruthy)
+                            toEffectCctx.truthiness = fromEffectCctx.truthiness;
+                        if (toEffectCctx.var.isNullable)
+                            toEffectCctx.nullable = fromEffectCctx.nullable;
+                    }
+                    else
+                    {
+                        if (toEffectCctx.var.isTruthy)
+                            toEffectCctx.truthiness = fromEffectCctx.truthiness == Truthiness.True ? Truthiness.False
+                                : (fromEffectCctx.truthiness == Truthiness.False
+                                        ? Truthiness.True : Truthiness.Unknown);
+                        if (toEffectCctx.var.isNullable)
+                            toEffectCctx.nullable = fromEffectCctx.nullable == Nullable.NonNull ? Nullable.Null
+                                : (fromEffectCctx.nullable == Nullable.Null
+                                        ? Nullable.NonNull : Nullable.Unknown);
+                    }
                 }
             }
         }
@@ -1493,6 +1683,67 @@ struct DFAAnalyzer
         return ret;
     }
 
+    DFALatticeRef transferGreaterThan(bool orEqualTo, DFALatticeRef lhs, DFALatticeRef rhs)
+    {
+        DFAVar* lhsVar, rhsVar;
+        DFAConsequence* lhsCctx = lhs.getContext(lhsVar);
+        DFAConsequence* rhsCctx = rhs.getContext(rhsVar);
+
+        assert(lhsCctx !is null);
+        assert(rhsCctx !is null);
+
+        bool couldBeUnknown;
+        checkVRPVar(lhsCctx.var, couldBeUnknown);
+        checkVRPVar(rhsCctx.var, couldBeUnknown);
+
+        Truthiness expectedTruthiness;
+
+        if ((lhsVar is null || lhsVar.isModellable) && (rhsVar is null || rhsVar.isModellable))
+        {
+            expectedTruthiness = orEqualTo ? lhsCctx.pa.greaterThanOrEqual(
+                    rhsCctx.pa) : lhsCctx.pa.greaterThan(rhsCctx.pa);
+
+            if (couldBeUnknown)
+                expectedTruthiness = Truthiness.Maybe;
+
+            if (lhsVar !is null)
+            {
+                if (rhsCctx.pa.kind == DFAPAValue.Kind.Concrete
+                        && (rhsCctx.pa.value > 0 || (!orEqualTo && rhsCctx.pa.value == 0)))
+                {
+                    // ok clearly non-null
+
+                    if (lhsVar.isTruthy)
+                        lhsCctx.truthiness = Truthiness.True;
+                    if (lhsVar.isNullable)
+                        lhsCctx.nullable = Nullable.NonNull;
+                }
+
+                lhsVar.walkRoots((var) {
+                    if (var is lhsVar)
+                        return;
+
+                    DFAConsequence* cctx = lhs.findConsequence(var);
+                    if (cctx is null)
+                        return;
+
+                    cctx.truthiness = lhsCctx.truthiness;
+                    cctx.nullable = lhsCctx.nullable;
+                    cctx.pa = lhsCctx.pa;
+                });
+            }
+
+            if (rhsVar !is null)
+            {
+                rhsVar.walkRoots((var) { var.doNotInferNonNull = true; });
+            }
+        }
+
+        DFALatticeRef ret = this.transferLogicalAnd(lhs, rhs);
+        ret.acquireConstantAsContext(expectedTruthiness, Nullable.Unknown);
+        return ret;
+    }
+
     void transferGoto(DFAScope* toSc, bool isAfter)
     {
         DFAScopeRef temp = dfaCommon.currentDFAScope.copy;
@@ -1544,15 +1795,17 @@ struct DFAAnalyzer
         DFAConsequence* cctx = ret.acquireConstantAsContext;
         ret.check;
 
-        DFAVar* lastMaybe;
+        DFAVar* firstMaybe;
+        DFAVar** lastMaybe = &firstMaybe;
 
         lhs.walkMaybeTops((DFAConsequence* oldC) {
             if (oldC.var is null)
                 return true;
 
             DFAConsequence* newC = ret.addConsequence(oldC.var, oldC);
-            newC.maybe = lastMaybe;
-            lastMaybe = newC.var;
+
+            *lastMaybe = newC.var;
+            lastMaybe = &newC.maybe;
 
             ret.check;
             return true;
@@ -1567,8 +1820,9 @@ struct DFAAnalyzer
             if (result is null)
             {
                 DFAConsequence* newC = ret.addConsequence(oldC.var, oldC);
-                newC.maybe = lastMaybe;
-                lastMaybe = newC.var;
+
+                *lastMaybe = newC.var;
+                lastMaybe = &newC.maybe;
             }
             else
                 result.joinConsequence(result, oldC, null, false, false, true);
@@ -1601,7 +1855,7 @@ struct DFAAnalyzer
             }
         }
 
-        cctx.maybe = lastMaybe;
+        cctx.maybe = firstMaybe;
 
         if (cctxLHS !is null && cctxRHS !is null)
         {
@@ -1851,6 +2105,13 @@ private:
 
     // Converge, see Lattice (Abstract algebra) meet operation (lower bound)
     // Operates on a given lattice to converge into current scope's variable state
+    /***********************************************************
+     * The Lattice 'Meet' operation (Intersection / Lower Bound).
+     *
+     * Used when we are combining facts that MUST be true.
+     * Example: If `x` is NonNull in path A AND `x` is NonNull in path B,
+     * then `x` is NonNull.
+     */
     DFALatticeRef meet(DFALatticeRef lhs, DFALatticeRef rhs,
             int filterDepthOfVariable = 0, bool couldScopeNotHaveRan = false)
     {
@@ -1914,6 +2175,13 @@ private:
 
     // Converge, see Lattice (Abstract algebra) meet operation (upper bound)
     // Operates on a given lattice to converge into current scope's variable state
+    /***********************************************************
+     * The Lattice 'Join' operation (Union / Upper Bound).
+     *
+     * Used when merging diverging paths where EITHER could have happened.
+     * Example: If `x` is 5 in path A, and `x` is 6 in path B.
+     * Join(A, B) -> `x` is "Unknown Integer" (because it could be either).
+     */
     DFALatticeRef join(DFALatticeRef lhs, DFALatticeRef rhs, int filterDepthOfVariable = 0,
             DFAVar* ignoreLHSCtx = null, bool ignoreWriteCount = false, bool unknownAware = false)
     {
@@ -1925,13 +2193,20 @@ private:
 
         version (DebugJoinMeetOp)
         {
-            printf("Running join on %p and %p, constantRHS=%p, filter=%d, ignoreLHS=%p\n",
-                    lhsVar, rhsVar, constantRHS, filterDepthOfVariable, ignoreLHSCtx);
+            printf("Running join on %p and %p, constantRHS=%p, filter=%d, ignoreLHS=%p, ignoreWriteCount=%d, unknownAware=%d\n",
+                    lhsVar, rhsVar, constantRHS, filterDepthOfVariable,
+                    ignoreLHSCtx, ignoreWriteCount, unknownAware);
             fflush(stdout);
         }
 
         void processLHSVar(DFAConsequence* c1)
         {
+            version (DebugJoinMeetOp)
+            {
+                printf("Processing LHS var %p\n", c1.var);
+                fflush(stdout);
+            }
+
             if (filterDepthOfVariable < c1.var.declaredAtDepth && filterDepthOfVariable > 0)
                 return;
 
@@ -1979,6 +2254,12 @@ private:
 
         foreach (c2; rhs)
         {
+            version (DebugJoinMeetOp)
+            {
+                printf("Processing RHS var %p\n", c2.var);
+                fflush(stdout);
+            }
+
             if (c2.var is null || ret.findConsequence(c2.var) !is null)
                 continue;
 
@@ -1997,6 +2278,12 @@ private:
 
         if (rhsCtx !is null && rhsVar is null && lhsVar !is null)
         {
+            version (DebugJoinMeetOp)
+            {
+                printf("Processing RHS context var %p to lhs context var %p\n", rhsCtx.var, lhsVar);
+                fflush(stdout);
+            }
+
             DFAConsequence* result = ret.addConsequence(lhsVar);
             result.joinConsequence(rhsCtx, null, null, false, false, unknownAware);
             if (result.writeOnVarAtThisPoint < lhsCtx.writeOnVarAtThisPoint)
@@ -2013,6 +2300,15 @@ private:
         }
 
         return ret;
+    }
+
+    void checkVRPVar(DFAVar* var, ref bool couldBeUnknown)
+    {
+        if (var is null)
+            return;
+
+        if (var.declaredAtDepth > 0 && dfaCommon.lastLoopyLabel.depth > var.declaredAtDepth)
+            couldBeUnknown = true;
     }
 
     void seeWrite(ref DFAVar* assignTo, ref DFALatticeRef from)

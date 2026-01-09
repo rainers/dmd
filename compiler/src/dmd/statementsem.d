@@ -3,7 +3,7 @@
  *
  * Specification: $(LINK2 https://dlang.org/spec/statement.html, Statements)
  *
- * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2026 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/statementsem.d, _statementsem.d)
@@ -1052,7 +1052,7 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
                         if (tab.isTypeDArray())
                         {
                             // check if overflow is possible
-                            const maxLen = IntRange.fromType(tindex).imax.value + 1;
+                            const maxLen = intRangeFromType(tindex).imax.value + 1;
                             if (auto ale = fs.aggr.isArrayLiteralExp())
                                 err = ale.elements.length > maxLen;
                             else if (auto se = fs.aggr.isSliceExp())
@@ -1115,7 +1115,7 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
                         IntRange dimrange = getIntRange(ta.dim);
                         // https://issues.dlang.org/show_bug.cgi?id=12504
                         dimrange.imax = SignExtendedNumber(dimrange.imax.value-1);
-                        if (!IntRange.fromType(fs.key.type).contains(dimrange))
+                        if (!intRangeFromType(fs.key.type).contains(dimrange))
                         {
                             error(fs.loc, "index type `%s` cannot cover index range 0..%llu",
                                      p.type.toChars(), ta.dim.toInteger());
@@ -2592,16 +2592,44 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
 
         if (fd.isCtorDeclaration())
         {
-            if (rs.exp)
-            {
-                error(rs.loc, "cannot return expression from constructor");
-                errors = true;
-            }
-
             // Constructors implicitly do:
             //      return this;
-            rs.exp = new ThisExp(Loc.initial);
-            rs.exp.type = tret;
+            auto ctorReturn = new ThisExp(Loc.initial);
+            ctorReturn.type = tret;
+
+            bool isConstructorCall(Expression e)
+            {
+                auto ce = e.isCallExp();
+                if (!ce)
+                    return false;
+
+                auto dve = ce.e1.isDotVarExp();
+                if (!dve)
+                    return false;
+
+                return dve.var.isThis !is null;
+            }
+
+            if (rs.exp)
+            {
+                rs.exp = rs.exp.expressionSemantic(sc);
+
+                if (rs.exp.type.ty != Tvoid && !isConstructorCall(rs.exp))
+                {
+
+                    error(rs.loc, "can only return void expression, `this` call or `super` call from constructor");
+                    errors = true;
+                    rs.exp = ErrorExp.get();
+                }
+                else
+                {
+                    rs.exp = new CommaExp(rs.loc, rs.exp, ctorReturn).expressionSemantic(sc);
+                }
+            }
+            else
+            {
+                rs.exp = ctorReturn;
+            }
         }
         else if (rs.exp)
         {
@@ -2625,7 +2653,7 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
                 rs.exp = resolveAliasThis(sc, rs.exp);
 
             rs.exp = resolveProperties(sc, rs.exp);
-            if (rs.exp.checkType())
+            if (!rs.exp.hasValidType())
                 rs.exp = ErrorExp.get(rs.exp);
             if (auto f = isFuncAddress(rs.exp))
             {
@@ -3157,12 +3185,12 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
                 auto args = new Parameters(new Parameter(Loc.initial, STC.none, ClassDeclaration.object.type,
                                                          null, null, null));
 
-                FuncDeclaration fdenter = FuncDeclaration.genCfunc(args, Type.tvoid, Id.monitorenter);
+                FuncDeclaration fdenter = genCfunc(args, Type.tvoid, Id.monitorenter);
                 Expression e = new CallExp(loc, fdenter, new VarExp(loc, tmp));
                 e.type = Type.tvoid; // do not run semantic on e
 
                 cs.push(new ExpStatement(loc, e));
-                FuncDeclaration fdexit = FuncDeclaration.genCfunc(args, Type.tvoid, Id.monitorexit);
+                FuncDeclaration fdexit = genCfunc(args, Type.tvoid, Id.monitorexit);
                 e = new CallExp(loc, fdexit, new VarExp(loc, tmp));
                 e.type = Type.tvoid; // do not run semantic on e
                 Statement s = new ExpStatement(loc, e);
@@ -3197,7 +3225,7 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
 
             auto enterArgs = new Parameters(new Parameter(Loc.initial, STC.none, t.pointerTo(), null, null, null));
 
-            FuncDeclaration fdenter = FuncDeclaration.genCfunc(enterArgs, Type.tvoid, Id.criticalenter, STC.nothrow_);
+            FuncDeclaration fdenter = genCfunc(enterArgs, Type.tvoid, Id.criticalenter, STC.nothrow_);
             Expression e = new AddrExp(loc, tmpExp);
             e = e.expressionSemantic(sc);
             e = new CallExp(loc, fdenter, e);
@@ -3206,7 +3234,7 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
 
             auto exitArgs = new Parameters(new Parameter(Loc.initial, STC.none, t, null, null, null));
 
-            FuncDeclaration fdexit = FuncDeclaration.genCfunc(exitArgs, Type.tvoid, Id.criticalexit, STC.nothrow_);
+            FuncDeclaration fdexit = genCfunc(exitArgs, Type.tvoid, Id.criticalexit, STC.nothrow_);
             e = new CallExp(loc, fdexit, tmpExp);
             e.type = Type.tvoid; // do not run semantic on e
             Statement s = new ExpStatement(loc, e);
@@ -3250,6 +3278,32 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
             sym = new WithScopeSymbol(ws);
             sym.parent = sc.scopesym;
             sym.setEndLoc(ws.endloc);
+        }
+        else if (ws.prm)
+        {
+            /* Re-write to
+             * {
+             *   auto prm = exp
+             *   with(prm)
+             *   {
+             *     ...
+             *   }
+             * }
+             */
+            auto tmp_init = new ExpInitializer(ws.loc, ws.exp);
+            auto tmp = new VarDeclaration(ws.loc, ws.prm.type, ws.prm.ident, tmp_init);
+            // tmp.storage_class |= STC.temp; //NOTE(mojo): idk
+            tmp.dsymbolSemantic(sc);
+
+            auto es = new ExpStatement(ws.loc, tmp);
+            ws.exp = new VarExp(ws.loc, tmp);
+
+            ws.prm = null;
+            auto cs = new CompoundStatement(ws.loc, es, ws);
+            Statement ss = new ScopeStatement(ws.loc, cs, ws.endloc);
+            result = ss.statementSemantic(sc);
+
+            return;
         }
         else
         {
@@ -3926,7 +3980,7 @@ private extern(D) Expression applyArray(ForeachStatement fs, Expression flde,
         dgparams.push(new Parameter(Loc.initial, STC.none, Type.tvoidptr, null, null, null));
     dgty = new TypeDelegate(new TypeFunction(ParameterList(dgparams), Type.tint32, LINK.d));
     params.push(new Parameter(Loc.initial, STC.none, dgty, null, null, null));
-    fdapply = FuncDeclaration.genCfunc(params, Type.tint32, fdname.ptr);
+    fdapply = genCfunc(params, Type.tint32, fdname.ptr);
 
     if (tab.isTypeSArray())
         fs.aggr = fs.aggr.castTo(sc2, tn.arrayOf());
@@ -4490,7 +4544,7 @@ public auto makeTupleForeach(Scope* sc, bool isStatic, bool isDecl, ForeachState
             IntRange dimrange = IntRange(SignExtendedNumber(length))._cast(Type.tsize_t);
             // https://issues.dlang.org/show_bug.cgi?id=12504
             dimrange.imax = SignExtendedNumber(dimrange.imax.value-1);
-            if (!IntRange.fromType(p.type).contains(dimrange))
+            if (!intRangeFromType(p.type).contains(dimrange))
             {
                 error(fs.loc, "index type `%s` cannot cover index range 0..%llu",
                          p.type.toChars(), cast(ulong)length);

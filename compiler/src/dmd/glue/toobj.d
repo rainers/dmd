@@ -1,7 +1,7 @@
 /**
  * Convert an AST that went through all semantic phases into an object file.
  *
- * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2026 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/glue/toobj.d, _toobj.d)
@@ -49,6 +49,7 @@ import dmd.errors;
 import dmd.errorsink;
 import dmd.expression;
 import dmd.expressionsem : getDsymbol, toInteger;
+import dmd.typesem;
 import dmd.func;
 import dmd.funcsem;
 import dmd.globals;
@@ -662,7 +663,9 @@ void toObjFile(Dsymbol ds, bool multiobj)
                 assert(e.op == EXP.string_);
 
                 StringExp se = e.isStringExp();
-                char* name = cast(char *)mem.xmalloc_noscan(se.numberOfCodeUnits() + 1);
+                string s;
+                char* name = cast(char *)mem.xmalloc_noscan(se.numberOfCodeUnits(0, s) + 1);
+
                 se.writeTo(name, true);
 
                 if (pd.ident == Id.linkerDirective)

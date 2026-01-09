@@ -3,7 +3,7 @@
  *
  * generateCodeAndWrite() is the only function seen by the front end.
  *
- * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2026 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/glue/glue.d, _glue.d)
@@ -42,6 +42,7 @@ import dmd.backend.dt;
 import dmd.backend.el;
 import dmd.backend.global;
 import dmd.backend.obj;
+import dmd.backend.var : bo;
 import dmd.backend.oper;
 import dmd.backend.rtlsym;
 import dmd.backend.symtab;
@@ -57,13 +58,13 @@ import dmd.dmdparams;
 import dmd.dmodule;
 import dmd.dstruct;
 import dmd.dsymbol;
-import dmd.dsymbolsem : getLocalClasses, getType;
+import dmd.dsymbolsem : getLocalClasses, getType, findGetMembers;
 import dmd.expressionsem : toInteger;
 import dmd.dtemplate;
 import dmd.errors;
 import dmd.expression;
 import dmd.func;
-import dmd.funcsem : onlyOneMain;
+import dmd.funcsem : onlyOneMain, isVirtual;
 import dmd.globals;
 import dmd.identifier;
 import dmd.id;
@@ -73,6 +74,7 @@ import dmd.mtype;
 import dmd.statement;
 import dmd.target;
 import dmd.typesem;
+import dmd.funcsem : genCfunc;
 import dmd.utils;
 
 /**
@@ -478,7 +480,7 @@ void FuncDeclaration_toObjFile(FuncDeclaration fd, bool multiobj)
         .error(fd.loc, "%s `%s` errors compiling the function", fd.kind, fd.toPrettyChars);
         return;
     }
-    assert(fd.semanticRun == PASS.semantic3done);
+    assert(fd.semanticRun >= PASS.semantic3done && fd.semanticRun <= PASS.inlineAll);
     assert(fd.ident != Id.empty);
 
     for (FuncDeclaration fd2 = fd; fd2; )
@@ -783,7 +785,7 @@ void FuncDeclaration_toObjFile(FuncDeclaration fd, bool multiobj)
     Statement sbody = fd.fbody;
 
     BlockState bx;
-    bx.startblock = block_calloc();
+    bx.startblock = block_calloc(bo);
     bx.curblock = bx.startblock;
     bx.funcsym = s;
     bx.scope_index = -1;
@@ -847,13 +849,13 @@ void FuncDeclaration_toObjFile(FuncDeclaration fd, bool multiobj)
         se.type = Type.tstring;
         se.type = se.type.typeSemantic(Loc.initial, null);
         Expressions* exps = new Expressions(se);
-        FuncDeclaration fdpro = FuncDeclaration.genCfunc(null, Type.tvoid, "trace_pro");
+        FuncDeclaration fdpro = genCfunc(null, Type.tvoid, "trace_pro");
         Expression ec = VarExp.create(Loc.initial, fdpro);
         Expression e = CallExp.create(Loc.initial, ec, exps);
         e.type = Type.tvoid;
         Statement sp = ExpStatement.create(fd.loc, e);
 
-        FuncDeclaration fdepi = FuncDeclaration.genCfunc(null, Type.tvoid, "_c_trace_epi");
+        FuncDeclaration fdepi = genCfunc(null, Type.tvoid, "_c_trace_epi");
         ec = VarExp.create(Loc.initial, fdepi);
         e = CallExp.create(Loc.initial, ec);
         e.type = Type.tvoid;
@@ -1029,7 +1031,7 @@ void FuncDeclaration_toObjFile(FuncDeclaration fd, bool multiobj)
             newConstructor.Sclass = SC.static_;
             func_t* funcState = newConstructor.Sfunc;
             //Init start block
-            funcState.Fstartblock = block_calloc();
+            funcState.Fstartblock = block_calloc(bo);
             block* startBlk = funcState.Fstartblock;
             //Make that block run __cxa_atexit(&func);
             auto atexitSym = getRtlsym(RTLSYM.CXA_ATEXIT);
@@ -1046,7 +1048,7 @@ void FuncDeclaration_toObjFile(FuncDeclaration fd, bool multiobj)
             auto exec = el_bin(OPcall, TYvoid, el_var(atexitSym), paramPack);
             block_appendexp(startBlk, exec); //payload
             startBlk.bc = BC.goto_;
-            auto next = block_calloc();
+            auto next = block_calloc(bo);
             startBlk.appendSucc(next);
             startBlk.Bnext = next;
             next.bc = BC.ret;
@@ -1231,7 +1233,7 @@ private Symbol* callFuncsAndGates(Module m, Symbol*[] sctors, StaticDtorDeclarat
         ector = el_combine(ector, e);
     }
 
-    block* b = block_calloc();
+    block* b = block_calloc(bo);
     b.bc = BC.ret;
     b.Belem = ector;
     sctor.Sfunc.Fstartline.Sfilename = m.arg.xarraydup.ptr;
@@ -1498,7 +1500,7 @@ private void genObjFile(Module m, bool multiobj, bool doppelganger)
         {
             localgot = glue.ictorlocalgot;
 
-            block* b = block_calloc();
+            block* b = block_calloc(bo);
             b.bc = BC.ret;
             b.Belem = glue.eictor;
             msictor.Sfunc.Fstartline.Sfilename = m.arg.xarraydup.ptr;

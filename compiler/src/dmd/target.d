@@ -15,7 +15,7 @@
  * - $(LINK2 https://github.com/ldc-developers/ldc, LDC repository)
  * - $(LINK2 https://github.com/D-Programming-GDC/gcc, GDC repository)
  *
- * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2026 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/target.d, _target.d)
@@ -83,6 +83,8 @@ ubyte defaultTargetOSMajor() @safe
             return 13;
         else version (TARGET_FREEBSD14)
             return 14;
+        else version (TARGET_FREEBSD15)
+            return 15;
         else
             return 0;
     }
@@ -314,7 +316,7 @@ extern (C++) struct Target
     import dmd.location;
     import dmd.astenums : LINK, TY;
     import dmd.mtype : Type, TypeFunction, TypeTuple;
-    import dmd.typesem : pointerTo, size;
+    import dmd.typesem;
     import dmd.root.ctfloat : real_t;
     import dmd.statement : Statement;
     import dmd.tokens : EXP;

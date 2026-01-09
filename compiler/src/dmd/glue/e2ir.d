@@ -1,7 +1,7 @@
 /**
  * Converts expressions to Intermediate Representation (IR) for the backend.
  *
- * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2026 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/glue/e2ir.d, _e2ir.d)
@@ -48,7 +48,8 @@ import dmd.dsymbol;
 import dmd.dsymbolsem : include, _isZeroInit, toAlias, isPOD;
 import dmd.dtemplate;
 import dmd.expression;
-import dmd.expressionsem : fill, isIdentical, isLvalue, toInteger, toUInteger, toComplex;
+import dmd.expressionsem;
+import dmd.funcsem : isVirtual;
 import dmd.func;
 import dmd.hdrgen;
 import dmd.id;
@@ -169,6 +170,16 @@ elem* elAssign(elem* e1, elem* e2, Type t, type* tx)
     //printf("e1:\n"); elem_print(e1);
     //printf("e2:\n"); elem_print(e2);
     //if (t) printf("t: %s\n", t.toChars());
+
+    // handle implicit conversion from function pointer to delegate
+    if (tybasic(e1.Ety) == TYdelegate &&
+        tybasic(e2.Ety) != TYdelegate &&
+        typtr(e2.Ety) &&
+        tysize(e2.Ety) == tysize(TYnptr))
+    {
+        e2 = el_pair(TYdelegate, el_long(TYnptr, 0), e2);
+    }
+
     elem* e = el_bin(OPeq, e2.Ety, e1, e2);
     switch (tybasic(e2.Ety))
     {
@@ -308,7 +319,8 @@ Symbol* toStringSymbol(const(char)* str, size_t len, size_t sz)
 Symbol* toStringSymbol(StringExp se)
 {
     Symbol* si;
-    const n = cast(int)se.numberOfCodeUnits();
+    string s;
+    const n = cast(int)se.numberOfCodeUnits(0, s);
     if (se.sz == 1)
     {
         const slice = se.peekString();
@@ -371,11 +383,12 @@ void toTraceGC(ref IRState irs, elem* e, Loc loc)
  * Params:
  *      e = Expression to convert
  *      irs = context
+ *      ehidden = hidden pointer to place the value, if any
  * Returns:
  *      generated elem tree
  */
 
-elem* toElemDtor(Expression e, ref IRState irs)
+elem* toElemDtor(Expression e, ref IRState irs, elem* ehidden = null)
 {
     //printf("Expression.toElemDtor() %s\n", e.toChars());
 
@@ -393,10 +406,17 @@ elem* toElemDtor(Expression e, ref IRState irs)
         irs.mayThrow = false;
 
     const starti = irs.varsInScope.length;
-    elem* er = toElem(e, irs);
+    elem* er = toElem(e, irs, ehidden);
     const endi = irs.varsInScope.length;
 
     irs.mayThrow = mayThrowSave;
+
+    if (ehidden)
+    {
+        // RVO: ensure ehidden is returned
+        elem* eh = el_una(OPind, er.Ety, el_copytree(ehidden));
+        er = el_combine(er, eh);
+    }
 
     // Add destructors
     elem* ex = appendDtors(irs, er, starti, endi);
@@ -458,10 +478,21 @@ elem* addressElem(elem* e, Type t, bool alwaysCopy = false)
         elem* eeq = elAssign(el_var(stmp), e2, t, tx);
         *pe = el_bin(OPcomma,e2.Ety,eeq,el_var(stmp));
     }
-    tym_t typ = TYnptr;
-    if (e.Eoper == OPind && tybasic(e.E1.Ety) == TYimmutPtr)
-        typ = TYimmutPtr;
-    e = el_una(OPaddr,typ,e);
+
+    if ((*pe).Eoper == OPind)
+    {
+        elem* pea = (*pe).E1;
+
+        if (tybasic(pea.Ety) == TYnptr || tybasic(pea.Ety) == TYimmutPtr)
+        {
+            *pe = pea;
+            for (elem* ex = e; ex.Eoper == OPcomma; ex = ex.E2)
+                ex.Ety = pea.Ety;
+            return e;
+        }
+    }
+
+    e = el_una(OPaddr, TYnptr, e);
     return e;
 }
 
@@ -624,10 +655,11 @@ private elem* toEfilenamePtr(Module m)
  * Params:
  *      e = expression tree
  *      irs = context
+ *      ehidden = hidden pointer to place the value, if any
  * Returns:
  *      backend elem tree
  */
-elem* toElem(Expression e, ref IRState irs)
+elem* toElem(Expression e, ref IRState irs, elem* ehidden = null)
 {
     elem* visit(Expression e)
     {
@@ -677,9 +709,10 @@ elem* toElem(Expression e, ref IRState irs)
         // VarExp generated for `__traits(initSymbol, Aggregate)`?
         if (auto symDec = se.var.isSymbolDeclaration())
         {
-            if (se.type.isTypeDArray())
+            if (auto ta = se.type.isTypeDArray())
             {
-                assert(se.type == Type.tvoid.arrayOf().constOf(), se.toString());
+                // Type must be const(void)[] or const(void[])
+                assert(ta.nextOf() == Type.tvoid.constOf(), se.type.toString());
 
                 // Generate s[0 .. Aggregate.sizeof] for non-zero initialised aggregates
                 // Otherwise create (null, Aggregate.sizeof)
@@ -1137,7 +1170,9 @@ elem* toElem(Expression e, ref IRState irs)
         if (tb.ty == Tarray)
         {
             Symbol* si = toStringSymbol(se);
-            e = el_pair(TYdarray, el_long(TYsize_t, se.numberOfCodeUnits()), el_ptr(si));
+            string s;
+            const n = cast(int)se.numberOfCodeUnits(0, s);
+            e = el_pair(TYdarray, el_long(TYsize_t, n), el_ptr(si));
         }
         else if (tb.ty == Tsarray)
         {
@@ -1159,7 +1194,9 @@ elem* toElem(Expression e, ref IRState irs)
                 e = el_calloc();
                 e.Eoper = OPstring;
                 // freed in el_free
-                const len = cast(size_t)((se.numberOfCodeUnits() + 1) * se.sz);
+                string s;
+                const n = cast(int)se.numberOfCodeUnits(0, s);
+                const len = cast(size_t)((n + 1) * se.sz);
                 e.Vstring = cast(char *)mem_malloc2(cast(uint) len);
                 se.writeTo(e.Vstring, true);
                 e.Vstrlen = len;
@@ -2599,37 +2636,36 @@ elem* toElem(Expression e, ref IRState irs)
          * If the former, because of aliasing of the return value with
          * function arguments, it'll fail.
          */
-        if (ae.op == EXP.construct && ae.e2.op == EXP.call)
+        if (ae.op == EXP.construct)
         {
-            CallExp ce = cast(CallExp)ae.e2;
-            TypeFunction tf = cast(TypeFunction)ce.e1.type.toBasetype();
-            if (tf.ty == Tfunction && retStyle(tf, ce.f && ce.f.needThis()) == RET.stack)
+            if (CallExp ce = lastComma(ae.e2).isCallExp())
             {
-                elem* ehidden = e1;
-                ehidden = el_una(OPaddr, TYnptr, ehidden);
-                assert(!irs.ehidden);
-                irs.ehidden = ehidden;
-                elem* e = toElem(ae.e2, irs);
-                return setResult2(e);
-            }
-
-            /* Look for:
-             *  v = structliteral.ctor(args)
-             * and have the structliteral write into v, rather than create a temporary
-             * and copy the temporary into v
-             */
-            if (e1.Eoper == OPvar && // no closure variables https://issues.dlang.org/show_bug.cgi?id=17622
-                ae.e1.op == EXP.variable && ce.e1.op == EXP.dotVariable)
-            {
-                auto dve = cast(DotVarExp)ce.e1;
-                auto fd = dve.var.isFuncDeclaration();
-                if (fd && fd.isCtorDeclaration())
+                TypeFunction tf = cast(TypeFunction)ce.e1.type.toBasetype();
+                if (tf.ty == Tfunction && retStyle(tf, ce.f && ce.f.needThis()) == RET.stack)
                 {
-                    if (auto sle = dve.e1.isStructLiteralExp())
+                    elem* eh = el_una(OPaddr, TYnptr, e1);
+                    elem* e = toElem(ae.e2, irs, eh);
+                    return setResult2(e);
+                }
+
+                /* Look for:
+                 *  v = structliteral.ctor(args)
+                 * and have the structliteral write into v, rather than create a temporary
+                 * and copy the temporary into v
+                 */
+                if (e1.Eoper == OPvar && // no closure variables https://issues.dlang.org/show_bug.cgi?id=17622
+                    ae.e1.op == EXP.variable && ce.e1.op == EXP.dotVariable)
+                {
+                    auto dve = cast(DotVarExp)ce.e1;
+                    auto fd = dve.var.isFuncDeclaration();
+                    if (fd && fd.isCtorDeclaration())
                     {
-                        sle.sym = toSymbol((cast(VarExp)ae.e1).var);
-                        elem* e = toElem(ae.e2, irs);
-                        return setResult2(e);
+                        if (auto sle = dve.e1.isStructLiteralExp())
+                        {
+                            sle.sym = toSymbol((cast(VarExp)ae.e1).var);
+                            elem* e = toElem(ae.e2, irs);
+                            return setResult2(e);
+                        }
                     }
                 }
             }
@@ -3149,7 +3185,7 @@ elem* toElem(Expression e, ref IRState irs)
     {
         assert(ce.e1 && ce.e2);
         elem* eleft  = toElem(ce.e1, irs);
-        elem* eright = toElem(ce.e2, irs);
+        elem* eright = toElem(ce.e2, irs, ehidden);
         elem* e = el_combine(eleft, eright);
         if (e)
             elem_setLoc(e, ce.loc);
@@ -3432,9 +3468,6 @@ elem* toElem(Expression e, ref IRState irs)
         Type t1 = ce.e1.type.toBasetype();
         Type ectype = t1;
         elem* eeq = null;
-
-        elem* ehidden = irs.ehidden;
-        irs.ehidden = null;
 
         elem* ec;
         FuncDeclaration fd = null;
@@ -5480,12 +5513,16 @@ elem* callfunc(Loc loc,
         foreach (const i, arg; *arguments)
         {
             elem* ea = toElem(arg, irs);
+            Parameter param = null;
+
+            if (i - j < tf.parameterList.length && i >= j)
+            {
+                param = tf.parameterList[i - j];
+            }
 
             //printf("\targ[%d]: %s\n", cast(int)i, arg.toChars());
 
-            if (i - j < tf.parameterList.length &&
-                i >= j &&
-                tf.parameterList[i - j].isReference())
+            if (param && param.isReference())
             {
                 /* `ref` and `out` parameters mean convert
                  * corresponding argument to a pointer
@@ -5496,38 +5533,21 @@ elem* callfunc(Loc loc,
 
             if (ISX64REF(irs, arg) && op == NotIntrinsic)
             {
-                /* if the argument is a function call which returns a pointer
-                 * to where the return value goes, that pointer is the pointer
-                 * to the return value
-                 */
-                elem** pea;
-                for (pea = &ea; (*pea).Eoper == OPcomma; pea = &(*pea).E2) // skip past OPcomma's
-                {
-                }
-                if ((*pea).Eoper == OPind &&
-                    (*pea).Ety == TYstruct &&
-                    ((*pea).E1.Eoper == OPcall || (*pea).E1.Eoper == OPucall))
-                {
-                    *pea = (*pea).E1; // remove the OPind
-                    elems[i] = ea;
-
-                    tym_t eaty = (*pea).Ety;
-                    for (elem* ex = ea; ex.Eoper == OPcomma; ex = ex.E2)
-                        ex.Ety = eaty;
-
-                    continue;
-                }
-
                 /* Copy to a temporary, and make the argument a pointer
                  * to that temporary.
                  */
                 VarDeclaration v;
                 if (VarExp ve = arg.lastComma().isVarExp())
                     v = ve.var.isVarDeclaration();
-                bool copy = !(v && (v.isArgDtorVar || v.storage_class & STC.rvalue)); // copy unless the destructor is going to be run on it
-                                                    // then assume the frontend took care of the copying and pass it by ref
-                if (arg.rvalue)                     // marked with __rvalue
-                    copy = false;
+
+                /* Do not copy if the destructor is going to be run on it.
+                 * Assume the frontend took care of the copying and pass it
+                 * by ref.
+                 */
+                bool hasDtor = v && (v.isArgDtorVar || v.storage_class & STC.rvalue);
+
+                /* Also do not copy __rvalue expressions or temporaries that can be elided. */
+                bool copy = !(hasDtor || arg.rvalue || (param && canElideCopy(arg, param.type)));
 
                 elems[i] = addressElem(ea, arg.type, copy);
                 continue;

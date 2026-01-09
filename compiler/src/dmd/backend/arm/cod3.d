@@ -10,7 +10,7 @@
  * $(LINK2 https://www.dlang.org, D programming language).
  *
  * Copyright:   Copyright (C) 1994-1998 by Symantec
- *              Copyright (C) 2000-2025 by The D Language Foundation, All Rights Reserved
+ *              Copyright (C) 2000-2026 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
  * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/backend/arm/cod3.d, backend/cod3.d)
@@ -1728,7 +1728,7 @@ void assignaddrc(code* c)
                 goto L1;
 
             case FL.para:
-                sectionOff = cast(uint)cgstate.Para.size - cgstate.BPoff;    // cancel out add of BPoff
+                sectionOff = /*cast(uint)cgstate.Para.size -*/ cgstate.BPoff;    // cancel out add of BPoff
                 goto L1;
 
             L1:
@@ -1786,10 +1786,11 @@ void assignaddrc(code* c)
 
             L2:
                 offset = cast(int)offset;       // sign extend
-//printf("offset: %lld localsize: %lld REGSIZE*2: %d\n", offset, localsize, REGSIZE*2);
+printf("offset: x%llx localsize: x%llxd REGSIZE*2: x%x\n", offset, localsize, REGSIZE*2);
                 if (cgstate.hasframe)
                     offset += REGSIZE * 2;
                 offset += localsize;
+printf("offset: x%llx\n", offset);
             L3:
                 /*
                         V 22
