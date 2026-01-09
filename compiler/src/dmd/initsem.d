@@ -1166,7 +1166,7 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
             if (ci.initializerList[].length != 2)
             {
                 error(ci.loc, "only two initializers required for complex type `%s`", t.toChars());
-                return err();
+                return err(ci);
             }
             auto rexp = ci.initializerList[0].initializer.initializerToExpression();
             auto imexp = ci.initializerList[1].initializer.initializerToExpression();

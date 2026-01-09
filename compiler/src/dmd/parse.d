@@ -5706,7 +5706,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                     goto Larg;
                 }
             }
-            at = parseType(&ai, null, &aloc);
+            at = parseType(&ai, &aloc);
             if (!ai)
                 noIdentifierForDeclarator(at, token);
         Larg:
@@ -5872,7 +5872,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
         {
             Identifier ai;
             Loc aloc;
-            AST.Type at = parseType(&ai, null, &aloc);
+            AST.Type at = parseType(&ai, &aloc);
             check(TOK.assign);
             return new AST.Parameter(aloc, storageClass, at, makeIdentifierAtLoc(ai, aloc), null, null);
         }
@@ -6735,7 +6735,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                     {
                         check(TOK.leftParenthesis);
                         id = null;
-                        t = parseType(&id, null, &idloc);
+                        t = parseType(&id, &idloc);
                         check(TOK.rightParenthesis);
                     }
                     handler = parseStatement(0);
