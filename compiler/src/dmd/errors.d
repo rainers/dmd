@@ -817,11 +817,6 @@ __gshared FatalErrorHandler fatalErrorHandler;
  */
 extern (C++) void fatal()
 {
-    version (LanguageServer)
-    {
-        import core.exception;
-        onAssertErrorMsg(__FILE__, __LINE__, "fatal error");
-    }
     if (fatalErrorHandler && fatalErrorHandler())
         return;
 
