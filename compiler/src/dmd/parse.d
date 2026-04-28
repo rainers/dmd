@@ -1,3 +1,4 @@
+
 /**
  * Takes a token stream from the lexer, and parses it into an abstract syntax tree.
  *
@@ -4714,7 +4715,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                 {
                     error("alias cannot have initializer");
                 }
-                AST.Declaration v = new AST.AliasDeclaration(identLoc, ident, t);
+                AST.Declaration v = new AST.AliasDeclaration(identloc, ident, t);
 
                 v.storage_class = storage_class;
                 if (pAttrs)
@@ -9748,6 +9749,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
     {
         if (s !is null)
         {
+            import dmd.dsymbol;
             s.addComment(combineComments(blockComment, token.lineComment, true));
             token.lineComment = null;
         }

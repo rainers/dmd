@@ -2416,7 +2416,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
             {
                 .error(dsym.loc, "cannot infer static array length from `$`, provide an initializer");
                 tsa.dim = new IntegerExp(dsym.loc, 0, Type.tsize_t);
-                dsym._init = new ErrorInitializer();
+                dsym._init = new ErrorInitializer(dsym._init);
                 dsym.type = Type.terror;
                 dsym.errors = true;
                 dsym.semanticRun = PASS.semanticdone;
@@ -2442,7 +2442,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
                     {
                         .error(dsym.loc, "cannot infer static array length from `$`, provide an initializer");
                         tsa.dim = new IntegerExp(dsym.loc, 0, Type.tsize_t);
-                        dsym._init = new ErrorInitializer();
+                        dsym._init = new ErrorInitializer(dsym._init);
                         dsym.type = Type.terror;
                         dsym.errors = true;
                         dsym.semanticRun = PASS.semanticdone;

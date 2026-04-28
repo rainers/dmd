@@ -98,13 +98,13 @@ void foreachDsymbol(Dsymbols* symbols, scope void delegate(Dsymbol) dg)
     }
 }
 
-private void addComment(Dsymbol d, const(char)* comment)
+void addComment(Dsymbol d, const(char)* comment)
 {
     scope v = new AddCommentVisitor(comment);
     d.accept(v);
 }
 
-extern (C++) private class AddCommentVisitor: Visitor
+extern (C++) class AddCommentVisitor: Visitor
 {
     alias visit = Visitor.visit;
 
@@ -121,19 +121,34 @@ extern (C++) private class AddCommentVisitor: Visitor
             return;
 
         //printf("addComment '%s' to Dsymbol %p '%s'\n", comment, this, toChars());
-        void* h = cast(void*)d;      // just the pointer is the key
-        auto p = h in d.commentHashTable;
-        if (!p)
+        version(LanguageServer)
         {
-            d.commentHashTable[h] = comment;
-            return;
+            // a global hash table doesn't work well if parsing should be separated from semantic analysis
+            if (!d.comment)
+                d.comment = comment;
+            else if (comment && strcmp(cast(char*)comment, cast(char*)d.comment) != 0)
+            {
+                // Concatenate the two
+                import dmd.lexer;
+                d.comment = Lexer.combineComments(d.comment.toDString(), comment.toDString(), true);
+            }
         }
-        if (strcmp(*p, comment) != 0)
+        else
         {
-            // Concatenate the two
-            import dmd.lexer;
-            *p = Lexer.combineComments((*p).toDString(), comment.toDString(), true);
-        }
+            void* h = cast(void*)d;      // just the pointer is the key
+            auto p = h in d.commentHashTable;
+            if (!p)
+            {
+                d.commentHashTable[h] = comment;
+                return;
+            }
+            if (strcmp(*p, comment) != 0)
+            {
+                // Concatenate the two
+                import dmd.lexer;
+                *p = Lexer.combineComments((*p).toDString(), comment.toDString(), true);
+            }
+        } // version(LanguageServer)
     }
     override void visit(AttribDeclaration atd)
     {
