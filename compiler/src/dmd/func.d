@@ -1119,15 +1119,6 @@ extern (C++) final class InvariantDeclaration : FuncDeclaration
     {
         v.visit(this);
     }
-
-    extern (D) void fixupInvariantIdent(size_t offset)
-    {
-        OutBuffer idBuf;
-        idBuf.writestring("__invariant");
-        idBuf.print(offset);
-
-        ident = Identifier.idPool(idBuf[]);
-    }
 }
 
 

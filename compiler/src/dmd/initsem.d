@@ -423,6 +423,26 @@ Initializer initializerSemantic(Initializer init, Scope* sc, ref Type tx, NeedIn
         if (i.exp.op == EXP.type)
         {
             error(i.exp.loc, "initializer must be an expression, not `%s`", i.exp.toChars());
+            // If the error location differs from the initializer location, show where it was used
+            if (i.exp.loc != i.loc)
+                errorSupplemental(i.loc, "used in initialization here");
+            // If the type is a struct or class, suggest adding () to construct an instance
+            if (auto ts = i.exp.type.isTypeStruct())
+            {
+                // Check if the struct can be default-constructed (no required args)
+                if (!ts.sym.hasCopyCtor && (!ts.sym.ctor || ts.sym.defaultCtor))
+                    errorSupplemental(i.exp.loc, "perhaps use `%s()` to construct a value of the type", i.exp.toChars());
+                else if (ts.sym.ctor && !ts.sym.hasCopyCtor)
+                    errorSupplemental(i.exp.loc, "perhaps use `%s(...)` to construct a value of the type", i.exp.toChars());
+            }
+            else if (auto tc = i.exp.type.isTypeClass())
+            {
+                // Check if the class can be default-constructed
+                if (!tc.sym.noDefaultCtor && (!tc.sym.ctor || tc.sym.defaultCtor))
+                    errorSupplemental(i.exp.loc, "perhaps use `new %s()` to construct a value of the type", i.exp.toChars());
+                else if (tc.sym.ctor)
+                    errorSupplemental(i.exp.loc, "perhaps use `new %s(...)` to construct a value of the type", i.exp.toChars());
+            }
             return err(i);
         }
         // Make sure all pointers are constants
@@ -1454,6 +1474,22 @@ Expression initializerToExpression(Initializer init, Type itype = null, const bo
             }
         }
 
+        // enforce the element type only if the dimensions match, otherwise the value
+        // might be used as an initializer for the whole array at another dimension
+        Type isTypeArray(Type tn)
+        {
+            auto ty = tn ? tn.ty : Tnone;
+            return ty == Tarray || ty == Tsarray || ty == Taarray || ty == Tvector ? tn : null;
+        }
+        Type tnext = isTypeArray(itype);
+        auto initn = init;
+        while (tnext && initn)
+        {
+            tnext = isTypeArray(tnext.nextOf());
+            initn = initn.value.length ? initn.value[0].isArrayInitializer() : null;
+        }
+        Type telem = itype && !tnext && !initn ? itype.nextOf() : null;
+
         auto elements = new Expressions(edim);
         elements.zero();
         size_t j = 0;
@@ -1464,7 +1500,7 @@ Expression initializerToExpression(Initializer init, Type itype = null, const bo
             assert(j < edim);
             if (Initializer iz = init.value[i])
             {
-                if (Expression ex = iz.initializerToExpression(null, isCfile))
+                if (Expression ex = iz.initializerToExpression(telem, isCfile))
                 {
                     (*elements)[j] = ex;
                     ++j;

@@ -429,7 +429,20 @@ void Expression_toDt(Expression e, ref DtBuilder dtb)
                 goto case Tpointer;
 
             case Tpointer:
-                if (e.sz == 1)
+            {
+                // Through CTFE, a mutable char[] might be initialized with a StringExp,
+                // don't use immutable string symbol then
+                const mutableData = t.nextOf().isMutable();
+                if (mutableData)
+                {
+                    auto dtbdata = DtBuilder(0);
+                    dtbdata.nbytes((cast(const ubyte*)p)[0 .. n * e.sz]);
+                    if (auto d = dtbdata.finish())
+                        dtb.dtoff(d, 0);
+                    else
+                        dtb.size(0);
+                }
+                else if (e.sz == 1)
                 {
                     import dmd.glue.e2ir : toStringSymbol;
                     import dmd.glue : totym;
@@ -443,6 +456,7 @@ void Expression_toDt(Expression e, ref DtBuilder dtb)
                     dtb.abytes(0, p[0 .. n * e.sz], cast(uint) e.sz, pow2);
                 }
                 break;
+            }
 
             case Tsarray:
             {
@@ -1002,13 +1016,32 @@ private void membersToDt(AggregateDeclaration ad, ref DtBuilder dtb,
                 auto value = ie.getInteger();
                 const width = bf.fieldWidth;
                 const mask = (1L << width) - 1;
-                bitFieldValue = (bitFieldValue & ~(mask << bitOffset)) | ((value & mask) << bitOffset);
+                bitFieldValue = (bitFieldValue & ~(mask << bf.bitOffset)) | ((value & mask) << bf.bitOffset);
                 //printf("bitFieldValue x%llx\n", bitFieldValue);
             }
             else
                 Expression_toDt(e, dtbx);    // convert e to an initializer dt
         }
-        else if (!bf)
+        else if (bf)
+        {
+            if (Initializer init = vd._init)
+            {
+                if (init.isVoidInitializer())
+                    continue;
+
+                assert(vd.semanticRun >= PASS.semantic2done);
+                auto ei = init.isExpInitializer();
+                assert(ei);
+                auto ie = ei.exp.isIntegerExp();
+                assert(ie);
+
+                auto value = ie.getInteger();
+                const width = bf.fieldWidth;
+                const mask = (1L << width) - 1;
+                bitFieldValue = (bitFieldValue & ~(mask << bf.bitOffset)) | ((value & mask) << bf.bitOffset);
+            }
+        }
+        else
         {
             if (Initializer init = vd._init)
             {
@@ -1456,31 +1489,6 @@ private extern (C++) class TypeInfoDtVisitor : Visitor
         {
             import dmd.semantic3 : semanticTypeInfoMembers;
             semanticTypeInfoMembers(sd);
-        }
-
-        if (TemplateInstance ti = sd.isInstantiated())
-        {
-            if (!ti.needsCodegen())
-            {
-                assert(ti.minst || sd.requestTypeInfo);
-
-                /* ti.toObjFile() won't get called. So, store these
-                 * member functions into object file in here.
-                 */
-
-                if (sd.xeq && sd.xeq != StructDeclaration.xerreq)
-                    toObjFile(sd.xeq, global.params.multiobj);
-                if (sd.xcmp && sd.xcmp != StructDeclaration.xerrcmp)
-                    toObjFile(sd.xcmp, global.params.multiobj);
-                if (FuncDeclaration ftostr = search_toString(sd))
-                    toObjFile(ftostr, global.params.multiobj);
-                if (sd.xhash)
-                    toObjFile(sd.xhash, global.params.multiobj);
-                if (sd.postblit)
-                    toObjFile(sd.postblit, global.params.multiobj);
-                if (sd.dtor)
-                    toObjFile(sd.dtor, global.params.multiobj);
-            }
         }
 
         /* Put out:

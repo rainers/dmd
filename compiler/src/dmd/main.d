@@ -583,7 +583,11 @@ private int tryMain(const(char)[][] argv, out Param params)
 
             buf.reset();         // reuse the buffer
             genhdrfile(m, params.dihdr.fullOutput, buf);
-            if (!writeFile(m.loc, m.hdrfile.toString(), buf[]))
+            if (params.dihdr.name == "-") {
+                size_t n = fwrite(buf[].ptr, 1, buf.length, stdout);
+                assert(n == buf.length);
+            }
+            else if (!writeFile(m.loc, m.hdrfile.toString(), buf[]))
                 fatal();
         }
     }
@@ -965,9 +969,6 @@ bool parseCommandlineAndConfig(const(char)[][] argv, out Param params, ref Strin
 
     bool isX86_64 = arch[0] == '6';
 
-    version(Windows) // delete LIB entry in [Environment] (necessary for optlink) to allow inheriting environment for MS-COFF
-        environment.update("LIB", 3).value = null;
-
     // read from DFLAGS in [Environment{arch}] section
     char[80] envsection = void;
     snprintf(envsection.ptr, envsection.length, "Environment%.*s", cast(int) arch.length, arch.ptr);
@@ -1102,6 +1103,9 @@ void reconcileCommands(ref Param params, ref Target target)
 
         if (params.useSwitchError == CHECKENABLE._default)
             params.useSwitchError = CHECKENABLE.off;
+
+        if (params.useNullCheck == CHECKENABLE._default)
+            params.useNullCheck = CHECKENABLE.off;
     }
     else
     {
@@ -1122,6 +1126,9 @@ void reconcileCommands(ref Param params, ref Target target)
 
         if (params.useSwitchError == CHECKENABLE._default)
             params.useSwitchError = CHECKENABLE.on;
+
+        if (params.useNullCheck == CHECKENABLE._default)
+            params.useNullCheck = CHECKENABLE.off;
     }
 
     if (params.betterC)

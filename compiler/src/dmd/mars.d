@@ -689,22 +689,6 @@ bool parseCommandLine(const ref Strings arguments, const size_t argc, out Param 
             params.useDeprecated = DiagnosticReporting.inform;
         else if (arg == "-c")                // https://dlang.org/dmd.html#switch-c
             driverParams.link = false;
-        else if (startsWith(p + 1, "checkactionfinally")) // https://dlang.org/dmd.html#switch-checkactionfinally
-        {
-            enum len = "-checkactionfinally".length;
-            switch(arg[len .. $])
-            {
-                case "=off":
-                    params.rewriteNoExceptionToSeq = true;
-                    break;
-                case "=on":
-                    params.rewriteNoExceptionToSeq = false;
-                    break;
-                default:
-                    errorInvalidSwitch(p, "-checkactionerror argument may only be `on` or `off`");
-                    return false;
-            }
-        }
         else if (startsWith(p + 1, "checkaction")) // https://dlang.org/dmd.html#switch-checkaction
         {
             /* Parse:
@@ -739,7 +723,7 @@ bool parseCommandLine(const ref Strings arguments, const size_t argc, out Param 
             mixin(checkOptionsMixin("check",
                 "`-check=<action>` requires an action"));
             /* Parse:
-             *    -check=[assert|bounds|in|invariant|out|switch][=[on|off]]
+             *    -check=[assert|bounds|in|invariant|out|switch|nullderef][=[on|off]]
              */
 
             // Check for legal option string; return true if so
@@ -774,6 +758,7 @@ bool parseCommandLine(const ref Strings arguments, const size_t argc, out Param 
                 params.useInvariants    = CHECKENABLE.on;
                 params.useOut           = CHECKENABLE.on;
                 params.useSwitchError   = CHECKENABLE.on;
+                params.useNullCheck     = CHECKENABLE.on;
             }
             else if (checkarg == "off")
             {
@@ -783,13 +768,15 @@ bool parseCommandLine(const ref Strings arguments, const size_t argc, out Param 
                 params.useInvariants    = CHECKENABLE.off;
                 params.useOut           = CHECKENABLE.off;
                 params.useSwitchError   = CHECKENABLE.off;
+                params.useNullCheck     = CHECKENABLE.off;
             }
             else if (!(check(checkarg, "assert",    params.useAssert) ||
                   check(checkarg, "bounds",    params.useArrayBounds) ||
                   check(checkarg, "in",        params.useIn         ) ||
                   check(checkarg, "invariant", params.useInvariants ) ||
                   check(checkarg, "out",       params.useOut        ) ||
-                  check(checkarg, "switch",    params.useSwitchError)))
+                  check(checkarg, "switch",    params.useSwitchError) ||
+                  check(checkarg, "nullderef",    params.useNullCheck)))
             {
                 errorInvalidSwitch(p);
                 params.help.check = true;
@@ -1645,6 +1632,10 @@ bool parseCommandLine(const ref Strings arguments, const size_t argc, out Param 
         else if (arg == "-nothrow") // https://dlang.org/dmd.html#switch-nothrow
         {
             params.useExceptions = false;
+        }
+        else if (arg == "-nothrow-optimizations") // https://dlang.org/dmd.html#switch-nothrow-optimizations
+        {
+            params.nothrowOptimizations = true;
         }
         else if (arg == "-unittest")
             params.useUnitTests = true;

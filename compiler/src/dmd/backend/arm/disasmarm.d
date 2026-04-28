@@ -2038,12 +2038,16 @@ void disassemble(uint c) @trusted
         uint o2 = field(ins,11,11);
         uint Rd = field(ins,4,0);
 
-        if (Q == 1 && op == 1 && cmode == 0xE)
+        if (op == 1 && cmode == 0xE)
         {
             url2 = "movi_advsimd";
             p1 = "movi";    // https://www.scs.stanford.edu/~zyedidia/arm64/movi_advsimd.html
             // TODO AArch64 implement https://www.scs.stanford.edu/~zyedidia/arm64/shared_pseudocode.html#impl-shared.AdvSIMDExpandImm.3
-            uint n = snprintf(buf.ptr, cast(uint)buf.length, "v%d.2d,#0x%x", Rd, abcdefgh);
+            uint n;
+            if (Q)
+                n = snprintf(buf.ptr, cast(uint)buf.length, "v%d.2d,#0x%x", Rd, abcdefgh);
+            else
+                n = snprintf(buf.ptr, cast(uint)buf.length, "d%d,#0x%x", Rd, abcdefgh);
             p2 = buf[0 .. n];
         }
     }
@@ -2209,6 +2213,7 @@ void disassemble(uint c) @trusted
             p3 = (Rm == 0 && (opcode2 & 8)) ? "#0.0" : fregString(rbuf[4..8],"sd h"[ftype],Rm);
         }
     }
+    else
 
     // Floating-point immediate http://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#floatimm
     if (field(ins,31,24) == 0x1E && field(ins,21,21) == 1 && field(ins,12,10) == 4)
@@ -2226,7 +2231,33 @@ void disassemble(uint c) @trusted
     }
     else
 
-    // Floating-point conditional compare
+    // Floating-point conditional compare https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#floatccmp
+    if (field(ins, 30, 30) == 0 && field(ins, 28, 24) == 0x1E && field(ins,21,21) == 1 && field(ins, 11, 10) == 1)
+    {
+        url = "floatccmp";
+
+        uint M       = field(ins,31,31);
+        uint S       = field(ins,29,29);
+        uint ftype   = field(ins,23,22);
+        uint Rm      = field(ins,20,16);
+        uint cond    = field(ins,15,12);
+        uint Rn      = field(ins, 9, 5);
+        uint op      = field(ins, 4, 4);
+        uint nzcv    = field(ins, 3, 0);
+
+        if (M == 0 && S == 0)
+        {
+            // fccmp d5,d5,#0,vs
+            url = op ? "fccmpe_float" : "fccmp_float";
+            p1 = op ? "fccmpe" : "fccmp";
+            p2 = fregString(rbuf[0..4],"sd h"[ftype],Rn);
+            p3 = fregString(rbuf[4..8],"sd h"[ftype],Rm);
+            uint n = snprintf(buf.ptr, cast(uint)buf.length,"#0x%x", nzcv);
+            p4 = buf[0 .. n];
+            p5 = condstring[cond];
+        }
+    }
+    else
 
     // Floating-point data-processing (2 source) https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#floatdp2
     if (field(ins, 30, 30) == 0 && field(ins, 28, 24) == 0x1E && field(ins,21,21) == 1 &&  field(ins, 11, 10) == 2)
@@ -3216,8 +3247,11 @@ unittest
 unittest
 {
     int line64 = __LINE__;
-    string[96] cases64 =      // 64 bit code gen
+    string[100] cases64 =      // 64 bit code gen
     [
+        "1E 61 04 00         fccmp  d0,d1,#0x0,eq",
+        "1E 65 64 A0         fccmp  d5,d5,#0x0,vs",
+        "1E 65 64 B0         fccmpe d5,d5,#0x0,vs",
         "79 C0 47 AB         ldrsh  w11,[x29,#0x22]",
         "F8 1F 03 A8         stur   x8,[x29,#-0x10]",
         "B8 00 04 62         str    w2,[x3],#0",
@@ -3231,6 +3265,7 @@ unittest
         "B8 00 93 E0         stur   w0,[sp,#9]",
         "F8 00 84 5F         str    xzr,[x2],#8",
         "6F 00 E4 01         movi   v1.2d,#0x0",
+        "2F 00 E4 1F         movi   d31,#0x0",
         "9E AF 00 3E         fmov   v30.d[1],x1",
         "4E BE 1F C0         mov    v0.16b,v30.16b",
         "D4 20 00 20         brk    #1",

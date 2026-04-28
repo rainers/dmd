@@ -93,6 +93,7 @@ struct IRState
     ErrorSink eSink;                // sink for error messages
     bool mayThrow;                  // the expression being evaluated may throw
     bool Cfile;                     // use C semantics
+    int countNullDerefCheckDisable; // should the null check be disabled due to backend fragility
 
     this(Module m, FuncDeclaration fd, Array!(elem*)* varsInScope, Dsymbols* deferToObj, Label*[void*]* labels,
         const Param* params, const Target* target, ErrorSink eSink)
@@ -125,6 +126,15 @@ struct IRState
         if (m.filetype == FileType.c)
             return false;
         return dmd.funcsem.arrayBoundsCheck(getFunc());
+    }
+
+    /**********************
+     * Returns:
+     *    true if do null dereference checking for the current function
+     */
+    bool nullDerefCheck()
+    {
+        return countNullDerefCheckDisable == 0 && dmd.funcsem.nullDerefCheck(getFunc());
     }
 
     /****************************
@@ -586,6 +596,14 @@ int intrinsic_op(FuncDeclaration fd)
     {
         if ((op == OPbsf || op == OPbsr) && argtype1 is Type.tuns64)
             return NotIntrinsic;
+    }
+    else if (target.isAArch64)
+    {
+        if (op == OPbsf || op == OPbsr || op == OPbtc || op == OPbtr || op == OPbts)
+            return NotIntrinsic;        // TODO AArch64
+        if (op == OPcos || op == OPsin || op == OPrint || op == OPsqrt || op == OPscale ||
+            op == OPrndtol || op == OPyl2xp1 || op == OPtoPrec)
+            return NotIntrinsic;        // x87 only
     }
     return op;
 
@@ -1143,8 +1161,6 @@ void buildCapture(FuncDeclaration fd)
 {
     if (!driverParams.symdebug)
         return;
-    if (target.objectFormat() != Target.ObjectFormat.coff)  // toDebugClosure only implemented for CodeView,
-        return;                 //  but optlink crashes for negative field offsets
 
     if (fd.closureVars.length && !fd.needsClosure)
     {

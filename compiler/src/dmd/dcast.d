@@ -4379,8 +4379,6 @@ void fix16997(Scope* sc, UnaExp ue)
 extern (D) bool keyCompatibleWithoutCasting(Expression ekey, Type t2)
 {
     Type t1 = ekey.type;
-    t1 = t1.toBasetype();
-    t2 = t2.toBasetype();
 
     if ((t1.isStaticOrDynamicArray() || t1.ty == Tpointer) && t2.ty == t1.ty)
     {
@@ -4590,7 +4588,7 @@ IntRange getIntRange(Expression e)
  * However, the dmd backend does not like a naive cast from a noreturn expression
  * (particularly an `assert(0)`) so this function generates:
  *
- * `(assert(0), value)` instead of `cast(to)(assert(0))`.
+ * `(value, assert(0))` instead of `cast(to)(assert(0))`.
  *
  * `value` is currently `to.init` however it cannot be read so could be made simpler.
  * Params:

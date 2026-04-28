@@ -205,7 +205,7 @@ struct Param
     d_bool addMain;       // add a default main() function
     d_bool allInst;       // generate code for all template instantiations
     d_bool bitfields;         // support C style bit fields
-    d_bool rewriteNoExceptionToSeq;
+    d_bool nothrowOptimizations;
     CppStdRevision cplusplus;  // version of C++ name mangling to support
 
     Help help;
@@ -245,6 +245,7 @@ struct Param
     CHECKENABLE useIn;             // generate precondition checks
     CHECKENABLE useOut;            // generate postcondition checks
     CHECKENABLE useArrayBounds;    // when to generate code for array bounds checks
+    CHECKENABLE useNullCheck;      // when to generate code for null dereference checks
     CHECKENABLE useAssert;         // when to generate code for assert()'s
     CHECKENABLE useSwitchError;    // check for switches without a default
     CHECKENABLE boundscheck;       // state of -boundscheck switch

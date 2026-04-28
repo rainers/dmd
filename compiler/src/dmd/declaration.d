@@ -361,7 +361,7 @@ extern (C++) final class AliasDeclaration : Declaration
         //printf("AliasDeclaration::syntaxCopy()\n");
         assert(!s);
         AliasDeclaration sa = type ? new AliasDeclaration(loc, ident, type.syntaxCopy()) : new AliasDeclaration(loc, ident, aliassym.syntaxCopy(null));
-        sa.comment = comment;
+        sa.addComment(comment);
         sa.storage_class = storage_class;
         return sa;
     }
@@ -421,6 +421,8 @@ extern (C++) final class OverDeclaration : Declaration
 }
 
 /***********************************************************
+ * Note: dsymbolSemantic turns a VarDeclaration inside a function into
+ * AssignExp(e1: VarExp, e2: ConstructExp or BlitExp).
  */
 extern (C++) class VarDeclaration : Declaration
 {
@@ -515,7 +517,7 @@ extern (C++) class VarDeclaration : Declaration
         //printf("VarDeclaration::syntaxCopy(%s)\n", toChars());
         assert(!s);
         auto v = new VarDeclaration(loc, type ? type.syntaxCopy() : null, ident, _init ? _init.syntaxCopy() : null, storage_class);
-        v.comment = comment;
+        v.addComment(comment);
         return v;
     }
 
@@ -668,9 +670,9 @@ extern (C++) class BitFieldDeclaration : VarDeclaration
     uint fieldWidth;
     uint bitOffset;
 
-    final extern (D) this(Loc loc, Type type, Identifier ident, Expression width)
+    final extern (D) this(Loc loc, Type type, Identifier ident, Expression width, Initializer _init = null)
     {
-        super(loc, type, ident, null);
+        super(loc, type, ident, _init);
         this.dsym = DSYM.bitFieldDeclaration;
         this.width = width;
         this.storage_class |= STC.field;
@@ -680,8 +682,8 @@ extern (C++) class BitFieldDeclaration : VarDeclaration
     {
         //printf("BitFieldDeclaration::syntaxCopy(%s)\n", toChars());
         assert(!s);
-        auto bf = new BitFieldDeclaration(loc, type ? type.syntaxCopy() : null, ident, width.syntaxCopy());
-        bf.comment = comment;
+        auto bf = new BitFieldDeclaration(loc, type ? type.syntaxCopy() : null, ident, width.syntaxCopy(), _init ? _init.syntaxCopy() : null);
+        bf.addComment(comment);
         return bf;
     }
 

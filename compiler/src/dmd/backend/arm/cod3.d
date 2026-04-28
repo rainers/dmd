@@ -86,7 +86,7 @@ void REGSAVE_save(ref REGSAVE regsave, ref CodeBuilder cdb, reg_t reg, out uint 
         uint imm12 = idx;
         uint sz = 8;
         uint size, opc;
-        INSTR.szToSizeOpc(sz, size, opc);
+        INSTR.szToSizeOpcStr(sz, size, opc);
         imm12 /= sz;
         cs.Iop = INSTR.str_imm_fpsimd(size,opc,imm12,cs.base,reg);
     }
@@ -119,13 +119,121 @@ void REGSAVE_restore(const ref REGSAVE regsave, ref CodeBuilder cdb, reg_t reg, 
         uint imm12 = idx;
         uint sz = 8;
         uint size, opc;
-        INSTR.szToSizeOpc(sz, size, opc);
+        INSTR.szToSizeOpcLdr(sz, size, opc);
         imm12 /= sz;
         cs.Iop = INSTR.ldr_imm_fpsimd(size,opc,imm12,cs.base,reg);
     }
     else
         cs.Iop = INSTR.ldr_imm_gen(1,reg,cs.base,idx);
     cdb.gen(&cs);
+}
+
+/*****************************
+ * Given a type, return a mask of
+ * registers to hold that type.
+ * Params:
+ *      tym = type
+ *      tyf = function type
+ * Returns:
+ *      mask of registers
+ */
+
+@trusted
+regm_t regmask(tym_t tym, tym_t tyf)
+{
+    assert(cgstate.AArch64);
+
+    switch (tybasic(tym))
+    {
+        case TYvoid:
+        case TYnoreturn:
+        case TYstruct:
+        case TYarray:
+            return 0;
+
+        case TYbool:
+        case TYwchar_t:
+        case TYchar16:
+        case TYchar:
+        case TYschar:
+        case TYuchar:
+        case TYshort:
+        case TYushort:
+        case TYint:
+        case TYuint:
+        case TYnullptr:
+        case TYnptr:
+        case TYnref:
+        case TYsptr:
+        case TYcptr:
+        case TYimmutPtr:
+        case TYsharePtr:
+        case TYrestrictPtr:
+        case TYfgPtr:
+        case TYlong:
+        case TYulong:
+        case TYdchar:
+        case TYllong:
+        case TYullong:
+            return 1; // r0
+
+        case TYfloat:
+        case TYifloat:
+            return mask(32); // v0
+
+        case TYfptr:
+        case TYhptr:
+        case TYvptr:
+            assert(0);
+
+        case TYcent:
+        case TYucent:
+            return mask(1) | mask(0); // r1,r0
+
+        case TYdouble:
+        case TYdouble_alias:
+        case TYidouble:
+        case TYreal:
+        case TYireal:
+            return mask(32); // v0
+
+        case TYcfloat:
+        case TYcdouble:
+        case TYcreal:
+            return mask(33) | mask(32); // v33,v32
+
+        // SIMD vector types
+        case TYfloat4:
+        case TYdouble2:
+        case TYschar16:
+        case TYuchar16:
+        case TYshort8:
+        case TYushort8:
+        case TYlong4:
+        case TYulong4:
+        case TYllong2:
+        case TYullong2:
+
+        case TYfloat8:
+        case TYdouble4:
+        case TYschar32:
+        case TYuchar32:
+        case TYshort16:
+        case TYushort16:
+        case TYlong8:
+        case TYulong8:
+        case TYllong4:
+        case TYullong4:
+            if (!config.fpxmmregs)
+            {   printf("SIMD operations not supported on this platform\n");
+                exit(1);
+            }
+            goto default;
+
+        default:
+            debug printf("%s\n", tym_str(tym));
+            assert(0);
+    }
 }
 
 
@@ -291,6 +399,8 @@ void gen_loadcse(ref CodeBuilder cdb, tym_t tym, reg_t reg, size_t slot)
     cs.IEV1.Vsym = null;
     cs.IEV1.Voffset = slot;
     uint szr = tysize(tym);
+    if (szr > 8)
+        szr = 8;
     uint szw = szr == 8 ? 8 : 4;
     loadFromEA(cs, reg, szw, szr);
     cdb.gen(&cs);
@@ -492,8 +602,8 @@ void prolog_genvarargs(ref CGstate cg, ref CodeBuilder cdb, Symbol* sv)
 {
     if (config.exe & EX_OSX64)
         return prolog_genvarargs_osx(cg,cdb,sv);
-    printf("prolog_genvarargs()\n");
-    symbol_print(*sv);
+    //printf("prolog_genvarargs()\n");
+    //symbol_print(*sv);
 
     /* Generate code to move any arguments passed in registers into
      * the stack variable __va_argsave,
@@ -666,8 +776,8 @@ void prolog_genvarargs_osx(ref CGstate cg, ref CodeBuilder cdb, Symbol* sv)
 @trusted
 elem* prolog_genva_start(Symbol* sv, Symbol* parmn)
 {
-    printf("prolog_genva_start()\n");
-    symbol_print(*sv);
+    //printf("prolog_genva_start()\n");
+    //symbol_print(*sv);
     assert(!(config.exe & EX_OSX64)); // not needed for OSX64, see backend.cgelem.valist()
 
     /* the stack variable __va_argsave points to an instance of:
@@ -847,6 +957,7 @@ void epilog(block* b)
         cdbx.gencs(I16 ? 0x9A : CALL,0,FL.func,s);      // CALLF _trace
         code_orflag(cdbx.last(),CFoff | CFselfrel);
         useregs((ALLREGS | mBP | mES) & ~s.Sregsaved);
+        assert(0);      // TODO AArch64
     }
 
     if (cgstate.usednteh & (NTEH_try | NTEH_except | NTEHcpp | EHcleanup | EHtry | NTEHpassthru) && (config.exe == EX_WIN32 || MARS))
@@ -1007,7 +1118,39 @@ Lret:
 }
 
 // cod3_spoff
-// gen_spill_reg
+
+@trusted
+void gen_spill_reg(ref CodeBuilder cdb, Symbol* s, bool toreg)
+{
+    code cs;
+    const regm_t keepmsk = 0;
+    const RM rm = toreg ? RM.load : RM.store;
+
+    elem* e = el_var(s); // so we can trick getlvalue() into working for us
+
+    int sz = cast(int)type_size(s.Stype);
+    bool isPair = isRegisterPair(true, tybasic(s.Stype.Tty), 0);
+    if (isPair)
+        sz /= 2;
+    getlvalue(cdb,cs,e,keepmsk,rm);
+    if (toreg)
+        loadFromEA(cs,s.Sreglsw,(sz < 4 ? 4 : sz),sz);
+    else
+        storeToEA(cs,s.Sreglsw,sz);
+    cdb.gen(&cs);
+    if (isPair)
+    {
+        if (cs.IFL1 != FL.reg)
+            cs.IEV1.Voffset += sz;
+        if (toreg)
+            loadFromEA(cs,s.Sregmsw,(sz < 4 ? 4 : sz),sz);
+        else
+            storeToEA(cs,s.Sregmsw,sz);
+        cdb.gen(&cs);
+    }
+
+    el_free(e);
+}
 
 /****************************
  * Generate code for, and output a thunk.
@@ -1056,7 +1199,8 @@ void cod3_thunk(Symbol* sthunk,Symbol* sfunc,uint p,tym_t thisty,
         d = -d;
         op = 1;                            // switch from ADD to SUB
     }
-    if (thunkty == TYmfunc || thunkty == TYjfunc || thunkty == TYnfunc)
+    if (thunkty == TYmfunc || thunkty == TYjfunc || thunkty == TYnfunc ||
+        thunkty == TYnsfunc) // not totally sure about TYnsfunc
     {
         uint sh = 0;
         reg_t r0 = 0;
@@ -1064,6 +1208,7 @@ void cod3_thunk(Symbol* sthunk,Symbol* sfunc,uint p,tym_t thisty,
     }
     else
     {
+        debug printf("thunkty: %s\n", tym_str(thunkty));
         assert(0);
     }
 
@@ -1259,40 +1404,6 @@ int branch(block* bl,int flag)
                 {
                     c.Iflags &= ~CFjmp16;      // a branch is ok
                     bytesaved += I16 ? 3 : 4;
-
-                    // Replace a cond jump around a call to a function that
-                    // never returns with a cond jump to that function.
-                    if (config.flags4 & CFG4optimized &&
-                        config.target_cpu >= TARGET_80386 &&
-                        disp == (I16 ? 3 : 5) &&
-                        cn &&
-                        cn.Iop == CALL &&
-                        cn.IFL1 == FL.func &&
-                        cn.IEV1.Vsym.Sflags & SFLexit &&
-                        !(cn.Iflags & (CFtarg | CFtarg2))
-                       )
-                    {
-                        cn.Iop = 0x0F00 | ((c.Iop & 0x0F) ^ 0x81);
-                        c.Iop = INSTR.nop;
-                        c.IEV1.Vcode = null;
-                        bytesaved++;
-
-                        // If nobody else points to ct, we can remove the CFtarg
-                        if (flag && ct)
-                        {
-                            code* cx;
-                            for (cx = bl.Bcode; 1; cx = code_next(cx))
-                            {
-                                if (!cx)
-                                {
-                                    ct.Iflags &= ~CFtarg;
-                                    break;
-                                }
-                                if (cx.IEV1.Vcode == ct)
-                                    break;
-                            }
-                        }
-                    }
                 }
                 csize = calccodsize(c);
             }
@@ -1316,23 +1427,45 @@ L3:
 /**************************
  * Generate a MOV to,from register instruction.
  * Smart enough to dump redundant register moves, and segment
- * register moves.
+ * register moves. No conversions are done.
+ * Params:
+ *      cdb = code sink
+ *      to = destination register
+ *      from = source register
+ *      ty = type, TYMAX means use full register
  */
 
 @trusted
 void genmovreg(ref CodeBuilder cdb, reg_t to, reg_t from, tym_t ty = TYMAX)
 {
-    if (to & INSTR.FLOATREGS)
+    if (to != from)
     {
-        // floating point
-        uint ftype = INSTR.szToFtype(ty == TYMAX ? 8 : _tysize[ty]);
-        cdb.gen1(INSTR.fmov(ftype, from & 31, to & 31));
-    }
-    else
-    {
-        // integer
-        uint sf = ty == TYMAX || _tysize[ty] == 8;
-        cdb.gen1(INSTR.mov_register(sf, from, to));    // MOV to,from
+        if (!((to | from) & 32)) // both are gp registers
+        {
+            // integer
+            const uint sf = ty == TYMAX || _tysize[ty] == 8;
+            cdb.gen1(INSTR.mov_register(sf, from, to));    // MOV gp,gp https://www.scs.stanford.edu/~zyedidia/arm64/mov_orr_log_shift.html
+
+        }
+        else // one or both are floating point registers
+        {
+            const uint ftype = INSTR.szToFtype(ty == TYMAX ? 8 : _tysize[ty]);
+            if (to & from & 32) // both are fp registers
+            {
+                // floating point
+                cdb.gen1(INSTR.fmov(ftype, from, to));               // FMOV fp,fp https://www.scs.stanford.edu/~zyedidia/arm64/fmov_float.html
+            }
+            else if ((to & 32) && !(from & 32))
+            {
+                cdb.gen1(INSTR.fmov_float_gen(1,ftype,0,7,from,to)); // FMOV fp,gp https://www.scs.stanford.edu/~zyedidia/arm64/fmov_float_gen.html
+            }
+            else if (!(to & 32) && (from & 32))
+            {
+                cdb.gen1(INSTR.fmov_float_gen(1,ftype,0,6,from,to)); // FMOV gp,fp https://www.scs.stanford.edu/~zyedidia/arm64/fmov_float_gen.html
+            }
+            else
+                assert(0);
+        }
     }
 }
 
@@ -1347,6 +1480,7 @@ void genmovreg(ref CodeBuilder cdb, reg_t to, reg_t from, tym_t ty = TYMAX)
 @trusted
 void loadFloatRegConst(ref CodeBuilder cdb, reg_t vreg, double value, uint sz)
 {
+    //printf("loadFloatRegConst(vreg: %d, value: %g, sz: %u)\n", vreg, value, sz);
     assert(vreg & 32);
     ubyte imm8;
     if (encodeHFD(value, imm8))
@@ -1360,22 +1494,22 @@ void loadFloatRegConst(ref CodeBuilder cdb, reg_t vreg, double value, uint sz)
     {
         float f = value;
         uint i = *cast(uint*)&f;
-        regm_t retregs = ALLREGS;                       // TODO cg.allregs?
-        reg_t reg = allocreg(cdb, retregs, TYfloat);
+        regm_t retregs = INSTR.ALLREGS;
+        reg_t reg = allocreg(cdb, retregs, TYint);
         movregconst(cdb,reg,i,0);                         // MOV reg,i
         cdb.gen1(INSTR.fmov_float_gen(0,0,0,7,reg,vreg)); // FMOV Sd,Wn
     }
     else if (sz == 8)
     {
         ulong i = *cast(ulong*)&value;
-        regm_t retregs = ALLREGS;                       // TODO cg.allregs?
-        reg_t reg = allocreg(cdb, retregs, TYdouble);
+        regm_t retregs = INSTR.ALLREGS;
+        reg_t reg = allocreg(cdb, retregs, TYllong);
         movregconst(cdb,reg,i,64);                        // MOV reg,i
         cdb.gen1(INSTR.fmov_float_gen(1,1,0,7,reg,vreg)); // FMOV Dd,Xn
     }
     else
         assert(0);
-    //cgstate.regimmed_set(vreg,value); // TODO
+    //cgstate.regimmed_set(vreg,value); // TODO AArch64
 }
 
 /******************************
@@ -1423,117 +1557,133 @@ void movregconst(ref CodeBuilder cdb,reg_t reg,targ_size_t value,regm_t flags)
             gentstreg(cdb,reg,(flags & 64) != 0);
         return;
     }
-    else
+
+    // See if another register has the right value
+    reg_t r = 0;
+    for (regm_t mreg = cgstate.regcon.immed.mval; mreg; mreg >>= 1)
     {
-
-        // See if another register has the right value
-        reg_t r = 0;
-        for (regm_t mreg = cgstate.regcon.immed.mval; mreg; mreg >>= 1)
+        if (mreg & 1 && cgstate.regcon.immed.value[r] == value)
         {
-            if (mreg & 1 && cgstate.regcon.immed.value[r] == value)
-            {
-                genmovreg(cdb,reg,r);
-                goto done;
-            }
-            r++;
+            genmovreg(cdb,reg,r);
+            goto done;
         }
-
-        // loading a constant into the lower 32 bits zeros out the upper 32 bits
-        if ((value & 0xFFFF_FFFF_0000_0000) == 0)
-            flags &= ~64;
-
-        uint sf = (flags & 64) != 0;
-        uint opc = 2;               // MOVZ
-        uint hw = 0;
-        uint imm16 = value & 0xFFFF;
-        reg_t Rd = reg;
-        ulong value2 = value;
-
-        // Look for shortcuts using ORR
-        // Either ORR for the whole thing,
-        // or ORR to OR set the high 32 bits same as the low 32
-        // (not implemented)
-
-        // Look for shortcuts using MOVN
-        if (sf)
-        {
-            if ((value & 0xFFFF_FFFF_FFFF_0000) == 0xFFFF_FFFF_FFFF_0000)
-            {
-                imm16 = ~imm16 & 0xFFFF;
-                opc = 0;            // MOVN
-                value2 = 0;
-            }
-            else if ((value & 0xFFFF_FFFF_0000_FFFF) == 0xFFFF_FFFF_0000_FFFF)
-            {
-                imm16 = ~(value >> 16) & 0xFFFF;
-                opc = 0;            // MOVN
-                value2 = 0;
-                hw = 1;
-            }
-            else if ((value & 0xFFFF_0000_FFFF_FFFF) == 0xFFFF_0000_FFFF_FFFF)
-            {
-                imm16 = ~(value >> 32) & 0xFFFF;
-                opc = 0;            // MOVN
-                value2 = 0;
-                hw = 2;
-            }
-            else if ((value & 0x0000_FFFF_FFFF_FFFF) == 0x0000_FFFF_FFFF_FFFF)
-            {
-                imm16 = ~(value >> 48) & 0xFFFF;
-                opc = 0;            // MOVN
-                value2 = 0;
-                hw = 3;
-            }
-        }
-        else
-        {
-            if ((value & 0xFFFF_0000) == 0xFFFF_0000)
-            {
-                imm16 = ~imm16 & 0xFFFF;
-                opc = 0;            // MOVN
-                value2 = 0;
-            }
-            else if ((value & 0x0000_FFFF) == 0x0000_FFFF)
-            {
-                imm16 = ~(value >> 16) & 0xFFFF;
-                opc = 0;            // MOVN
-                value2 = 0;
-                hw = 1;
-            }
-        }
-
-        if ((value2 >> (hw * 16)) & 0xFFFF_FFFF_FFFF_0000)
-        {
-            // Check for ORR one instruction solution
-            uint N, immr, imms;
-            if (orr_solution(value2, N, immr, imms)) // TODO AArch64 not implemented yet
-            {
-                // MOV Rd,#imm
-                // http://www.scs.stanford.edu/~zyedidia/arm64/mov_orr_log_imm.html
-                cdb.gen1(INSTR.log_imm(sf, 1, N, immr, imms, 31, Rd));
-                goto done;
-            }
-        }
-
-        while (1)
-        {
-            if (imm16 || value2 == 0)
-            {
-                cdb.gen1(INSTR.movewide(sf, opc, hw, imm16, Rd));
-                opc = 3;            // MOVK
-            }
-            value2 >>= 16;
-            if (!value2)
-                break;
-            imm16 = value2 & 0xFFFF;
-            ++hw;
-        }
+        r++;
     }
+
+    movregconstant(cdb,reg,value,(flags & 64) != 0);
+
 done:
     if (flags & mPSW)
         gentstreg(cdb,reg,(flags & 64) != 0);
     //printf("set reg %d to %lld\n", reg, value);
     cgstate.regimmed_set(reg,value);
+}
+
+/******************************
+ * Generate code to move 32 or 64 bit constant value into reg.
+ * Do not take context into account.
+ * Params:
+ *      cdb = code sink for generated output
+ *      reg = target register
+ *      value = value to move into register
+ *      sf = if set, then 64 bit value
+ */
+
+@trusted
+void movregconstant(ref CodeBuilder cdb,reg_t reg,ulong value,uint sf)
+{
+    if (!sf)
+        value &= 0xFFFF_FFFF;
+    //printf("movregconstant(reg=%s, value= %lld x(%llx), sf=%d)\n", regm_str(mask(reg)), value, value, sf);
+
+    // loading a constant into the lower 32 bits zeros out the upper 32 bits
+    if ((value & 0xFFFF_FFFF_0000_0000) == 0)
+        sf = 0;
+
+    uint opc = 2;               // MOVZ
+    uint hw = 0;
+    uint imm16 = value & 0xFFFF;
+    ulong value2 = value;
+
+    // Look for shortcuts using ORR
+    // Either ORR for the whole thing,
+    // or ORR to OR set the high 32 bits same as the low 32
+    // (not implemented)
+
+    // Look for shortcuts using MOVN
+    if (sf)
+    {
+        if ((value & 0xFFFF_FFFF_FFFF_0000) == 0xFFFF_FFFF_FFFF_0000)
+        {
+            imm16 = ~imm16 & 0xFFFF;
+            opc = 0;            // MOVN
+            value2 = 0;
+        }
+        else if ((value & 0xFFFF_FFFF_0000_FFFF) == 0xFFFF_FFFF_0000_FFFF)
+        {
+            imm16 = ~(value >> 16) & 0xFFFF;
+            opc = 0;            // MOVN
+            value2 = 0;
+            hw = 1;
+        }
+        else if ((value & 0xFFFF_0000_FFFF_FFFF) == 0xFFFF_0000_FFFF_FFFF)
+        {
+            imm16 = ~(value >> 32) & 0xFFFF;
+            opc = 0;            // MOVN
+            value2 = 0;
+            hw = 2;
+        }
+        else if ((value & 0x0000_FFFF_FFFF_FFFF) == 0x0000_FFFF_FFFF_FFFF)
+        {
+            imm16 = ~(value >> 48) & 0xFFFF;
+            opc = 0;            // MOVN
+            value2 = 0;
+            hw = 3;
+        }
+    }
+    else
+    {
+        if ((value & 0xFFFF_0000) == 0xFFFF_0000)
+        {
+            imm16 = ~imm16 & 0xFFFF;
+            opc = 0;            // MOVN
+            value2 = 0;
+        }
+        else if ((value & 0x0000_FFFF) == 0x0000_FFFF)
+        {
+            imm16 = ~(value >> 16) & 0xFFFF;
+            opc = 0;            // MOVN
+            value2 = 0;
+            hw = 1;
+        }
+    }
+
+    if ((value2 >> (hw * 16)) & 0xFFFF_FFFF_FFFF_0000)
+    {
+        // Check for ORR one instruction solution
+        uint N, immr, imms;
+        if (orr_solution(value2, N, immr, imms)) // TODO AArch64 not implemented yet
+        {
+            // MOV reg,#imm
+            // http://www.scs.stanford.edu/~zyedidia/arm64/mov_orr_log_imm.html
+            cdb.gen1(INSTR.log_imm(sf, 1, N, immr, imms, 31, reg));
+            return;
+        }
+    }
+
+    while (1)
+    {
+        if (imm16 || value2 == 0)
+        {
+            cdb.gen1(INSTR.movewide(sf, opc, hw, imm16, reg));
+            opc = 3;            // MOVK
+        }
+        value2 >>= 16;
+        if (!value2)
+            break;
+        imm16 = value2 & 0xFFFF;
+        ++hw;
+    }
 }
 
 /**********************************
@@ -1563,7 +1713,7 @@ bool orr_solution(ulong value, out uint N, out uint immr, out uint imms)
 @trusted
 void assignaddrc(code* c)
 {
-    printf("assignaddrc()\n");
+    //printf("assignaddrc()\n");
     int sn;
     Symbol* s;
     ubyte rm;
@@ -1597,29 +1747,18 @@ void assignaddrc(code* c)
                     //printf("fix ESP\n");
                     if (cgstate.hasframe)
                     {
-                        // LEA ESP,-EBPtoESP[EBP]
-                        c.Iop = LEA;
-                        if (c.Irm & 8)
-                            c.Irex |= REX_R;
-                        c.Irm = modregrm(2,SP,BP);
-                        c.Iflags = CFoff;
-                        c.IFL1 = FL.const_;
-                        c.IEV1.Vuns = -cgstate.EBPtoESP;
+                        c.Iop = INSTR.sub_addsub_imm(1,0,cgstate.EBPtoESP,INSTR.SP,BP); // SUB SP,BP,#EBPtoESP
                         if (cgstate.enforcealign)
                         {
-                            // AND ESP, -STACKALIGN
                             code* cn = code_calloc();
-                            cn.Iop = 0x81;
-                            cn.Irm = modregrm(3, 4, SP);
-                            cn.Iflags = CFoff;
-                            cn.IFL2 = FL.const_;
-                            cn.IEV2.Vsize_t = -STACKALIGN;
-                            if (I64)
-                                c.Irex |= REX_W;
+
+                            uint N,immr,imms;
+                            assert(encodeNImmrImms(-cast(long)STACKALIGN,N,immr,imms));
+                            cn.Iop = INSTR.log_imm(1,0,N,immr,imms,SP,SP);      // AND SP,SP,#-STACKALIGN
+
                             cn.next = c.next;
                             c.next = cn;
                         }
-                        assert(0); // TODO AArch64
                     }
                     continue;
 
@@ -1627,18 +1766,28 @@ void assignaddrc(code* c)
                     // Convert to load of frame pointer
                     // c.Irm is the register to use
                     reg_t reg = c.Irm;  // set by cod3.cdframeptr()
-                    if (cgstate.hasframe && !cgstate.enforcealign)
+                    reg_t BPorSP = INSTR.BP;
+                    uint imm12 = cast(uint)(REGSIZE*2 + localsize);
+                    if (!cgstate.hasframe || cgstate.enforcealign)
                     {
-                        uint imm12 = cast(uint)(REGSIZE*2 + localsize);
-                        c.Iop = INSTR.addsub_imm(1,0,0,0,imm12,INSTR.BP,reg); // ADD reg,BP,#imm12
-                        //c.Iop = INSTR.mov_register(1,INSTR.BP,reg);  // MOV reg,BP
+                        BPorSP = INSTR.SP;
+                        imm12 += cgstate.EBPtoESP;
+                    }
+
+                    if (imm12 >= 0x1000)
+                    {
+                        // imm12 overflowed. Compute offset into R16 instead
+                        enum R16 = 16;  // scratch register
+                        CodeBuilder cdb;
+                        cdb.ctor();
+                        movregconstant(cdb,R16,imm12,0);        // R16 = imm12
+                        // https://www.scs.stanford.edu/~zyedidia/arm64/encodingindex.html#addsub_shift
+                        cdb.gen1(INSTR.addsub_shift(1,0,0,0,R16,0,BPorSP,reg)); // ADD reg,BPorSP,R16 https://www.scs.stanford.edu/~zyedidia/arm64/add_addsub_shift.html
+
+                        cdb.patch(c);   // Replace c with cdb
                     }
                     else
-                    {
-                        uint imm12 = cast(uint)(REGSIZE*2 + localsize + cgstate.EBPtoESP);
-                        c.Iop = INSTR.addsub_imm(1,0,0,0,imm12,INSTR.SP,reg); // ADD reg,SP,#imm12
-                        //c.Iop = INSTR.addsub_imm(1,0,0,0,cgstate.EBPtoESP,INSTR.SP,reg); // ADD reg,SP,#EBPtoESP
-                    }
+                        c.Iop = INSTR.addsub_imm(1,0,0,0,imm12,BPorSP,reg); // ADD reg,BPorSP,#imm12
                     continue;
 
                 case PSOP.ldr:
@@ -1653,7 +1802,7 @@ void assignaddrc(code* c)
         s = c.IEV1.Vsym;
         uint sz = 8;
         uint ins = c.Iop;
-        if (c.IFL1 != FL.unde)
+        if (0 && c.IFL1 != FL.unde)
         {
             printf("FL: %-8s ", fl_str(c.IFL1));
             disassemble(ins);
@@ -1737,7 +1886,7 @@ void assignaddrc(code* c)
                     c.Iop = INSTR.nop;               // remove references to it
                     break;
                 }
-                static if (1)
+                static if (0)
                 {
                     symbol_print(*s);
                     //printf("c: %p, x%08x\n", c, c.Iop);
@@ -1786,11 +1935,11 @@ void assignaddrc(code* c)
 
             L2:
                 offset = cast(int)offset;       // sign extend
-printf("offset: x%llx localsize: x%llxd REGSIZE*2: x%x\n", offset, localsize, REGSIZE*2);
+//printf("offset: x%llx localsize: x%llxd REGSIZE*2: x%x\n", offset, localsize, REGSIZE*2);
                 if (cgstate.hasframe)
                     offset += REGSIZE * 2;
                 offset += localsize;
-printf("offset: x%llx\n", offset);
+//printf("offset: x%llx\n", offset);
             L3:
                 /*
                         V 22
@@ -1842,21 +1991,25 @@ printf("offset: x%llx\n", offset);
                         continue;
                     }
                 }
-                else if (op24 == 1)
+                else if (op24 == 1) // Load/store register (unsigned immediate)
                 {
-//printf("shift: %d opc: %d\n", shift, opc);
                     uint VR = field(ins,26,26);
+                    //printf("sz: %d shift: %d VR: %d opc: %d\n", field(ins,31,30), VR, shift, opc);
                     if (opc & 2 && shift == 0 && VR == 1)
                         shift = 4;
                     assert(field(ins,29,27) == 7);
                     uint imm12 = field(ins,21,10); // unsigned 12 bits
-//printf("shift: %d offset: x%llx imm12: x%x\n", shift, offset, imm12);
+                    //printf("shift: %d offset: x%llx imm12: x%x\n", shift, offset, imm12);
                     offset += imm12 << shift;      // add in imm
                     if (offset & ((1 << shift) - 1)) // misaligned access
                     {
-                        ins = setField(ins,25,24,0);       // switch to unscaled immediate
-                        ins = setField(ins,21,10,cast(uint)offset << 2);
-                        assert(offset < 0x100);            // only unsigned 8 bits of offset
+                        if (offset < 0x100)            // only unsigned 8 bits of offset
+                        {
+                            ins = setField(ins,25,24,0);       // switch to Load/store register (unscaled immediate)
+                            ins = setField(ins,21,10,cast(uint)offset << 2);
+                        }
+                        else
+                            goto Lextra;
                     }
                     else
                     {
@@ -1866,6 +2019,7 @@ printf("offset: x%llx\n", offset);
                             ins = setField(ins,21,10,imm12);
                         else
                         {
+                        Lextra:
                             // insert extra instruction to load the offset using scratch register R16
                             enum R16 = 16;              // scratch register
                             // add R16,Rn,(imm12 >> 12) << 12 // https://www.scs.stanford.edu/~zyedidia/arm64/add_addsub_imm.html
@@ -2038,7 +2192,7 @@ uint calcblksize(code* c)
 @trusted
 uint calccodsize(code* c)
 {
-    if (c.Iop == INSTR.nop)
+    if (c.Iop == INSTR.nop || (c.Iop & PSOP.mask) == PSOP.root)
         return 0;
     return 4;
 }

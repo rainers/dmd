@@ -79,6 +79,21 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
         this.doUnittests = doUnittests;
     }
 
+    /** Instead of parsing text to get tokens, provide a list of tokens ending with null.
+     * Note that the token list will be consumed (added to the tokenFreelist) by the lexer4.
+     * Params:
+     *    pToken = pointer to first token in list, take ownership of list
+     *    linnum = line number to use for the tokens
+     */
+    extern (D)
+    void setTokenList(ref Token* pToken, int linnum)
+    {
+        this.token = *pToken;
+        pToken = null;          // take ownership
+        this.baseLoc.startLine = linnum;
+        this.linnum = linnum;
+    }
+
     /++
      + Parse a module, i.e. the optional `module x.y.z` declaration and all declarations
      + found in the current file.
@@ -4535,6 +4550,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
             isAliasDeclaration = true;
         }
 
+        const typeLoc = token.loc;
         AST.Type ts;
 
         if (!autodecl)
@@ -4673,9 +4689,11 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
 
             else if (isAliasDeclaration)
             {
-                AST.Declaration v;
-                AST.Initializer _init = null;
-
+                if (ident && mod.edition >= Edition.v2024)
+                {
+                    eSink.error(token.loc, "use `alias %s = ...;` syntax instead of `alias ... %s;`",
+                        ident.toChars(), ident.toChars());
+                }
                 /* Aliases can no longer have multiple declarators, storage classes,
                  * linkages, or auto declarations.
                  * These never made any sense, anyway.
@@ -4686,6 +4704,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                 if (udas)
                     error("user-defined attributes not allowed for `alias` declarations");
 
+                AST.Initializer _init = null;
                 if (token.value == TOK.assign)
                 {
                     nextToken();
@@ -4695,7 +4714,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                 {
                     error("alias cannot have initializer");
                 }
-                v = new AST.AliasDeclaration(identloc, ident, t);
+                AST.Declaration v = new AST.AliasDeclaration(identLoc, ident, t);
 
                 v.storage_class = storage_class;
                 if (pAttrs)
@@ -4824,11 +4843,9 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                 AST.Dsymbol s;
                 if (width)
                 {
-                    if (_init)
-                        error("initializer not allowed for bitfield declaration");
                     if (storage_class)
                         error("storage class not allowed for bitfield declaration");
-                    s = new AST.BitFieldDeclaration(width.loc, t, ident, width);
+                    s = new AST.BitFieldDeclaration(ident.isAnonymous() ? typeLoc : loc, t, ident, width, _init);
                 }
                 else
                 {

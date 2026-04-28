@@ -2096,12 +2096,12 @@ FuncDeclaration resolveFuncCall(Loc loc, Scope* sc, Dsymbol s,
         }
 
         bool calledHelper;
-        void errorHelper(const(char)* failMessage) scope
+        void errorHelper(const(char)* failMessage, Loc argloc = Loc.initial) scope
         {
             .error(loc, "%s `%s%s%s` is not callable using argument types `%s`",
                    fd.kind(), fd.toPrettyChars(), parametersTypeToChars(tf.parameterList),
                    tf.modToChars(), fargsBuf.peekChars());
-            errorSupplemental(loc, failMessage);
+            errorSupplemental((argloc !is Loc.initial) ? argloc : loc, failMessage);
             calledHelper = true;
         }
 
@@ -2169,9 +2169,9 @@ FuncDeclaration resolveFuncCall(Loc loc, Scope* sc, Dsymbol s,
         }
     }
 
-    void errorHelper2(const(char)* failMessage) scope
+    void errorHelper2(const(char)* failMessage, Loc argloc = Loc.initial) scope
     {
-        errorSupplemental(loc, failMessage);
+        errorSupplemental((argloc !is Loc.initial) ? argloc : loc, failMessage);
     }
 
     functionResolve(m, orig_s, loc, sc, tiargs, tthis, argumentList, &errorHelper2);
@@ -2769,6 +2769,7 @@ void buildResultVar(FuncDeclaration fd, Scope* sc, Type tret)
          * fbody.dsymbolSemantic() running, vresult.type might be modified.
          */
         fd.vresult = new VarDeclaration(loc, tret, Id.result, null);
+        fd.vresult._init = new VoidInitializer(loc); // hdrgen requires _init
         fd.vresult.storage_class |= STC.nodtor | STC.temp;
         if (!fd.isVirtual())
             fd.vresult.storage_class |= STC.const_;
@@ -2779,7 +2780,7 @@ void buildResultVar(FuncDeclaration fd, Scope* sc, Type tret)
     if (sc && fd.vresult.semanticRun == PASS.initial)
     {
         TypeFunction tf = fd.type.toTypeFunction();
-        if (tf.isRef)
+        if (fd.isNRVO || tf.isRef)
             fd.vresult.storage_class |= STC.ref_;
         else if (target.isReturnOnStack(tf, fd.needThis()))
             fd.vresult.nrvo = true;
@@ -4282,16 +4283,43 @@ bool arrayBoundsCheck(FuncDeclaration fd)
     case CHECKENABLE.on:
         return true;
     case CHECKENABLE.safeonly:
+        if (fd)
         {
+            Type t = fd.type;
+            if (t.isTypeFunction() && t.isTypeFunction().trust == TRUST.safe)
+                return true;
+        }
+        return false;
+    case CHECKENABLE._default:
+        assert(0);
+    }
+}
+
+/**********************
+ * Check to see if null dereference checking code has to be generated
+ *
+ * Params:
+ *  fd = function for which code is to be generated
+ * Returns:
+ *  true if do null dereference checking for the given function
+ */
+bool nullDerefCheck(FuncDeclaration fd)
+{
+    final switch (global.params.useNullCheck)
+    {
+        case CHECKENABLE.off:
+            return false;
+        case CHECKENABLE.on:
+            return true;
+        case CHECKENABLE.safeonly:
             if (fd)
             {
                 Type t = fd.type;
-                if (t.ty == Tfunction && (cast(TypeFunction)t).trust == TRUST.safe)
+                if (t.isTypeFunction() && t.isTypeFunction().trust == TRUST.safe)
                     return true;
             }
             return false;
-        }
-    case CHECKENABLE._default:
-        assert(0);
+        case CHECKENABLE._default:
+            assert(0);
     }
 }

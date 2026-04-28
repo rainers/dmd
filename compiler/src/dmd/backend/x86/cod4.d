@@ -39,7 +39,7 @@ import dmd.backend.el;
 import dmd.backend.global;
 import dmd.backend.oper;
 import dmd.backend.ty;
-import dmd.backend.evalu8 : el_toldoubled;
+import dmd.backend.evalu8 : el_toreald;
 import dmd.backend.x86.xmm;
 
 
@@ -394,7 +394,7 @@ void cdeq(ref CGstate cg, ref CodeBuilder cdb,elem* e,ref regm_t pretregs)
             eq87(cdb,e,pretregs);
             return;
         }
-        if (tyml == TYldouble || tyml == TYildouble)
+        if (tyml == TYreal || tyml == TYireal)
         {
             eq87(cdb,e,pretregs);
             return;
@@ -1057,13 +1057,19 @@ void cdaddass(ref CGstate cg, ref CodeBuilder cdb,elem* e,ref regm_t pretregs)
                 switch (op)
                 {   case OPorass:
                     case OPxorass:
-                        cs.IEV2.Vsize_t &= 0xFFFF;
-                        cs.Iflags &= ~CFopsize; // don't worry about MSW
+                        if ((cs.Irm & 0xC0) == 0xC0)    // EA is register
+                        {
+                            cs.IEV2.Vsize_t &= 0xFFFF;
+                            cs.Iflags &= ~CFopsize; // don't worry about MSW
+                        }
                         break;
 
                     case OPandass:
-                        cs.IEV2.Vsize_t |= ~0xFFFFL;
-                        cs.Iflags &= ~CFopsize; // don't worry about MSW
+                        if ((cs.Irm & 0xC0) == 0xC0)    // EA is register
+                        {
+                            cs.IEV2.Vsize_t |= ~0xFFFFL;
+                            cs.Iflags &= ~CFopsize; // don't worry about MSW
+                        }
                         break;
 
                     case OPminass:

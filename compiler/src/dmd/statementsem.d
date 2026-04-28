@@ -1694,7 +1694,8 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
              * result of condition.
              */
             auto varloc = identLoc(ifs.loc, ifs.param.ident);
-            auto ei = new ExpInitializer(ifs.loc, ifs.condition);
+            // Make sure the location of the initializer reflects the condition, not the if statement.
+            auto ei = new ExpInitializer(ifs.condition.loc, ifs.condition);
             ifs.match = new VarDeclaration(varloc, ifs.param.type, ifs.param.ident, ei);
             ifs.match.parent = scd.func;
             ifs.match.storage_class |= ifs.param.storageClass;
@@ -1942,8 +1943,8 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
             ss.condition = ErrorExp.get(ss.condition);
         ss.condition = ss.condition.optimize(WANTvalue);
         ss.condition = ss.condition.checkGC(sc);
-        if (ss.condition.op == EXP.error)
-            conditionError = true;
+        if (conditionError || ss.condition.op == EXP.error)
+            return setError();
 
         bool needswitcherror = false;
 
@@ -1961,7 +1962,7 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
         ss._body = ss._body.statementSemantic(sc);
         sc.inLoop = inLoopSave;
 
-        if (conditionError || (ss._body && ss._body.isErrorStatement()))
+        if (ss._body && ss._body.isErrorStatement())
         {
             sc.pop();
             return setError();
@@ -2403,6 +2404,13 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
             lval = fval + 256;
         }
 
+        // If the first and last values aren't integer types, then the toInteger()
+        // call above would have resulted in an error.
+        if  (!crs.first.type.isIntegral() || !crs.last.type.isIntegral())
+        {
+            errors = true;
+        }
+
         if (errors)
             return setError();
 
@@ -2527,8 +2535,12 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
         //printf("ReturnStatement.dsymbolSemantic() %s\n", toChars(rs));
 
         FuncDeclaration fd = sc.parent.isFuncDeclaration();
+
         if (fd.fes)
+        {
+            rs.fesFunc = fd;
             fd = fd.fes.func; // fd is now function enclosing foreach
+        }
 
         auto tf = fd.type.isTypeFunction();
 
@@ -3539,7 +3551,7 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
         // Don't care about paths that halt, either
         // Only rewrite if it was requested.
         // This has side effects where Error will not run destructors, unsafe.
-        if (global.params.rewriteNoExceptionToSeq && (blockexit & ~BE.halt) == BE.fallthru)
+        if (global.params.nothrowOptimizations && (blockexit & ~BE.halt) == BE.fallthru)
         {
             result = new CompoundStatement(tfs.loc, tfs._body, tfs.finalbody);
             return;

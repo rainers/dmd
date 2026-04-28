@@ -464,57 +464,62 @@ void check(Type _this)
  * For our new type '_this', which is type-constructed from t,
  * fill in the cto, ito, sto, scto, wto shortcuts.
  */
-void fixTo(Type _this, Type t)
+private void fixTo(Type _this, Type t)
 {
+    Type mto = null;            // the naked type of `t`
+    if (_this.mod || t.mod)
+    {
+        _this.getMcache();
+        t.getMcache();
+    }
     // If fixing this: immutable(T*) by t: immutable(T)*,
     // cache t to this.xto won't break transitivity.
-    Type mto = null;
     Type tn = _this.nextOf();
     if (!tn || _this.ty != Tsarray && tn.mod == t.nextOf().mod)
     {
         switch (t.mod)
         {
         case 0:
-            mto = t;
+            mto = t;            // t is naked
             break;
 
         case MODFlags.const_:
-            _this.getMcache();
+            mto = t.mcache.cto; // cto is naked
             _this.mcache.cto = t;
             break;
 
         case MODFlags.wild:
-            _this.getMcache();
+            mto = t.mcache.wto; // wto is naked
             _this.mcache.wto = t;
             break;
 
         case MODFlags.wildconst:
-            _this.getMcache();
+            mto = t.mcache.wcto; // wcto is naked
             _this.mcache.wcto = t;
             break;
 
         case MODFlags.shared_:
-            _this.getMcache();
+            mto = t.mcache.sto;  // sto is naked
             _this.mcache.sto = t;
             break;
 
         case MODFlags.shared_ | MODFlags.const_:
-            _this.getMcache();
+            mto = t.mcache.scto; // scto is naked
             _this.mcache.scto = t;
             break;
 
         case MODFlags.shared_ | MODFlags.wild:
-            _this.getMcache();
+            mto = t.mcache.swto; // swto is naked
             _this.mcache.swto = t;
             break;
 
         case MODFlags.shared_ | MODFlags.wildconst:
-            _this.getMcache();
+            mto = t.mcache.swcto; // swcto is naked
             _this.mcache.swcto = t;
             break;
 
         case MODFlags.immutable_:
-            _this.getMcache();
+            mto = t.mcache.ito;  // ito is naked
             _this.mcache.ito = t;
             break;
 
@@ -524,11 +529,6 @@ void fixTo(Type _this, Type t)
     }
     assert(_this.mod != t.mod);
 
-    if (_this.mod)
-    {
-        _this.getMcache();
-        t.getMcache();
-    }
     switch (_this.mod)
     {
     case 0:
@@ -2238,7 +2238,7 @@ extern(D) Expressions* resolveNamedArgs(TypeFunction tf, ArgumentList argumentLi
  *      MATCHxxxx
  */
 extern (D) MATCH callMatch(FuncDeclaration fd, TypeFunction tf, Type tthis, ArgumentList argumentList,
-        int flag = 0, void delegate(const(char)*) scope errorHelper = null, Scope* sc = null)
+        int flag = 0, void delegate(const(char)*, Loc argloc = Loc.initial) scope errorHelper = null, Scope* sc = null)
 {
     //printf("callMatch() fd: %s, tf: %s\n", fd ? fd.ident.toChars() : "null", toChars(tf));
     MATCH match = MATCH.exact; // assume exact match
@@ -2403,12 +2403,20 @@ extern (D) MATCH callMatch(FuncDeclaration fd, TypeFunction tf, Type tthis, Argu
             if (errorHelper)
             {
                 if (u >= args.length)
+                {
                     getMatchError(buf, "missing argument for parameter #%d: `%s`",
                                   u + 1, parameterToChars(p, tf, false));
+                }
                 // If an error happened previously, `pMessage` was already filled
                 else if (buf.length == 0)
+                {
                     buf.writestring(tf.getParamError(args[u], p));
-
+                    if(args[u].loc !is Loc.initial)
+                    {
+                        errorHelper(buf.peekChars(),args[u].loc);
+                        return MATCH.nomatch;
+                    }
+                }
                 errorHelper(buf.peekChars());
             }
             return MATCH.nomatch;
@@ -3379,6 +3387,15 @@ Type typeSemantic(Type type, Loc loc, Scope* sc)
         Type tbn = tn.toBasetype();
         if (mtype.dim)
         {
+            if (auto ide = mtype.dim.isIdentifierExp())
+            {
+                if (ide.ident == Id.dollar)
+                {
+                    mtype.next = tn;
+                    mtype.transitive();
+                    return mtype.addMod(tn.mod).merge();
+                }
+            }
             auto errors = global.errors;
             mtype.dim = semanticLength(sc, tbn, mtype.dim);
             mtype.dim = mtype.dim.implicitCastTo(sc, Type.tsize_t);
@@ -4998,7 +5015,7 @@ Expression defaultInitLiteral(Type t, Loc loc)
             return ErrorExp.get();
 
         auto structelems = new Expressions(ts.sym.nonHiddenFields());
-        uint offset = 0;
+        ulong bitoffset = 0;
         foreach (j; 0 .. structelems.length)
         {
             VarDeclaration vd = ts.sym.fields[j];
@@ -5008,7 +5025,11 @@ Expression defaultInitLiteral(Type t, Loc loc)
                 error(loc, "circular reference to `%s`", vd.toPrettyChars());
                 return ErrorExp.get();
             }
-            if (vd.offset < offset || vd.type.size() == 0)
+            ulong vbitoffset = vd.offset * 8;
+            auto vbf = vd.isBitFieldDeclaration();
+            if (vbf)
+                vbitoffset += vbf.bitOffset;
+            if (vbitoffset < bitoffset || vd.type.size() == 0)
                 e = null;
             else if (vd._init)
             {
@@ -5022,7 +5043,12 @@ Expression defaultInitLiteral(Type t, Loc loc)
             if (e && e.op == EXP.error)
                 return e;
             if (e)
-                offset = vd.offset + cast(uint)vd.type.size();
+            {
+                if (vbf)
+                    bitoffset = vbitoffset + vbf.fieldWidth;
+                else
+                    bitoffset = vbitoffset + vd.type.size() * 8;
+            }
             (*structelems)[j] = e;
         }
         auto structinit = new StructLiteralExp(loc, ts.sym, structelems);
@@ -8600,6 +8626,15 @@ Type immutableOf(Type type)
 
 /********************************
  * Make type mutable.
+ *      0            => 0
+ *      const        => 0
+ *      immutable    => 0
+ *      shared       => shared
+ *      shared const => shared
+ *      wild         => 0
+ *      wild const   => 0
+ *      shared wild  => shared
+ *      shared wild const => shared
  */
 Type mutableOf(Type type)
 {
@@ -8616,15 +8651,12 @@ Type mutableOf(Type type)
         type.getMcache();
         if (type.isShared())
         {
-            if (type.isWild())
-                t = type.mcache.swcto; // shared wild const -> shared
-            else
-                t = type.mcache.sto; // shared const => shared
+            t = type.mcache.sto; // shared (wild) const => shared
         }
         else
         {
             if (type.isWild())
-                t = type.mcache.wcto; // wild const -> naked
+                t = type.mcache.wcto; // wild const => naked
             else
                 t = type.mcache.cto; // const => naked
         }
@@ -8726,7 +8758,6 @@ Type unSharedOf(Type type)
     {
         t = type.nullAttributes();
         t.mod = type.mod & ~MODFlags.shared_;
-        t.ctype = type.ctype;
         t = t.merge();
         t.fixTo(type);
     }
@@ -9304,6 +9335,9 @@ MATCH implicitConvToWithoutAliasThis(TypeStruct from, Type to)
     /* Check all the fields. If they can all be converted,
      * allow the conversion.
      */
+    import dmd.dsymbolsem : size;
+    if (from.sym.size(Loc.initial) == SIZE_INVALID)
+        return MATCH.nomatch;
     MATCH m = MATCH.constant;
     uint offset = ~0; // must never match a field offset
     foreach (v; from.sym.fields[])
