@@ -1562,6 +1562,21 @@ private extern(C++) final class Semantic3Visitor : Visitor
         visit(cast(FuncDeclaration)ctor);
     }
 
+    override void visit(VarDeclaration vd)
+    {
+        // wait until called from runDeferredSemantic3
+        if (vd._scope && !vd.deferred3 &&
+            vd._init && !vd._init.semanticDone && !isError(vd))
+        {
+            auto sc2 = vd._scope;
+            bool inCompiles = sc2.intypeof == 1 || sc2.traitsCompiles;
+            auto interpret = inCompiles ? INITnointerpret : INITinterpret;
+            vd._init = vd._init.initializerSemantic(sc2, vd.type, interpret);
+            lowerStaticAAs(vd, sc2);
+        }
+        visit(cast(Declaration)vd);
+    }
+
     override void visit(Nspace ns)
     {
         if (ns.semanticRun >= PASS.semantic3)

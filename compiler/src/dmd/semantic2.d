@@ -242,12 +242,24 @@ private extern(C++) final class Semantic2Visitor : Visitor
             if (!vd.type)
                 vd.dsymbolSemantic(sc);
 
+            bool defer_sema = foreachUdaNoSemantic(vd, (exp) {
+                return isEnumAttribute(exp, Identifier.idPool("defer_init")) ? 1 : 0;
+            }) != 0;
 
-            // https://issues.dlang.org/show_bug.cgi?id=14166
-            // https://issues.dlang.org/show_bug.cgi?id=20417
-            // Don't run CTFE for the temporary variables inside typeof or __traits(compiles)
-            vd._init = vd._init.initializerSemantic(sc, vd.type, sc.intypeof == 1 || sc.traitsCompiles ? INITnointerpret : INITinterpret);
-            lowerStaticAAs(vd, sc);
+            if (defer_sema)
+            {
+                sc.setNoFree();
+                vd._scope = sc;
+                addDeferredSemantic3(vd);
+            }
+            else
+            {
+                // https://issues.dlang.org/show_bug.cgi?id=14166
+                // https://issues.dlang.org/show_bug.cgi?id=20417
+                // Don't run CTFE for the temporary variables inside typeof or __traits(compiles)
+                vd._init = vd._init.initializerSemantic(sc, vd.type, sc.intypeof == 1 || sc.traitsCompiles ? INITnointerpret : INITinterpret);
+                lowerStaticAAs(vd, sc);
+            }
             vd.inuse--;
         }
         if (vd._init && vd.storage_class & STC.manifest)

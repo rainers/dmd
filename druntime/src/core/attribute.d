@@ -346,3 +346,16 @@ enum mustuse;
  * This is only allowed on `shared` static constructors, not thread-local module constructors.
  */
 enum standalone;
+
+/**
+ * Use this attribute to delay analysis of the initializer of a mutable variable to
+ * work around failing recursive semantic anaylsis. Whether this helps still depends
+ * on the actual dependencies.
+ *
+ * This only affects variables not in a function.
+ *
+ * Note: checking whether code compiles that refers to a template declaration that
+ * contains a variable attributed with @defer_init might compile, even though the
+ * initializer fails to compile later.
+ */
+enum defer_init;
