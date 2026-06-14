@@ -38,6 +38,9 @@ extern (C++) class RootObject
     {
     }
 
+    version(LanguageServer) // to detect RootObject from vtbl with traceGC
+    void isRootObject() {}
+
     const(char)* toChars() const
     {
         assert(0);

@@ -341,6 +341,8 @@ extern (C++) final class VisibilityDeclaration : AttribDeclaration
         this.dsym = DSYM.visibilityDeclaration;
         this.visibility.kind = Visibility.Kind.package_;
         this.pkg_identifiers = pkg_identifiers;
+
+        version(LanguageServer) {} else // rsolve should not be done during parsing
         if (pkg_identifiers.length > 0)
         {
             Dsymbol tmp;
