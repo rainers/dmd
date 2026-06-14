@@ -3583,7 +3583,7 @@ extern (C++) class CatAssignExp : BinAssignExp
         super(loc, EXP.concatenateAssign, e1, e2);
     }
 
-    extern (D) this(Loc loc, EXP tok, int size, Expression e1, Expression e2) @safe
+    extern (D) this(Loc loc, EXP tok, Expression e1, Expression e2) @safe
     {
         super(loc, tok, e1, e2);
     }
@@ -3601,7 +3601,7 @@ extern (C++) final class CatElemAssignExp : CatAssignExp
 {
     extern (D) this(Loc loc, Type type, Expression e1, Expression e2) @safe
     {
-        super(loc, EXP.concatenateElemAssign, __traits(classInstanceSize, CatElemAssignExp), e1, e2);
+        super(loc, EXP.concatenateElemAssign, e1, e2);
         this.type = type;
     }
 
@@ -3618,7 +3618,7 @@ extern (C++) final class CatDcharAssignExp : CatAssignExp
 {
     extern (D) this(Loc loc, Type type, Expression e1, Expression e2) @safe
     {
-        super(loc, EXP.concatenateDcharAssign, __traits(classInstanceSize, CatDcharAssignExp), e1, e2);
+        super(loc, EXP.concatenateDcharAssign, e1, e2);
         this.type = type;
     }
 

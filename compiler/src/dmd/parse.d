@@ -2410,6 +2410,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
         if (token.value == TOK.leftParenthesis)
         {
             nextToken();
+
             if (token.value == TOK.identifier)
                 id = token.ident;
             else

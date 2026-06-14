@@ -310,7 +310,8 @@ extern (C++) final class TemplateDeclaration : ScopeDsymbol
                 param = (*parameters)[i].syntaxCopy();
         }
         auto td = new TemplateDeclaration(loc, ident, p, constraint ? constraint.syntaxCopy() : null, Dsymbol.arraySyntaxCopy(members), ismixin, literal);
-        td.comment = comment;
+        version(LanguageServer)
+            td.comment = comment;
         return td;
     }
 

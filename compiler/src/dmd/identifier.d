@@ -453,7 +453,7 @@ version(LanguageServer)
 else
 {
     alias IdentifierAtLoc = Identifier;
-    IdentifierAtLoc makeIdentifierAtLoc(Identifier ident, ref const Loc loc = Loc.initial)
+    IdentifierAtLoc makeIdentifierAtLoc(Identifier ident, const Loc loc = Loc.initial)
     {
         return ident;
     }

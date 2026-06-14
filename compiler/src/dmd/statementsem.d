@@ -4281,7 +4281,7 @@ void catchSemantic(Catch c, Scope* sc)
         c.var = new VarDeclaration(identLoc(c.loc, ident), c.type, ident, null, stc);
         c.var.iscatchvar = true;
         c.var.dsymbolSemantic(sc);
-            c.var.originalType = originalType;
+        c.var.originalType = originalType;
         sc.insert(c.var);
 
         if (sc.previews.dip1008 && stc & STC.scope_)

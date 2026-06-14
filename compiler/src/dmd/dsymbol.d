@@ -1338,9 +1338,12 @@ public:
     */
     void setEndLoc(const ref Loc endloc)
     {
-        if (!loc.filename)
-            return;
-        assert(!endloc.filename || endloc.filename is loc.filename);
+        version(LanguageServer)
+        {
+            if (!loc.filename)
+                return;
+            assert(!endloc.filename || endloc.filename is loc.filename);
+        }
         endlinnum = endloc.linnum;
         endcharnum = endloc.charnum;
     }
