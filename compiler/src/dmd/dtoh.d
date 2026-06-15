@@ -1856,11 +1856,11 @@ public:
 
         writeIdentifier(t.ident, t.loc, "type", tdparent !is null);
 
-        foreach (arg; t.idents)
+        import dmd.rootobject;
+        foreach (RootObject arg; t.idents)
         {
             buf.writestring("::");
 
-            import dmd.rootobject;
             // Is this even possible?
             if (arg.dyncast != DYNCAST.identifier)
             {

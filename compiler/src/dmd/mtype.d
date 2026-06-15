@@ -79,7 +79,7 @@ Type toBaseTypeNonSemantic(Type _this)
 Expression typeToExpressionHelper(TypeQualified t, Expression e, size_t i = 0)
 {
     //printf("toExpressionHelper(e = %s %s)\n", EXPtoString(e.op).ptr, e.toChars());
-    foreach (id; t.idents[i .. t.idents.length])
+    foreach (RootObject id; t.idents[i .. t.idents.length])
     {
         //printf("\t[%d] e: '%s', id: '%s'\n", i, e.toChars(), id.toChars());
 

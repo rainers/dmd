@@ -7520,8 +7520,9 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         {
             if (TypeFunction tf = exp.f ? cast(TypeFunction)exp.f.type : null)
             {
-                if (result)
-                    result.rvalue = tf.isRvalue;
+                version(LanguageServer)
+                    if (result)
+                        result.rvalue = tf.isRvalue;
                 if (tf.isRvalue)
                 {
                     if(!tf.isRef)
@@ -13964,7 +13965,9 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
         /* `_d_arraycatnTX` canot be used with `-betterC`, but `CatExp`s may be
          * used with `-betterC`, but only during CTFE.
          */
-        if (!global.params.useGC || !sc.needsCodegen())
+        version(LanguageServer)
+            return;
+        if (!global.params.useGC)
             return;
 
         if (auto ce = exp.isCatExp())

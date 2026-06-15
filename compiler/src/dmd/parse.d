@@ -1651,7 +1651,10 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
             nextToken();
             return null;
         }
-        decldefs = parseCurlyBlock(null, &endloc);
+        version(LanguageServer)
+            decldefs = parseCurlyBlock(null, &endloc);
+        else
+            decldefs = parseBlock(null);
 
         tempdecl = new AST.TemplateDeclaration(loc, id, tpl, constraint, decldefs, ismixin);
         tempdecl.setEndLoc(endloc);
@@ -3053,12 +3056,11 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
 
                         Loc identloc;
                         const tv = peekNext();
-                        Loc loc;
+                        Loc loc = token.loc;
                         if (tpl && token.value == TOK.identifier &&
                             (tv == TOK.comma || tv == TOK.rightParenthesis || tv == TOK.dotDotDot))
                         {
                             Identifier id = Identifier.generateId("__T");
-                            loc = token.loc;
                             at = new AST.TypeIdentifier(loc, id);
                             if (!*tpl)
                                 *tpl = new AST.TemplateParameters();
@@ -4686,10 +4688,10 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
             if (ident)
                 checkCstyleTypeSyntax(loc, t, alt, ident);
 
-            if (!ident && !isThis && (t != AST.Type.terror))
-                noIdentifierForDeclarator(t, token); // skip the rest on error
+            else if (!isThis && (t != AST.Type.terror))
+                noIdentifierForDeclarator(t, token); // LanguageServer: skip the rest on error?
 
-            else if (isAliasDeclaration)
+            if (isAliasDeclaration)
             {
                 if (ident && mod.edition >= Edition.v2024)
                 {
@@ -7274,8 +7276,9 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
         if (token.value != value)
         {
             error(loc, "found `%s` when expecting `%s`", token.toChars(), Token.toChars(value));
-            if (token.value == TOK.rightCurly)
-                return;
+            version(LanguageServer)
+                if (token.value == TOK.rightCurly)
+                    return;
         }
         nextToken();
     }
@@ -7303,8 +7306,9 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
         if (token.value != value)
         {
             error(token.loc, "found `%s` when expecting `%s` following %s", token.toChars(), Token.toChars(value), string);
-            if (token.value == TOK.rightCurly)
-                return;
+            version(LanguageServer)
+                if (token.value == TOK.rightCurly)
+                    return;
         }
         nextToken();
     }
@@ -9148,15 +9152,18 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                     e = parseNewExp(e);
                     continue;
                 }
+                error("identifier or `new` expected following `.`, not `%s`", token.toChars());
                 version(LanguageServer)
                 {
                     //e = new AST.DotExp(loc, e, AST.ErrorExp.get(new AST.DotIdExp(loc, e, makeIdentifierAtLoc(Id.dotdotdot, dotloc))));
                     e = new AST.DotIdExp(loc, e, makeIdentifierAtLoc(Id.dotdotdot, token.loc), dotloc);
+                    continue;
                 }
                 else
+                {
                     e = new AST.DotExp(loc, e, AST.ErrorExp.get());
-                error("identifier or `new` expected following `.`, not `%s`", token.toChars());
-                continue;
+                    break;
+                }
 
             case TOK.plusPlus:
                 e = new AST.PostExp(EXP.plusPlus, e.loc, e);

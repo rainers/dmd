@@ -426,7 +426,7 @@ extern (C++) final class Module : Package
                   cast(int)mars_ext.length, mars_ext.ptr);
             fatal();
         }
-        Loc mloc = Loc.singleFilename(srcfilename);
+        Loc mloc = loc; //Loc.singleFilename(srcfilename);
         super(mloc, ident);
         this.dsym = DSYM.module_;
         srcfile = FileName(srcfilename);
@@ -775,7 +775,6 @@ extern (C++) final class Module : Package
             checkCompiledImport();
             members = p.parseModule();
             md = p.md;
-            assert(!p.md); // C doesn't have module declarations
             numlines = p.linnum;
         }
         else

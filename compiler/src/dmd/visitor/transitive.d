@@ -424,7 +424,7 @@ package(dmd.visitor) mixin template ParseVisitMethods(AST)
     void visitTypeQualified(AST.TypeQualified t)
     {
         //printf("Visiting TypeQualified\n");
-        foreach (id; t.idents)
+        foreach (RootObject id; t.idents)
         {
             switch(id.dyncast()) with(DYNCAST)
             {

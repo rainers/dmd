@@ -1884,7 +1884,7 @@ void toCBuffer(Dsymbol s, ref OutBuffer buf, ref HdrGenState hgs)
         }
         else
             s1 = !cs ? f.fbody : null;
-        ReturnStatement rs = s1 ? s1.isReturnStatement() : null;
+        ReturnStatement rs = s1 ? s1.endsWithReturnStatement() : null;
         if (rs && rs.exp)
         {
             buf.put(" => ");
@@ -2589,7 +2589,7 @@ private void expressionPrettyPrint(Expression e, ref OutBuffer buf, ref HdrGenSt
             auto varIdent = e.var.toChars();
 
         if (e.offset)
-            buf.printf("(& %s% + llu)", varIdent, e.offset);
+            buf.printf("(& %s + %llu)", varIdent, e.offset);
         else if (e.var.isTypeInfoDeclaration())
             buf.put(varIdent);
         else
