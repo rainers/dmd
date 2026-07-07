@@ -7449,7 +7449,7 @@ void adjustLocForMixin(const(char)[] input, Loc loc, ref BaseLoc baseLoc, ref Ou
      * in the source file.
      */
     auto len = sl.filename.length + 7 + int.sizeof * 3 + 1;
-    char* filename = cast(char*) mem.xmalloc(len);
+    char* filename = cast(char*) mem.xmalloc_noscan(len);
     snprintf(filename, len, "%.*s-mixin-%d", cast(int) sl.filename.length, sl.filename.ptr, cast(int) sl.linnum);
     baseLoc.startLine = sl.line;
     baseLoc.filename = filename.toDString;

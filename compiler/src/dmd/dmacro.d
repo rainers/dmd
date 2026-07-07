@@ -304,7 +304,7 @@ struct Macro
 char[] memdup(const(char)[] p) nothrow pure @trusted
 {
     size_t len = p.length;
-    return (cast(char*)memcpy(mem.xmalloc(len), p.ptr, len))[0 .. len];
+    return (cast(char*)memcpy(mem.xmalloc_noscan(len), p.ptr, len))[0 .. len];
 }
 
 /**********************************************************
