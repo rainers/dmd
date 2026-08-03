@@ -365,7 +365,7 @@ package PINLINE evalPragmaInline(Loc loc, Scope* sc, Expressions* args)
     {
         .error(loc, "one boolean expression expected for `pragma(inline)`, not %llu", cast(ulong) args.length);
         args.setDim(1);
-        (*args)[0] = ErrorExp.get();
+        (*args)[0] = ErrorExp.get(null);
     }
 
     Expression e = (*args)[0];

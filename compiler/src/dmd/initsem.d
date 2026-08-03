@@ -63,7 +63,7 @@ Expression toAssocArrayLiteral(ArrayInitializer ai)
     auto no(const char* format, Initializer i)
     {
         error(i.loc, format, toChars(i));
-        return ErrorExp.get();
+        return ErrorExp.get(null);
     }
 
     const dim = ai.value.length;
@@ -1384,7 +1384,7 @@ Expression initializerToExpression(Initializer init, Type itype = null, const bo
 
     Expression visitError(ErrorInitializer ei)
     {
-        auto exp = ErrorExp.get();
+        auto exp = ErrorExp.get(null);
         version (LanguageServer)
             if (ei.original)
                 if (auto expi = ei.original.isExpInitializer)
@@ -1423,7 +1423,7 @@ Expression initializerToExpression(Initializer init, Type itype = null, const bo
         {
             if (init.type == Type.terror)
             {
-                return ErrorExp.get();
+                return ErrorExp.get(null);
             }
             t = init.type.toBasetype();
             switch (t.ty)
@@ -1764,7 +1764,7 @@ Expressions* resolveStructLiteralNamedArgs(StructDeclaration sd, Type t, Scope* 
         {
             error(argLoc, "duplicate initializer for field `%s`", vd.toChars());
             errors = true;
-            elems[fieldi] = ErrorExp.get(); // for better diagnostics on multiple errors
+            elems[fieldi] = ErrorExp.get(null); // for better diagnostics on multiple errors
             ++fieldi;
             continue;
         }
@@ -1779,7 +1779,7 @@ Expressions* resolveStructLiteralNamedArgs(StructDeclaration sd, Type t, Scope* 
                     "field `%s.%s` assigning to misaligned pointers", sd, vd))
                 {
                     errors = true;
-                    elems[fieldi] = ErrorExp.get(); // for better diagnostics on multiple errors
+                    elems[fieldi] = ErrorExp.get(null); // for better diagnostics on multiple errors
                     ++fieldi;
                     continue;
                 }
@@ -1809,7 +1809,7 @@ Expressions* resolveStructLiteralNamedArgs(StructDeclaration sd, Type t, Scope* 
         if (ex.op == EXP.error)
         {
             errors = true;
-            elems[fieldi] = ErrorExp.get(); // for better diagnostics on multiple errors
+            elems[fieldi] = ErrorExp.get(ex); // for better diagnostics on multiple errors
             ++fieldi;
             continue;
         }

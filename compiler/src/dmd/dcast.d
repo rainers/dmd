@@ -178,12 +178,12 @@ Expression implicitCastTo(Expression e, Scope* sc, Type t)
         }
 
         if (t.ty == Terror || e.type.ty == Terror)
-            return ErrorExp.get();
+            return ErrorExp.get(e);
 
         if (!t.deco)
         {
             error(e.loc, "forward reference to type `%s`", t.toChars());
-            return ErrorExp.get();
+            return ErrorExp.get(e);
         }
 
         //printf("type %p ty %d deco %p\n", type, type.ty, type.deco);
@@ -200,7 +200,7 @@ Expression implicitCastTo(Expression e, Scope* sc, Type t)
             auto sym = e.type.isTypeStruct().sym;
             error(e.loc, "cannot implicitly convert expression `%s` of type `%s` to `%s` because %s `%s` contains pointers or references",
                 e.toErrMsg(), ts[0], ts[1], sym.kind(), sym.toErrMsg());
-            return ErrorExp.get();
+            return ErrorExp.get(e);
         }
 
         // Special case for pointer conversions
@@ -213,19 +213,19 @@ Expression implicitCastTo(Expression e, Scope* sc, Type t)
             {
                 error(e.loc, "cannot implicitly convert `%s` to `%s`", e.type.toChars(), t.toChars());
                 errorSupplemental(e.loc, "Note: Converting const to mutable requires an explicit cast (`cast(int*)`).");
-                return ErrorExp.get();
+                return ErrorExp.get(e);
             }
             // Incompatible pointee types (e.g., int* -> float* )
             else if (fromPointee.toBasetype().ty != toPointee.toBasetype().ty)
             {
                 error(e.loc, "cannot implicitly convert `%s` to `%s`", e.type.toChars(), t.toChars());
                 errorSupplemental(e.loc, "Note: Pointer types point to different base types (`%s` vs `%s`)", fromPointee.toChars(), toPointee.toChars());
-                return ErrorExp.get();
+                return ErrorExp.get(e);
             }
         }
         error(e.loc, "cannot implicitly convert expression `%s` of type `%s` to `%s`", e.toErrMsg(), ts[0], ts[1]);
 
-        return ErrorExp.get();
+        return ErrorExp.get(e);
     }
 
     Expression visitString(StringExp e)
@@ -2177,7 +2177,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
                     return result;
             }
             error(e.loc, "cannot cast expression `%s` of type `%s` to `%s`", e.toChars(), e.type.toChars(), t.toChars());
-            return ErrorExp.get();
+            return ErrorExp.get(e);
         }
 
         if (AggregateDeclaration t1ad = isAggregate(t1b))
@@ -2257,7 +2257,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
             auto ts = toAutoQualChars(e.type, t);
             error(e.loc, "cannot cast expression `%s` of type `%s` to `%s` because of different sizes",
                 e.toChars(), ts[0], ts[1]);
-            return ErrorExp.get();
+            return ErrorExp.get(e);
         }
 
         // Fat values vs. null or references
@@ -2277,7 +2277,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
                 const tsize = tob.nextOf().size();
                 if (fsize == SIZE_INVALID || tsize == SIZE_INVALID)
                 {
-                    return ErrorExp.get();
+                    return ErrorExp.get(e);
                 }
                 if (fsize != tsize)
                 {
@@ -2286,7 +2286,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
                     {
                         error(e.loc, "cannot cast expression `%s` of type `%s` to `%s` since sizes don't line up",
                                 e.toChars(), e.type.toChars(), t.toChars());
-                        return ErrorExp.get();
+                        return ErrorExp.get(e);
                     }
                 }
                 return ok();
@@ -2398,7 +2398,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
             (!sc || !sc.inCfile))
         {
             error(e.loc, "cannot convert string literal to `void*`");
-            return ErrorExp.get();
+            return ErrorExp.get(e);
         }
 
         StringExp se = e;
@@ -2508,7 +2508,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
         const nextSz = typeb.nextOf().size();
         if (nextSz == SIZE_INVALID)
         {
-            return ErrorExp.get();
+            return ErrorExp.get(e);
         }
         if (nextSz == tb.nextOf().size())
         {
@@ -2739,7 +2739,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
         {
             if (checkForwardRef(f, e.loc))
             {
-                return ErrorExp.get();
+                return ErrorExp.get(e);
             }
         }
 
@@ -2962,7 +2962,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
                     else if (f.needThis())
                     {
                         error(e.loc, "no `this` to create delegate for `%s`", f.toChars());
-                        return ErrorExp.get();
+                        return ErrorExp.get(e);
                     }
                     else if (f.isNested())
                     {
@@ -2972,7 +2972,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
                     else
                     {
                         error(e.loc, "cannot cast from function pointer to delegate");
-                        return ErrorExp.get();
+                        return ErrorExp.get(e);
                     }
                 }
                 else
@@ -2989,7 +2989,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
         {
             if (checkForwardRef(f, e.loc))
             {
-                return ErrorExp.get();
+                return ErrorExp.get(e);
             }
         }
 
@@ -3046,7 +3046,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
         {
             if (checkForwardRef(f, e.loc))
             {
-                return ErrorExp.get();
+                return ErrorExp.get(e);
             }
         }
 
@@ -3169,7 +3169,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
         auto ts = toAutoQualChars(tsa ? tsa : e.type, t);
         error(e.loc, "cannot cast expression `%s` of type `%s` to `%s`",
             e.toChars(), ts[0], ts[1]);
-        return ErrorExp.get();
+        return ErrorExp.get(e);
     }
 
     // Casting to noreturn isn't an actual cast
@@ -3348,7 +3348,7 @@ Expression scaleFactor(BinExp be, Scope* sc)
     }
     else if (sc.setUnsafe(false, be.loc, "pointer arithmetic"))
     {
-        return ErrorExp.get();
+        return ErrorExp.get(be);
     }
 
     return be;
@@ -4281,7 +4281,7 @@ Expression typeCombine(BinExp be, Scope* sc)
         Expression ex = be.incompatibleTypes(sc);
         if (ex.op == EXP.error)
             return ex;
-        return ErrorExp.get();
+        return ErrorExp.get(be);
     }
 
     if (auto result = typeMerge(sc, be.op, be.e1, be.e2))
@@ -4311,7 +4311,7 @@ Expression integralPromotions(Expression e, Scope* sc)
     {
     case Tvoid:
         error(e.loc, "void has no value");
-        return ErrorExp.get();
+        return ErrorExp.get(e);
 
     case Tint8:
     case Tuns8:

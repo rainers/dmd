@@ -124,7 +124,7 @@ Expression arrayOp(BinExp e, Scope* sc)
     if (tbn.ty == Tvoid)
     {
         error(e.loc, "cannot perform array operations on `void[]` arrays");
-        return ErrorExp.get();
+        return ErrorExp.get(e);
     }
     if (!isArrayOpValid(e))
         return arrayOpInvalidError(e);
@@ -148,13 +148,13 @@ Expression arrayOp(BinExp e, Scope* sc)
         else
         {
             ObjectNotFound(e.loc, idArrayOp);   // fatal error
-            return ErrorExp.get();
+            return ErrorExp.get(e);
         }
     }
 
     auto fd = resolveFuncCall(e.loc, sc, arrayOp, tiargs, null, ArgumentList(args), FuncResolveFlag.standard);
     if (!fd || fd.errors)
-        return ErrorExp.get();
+        return ErrorExp.get(e);
     return new CallExp(e.loc, new VarExp(e.loc, fd, false), args).expressionSemantic(sc);
 }
 
@@ -172,7 +172,7 @@ Expression arrayOp(BinAssignExp e, Scope* sc)
         error(e.loc, "slice `%s` is not mutable", e.e1.toChars());
         if (e.op == EXP.addAssign)
             checkPossibleAddCatError!(AddAssignExp, CatAssignExp)(e.isAddAssignExp);
-        return ErrorExp.get();
+        return ErrorExp.get(e);
     }
     if (e.e1.op == EXP.arrayLiteral)
     {
@@ -377,7 +377,7 @@ ErrorExp arrayOpInvalidError(Expression e)
         checkPossibleAddCatError!(AddExp, CatExp)(e.isAddExp());
     else if (e.op == EXP.addAssign)
         checkPossibleAddCatError!(AddAssignExp, CatAssignExp)(e.isAddAssignExp());
-    return ErrorExp.get();
+    return ErrorExp.get(e);
 }
 
 private void checkPossibleAddCatError(AddT, CatT)(AddT ae)

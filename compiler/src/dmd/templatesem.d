@@ -4078,7 +4078,7 @@ private RootObject defaultArg(TemplateParameter tp, Loc instLoc, Scope* sc)
                 // start looping on the expansion of the template instance.
                 auto td = sc.tinst.tempdecl;
                 .error(td.loc, "%s `%s` recursive template expansion", td.kind, td.toPrettyChars);
-                return ErrorExp.get();
+                return ErrorExp.get(e);
             }
         }
         if ((e = resolveProperties(sc, e)) is null)
@@ -5451,11 +5451,11 @@ bool TemplateInstance_semanticTiargs(Loc loc, Scope* sc, Objects* tiargs, int fl
                 else if (definitelyValueParameter(ea))
                 {
                     if (ea.checkValue()) // check void expression
-                        ea = ErrorExp.get();
+                        ea = ErrorExp.get(ea);
                     const olderrs = global.errors;
                     ea = ea.ctfeInterpret();
                     if (global.errors != olderrs)
-                        ea = ErrorExp.get();
+                        ea = ErrorExp.get(ea);
                 }
             }
             //printf("-[%d] ea = %s %s\n", j, EXPtoString(ea.op).ptr, ea.toChars());

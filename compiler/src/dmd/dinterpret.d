@@ -84,7 +84,7 @@ public Expression ctfeInterpret(Expression e)
         case EXP.dotTemplateInstance:    // ditto
         case EXP.dot:                    // ditto
              if (e.type.ty == Terror)
-                return ErrorExp.get();
+                return ErrorExp.get(e);
             goto case EXP.error;
 
         case EXP.error:
@@ -97,7 +97,7 @@ public Expression ctfeInterpret(Expression e)
     assert(e.type); // https://issues.dlang.org/show_bug.cgi?id=14642
     //assert(e.type.ty != Terror);    // FIXME
     if (e.type.ty == Terror)
-        return ErrorExp.get();
+        return ErrorExp.get(e);
 
     auto rgnpos = ctfeGlobals.region.savePos();
 
@@ -120,7 +120,7 @@ public Expression ctfeInterpret(Expression e)
     if (!CTFEExp.isCantExp(result))
         result = scrubReturnValue(e.loc, result);
     if (CTFEExp.isCantExp(result))
-        result = ErrorExp.get();
+        result = ErrorExp.get(e);
     result.saveOriginal(e);
 
     ctfeGlobals.region.release(rgnpos);
@@ -6220,7 +6220,7 @@ void interpretThrow(ref Expression result, Expression exp, Loc loc, InterState* 
     else
     {
         error(exp.loc, "to be thrown `%s` must be non-null", exp.toChars());
-        result = ErrorExp.get();
+        result = ErrorExp.get(exp);
     }
 }
 
@@ -6545,7 +6545,7 @@ private Expression scrubReturnValue(Loc loc, Expression e)
     else if (auto vie = e.isVoidInitExp())
     {
         error(loc, "uninitialized variable `%s` cannot be returned from CTFE", vie.var.toChars());
-        return ErrorExp.get();
+        return ErrorExp.get(e);
     }
 
     e = resolveSlice(e);

@@ -2650,7 +2650,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
                 {
                     error(dsym.loc, "sequence of %d elements cannot be assigned to sequence of %d elements", cast(int)tedim, cast(int)nelems);
                     for (size_t u = tedim; u < nelems; u++) // fill dummy expression
-                        te.exps.push(ErrorExp.get());
+                        te.exps.push(ErrorExp.get(ie));
                 }
             }
 
@@ -3072,7 +3072,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
                             if (!e)
                             {
                                 .error(dsym.loc, "%s `%s` is not a static and cannot have static initializer", dsym.kind, dsym.toPrettyChars);
-                                e = ErrorExp.get();
+                                e = ErrorExp.get(null);
                             }
                         }
                         ei = new ExpInitializer(dsym._init.loc, e);
@@ -3160,7 +3160,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
                             else
                             {
                                 .error(dsym.loc, "rvalue `%s` cannot be assigned to `ref %s`", exp.toChars(), dsym.toChars());
-                                exp = ErrorExp.get();
+                                exp = ErrorExp.get(exp);
                             }
                         }
                         else if (!ta.constConv(tp))
@@ -3173,7 +3173,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
                             else
                             {
                                 .error(dsym.loc, "type `%s` cannot be assigned to `ref %s %s`", ta.toChars(), tp.toChars(), dsym.toChars());
-                                exp = ErrorExp.get();
+                                exp = ErrorExp.get(exp);
                             }
                         }
                         else if (exp.isBitField())
@@ -3186,7 +3186,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
                             else
                             {
                                 .error(dsym.loc, "bitfield `%s` cannot be assigned to `ref %s`", exp.toChars(), dsym.toChars());
-                                exp = ErrorExp.get();
+                                exp = ErrorExp.get(exp);
                             }
                         }
                         else
@@ -3217,7 +3217,7 @@ private extern(C++) final class DsymbolSemanticVisitor : Visitor
                     auto init_err = dsym._init.isExpInitializer();
                     if (init_err && init_err.exp.op == EXP.showCtfeContext)
                     {
-                        init_err.exp = ErrorExp.get();
+                        init_err.exp = ErrorExp.get(null);
                         errorSupplemental(dsym.loc, "compile time context created here");
                     }
                 }

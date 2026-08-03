@@ -295,7 +295,7 @@ Expression opOverloadUnary(UnaExp e, Scope* sc)
             error(e.loc, "operator `%s` is not defined for `%s`", EXPtoString(e.op).ptr, ad.toChars());
             errorSupplemental(ad.loc, "perhaps overload the operator with `auto opUnary(string op : \"%s\")() {}`",
                 EXPtoString(e.op).ptr);
-            return ErrorExp.get();
+            return ErrorExp.get(e);
         }
 
         break;
@@ -510,7 +510,7 @@ Expression binAliasThis(BinExp e, Scope* sc, Type[2] aliasThisStop)
     {
         error(e.loc, "cannot use `alias this` to partially initialize variable `%s` of type `%s`. Use `%s`",
                 e.e1.toChars(), ad1.toChars(), rewrittenLhs.toChars());
-        return ErrorExp.get();
+        return ErrorExp.get(e);
     }
     return null;
 }
@@ -556,14 +556,14 @@ Expression opOverloadBinary(BinExp e, Scope* sc, Type[2] aliasThisStop)
     if (s && !(s.isTemplateDeclaration() || s.isOverloadSet))
     {
         error(e.e1.loc, "`%s.opBinary` isn't a template", e.e1.toChars());
-        return ErrorExp.get();
+        return ErrorExp.get(e);
     }
 
     Dsymbol s_r = search_function(ad2, Id.opBinaryRight);
     if (s_r && !(s_r.isTemplateDeclaration() || s_r.isOverloadSet()))
     {
         error(e.e2.loc, "`%s.opBinaryRight` isn't a template", e.e2.toChars());
-        return ErrorExp.get();
+        return ErrorExp.get(e);
     }
     if (s_r && s_r == s) // https://issues.dlang.org/show_bug.cgi?id=12778
         s_r = null;
@@ -689,7 +689,7 @@ Expression opOverloadEqual(EqualExp e, Scope* sc, Type[2] aliasThisStop)
         error(e.loc, "use `%s` instead of `%s` when comparing with `null`",
             EXPtoString(e.op == EXP.equal ? EXP.identity : EXP.notIdentity).ptr,
             EXPtoString(e.op).ptr);
-        return ErrorExp.get();
+        return ErrorExp.get(e);
     }
     if (t1.isTypeClass() && t2.isTypeNull() ||
         t1.isTypeNull() && t2.isTypeClass())
@@ -816,7 +816,7 @@ Expression opOverloadEqual(EqualExp e, Scope* sc, Type[2] aliasThisStop)
         {
             error(e.loc, "mismatched sequence lengths, `%d` and `%d`",
                 cast(int)dim, cast(int)tup2.exps.length);
-            return ErrorExp.get();
+            return ErrorExp.get(e);
         }
 
         Expression result;
@@ -861,7 +861,7 @@ Expression opOverloadCmp(CmpExp exp, Scope* sc, Type[2] aliasThisStop)
     if (!e.type.isScalar() && e.type.equals(exp.e1.type))
     {
         error(e.loc, "recursive `opCmp` expansion");
-        return ErrorExp.get();
+        return ErrorExp.get(exp);
     }
     if (!e.isCallExp())
         return e;
@@ -1002,14 +1002,14 @@ Expression opOverloadBinaryAssign(BinAssignExp e, Scope* sc, Type[2] aliasThisSt
 
     // Don't attempt 'alias this' if an error occurred
     if (e.e1.type.isTypeError() || e.e2.type.isTypeError())
-        return ErrorExp.get();
+        return ErrorExp.get(e);
 
     AggregateDeclaration ad1 = isAggregate(e.e1.type);
     Dsymbol s = search_function(ad1, Id.opOpAssign);
     if (s && !(s.isTemplateDeclaration() || s.isOverloadSet()))
     {
         error(e.loc, "`%s.opOpAssign` isn't a template", e.e1.toChars());
-        return ErrorExp.get();
+        return ErrorExp.get(e);
     }
 
     bool choseReverse;
@@ -1054,7 +1054,7 @@ private Expression pickBestBinaryOverload(Scope* sc, Objects* tiargs, Dsymbol s,
     {
         functionResolve(m, s, e.loc, sc, tiargs, e.e1.type, ArgumentList(args2), null);
         if (m.lastf && (m.lastf.errors || m.lastf.hasSemantic3Errors))
-            return ErrorExp.get();
+            return ErrorExp.get(e);
     }
     FuncDeclaration lastf = m.lastf;
     int count = m.count;
@@ -1062,7 +1062,7 @@ private Expression pickBestBinaryOverload(Scope* sc, Objects* tiargs, Dsymbol s,
     {
         functionResolve(m, s_r, e.loc, sc, tiargs, e.e2.type, ArgumentList(args1), null);
         if (m.lastf && (m.lastf.errors || m.lastf.hasSemantic3Errors))
-            return ErrorExp.get();
+            return ErrorExp.get(e);
     }
     if (m.count > 1)
     {
@@ -1149,7 +1149,7 @@ private Expression compare_overload(BinExp e, Scope* sc, Identifier id, ref EXP 
         error(e.loc, "no operator `%s` for type `%s`", EXPtoString(e.op).ptr, ad.toChars);
         string op = e.isEqualExp() ? "bool" : "int";
         errorSupplemental(ad.loc, "perhaps overload it with `%.*s %s(%s other) const {}`", op.fTuple.expand, id.toChars, other.type.toChars);
-        return ErrorExp.get();
+        return ErrorExp.get(e);
     }
 
     // Classes have opCmp and opEquals defined in `Object` to fall back on already

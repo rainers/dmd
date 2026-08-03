@@ -98,7 +98,7 @@ public Statement gccAsmSemantic(GccAsmStatement s, Scope* sc)
             if (i < s.outputargs)
                 earg = earg.modifiableLvalue(sc);
             else if (earg.checkValue())
-                earg = ErrorExp.get();
+                earg = ErrorExp.get(earg);
             (*s.args)[i] = earg;
         }
     }
@@ -264,14 +264,14 @@ Expression parseAsmString(Parser)(Parser p)
 
         // Look for closing `)`.
         if (!p.requireToken(TOK.rightParenthesis))
-            return ErrorExp.get();
+            return ErrorExp.get(insn);
 
         return insn;
     }
     else if (p.token.value != TOK.string_)
     {
         p.eSink.error(p.token.loc, "expected string literal or expression in parentheses");
-        return ErrorExp.get();
+        return ErrorExp.get(null);
     }
 
     return p.parsePrimary();

@@ -287,7 +287,7 @@ Expression checkGC(Expression e, Scope* sc)
         return e;
 
     if (!betterC)
-        return ErrorExp.get();
+        return ErrorExp.get(e);
 
     // Allow ctfe to use the gc code, but don't let it into the runtime
     f.skipCodegen = true;

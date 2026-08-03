@@ -257,7 +257,7 @@ void enumSemantic(Scope* sc, EnumDeclaration ed)
 Expression getDefaultValue(EnumDeclaration ed, Loc loc)
 {
     Expression handleErrors(){
-        ed.defaultval = ErrorExp.get();
+        ed.defaultval = ErrorExp.get(null);
         return ed.defaultval;
     }
     //printf("EnumDeclaration::getDefaultValue() %p %s\n", this, toChars());

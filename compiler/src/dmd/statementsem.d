@@ -219,7 +219,7 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
         s.exp = resolveProperties(sc, s.exp);
         s.exp = s.exp.addDtorHook(sc);
         if (checkNonAssignmentArrayOp(s.exp))
-            s.exp = ErrorExp.get();
+            s.exp = ErrorExp.get(s.exp);
         if (auto f = isFuncAddress(s.exp))
         {
             if (f.checkForwardRef(s.exp.loc))
@@ -2631,7 +2631,7 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
 
                     error(rs.loc, "can only return void expression, `this` call or `super` call from constructor");
                     errors = true;
-                    rs.exp = ErrorExp.get();
+                    rs.exp = ErrorExp.get(rs.exp);
                 }
                 else
                 {
@@ -2681,7 +2681,7 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
                 // uncomment ErrorExp and call `error`
                 deprecation(rs.exp.loc, "cannot return non-zero compile-time value from `opApply`");
                 deprecationSupplemental(rs.exp.loc, "Any non-zero value must be the result of calling its delegate");
-                //rs.exp = ErrorExp.get();
+                //rs.exp = ErrorExp.get(rs.exp);
             }
 
             // Extract side-effect part

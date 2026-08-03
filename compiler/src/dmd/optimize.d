@@ -72,7 +72,7 @@ Expression expandVar(int result, VarDeclaration v)
 
     static Expression errorReturn()
     {
-        return ErrorExp.get();
+        return ErrorExp.get(null);
     }
 
     if (!v)
@@ -278,7 +278,7 @@ Expression optimize(Expression e, int result, bool keepLvalue = false)
 
     void errorReturn()
     {
-        ret = ErrorExp.get();
+        ret = ErrorExp.get(e);
     }
 
     /* Returns: true if error
@@ -467,7 +467,7 @@ Expression optimize(Expression e, int result, bool keepLvalue = false)
                         auto t = v.isThis();
                         assert(t);
                         .error(e.loc, "taking the address of non-static variable `%s` requires an instance of `%s`", v.toChars(), t.toChars());
-                        ret = ErrorExp.get();
+                        ret = ErrorExp.get(e);
                         return;
                     }
                     hasOverloads = false;
@@ -556,7 +556,7 @@ Expression optimize(Expression e, int result, bool keepLvalue = false)
             IntegerExp eint;
             if (getVarAndOffset(e.e1, var, eint, offset))
             {
-                ret = ErrorExp.get();
+                ret = ErrorExp.get(e);
                 return;
             }
             if (var)
@@ -1398,7 +1398,7 @@ Expression optimize(Expression e, int result, bool keepLvalue = false)
         if (b++ == global.recursionLimit)
         {
             error(e.loc, "infinite loop while optimizing expression");
-            return ErrorExp.get();
+            return ErrorExp.get(e);
         }
 
         auto ex = ret;

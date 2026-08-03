@@ -827,15 +827,22 @@ extern (C++) final class ErrorExp : Expression
         type = Type.terror;
     }
 
-    static ErrorExp get (Expression exp = null)
+    static ErrorExp get(Expression exp)
     {
         version(LanguageServer)
         {
-            auto errorexp = new ErrorExp;
-            errorexp.saveOriginal(exp);
+            auto errorexp = exp ? exp.isErrorExp() : null;
+            if (!errorexp)
+            {
+                errorexp = new ErrorExp;
+                errorexp.saveOriginal(exp);
+            }
         }
-        if (errorexp is null)
-            errorexp = new ErrorExp();
+        else
+        {
+            if (errorexp is null)
+                errorexp = new ErrorExp();
+        }
 
         if (global.errors == 0 && global.gaggedErrors == 0)
         {
@@ -2097,6 +2104,8 @@ extern (C++) final class TraitsExp : Expression
 {
     Identifier ident;
     Objects* args;
+    version(LanguageServer)
+        Objects* parsedArgs;
 
     extern (D) this(Loc loc, Identifier ident, Objects* args) @safe
     {

@@ -90,13 +90,13 @@ Expression arrayFuncConv(Expression e, Scope* sc)
     if (auto ta = t.isTypeDArray())
     {
         if (!checkAddressable(e, sc, "take address of"))
-            return ErrorExp.get();
+            return ErrorExp.get(e);
         e = e.castTo(sc, ta.next.pointerTo());
     }
     else if (auto ts = t.isTypeSArray())
     {
         if (!checkAddressable(e, sc, "take address of"))
-            return ErrorExp.get();
+            return ErrorExp.get(e);
         e = e.castTo(sc, ts.next.pointerTo());
     }
     else if (t.isTypeFunction())
@@ -148,7 +148,7 @@ Expression fieldLookup(Expression e, Scope* sc, Identifier id, bool arrow)
     if (!s)
     {
         error(e.loc, "`%s` is not a member of `%s`", id.toChars(), t.toChars());
-        return ErrorExp.get();
+        return ErrorExp.get(e);
     }
     Expression ef = new DotVarExp(e.loc, e, s.isDeclaration());
     return ef.expressionSemantic(sc);
@@ -637,7 +637,7 @@ void cEnumSemantic(Scope* sc, EnumDeclaration ed)
     {
         static void errorReturn(EnumMember em)
         {
-            em.value = ErrorExp.get();
+            em.value = ErrorExp.get(null);
             em.errors = true;
             em.semanticRun = PASS.semanticdone;
         }

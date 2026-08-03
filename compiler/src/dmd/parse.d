@@ -2503,7 +2503,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
         else
         {
             error("(expression) expected following `static if`");
-            exp = AST.ErrorExp.get();
+            exp = AST.ErrorExp.get(null);
         }
         condition = new AST.StaticIfCondition(loc, exp);
         return condition;
@@ -6398,7 +6398,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                 if (!ifbody)
                     ifbody = new AST.ErrorStatement; // remember condition even in broken AST
                 if (!condition)
-                    condition = AST.ErrorExp.get();
+                    condition = AST.ErrorExp.get(null);
                 s = new AST.IfStatement(loc, param, condition, ifbody, elsebody, token.loc);
                 break;
             }
@@ -9161,7 +9161,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                 }
                 else
                 {
-                    e = new AST.DotExp(loc, e, AST.ErrorExp.get());
+                    e = new AST.DotExp(loc, e, AST.ErrorExp.get(null));
                     break;
                 }
 
