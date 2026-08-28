@@ -3281,7 +3281,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                                 }
                             }
 
-                            at = parseType(&ai, &identLoc);
+                            at = parseType(&ai, &identloc);
 
                         LskipType:{}
                         }
@@ -7129,7 +7129,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
                 nextToken();
             if (token.value == TOK.semicolon)
                 nextToken();
-            s = new AST.ErrorStatement(s);
+            s = AST.ErrorStatement.get(s);
             break;
         }
         if (pEndloc)

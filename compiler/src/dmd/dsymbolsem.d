@@ -7638,7 +7638,7 @@ private CallExp doAtomicOp(string op, Identifier var, Expression arg, Scope* sc)
 
 
     Expression e = new IdentifierExp(loc, Id.empty);
-    e = new DotIdExp(loc, e, Id.object);
+    e = new DotIdExp(loc, e, makeIdentifierAtLoc(Id.object));
     auto dti = new DotTemplateInstanceExp(loc, e, Id._d_atomicOp, new Objects(new StringExp(loc, op)));
 
     return CallExp.create(loc, dti, new Expressions(new IdentifierExp(loc, var), arg));
@@ -7678,7 +7678,7 @@ void adjustLocForMixin(const(char)[] input, Loc loc, ref BaseLoc baseLoc, ref Ou
      * in the source file.
      */
     OutBuffer buf;
-    buf.reserve(sl.filename.length + 7 + (sl.linnum).sizeof * 3 + 1);
+    buf.reserve(sl.filename.length + 7 + typeof(sl.linnum).sizeof * 3 + 1);
     buf.printf("%.*s-mixin-%d", cast(int) sl.filename.length, sl.filename.ptr, cast(int) sl.linnum);
     baseLoc.filename = buf.extractSlice(true);
     baseLoc.startLine = sl.line;

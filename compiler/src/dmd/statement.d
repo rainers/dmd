@@ -303,7 +303,7 @@ extern (C++) abstract class Statement : ASTNode
             }
             else
             {
-                foreach (os; *cs.statements)
+                foreach (os; cs.statements)
                     if (os is s)
                         return;
             }
@@ -371,7 +371,7 @@ extern (C++) abstract class Statement : ASTNode
  */
 extern (C++) final class ErrorStatement : Statement
 {
-    extern (D) this(Statement stmt = null)
+    extern (D) this()
     {
         // Don't use `Loc.initial` as this is initialised at compile time.
         Loc loc;
@@ -385,7 +385,11 @@ extern (C++) final class ErrorStatement : Statement
         import dmd.globals;
         assert(global.gaggedErrors || global.errors);
         version(LanguageServer)
-            saveOriginal(stmt);
+        {
+            auto errorstmt = new ErrorStatement;
+            if (orig)
+                errorstmt.saveOriginal(orig);
+        }
         return errorstmt;
     }
 
@@ -402,7 +406,8 @@ extern (C++) final class ErrorStatement : Statement
         v.visit(this);
     }
 
-    extern (C++) __gshared ErrorStatement errorstmt = new ErrorStatement;
+    version(LanguageServer) {} else
+        extern (C++) __gshared ErrorStatement errorstmt = new ErrorStatement;
 }
 
 /***********************************************************

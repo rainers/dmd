@@ -511,128 +511,6 @@ extern (C++) abstract class Expression : ASTNode
         }
     }
 
-    extern (D) private static const TypeInfo_Class[EXP.max + 1] typeInfoExp = ()
-    {
-        TypeInfo_Class[EXP.max + 1] tiExp;
-        tiExp[EXP.int64                   ] = typeid(IntegerExp);
-        tiExp[EXP.error                   ] = typeid(ErrorExp);
-        tiExp[EXP.void_                   ] = typeid(VoidInitExp);
-        tiExp[EXP.float64                 ] = typeid(RealExp);
-        tiExp[EXP.complex80               ] = typeid(ComplexExp);
-        tiExp[EXP.identifier              ] = typeid(IdentifierExp);
-        tiExp[EXP.dollar                  ] = typeid(DollarExp);
-        tiExp[EXP.dSymbol                 ] = typeid(DsymbolExp);
-        tiExp[EXP.this_                   ] = typeid(ThisExp);
-        tiExp[EXP.super_                  ] = typeid(SuperExp);
-        tiExp[EXP.null_                   ] = typeid(NullExp);
-        tiExp[EXP.string_                 ] = typeid(StringExp);
-        tiExp[EXP.tuple                   ] = typeid(TupleExp);
-        tiExp[EXP.arrayLiteral            ] = typeid(ArrayLiteralExp);
-        tiExp[EXP.assocArrayLiteral       ] = typeid(AssocArrayLiteralExp);
-        tiExp[EXP.structLiteral           ] = typeid(StructLiteralExp);
-        tiExp[EXP.type                    ] = typeid(TypeExp);
-        tiExp[EXP.scope_                  ] = typeid(ScopeExp);
-        tiExp[EXP.template_               ] = typeid(TemplateExp);
-        tiExp[EXP.new_                    ] = typeid(NewExp);
-        tiExp[EXP.newAnonymousClass       ] = typeid(NewAnonClassExp);
-        tiExp[EXP.symbolOffset            ] = typeid(SymOffExp);
-        tiExp[EXP.variable                ] = typeid(VarExp);
-        tiExp[EXP.overloadSet             ] = typeid(OverExp);
-        tiExp[EXP.function_               ] = typeid(FuncExp);
-        tiExp[EXP.declaration             ] = typeid(DeclarationExp);
-        tiExp[EXP.typeid_                 ] = typeid(TypeidExp);
-        tiExp[EXP.traits                  ] = typeid(TraitsExp);
-        tiExp[EXP.halt                    ] = typeid(HaltExp);
-        tiExp[EXP.is_                     ] = typeid(IsExp);
-        tiExp[EXP.mixin_                  ] = typeid(MixinExp);
-        tiExp[EXP.import_                 ] = typeid(ImportExp);
-        tiExp[EXP.assert_                 ] = typeid(AssertExp);
-        tiExp[EXP.dotIdentifier           ] = typeid(DotIdExp);
-        tiExp[EXP.dotTemplateDeclaration  ] = typeid(DotTemplateExp);
-        tiExp[EXP.dotVariable             ] = typeid(DotVarExp);
-        tiExp[EXP.dotTemplateInstance     ] = typeid(DotTemplateInstanceExp);
-        tiExp[EXP.delegate_               ] = typeid(DelegateExp);
-        tiExp[EXP.dotType                 ] = typeid(DotTypeExp);
-        tiExp[EXP.call                    ] = typeid(CallExp);
-        tiExp[EXP.address                 ] = typeid(AddrExp);
-        tiExp[EXP.star                    ] = typeid(PtrExp);
-        tiExp[EXP.negate                  ] = typeid(NegExp);
-        tiExp[EXP.uadd                    ] = typeid(UAddExp);
-        tiExp[EXP.tilde                   ] = typeid(ComExp);
-        tiExp[EXP.not                     ] = typeid(NotExp);
-        tiExp[EXP.delete_                 ] = typeid(DeleteExp);
-        tiExp[EXP.cast_                   ] = typeid(CastExp);
-        tiExp[EXP.vector                  ] = typeid(VectorExp);
-        tiExp[EXP.vectorArray             ] = typeid(VectorArrayExp);
-        tiExp[EXP.slice                   ] = typeid(SliceExp);
-        tiExp[EXP.arrayLength             ] = typeid(ArrayLengthExp);
-        tiExp[EXP.array                   ] = typeid(ArrayExp);
-        tiExp[EXP.dot                     ] = typeid(DotExp);
-        tiExp[EXP.comma                   ] = typeid(CommaExp);
-        tiExp[EXP.interval                ] = typeid(IntervalExp);
-        tiExp[EXP.delegatePointer         ] = typeid(DelegatePtrExp);
-        tiExp[EXP.delegateFunctionPointer ] = typeid(DelegateFuncptrExp);
-        tiExp[EXP.index                   ] = typeid(IndexExp);
-        tiExp[EXP.plusPlus                ] = typeid(PostExp);
-        tiExp[EXP.minusMinus              ] = typeid(PostExp);
-        tiExp[EXP.prePlusPlus             ] = typeid(PreExp);
-        tiExp[EXP.preMinusMinus           ] = typeid(PreExp);
-        tiExp[EXP.assign                  ] = typeid(AssignExp);
-        tiExp[EXP.construct               ] = typeid(ConstructExp);
-        tiExp[EXP.blit                    ] = typeid(BlitExp);
-        tiExp[EXP.addAssign               ] = typeid(AddAssignExp);
-        tiExp[EXP.minAssign               ] = typeid(MinAssignExp);
-        tiExp[EXP.mulAssign               ] = typeid(MulAssignExp);
-        tiExp[EXP.divAssign               ] = typeid(DivAssignExp);
-        tiExp[EXP.modAssign               ] = typeid(ModAssignExp);
-        tiExp[EXP.andAssign               ] = typeid(AndAssignExp);
-        tiExp[EXP.orAssign                ] = typeid(OrAssignExp);
-        tiExp[EXP.xorAssign               ] = typeid(XorAssignExp);
-        tiExp[EXP.powAssign               ] = typeid(PowAssignExp);
-        tiExp[EXP.leftShiftAssign         ] = typeid(ShlAssignExp);
-        tiExp[EXP.rightShiftAssign        ] = typeid(ShrAssignExp);
-        tiExp[EXP.unsignedRightShiftAssign] = typeid(UshrAssignExp);
-        tiExp[EXP.concatenateAssign       ] = typeid(CatAssignExp);
-        tiExp[EXP.concatenateElemAssign   ] = typeid(CatElemAssignExp);
-        tiExp[EXP.concatenateDcharAssign  ] = typeid(CatDcharAssignExp);
-        tiExp[EXP.add                     ] = typeid(AddExp);
-        tiExp[EXP.min                     ] = typeid(MinExp);
-        tiExp[EXP.concatenate             ] = typeid(CatExp);
-        tiExp[EXP.mul                     ] = typeid(MulExp);
-        tiExp[EXP.div                     ] = typeid(DivExp);
-        tiExp[EXP.mod                     ] = typeid(ModExp);
-        tiExp[EXP.pow                     ] = typeid(PowExp);
-        tiExp[EXP.leftShift               ] = typeid(ShlExp);
-        tiExp[EXP.rightShift              ] = typeid(ShrExp);
-        tiExp[EXP.unsignedRightShift      ] = typeid(UshrExp);
-        tiExp[EXP.and                     ] = typeid(AndExp);
-        tiExp[EXP.or                      ] = typeid(OrExp);
-        tiExp[EXP.xor                     ] = typeid(XorExp);
-        tiExp[EXP.andAnd                  ] = typeid(LogicalExp);
-        tiExp[EXP.orOr                    ] = typeid(LogicalExp);
-        tiExp[EXP.in_                     ] = typeid(InExp);
-        tiExp[EXP.remove                  ] = typeid(RemoveExp);
-        tiExp[EXP.equal                   ] = typeid(EqualExp);
-        tiExp[EXP.notEqual                ] = typeid(EqualExp);
-        tiExp[EXP.identity                ] = typeid(IdentityExp);
-        tiExp[EXP.notIdentity             ] = typeid(IdentityExp);
-        tiExp[EXP.question                ] = typeid(CondExp);
-        tiExp[EXP.file                    ] = typeid(FileInitExp);
-        tiExp[EXP.fileFullPath            ] = typeid(FileInitExp);
-        tiExp[EXP.line                    ] = typeid(LineInitExp);
-        tiExp[EXP.moduleString            ] = typeid(ModuleInitExp);
-        tiExp[EXP.functionString          ] = typeid(FuncInitExp);
-        tiExp[EXP.prettyFunction          ] = typeid(PrettyFuncInitExp);
-        tiExp[EXP.classReference          ] = typeid(ClassReferenceExp);
-
-        tiExp[EXP.lessThan                ] = typeid(CmpExp);
-        tiExp[EXP.lessOrEqual             ] = typeid(CmpExp);
-        tiExp[EXP.greaterThan             ] = typeid(CmpExp);
-        tiExp[EXP.greaterOrEqual          ] = typeid(CmpExp);
-
-        return tiExp;
-    }();
-
     override void accept(Visitor v)
     {
         v.visit(this);
@@ -4448,4 +4326,12 @@ immutable ubyte[EXP.max+1] expAlign = (){
         else
             expAlign[optype.op] = 16; // worst case, GC doesn't guarantee more anyway
     return expAlign;
+}();
+
+extern (D) private static const TypeInfo_Class[EXP.max + 1] typeInfoExp = ()
+{
+    TypeInfo_Class[EXP.max + 1] tiExp;
+    foreach(optype; ExpOpTypePairs)
+        tiExp[optype.op] = typeid(optype.type);
+    return tiExp;
 }();

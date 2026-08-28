@@ -2391,7 +2391,7 @@ extern (C++) final class Parameter : ASTNode
     }
 
     // anonymous parameter
-    extern (D) this(Loc loc, STC storageClass, Type type, typeof(null), typeof(null), typeof(null))
+    extern (D) this(Loc loc, STC storageClass, Type type, typeof(null), typeof(null), typeof(null), typeof(null))
     {
         this(loc, storageClass, type, makeIdentifierAtLoc(null), null, null, null);
     }

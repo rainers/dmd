@@ -516,7 +516,7 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
 
             if (auto se = s.isErrorStatement())
             {
-                result = new ErrorStatement(cs);
+                result = ErrorStatement.get(cs);
                 return;
             }
         }
@@ -561,7 +561,7 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
         }
 
         scd.pop();
-        result = serror ? new ErrorStatement(uls) : uls;
+        result = serror ? ErrorStatement.get(uls) : uls;
     }
 
     void visitScope(ScopeStatement ss)

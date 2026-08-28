@@ -8739,7 +8739,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
                 Expressions *vptrs = new Expressions();
 
                 // Add expression for normal vptr
-                vptrs.push(new DotIdExp(loc, new ThisExp(loc), Id.__vptr));
+                vptrs.push(new DotIdExp(loc, new ThisExp(loc), makeIdentifierAtLoc(Id.__vptr)));
 
                 // Add expressions for interface vptrs
                 for (ClassDeclaration pc = cd.baseClass; pc; pc = pc.baseClass)
@@ -8845,7 +8845,7 @@ private extern (C++) final class ExpressionSemanticVisitor : Visitor
             }
             else
             {
-                result = ErrorExp.get();
+                result = ErrorExp.get(e);
             }
             return;
         }

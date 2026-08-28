@@ -80,7 +80,7 @@ Expression toAssocArrayLiteral(ArrayInitializer ai, Type itype, ErrorSink eSink)
         if (!ev)
         {
             eSink.error(iz.loc, "invalid value `%s` in initializer", toChars(iz));
-            return ErrorExp.get();
+            return ErrorExp.get(ev);
         }
         (*values)[i] = ev;
 
@@ -88,7 +88,7 @@ Expression toAssocArrayLiteral(ArrayInitializer ai, Type itype, ErrorSink eSink)
         if (!ei)
         {
             eSink.error(iz.loc, "missing key for value `%s` in initializer", toChars(iz));
-            return ErrorExp.get();
+            return ErrorExp.get(ei);
         }
         (*keys)[i] = ei;
     }
@@ -1293,7 +1293,7 @@ Initializer inferInitializerType(Initializer init, Scope* sc, Type itype, ErrorS
                     if (nidx > uint.max / 32)
                     {
                         eSink.error(init.loc, "array index %lld not supported", nidx);
-                        return new ErrorInitializer();
+                        return new ErrorInitializer(init);
                     }
                     idx = cast(uint)nidx;
                 }
@@ -1306,7 +1306,7 @@ Initializer inferInitializerType(Initializer init, Scope* sc, Type itype, ErrorS
                 else if ((*values)[idx])
                 {
                     eSink.error(init.loc, "array index %d initialized twice", cast(int)idx);
-                    return new ErrorInitializer();
+                    return new ErrorInitializer(init);
                 }
             }
             Initializer iz = init.value[i];

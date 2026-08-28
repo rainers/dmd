@@ -1058,7 +1058,7 @@ private DtorDeclaration buildFieldDtor(AggregateDeclaration ad, Loc declLoc, ref
             ex = new DotVarExp(loc, ex, v);
 
             // This is a hack so we can call destructors on const/immutable objects.
-            ex = new DotIdExp(loc, ex, Id.ptr);
+            ex = new DotIdExp(loc, ex, IdentifierAtLoc(Id.ptr));
             ex = new CastExp(loc, ex, sdv.type.pointerTo());
             if (stc & STC.safe)
                 stc = (stc & ~STC.safe) | STC.trusted;

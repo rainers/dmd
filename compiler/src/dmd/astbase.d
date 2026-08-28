@@ -1768,9 +1768,9 @@ struct ASTBase
             this.unpack = unpack;
         }
 
-        extern (D) this(Loc loc, StorageClass storageClass, Type type)
+        extern (D) this(Loc loc, StorageClass storageClass, Type type, typeof(null), typeof(null), typeof(null), typeof(null))
         {
-            this(loc, storageClass, type, makeIdentifierAtLoc(null), null, null);
+            this(loc, storageClass, type, null, null, null, null);
         }
 
         static size_t dim(Parameters* parameters)
