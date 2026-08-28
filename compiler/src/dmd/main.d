@@ -35,6 +35,7 @@ import dmd.dinifile;
 import dmd.dinterpret;
 import dmd.dmdparams;
 import dmd.dsymbolsem;
+import dmd.errorsink;
 import dmd.typesem : Type_init;
 import dmd.dtemplate;
 import dmd.dtoh;
@@ -98,8 +99,10 @@ extern (C) int main(int argc, char** argv)
     {
         static if(__VERSION__ < 2085)
             __gshared string[] disable_options = [ "gcopt=disable:1" ];
-        else
+        else static if(__VERSION__ < 2096)
             __gshared string[] disable_options = [ "gcopt=disable:1 cleanup:none" ];
+        else
+            __gshared string[] disable_options = [ "gcopt=disable:1 gc:bump cleanup:none" ];
         rt_options = disable_options;
         mem.disableGC();
     }
@@ -175,23 +178,34 @@ private int tryMain(const(char)[][] argv, out Param params)
     Strings libmodules;
     global._init();
 
+    ErrorSink eSink = global.errorSink;
+
     scope(exit)
     {
         // If we are here then compilation has ended
         // gracefully as opposed to with `fatal`
         global.plugErrorSinks();
-
-        if (global.errors == 0 && global.params.v.messageStyle == MessageStyle.sarif)
-        {
-            generateSarifReport(true);
-        }
     }
 
     target.setTargetBuildDefaults();
 
-    if (parseCommandlineAndConfig(argv, params, files))
+    if (parseCommandlineAndConfig(argv, params, files, eSink))
         return EXIT_FAILURE;
 
+    if (global.params.v.messageStyle == MessageStyle.sarif)
+    {
+        // Hand off the settings the CLI wrote into the original sink so the
+        // SARIF sink shares the same gating decisions.
+        auto sarif = new ErrorSinkSarif();
+        sarif.useDeprecated = global.errorSink.useDeprecated;
+        sarif.useWarnings = global.errorSink.useWarnings;
+        sarif.showGaggedErrors = global.errorSink.showGaggedErrors;
+        global.errorSink = sarif;
+        eSink = sarif;
+    }
+    global.errorSink.errorLimit = global.params.v.errorLimit;
+
+    global.compileEnv.tuples           = params.tuples == FeatureState.enabled;
     global.compileEnv.previewIn        = params.previewIn;
     global.compileEnv.transitionIn     = params.v.vin;
     global.compileEnv.ddocOutput       = params.ddoc.doOutput;
@@ -244,13 +258,17 @@ private int tryMain(const(char)[][] argv, out Param params)
 
     if (params.help.usage)
     {
-        usage();
+        OutBuffer buf;
+        usage(buf);
+        fputs(buf.peekChars(), stdout);
         return EXIT_SUCCESS;
     }
 
     if (params.v.logo)
     {
-        logo();
+        OutBuffer buf;
+        logo(buf);
+        fputs(buf.peekChars(), stdout);
         return EXIT_SUCCESS;
     }
 
@@ -270,20 +288,20 @@ private int tryMain(const(char)[][] argv, out Param params)
     /*
     Print a message to make it clear when warnings are treated as errors.
     */
-    static void errorOnWarning()
+    void errorOnWarning()
     {
-        error(Loc.initial, "warnings are treated as errors");
-        errorSupplemental(Loc.initial, "Use -wi if you wish to treat warnings only as informational.");
+        eSink.error(Loc.initial, "warnings are treated as errors");
+        eSink.errorSupplemental(Loc.initial, "Use -wi if you wish to treat warnings only as informational.");
     }
 
     // In case deprecation messages were omitted, inform the user about it
-    static void mentionOmittedDeprecations()
+    void mentionOmittedDeprecations()
     {
         if (global.params.v.errorLimit != 0 &&
             global.deprecations > global.params.v.errorLimit)
         {
             const omitted = global.deprecations - global.params.v.errorLimit;
-            message(Loc.initial, "%d deprecation warning%s omitted, use `-verrors=0` to show all",
+            eSink.message(Loc.initial, "%d deprecation warning%s omitted, use `-verrors=0` to show all",
                 omitted, omitted == 1 ? "".ptr : "s".ptr);
         }
     }
@@ -363,15 +381,17 @@ private int tryMain(const(char)[][] argv, out Param params)
         if (params.jsonFieldFlags)
         {
             Modules modules;            // empty
-            if (generateJson(modules, global.errorSink))
+            if (generateJson(modules, eSink))
                 fatal();
             return EXIT_SUCCESS;
         }
-        usage();
+        OutBuffer buf;
+        usage(buf);
+        fputs(buf.peekChars(), stdout);
         return EXIT_FAILURE;
     }
 
-    reconcileCommands(params, target);
+    reconcileCommands(params, target, eSink);
     setDefaultLibraries(target, driverParams.defaultlibname, driverParams.debuglibname);
 
     // Initialization
@@ -383,7 +403,7 @@ private int tryMain(const(char)[][] argv, out Param params)
     Objc._init();
     Loc._init();
 
-    reconcileLinkRunLib(params, files.length, target.obj_ext);
+    reconcileLinkRunLib(params, files.length, target.obj_ext, eSink);
     version(CRuntime_Microsoft)
     {
         import dmd.root.longdouble;
@@ -456,7 +476,7 @@ private int tryMain(const(char)[][] argv, out Param params)
 
     // Create Modules
     Modules modules;
-    if (createModules(files, libmodules, params, target, global.errorSink, modules))
+    if (createModules(files, libmodules, params, target, eSink, modules))
         fatal();
 
     // Read files
@@ -479,6 +499,9 @@ private int tryMain(const(char)[][] argv, out Param params)
                 fatal();
             // BUG: convert file contents to UTF-8 before use
             //printf("file: '%.*s'\n", cast(int)buffer.data.length, buffer.data.ptr);
+            // Separate macro definitions from adjacent files lacking a final \n
+            // https://github.com/dlang/dmd/issues/18754
+            ddocbuf.writeByte('\n');
         }
         ddocbufIsRead = true;
     }
@@ -535,7 +558,7 @@ private int tryMain(const(char)[][] argv, out Param params)
                 readDdocFiles(m.loc, global.params.ddoc.files, ddocbuf);
 
             ddocOutputText.setsize(0);
-            gendocfile(m, ddocbuf[], global.datetime.ptr, global.errorSink, ddocOutputText);
+            gendocfile(m, ddocbuf[], global.datetime.ptr, eSink, ddocOutputText);
 
             if (!writeFile(m.loc, m.docfile.toString(), ddocOutputText[]))
                 fatal();
@@ -560,7 +583,7 @@ private int tryMain(const(char)[][] argv, out Param params)
 
     if (anydocfiles && modules.length && (driverParams.oneobj || params.objname))
     {
-        error(Loc.initial, "conflicting Ddoc and obj generation options");
+        eSink.error(Loc.initial, "conflicting Ddoc and obj generation options");
         fatal();
     }
     if (global.errors)
@@ -579,7 +602,7 @@ private int tryMain(const(char)[][] argv, out Param params)
             if (m.filetype == FileType.dhdr)
                 continue;
             if (params.v.verbose)
-                message("import    %s", m.toChars());
+                eSink.message(Loc.initial, "import    %s", m.toChars());
 
             buf.reset();         // reuse the buffer
             genhdrfile(m, params.dihdr.fullOutput, buf);
@@ -592,7 +615,7 @@ private int tryMain(const(char)[][] argv, out Param params)
         }
     }
     if (global.errors)
-        removeHdrFilesAndFail(params, modules);
+        removeHdrFilesAndFail(params.dihdr.doOutput, modules);
 
     {
     timeTraceBeginEvent(TimeTraceEventType.semaGeneral);
@@ -602,11 +625,11 @@ private int tryMain(const(char)[][] argv, out Param params)
     foreach (m; modules)
     {
         if (params.v.verbose)
-            message("importall %s", m.toChars());
+            eSink.message(Loc.initial, "importall %s", m.toChars());
         m.importAll(null);
     }
     if (global.errors)
-        removeHdrFilesAndFail(params, modules);
+        removeHdrFilesAndFail(params.dihdr.doOutput, modules);
 
     backend_init(params, driverParams, target);
 
@@ -614,7 +637,7 @@ private int tryMain(const(char)[][] argv, out Param params)
     foreach (m; modules)
     {
         if (params.v.verbose)
-            message("semantic  %s", m.toChars());
+            eSink.message(Loc.initial, "semantic  %s", m.toChars());
         m.dsymbolSemantic(null);
     }
     //if (global.errors)
@@ -625,7 +648,7 @@ private int tryMain(const(char)[][] argv, out Param params)
         for (size_t i = 0; i < Module.deferred.length; i++)
         {
             Dsymbol sd = Module.deferred[i];
-            error(sd.loc, "%s `%s` unable to resolve forward reference in definition", sd.kind(), sd.toPrettyChars());
+            eSink.error(sd.loc, "%s `%s` unable to resolve forward reference in definition", sd.kind(), sd.toPrettyChars());
         }
         //fatal();
     }
@@ -634,18 +657,18 @@ private int tryMain(const(char)[][] argv, out Param params)
     foreach (m; modules)
     {
         if (params.v.verbose)
-            message("semantic2 %s", m.toChars());
+            eSink.message(Loc.initial, "semantic2 %s", m.toChars());
         m.semantic2(null);
     }
     runDeferredSemantic2();
     if (global.errors)
-        removeHdrFilesAndFail(params, modules);
+        removeHdrFilesAndFail(params.dihdr.doOutput, modules);
 
     // Do pass 3 semantic analysis
     foreach (m; modules)
     {
         if (params.v.verbose)
-            message("semantic3 %s", m.toChars());
+            eSink.message(Loc.initial, "semantic3 %s", m.toChars());
         m.semantic3(null);
     }
     if (includeImports)
@@ -657,14 +680,18 @@ private int tryMain(const(char)[][] argv, out Param params)
             auto m = compiledImports[i];
             assert(m.isRoot);
             if (params.v.verbose)
-                message("semantic3 %s", m.toChars());
+                eSink.message(Loc.initial, "semantic3 %s", m.toChars());
             m.semantic3(null);
             modules.push(m);
         }
     }
     runDeferredSemantic3();
     if (global.errors)
-        removeHdrFilesAndFail(params, modules);
+        removeHdrFilesAndFail(params.dihdr.doOutput, modules);
+
+    {
+    timeTraceBeginEvent(TimeTraceEventType.inlineGeneral);
+    scope (exit) timeTraceEndEvent(TimeTraceEventType.inlineGeneral);
 
     // Scan for modules with always inline functions
     foreach (m; modules)
@@ -672,8 +699,8 @@ private int tryMain(const(char)[][] argv, out Param params)
         if (m.hasAlwaysInlines)
         {
             if (params.v.verbose)
-                message("scan pragma(inline) in %s", m.toChars());
-            inlineScanPragmaInline(m, global.errorSink);
+                eSink.message(Loc.initial, "scan pragma(inline) in %s", m.toChars());
+            inlineScanPragmaInline(m, eSink);
         }
     }
 
@@ -683,20 +710,21 @@ private int tryMain(const(char)[][] argv, out Param params)
         foreach (m; modules)
         {
             if (params.v.verbose)
-                message("scan all inlines in %s", m.toChars());
-            inlineScanAllFunctions(m, global.errorSink);
+                eSink.message(Loc.initial, "scan all inlines in %s", m.toChars());
+            inlineScanAllFunctions(m, eSink);
         }
+    }
     }
 
     if (global.warnings)
         errorOnWarning();
 
-    if (global.params.useDeprecated == DiagnosticReporting.inform)
+    if (global.errorSink.useDeprecated == DiagnosticReporting.inform)
         mentionOmittedDeprecations();
 
     // Do not attempt to generate output files if errors or warnings occurred
     if (global.errors || global.warnings)
-        removeHdrFilesAndFail(params, modules);
+        removeHdrFilesAndFail(params.dihdr.doOutput, modules);
 
     // inlineScan incrementally run semantic3 of each expanded functions.
     // So deps file generation should be moved after the inlining stage.
@@ -718,12 +746,12 @@ private int tryMain(const(char)[][] argv, out Param params)
     }
 
     printCtfePerformanceStats();
-    printTemplateStats(global.params.v.templatesListInstances, global.errorSink);
+    printTemplateStats(global.params.v.templatesListInstances, eSink);
 
     // Generate output files
     if (params.json.doOutput)
     {
-        if (generateJson(modules, global.errorSink))
+        if (generateJson(modules, eSink))
             fatal();
     }
     if (!global.errors && params.ddoc.doOutput)
@@ -734,7 +762,7 @@ private int tryMain(const(char)[][] argv, out Param params)
                 readDdocFiles(m.loc, global.params.ddoc.files, ddocbuf);
 
             ddocOutputText.setsize(0);
-            gendocfile(m, ddocbuf[], global.datetime.ptr, global.errorSink, ddocOutputText);
+            gendocfile(m, ddocbuf[], global.datetime.ptr, eSink, ddocOutputText);
 
             if (!writeFile(m.loc, m.docfile.toString(), ddocOutputText[]))
                 fatal();
@@ -756,14 +784,14 @@ private int tryMain(const(char)[][] argv, out Param params)
     }
 
     if (global.params.cxxhdr.doOutput)
-        genCppHdrFiles(modules, global.errorSink);
+        genCppHdrFiles(modules, eSink, global.params.cplusplus);
 
     if (global.errors)
         fatal();
 
     if (driverParams.lib && params.objfiles.length == 0)
     {
-        error(Loc.initial, "no input files");
+        eSink.error(Loc.initial, "no input files");
         return EXIT_FAILURE;
     }
 
@@ -792,7 +820,7 @@ private int tryMain(const(char)[][] argv, out Param params)
     if (!params.objfiles.length)
     {
         if (driverParams.link)
-            error(Loc.initial, "no object files to link");
+            eSink.error(Loc.initial, "no object files to link");
     }
     else
     {
@@ -800,14 +828,14 @@ private int tryMain(const(char)[][] argv, out Param params)
         {
             timeTraceBeginEvent(TimeTraceEventType.link);
             scope (exit) timeTraceEndEvent(TimeTraceEventType.link);
-            status = runLINK(global.params.v.verbose, global.errorSink);
+            status = runLINK(global.params.v.verbose, eSink);
         }
         if (params.run)
         {
             if (!status)
             {
                 restoreEnvVars();
-                status = runProgram(global.params.exefile, global.params.runargs[], global.params.v.verbose, global.errorSink);
+                status = runProgram(global.params.exefile, global.params.runargs[], global.params.v.verbose, eSink);
                 /* Delete .obj files and .exe file
                  */
                 foreach (m; modules)
@@ -847,12 +875,12 @@ private int tryMain(const(char)[][] argv, out Param params)
             size_t n = fwrite(buf[].ptr, 1, buf.length, stdout);
             if (n != buf.length)
             {
-                error(Loc.initial, "Error writing -ftime-trace profile to stdout");
+                eSink.error(Loc.initial, "Error writing -ftime-trace profile to stdout");
             }
         }
         else if (!File.write(fileName, buf[]))
         {
-            error(Loc.initial,
+            eSink.error(Loc.initial,
                 "Error writing -ftime-trace profile: could not open '%*.s'",
                 cast(int) fileName.length, fileName.ptr);
         }
@@ -879,7 +907,7 @@ private int tryMain(const(char)[][] argv, out Param params)
         errorOnWarning();
 
     if (global.errors || global.warnings)
-        removeHdrFilesAndFail(params, modules);
+        removeHdrFilesAndFail(params.dihdr.doOutput, modules);
 
     return status;
 }
@@ -891,14 +919,16 @@ private int tryMain(const(char)[][] argv, out Param params)
  *   argv = Array of string arguments passed via command line
  *   params = parameters from argv
  *   files = files from argv
+ *   eSink = error message sink
  * Returns: true on failure
  */
-bool parseCommandlineAndConfig(const(char)[][] argv, out Param params, ref Strings files)
+private
+bool parseCommandlineAndConfig(const(char)[][] argv, out Param params, ref Strings files, ErrorSink eSink)
 {
     // Detect malformed input
-    static bool badArgs()
+    bool badArgs()
     {
-        error(Loc.initial, "missing or null command line arguments");
+        eSink.error(Loc.initial, "missing or null command line arguments");
         return true;
     }
 
@@ -914,7 +944,7 @@ bool parseCommandlineAndConfig(const(char)[][] argv, out Param params, ref Strin
         arguments[i] = toCString(argv[i]).ptr;
     }
     if (const(char)* missingFile = responseExpand(arguments)) // expand response files
-        error(Loc.initial, "cannot open response file '%s'", missingFile);
+        eSink.error(Loc.initial, "cannot open response file '%s'", missingFile);
     //for (size_t i = 0; i < arguments.length; ++i) printf("arguments[%d] = '%s'\n", i, arguments[i]);
     // Set default values
     auto argv0 = arguments[0].toDString;
@@ -931,7 +961,7 @@ bool parseCommandlineAndConfig(const(char)[][] argv, out Param params, ref Strin
     {
         // can be empty as in -conf=
         if (global.inifilename.length && !FileName.exists(global.inifilename))
-            error(Loc.initial, "config file '%.*s' does not exist.",
+            eSink.error(Loc.initial, "config file '%.*s' does not exist.",
                   cast(int)global.inifilename.length, global.inifilename.ptr);
     }
     else
@@ -982,8 +1012,8 @@ bool parseCommandlineAndConfig(const(char)[][] argv, out Param params, ref Strin
     if (parseCommandLine(arguments, argc, params, files, target, driverParams, global.errorSink))
     {
         Loc loc;
-        errorSupplemental(loc, "run `dmd` to print the compiler manual");
-        errorSupplemental(loc, "run `dmd -man` to open browser on manual");
+        eSink.errorSupplemental(loc, "run `dmd` to print the compiler manual");
+        eSink.errorSupplemental(loc, "run `dmd -man` to open browser on manual");
         return true;
     }
 
@@ -992,7 +1022,7 @@ bool parseCommandlineAndConfig(const(char)[][] argv, out Param params, ref Strin
         global.params.ddoc.files.shift(p);
 
     if (target.isX86_64 != isX86_64 && !target.isAArch64)
-        error(Loc.initial, "the architecture must not be changed in the %s section of %.*s",
+        eSink.error(Loc.initial, "the architecture must not be changed in the %s section of %.*s",
               envsection.ptr, cast(int)global.inifilename.length, global.inifilename.ptr);
 
     global.preprocess = &preprocess;
@@ -1028,9 +1058,9 @@ extern extern(C) __gshared string[] rt_options;
  *               and update in place
  *      target = more switches from the command line,
  *               update in place
- *      numSrcFiles = number of source files
+ *      eSink = sink for error messages
  */
-void reconcileCommands(ref Param params, ref Target target)
+void reconcileCommands(ref Param params, ref Target target, ErrorSink eSink)
 {
     if (target.os == Target.OS.OSX)
     {
@@ -1039,20 +1069,20 @@ void reconcileCommands(ref Param params, ref Target target)
     else if (target.os == Target.OS.Windows)
     {
         if (driverParams.pic)
-            error(Loc.initial, "`-fPIC` and `-fPIE` cannot be used when targetting windows");
+            eSink.error(Loc.initial, "`-fPIC` and `-fPIE` cannot be used when targetting windows");
         if (driverParams.dwarf)
-            error(Loc.initial, "`-gdwarf` cannot be used when targetting windows");
+            eSink.error(Loc.initial, "`-gdwarf` cannot be used when targetting windows");
     }
     else if (target.os == Target.OS.DragonFlyBSD)
     {
         if (!target.isX86_64)
-            error(Loc.initial, "`-m32` is not supported on DragonFlyBSD, it is 64-bit only");
+            eSink.error(Loc.initial, "`-m32` is not supported on DragonFlyBSD, it is 64-bit only");
     }
 
-    if (target.os & (Target.OS.linux | Target.OS.FreeBSD | Target.OS.OpenBSD | Target.OS.Solaris | Target.OS.DragonFlyBSD))
+    if (target.os & (Target.OS.linux | Target.OS.FreeBSD | Target.OS.OpenBSD | Target.OS.Solaris | Target.OS.DragonFlyBSD | Target.OS.Hurd))
     {
         if (driverParams.lib && driverParams.dll)
-            error(Loc.initial, "cannot mix `-lib` and `-shared`");
+            eSink.error(Loc.initial, "cannot mix `-lib` and `-shared`");
     }
     if (target.os == Target.OS.Windows)
     {
@@ -1061,7 +1091,7 @@ void reconcileCommands(ref Param params, ref Target target)
             if (b)
             {
                 // Linking code is guarded by version (Posix):
-                error(Loc.initial, "`Xcc=` link switches not available for this operating system");
+                eSink.error(Loc.initial, "`Xcc=` link switches not available for this operating system");
                 break;
             }
         }
@@ -1069,7 +1099,7 @@ void reconcileCommands(ref Param params, ref Target target)
     else
     {
         if (driverParams.mscrtlib)
-            error(Loc.initial, "`-mscrtlib` can only be used when targetting windows");
+            eSink.error(Loc.initial, "`-mscrtlib` can only be used when targetting windows");
     }
 
     if (params.boundscheck != CHECKENABLE._default)
@@ -1150,8 +1180,10 @@ void reconcileCommands(ref Param params, ref Target target)
  *               and update in place
  *      numSrcFiles = number of source files
  *      obj_ext = object file extension
+ *      eSink = error message sink
  */
-void reconcileLinkRunLib(ref Param params, size_t numSrcFiles, const char[] obj_ext)
+private
+void reconcileLinkRunLib(ref Param params, size_t numSrcFiles, const char[] obj_ext, ErrorSink eSink)
 {
     if (!params.obj || driverParams.lib)
         driverParams.link = false;
@@ -1164,12 +1196,28 @@ void reconcileLinkRunLib(ref Param params, size_t numSrcFiles, const char[] obj_
             {
                 VSOptions vsopt;
                 vsopt.initialize();
-                driverParams.mscrtlib = vsopt.defaultRuntimeLibrary(target.isX86_64).toDString;
+                if (const rtlib = vsopt.defaultRuntimeLibrary(target.isX86_64))
+                    driverParams.mscrtlib = rtlib.toDString;
+                else
+                {
+                    // No UCRT-capable Visual C installation (VS2015+ or the Windows SDK
+                    // with the Universal CRT) and no MinGW fallback libraries were found.
+                    if (driverParams.link)
+                        eSink.error(Loc.initial, "no compatible C runtime found; install Visual Studio 2015 or later, or the Windows SDK with the Universal CRT, or specify the runtime with `-mscrtlib`");
+                    // still embed a name in the object file so it can be linked elsewhere
+                    driverParams.mscrtlib = "libcmt";
+                }
+
+                // @@@ Deprecated v2.117
+                // Deprecated in 2.113
+                // Remove this when the feature is removed from the language
+                if (vsopt.usedDeprecatedVSVersion)
+                    eSink.deprecation(Loc.initial, "Visual Studio versions prior to 2015 are deprecated because they lack the Universal CRT (UCRT); install Visual Studio 2015 or later");
             }
             else
             {
                 if (driverParams.link)
-                    error(Loc.initial, "must supply `-mscrtlib` manually when cross compiling to windows");
+                    eSink.error(Loc.initial, "must supply `-mscrtlib` manually when cross compiling to windows");
             }
         }
     }
@@ -1196,7 +1244,7 @@ void reconcileLinkRunLib(ref Param params, size_t numSrcFiles, const char[] obj_
     }
     else if (params.run)
     {
-        error(Loc.initial, "flags conflict with -run");
+        eSink.error(Loc.initial, "flags conflict with -run");
         fatal();
     }
     else if (driverParams.lib)

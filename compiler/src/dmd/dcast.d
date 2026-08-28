@@ -182,7 +182,7 @@ Expression implicitCastTo(Expression e, Scope* sc, Type t)
 
         if (!t.deco)
         {
-            error(e.loc, "forward reference to type `%s`", t.toChars());
+            error(e.loc, "forward reference to type `%s`", t.toErrMsg());
             return ErrorExp.get(e);
         }
 
@@ -211,14 +211,14 @@ Expression implicitCastTo(Expression e, Scope* sc, Type t)
             // Const -> mutable conversion (disallowed)
             if (fromPointee.isConst() && !toPointee.isConst())
             {
-                error(e.loc, "cannot implicitly convert `%s` to `%s`", e.type.toChars(), t.toChars());
+                error(e.loc, "cannot implicitly convert `%s` to `%s`", e.type.toErrMsg(), t.toErrMsg());
                 errorSupplemental(e.loc, "Note: Converting const to mutable requires an explicit cast (`cast(int*)`).");
                 return ErrorExp.get(e);
             }
             // Incompatible pointee types (e.g., int* -> float* )
             else if (fromPointee.toBasetype().ty != toPointee.toBasetype().ty)
             {
-                error(e.loc, "cannot implicitly convert `%s` to `%s`", e.type.toChars(), t.toChars());
+                error(e.loc, "cannot implicitly convert `%s` to `%s`", e.type.toErrMsg(), t.toErrMsg());
                 errorSupplemental(e.loc, "Note: Pointer types point to different base types (`%s` vs `%s`)", fromPointee.toChars(), toPointee.toChars());
                 return ErrorExp.get(e);
             }
@@ -276,7 +276,7 @@ Expression implicitCastTo(Expression e, Scope* sc, Type t)
             {
                 Type tb = t.toBasetype();
                 Type tx = (tb.ty == Tsarray)
-                    ? tb.nextOf().sarrayOf(ale.elements ? ale.elements.length : 0)
+                    ? tb.nextOf().sarrayOf(ale.length)
                     : tb.nextOf().arrayOf();
                 se.e1 = ale.implicitCastTo(sc, tx);
             }
@@ -327,7 +327,7 @@ MATCH implicitConvTo(Expression e, Type t)
             return MATCH.nomatch;
         if (!e.type)
         {
-            error(e.loc, "`%s` is not an expression", e.toChars());
+            error(e.loc, "`%s` is not an expression", e.toErrMsg());
             e.type = Type.terror;
         }
 
@@ -854,12 +854,12 @@ MATCH implicitConvTo(Expression e, Type t)
 
             if (auto tsa = tb.isTypeSArray())
             {
-                if (e.elements.length != tsa.dim.toInteger())
+                if (e.length != tsa.dim.toInteger())
                     result = MATCH.nomatch;
             }
 
             Type telement = tb.nextOf();
-            if (!e.elements.length)
+            if (!e.length)
             {
                 if (typen.ty != Tvoid)
                     result = typen.implicitConvTo(telement);
@@ -872,9 +872,9 @@ MATCH implicitConvTo(Expression e, Type t)
                     if (m < result)
                         result = m;
                 }
-                for (size_t i = 0; i < e.elements.length; i++)
+                foreach (i; 0 .. e.length)
                 {
-                    Expression el = (*e.elements)[i];
+                    Expression el = e[i];
                     if (result == MATCH.nomatch)
                         break;
                     if (!el)
@@ -897,7 +897,7 @@ MATCH implicitConvTo(Expression e, Type t)
             TypeVector tv = tb.isTypeVector();
             TypeSArray tbase = tv.basetype.isTypeSArray();
             assert(tbase);
-            const edim = e.elements.length;
+            const edim = e.length;
             const tbasedim = tbase.dim.toInteger();
             if (edim > tbasedim)
             {
@@ -2049,15 +2049,52 @@ MATCH cimplicitConvTo(Expression e, Type t)
  */
 Type toStaticArrayType(SliceExp e)
 {
+    static Expression stripCasts(Expression e)
+    {
+        for (auto ce = e.isCastExp(); ce; ce = e.isCastExp())
+            e = ce.e1;
+        return e;
+    }
+
+    static bool inferSliceLength(Expression lwr, Expression upr, out size_t len)
+    {
+        lwr = stripCasts(lwr.optimize(WANTvalue));
+        upr = stripCasts(upr.optimize(WANTvalue));
+
+        if (lwr.isConst() && upr.isConst())
+        {
+            len = cast(size_t)(upr.toUInteger() - lwr.toUInteger());
+            return true;
+        }
+
+        if (upr.op == EXP.add)
+        {
+            auto add = cast(BinExp)upr;
+            auto e1 = stripCasts(add.e1);
+            auto e2 = stripCasts(add.e2);
+
+            if (e1.equals(lwr) && e2.isConst())
+            {
+                len = cast(size_t)e2.toUInteger();
+                return true;
+            }
+            if (e2.equals(lwr) && e1.isConst())
+            {
+                len = cast(size_t)e1.toUInteger();
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     if (e.lwr && e.upr)
     {
         // For the following code to work, e should be optimized beforehand.
         // (eg. $ in lwr and upr should be already resolved, if possible)
-        Expression lwr = e.lwr.optimize(WANTvalue);
-        Expression upr = e.upr.optimize(WANTvalue);
-        if (lwr.isConst() && upr.isConst())
+        size_t len = 0;
+        if (inferSliceLength(e.lwr, e.upr, len))
         {
-            size_t len = cast(size_t)(upr.toUInteger() - lwr.toUInteger());
             return e.type.toBasetype().nextOf().sarrayOf(len);
         }
     }
@@ -2176,7 +2213,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
                 if (auto result = tryAliasThisCast())
                     return result;
             }
-            error(e.loc, "cannot cast expression `%s` of type `%s` to `%s`", e.toChars(), e.type.toChars(), t.toChars());
+            error(e.loc, "cannot cast expression `%s` of type `%s` to `%s`", e.toErrMsg(), e.type.toErrMsg(), t.toErrMsg());
             return ErrorExp.get(e);
         }
 
@@ -2239,6 +2276,9 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
         // arithmetic values vs. references or fat values
         if (tob_isA && (t1b_isR || t1b_isFV) || t1b_isA && (tob_isR || tob_isFV))
         {
+            // Allow arithmetic <-> static array cast when sizes match
+            if (t1b.size(e.loc) == tob.size(e.loc) && (tob.ty == Tsarray || t1b.ty == Tsarray))
+                return ok();
             return fail();
         }
 
@@ -2256,7 +2296,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
 
             auto ts = toAutoQualChars(e.type, t);
             error(e.loc, "cannot cast expression `%s` of type `%s` to `%s` because of different sizes",
-                e.toChars(), ts[0], ts[1]);
+                e.toErrMsg(), ts[0], ts[1]);
             return ErrorExp.get(e);
         }
 
@@ -2285,7 +2325,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
                     if (tsize == 0 || (dim * fsize) % tsize != 0)
                     {
                         error(e.loc, "cannot cast expression `%s` of type `%s` to `%s` since sizes don't line up",
-                                e.toChars(), e.type.toChars(), t.toChars());
+                                e.toErrMsg(), e.type.toErrMsg(), t.toErrMsg());
                         return ErrorExp.get(e);
                     }
                 }
@@ -2327,7 +2367,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
                 // void delegate() dg;
                 // cast(U*)dg; // ==> cast(U*)dg.ptr;
                 // Note that it happens even when U is a Tfunction!
-                deprecation(e.loc, "casting from %s to %s is deprecated", e.type.toChars(), t.toChars());
+                deprecation(e.loc, "casting from %s to %s is deprecated", e.type.toErrMsg(), t.toErrMsg());
                 return ok();
             }
             return fail();
@@ -2425,7 +2465,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
         Type tb = t.toBasetype();
         Type typeb = e.type.toBasetype();
 
-        if (e.hexString && !e.committed && tb.nextOf().isIntegral)
+        if (e.hexString && !e.committed && tb.nextOf() && tb.nextOf().isIntegral)
         {
             const szx = cast(ubyte) tb.nextOf().size();
             if (szx != se.sz && (e.len % szx) == 0)
@@ -2493,7 +2533,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
                 se = e.copy().isStringExp();
                 copied = 1;
             }
-            return lcast();
+            return visit(se);
         }
         if (typeb.ty != Tsarray && typeb.ty != Tarray && typeb.ty != Tpointer)
         {
@@ -2817,7 +2857,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
             {
                 if (auto tsa = tb.isTypeSArray())
                 {
-                    if (e.elements.length != tsa.dim.toInteger())
+                    if (e.length != tsa.dim.toInteger())
                         return visit(ae);
                 }
 
@@ -2825,9 +2865,9 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
                 if (e.basis)
                     ae.basis = e.basis.castTo(sc, tb.nextOf());
                 ae.elements = e.elements.copy();
-                for (size_t i = 0; i < e.elements.length; i++)
+                foreach (i; 0 .. e.length)
                 {
-                    Expression ex = (*e.elements)[i];
+                    Expression ex = e[i];
                     if (!ex)
                         continue;
                     ex = ex.castTo(sc, tb.nextOf());
@@ -2853,7 +2893,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
             TypeVector tv = tb.isTypeVector();
             TypeSArray tbase = tv.basetype.isTypeSArray();
             assert(tbase.ty == Tsarray);
-            const edim = e.elements.length;
+            const edim = e.length;
             const tbasedim = tbase.dim.toInteger();
             if (edim > tbasedim)
                 return visit(ae);
@@ -2961,7 +3001,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
                     }
                     else if (f.needThis())
                     {
-                        error(e.loc, "no `this` to create delegate for `%s`", f.toChars());
+                        error(e.loc, "no `this` to create delegate for `%s`", f.toErrMsg());
                         return ErrorExp.get(e);
                     }
                     else if (f.isNested())
@@ -3168,7 +3208,7 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
         }
         auto ts = toAutoQualChars(tsa ? tsa : e.type, t);
         error(e.loc, "cannot cast expression `%s` of type `%s` to `%s`",
-            e.toChars(), ts[0], ts[1]);
+            e.toErrMsg(), ts[0], ts[1]);
         return ErrorExp.get(e);
     }
 
@@ -3211,11 +3251,12 @@ Expression castTo(Expression e, Scope* sc, Type t, Type att = null)
 }
 
 /****************************************
- * Set type inference target
- *      t       Target type
- *      flag    1: don't put an error when inference fails
+ * If t, set type of e to t skipping past array, function type or conditional type.
+ * Params:
+ *      e = expression to set type to
+ *      t = type to infer from
  */
-Expression inferType(Expression e, Type t, int flag = 0)
+Expression inferExpType(Expression e, Type t)
 {
     Expression visitAle(ArrayLiteralExp ale)
     {
@@ -3225,13 +3266,13 @@ Expression inferType(Expression e, Type t, int flag = 0)
 
         Type tn = tb.nextOf();
         if (ale.basis)
-            ale.basis = inferType(ale.basis, tn, flag);
-        for (size_t i = 0; i < ale.elements.length; i++)
+            ale.basis = inferExpType(ale.basis, tn);
+        foreach (i; 0 .. ale.length)
         {
-            if (Expression e = (*ale.elements)[i])
+            if (Expression e = ale[i])
             {
-                e = inferType(e, tn, flag);
-                (*ale.elements)[i] = e;
+                e = inferExpType(e, tn);
+                ale[i] = e;
             }
         }
 
@@ -3251,7 +3292,7 @@ Expression inferType(Expression e, Type t, int flag = 0)
         {
             if (Expression e = (*aale.keys)[i])
             {
-                e = inferType(e, ti, flag);
+                e = inferExpType(e, ti);
                 (*aale.keys)[i] = e;
             }
         }
@@ -3259,7 +3300,7 @@ Expression inferType(Expression e, Type t, int flag = 0)
         {
             if (Expression e = (*aale.values)[i])
             {
-                e = inferType(e, tv, flag);
+                e = inferExpType(e, tv);
                 (*aale.values)[i] = e;
             }
         }
@@ -3269,7 +3310,7 @@ Expression inferType(Expression e, Type t, int flag = 0)
 
     Expression visitFun(FuncExp fe)
     {
-        //printf("FuncExp::inferType('%s'), to=%s\n", fe.type ? fe.type.toChars() : "null", t.toChars());
+        //printf("FuncExp::inferExpType('%s'), to=%s\n", fe.type ? fe.type.toChars() : "null", t.toChars());
         if (t.ty == Tdelegate || t.ty == Tpointer && t.nextOf().ty == Tfunction)
         {
             fe.fd.treq = t;
@@ -3280,8 +3321,8 @@ Expression inferType(Expression e, Type t, int flag = 0)
     Expression visitTer(CondExp ce)
     {
         Type tb = t.toBasetype();
-        ce.e1 = inferType(ce.e1, tb, flag);
-        ce.e2 = inferType(ce.e2, tb, flag);
+        ce.e1 = inferExpType(ce.e1, tb);
+        ce.e2 = inferExpType(ce.e2, tb);
         return ce;
     }
 
@@ -3363,7 +3404,7 @@ Expression scaleFactor(BinExp be, Scope* sc)
  */
 private bool isVoidArrayLiteral(Expression e, Type other)
 {
-    while (e.op == EXP.arrayLiteral && e.type.ty == Tarray && (e.isArrayLiteralExp().elements.length == 1))
+    while (e.op == EXP.arrayLiteral && e.type.ty == Tarray && (e.isArrayLiteralExp().length == 1))
     {
         auto ale = e.isArrayLiteralExp();
         e = ale[0];
@@ -3375,7 +3416,7 @@ private bool isVoidArrayLiteral(Expression e, Type other)
     if (other.ty != Tsarray && other.ty != Tarray)
         return false;
     Type t = e.type;
-    return (e.op == EXP.arrayLiteral && t.ty == Tarray && t.nextOf().ty == Tvoid && e.isArrayLiteralExp().elements.length == 0);
+    return (e.op == EXP.arrayLiteral && t.ty == Tarray && t.nextOf().ty == Tvoid && e.isArrayLiteralExp().length == 0);
 }
 
 /**
@@ -4361,8 +4402,9 @@ void fix16997(Scope* sc, UnaExp ue)
         case Tchar:
         case Twchar:
         case Tdchar:
-            deprecation(ue.loc, "integral promotion not done for `%s`, remove '-revert=intpromote' switch or `%scast(int)(%s)`",
-                ue.toChars(), EXPtoString(ue.op).ptr, ue.e1.toChars());
+            // https://github.com/dlang/dmd/issues/17834
+            deprecation(ue.loc, "integral promotion not done for `%s` (operand type `%s`), remove '-revert=intpromote' switch or rewrite as `%scast(int)(%s)`",
+                ue.toErrMsg(), ue.e1.type.toErrMsg(), EXPtoString(ue.op).ptr, ue.e1.toErrMsg());
             return;
 
         default:

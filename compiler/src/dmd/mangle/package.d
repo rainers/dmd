@@ -717,7 +717,7 @@ public:
             buf.writestring(fd.mangleOverride);
             return;
         }
-        if (fd.isMain())
+        if (fd.isDMain())
         {
             buf.writestring("_Dmain");
             return;
@@ -727,6 +727,23 @@ public:
             buf.writestring(fd.ident.toString());
             return;
         }
+
+        version (IN_LLVM)
+        {
+            import gen.llvmhelpers : isTargetWasm;
+            bool isWasm = isTargetWasm();
+        }
+        else bool isWasm = false;
+
+        if (fd.isCMain() && isWasm)
+        {
+            if (fd.parameters)
+                buf.writestring("__main_argc_argv");
+            else
+                buf.writestring("__main_void");
+            return;
+        }
+
         visit(cast(Declaration)fd);
     }
 
@@ -874,7 +891,7 @@ public:
                     }
                     if (!d.type || !d.type.deco)
                     {
-                        error(ti.loc, "%s `%s` forward reference of %s `%s`", ti.kind, ti.toPrettyChars, d.kind(), d.toChars());
+                        error(ti.loc, "%s `%s` forward reference of %s `%s`", ti.kind, ti.toPrettyChars, d.kind(), d.toErrMsg());
                         continue;
                     }
                 }
@@ -931,7 +948,7 @@ public:
     override void visit(Expression e)
     {
         if (!e.type.isTypeError())
-            error(e.loc, "expression `%s` is not a valid template value argument", e.toChars());
+            error(e.loc, "expression `%s` is not a valid template value argument", e.toErrMsg());
     }
 
     override void visit(IntegerExp e)
@@ -1024,7 +1041,7 @@ public:
 
     override void visit(ArrayLiteralExp e)
     {
-        const dim = e.elements ? e.elements.length : 0;
+        const dim = e.length;
         buf.writeByte('A');
         buf.print(dim);
         foreach (i; 0 .. dim)
