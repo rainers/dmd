@@ -194,12 +194,17 @@ extern (C++) abstract class Expression : ASTNode
             assert(typeInfoExp[op] && typeInfoExp[op].m_init.length == size);
             import core.memory; // assume GC
             void* e = GC.malloc(size, 0, typeInfoExp[op]);
+            auto ne = cast(Expression)memcpy(e, cast(void*)this, size);
+            ne.original = null;
+            return ne;
         }
         else
+        {
             // memory never freed, so can use the faster bump-pointer-allocation
             void* e = allocmemory(size);
-        //printf("Expression::copy(op = %d) e = %p\n", op, e);
-        return cast(Expression)memcpy(e, cast(void*)this, size);
+            //printf("Expression::copy(op = %d) e = %p\n", op, e);
+            return cast(Expression)memcpy(e, cast(void*)this, size);
+        }
     }
 
     Expression syntaxCopy()
@@ -756,6 +761,7 @@ extern (C++) final class IntegerExp : Expression
         return result;
     }
 
+    version(LanguageServer) { /* needs a copy for saveOriginal */ } else
     override IntegerExp syntaxCopy()
     {
         return this;

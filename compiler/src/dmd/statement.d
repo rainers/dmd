@@ -385,7 +385,10 @@ extern (C++) final class ErrorStatement : Statement
 
     override ErrorStatement syntaxCopy()
     {
-        return this;
+        version(LanguageServer)
+            return new ErrorStatement; // for saveOriginal
+        else
+            return this;
     }
 
     override void accept(Visitor v)

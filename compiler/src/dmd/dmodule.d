@@ -612,7 +612,7 @@ extern (C++) final class Module : Package
         const name = srcfile.toString();
         if (FileName.equals(name, "object.d"))
         {
-            ObjectNotFound(Loc.initial, ident);
+            ObjectNotFound(loc, ident);
         }
         else if (FileName.ext(this.arg) || !loc.isValid())
         {
