@@ -3855,7 +3855,11 @@ Statement statementSemanticVisit(Statement s, Scope* sc)
 
         //printf("AsmStatement()::semantic()\n");
         version (NoBackend)
+        {
             result = s;
+            if (s.tokens)
+                sc.func.hasInlineAsm = true;
+        }
         else
         {
             import dmd.iasm;

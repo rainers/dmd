@@ -214,7 +214,7 @@ mixin template HostObjectNotFound()
         version (NoBackend)
         {
         }
-        version (IN_GCC)
+        else version (IN_GCC)
         {
         }
         else version (IN_LLVM)

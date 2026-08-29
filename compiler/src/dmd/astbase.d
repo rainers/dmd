@@ -1770,7 +1770,7 @@ struct ASTBase
 
         extern (D) this(Loc loc, StorageClass storageClass, Type type, typeof(null), typeof(null), typeof(null), typeof(null))
         {
-            this(loc, storageClass, type, null, null, null, null);
+            this(loc, storageClass, type, makeIdentifierAtLoc(null), null, null, null);
         }
 
         static size_t dim(Parameters* parameters)
@@ -2556,6 +2556,11 @@ struct ASTBase
         {
             super(Loc.initial, STMT.Error);
             assert(global.gaggedErrors || global.errors);
+        }
+
+        static ErrorStatement get(Statement orig = null)
+        {
+            return new ErrorStatement;
         }
 
         override void accept(Visitor v)
@@ -6311,7 +6316,7 @@ struct ASTBase
             type = Type.terror;
         }
 
-        static ErrorExp get ()
+        static ErrorExp get (Expression* orig = null)
         {
             if (errorexp is null)
                 errorexp = new ErrorExp();

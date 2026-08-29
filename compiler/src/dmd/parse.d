@@ -6003,7 +6003,7 @@ class Parser(AST, Lexer = dmd.lexer.Lexer) : Lexer
             if (!ai)
                 noIdentifierForDeclarator(at, token);
         Larg:
-            auto p = new AST.Parameter(aloc, storageClass, at, makeIdentifierAtLoc(ai, aloc), null, null, null);
+            auto p = new AST.Parameter(aloc, storageClass, at, makeIdentifierAtLoc(ai, aloc), null, null, unpack);
             parameters.push(p);
             if (token.value == TOK.comma)
             {

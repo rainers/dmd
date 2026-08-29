@@ -715,6 +715,8 @@ extern (C++) class Dsymbol : ASTNode
             bool show = true;
             if (p.parent)
             {
+                addQualifiers(p.parent);
+
                 // don't repeat name in one-member template instances
                 version(LanguageServer)
                 {
@@ -725,15 +727,15 @@ extern (C++) class Dsymbol : ASTNode
                         if (auto ident = p.getIdent())
                             if (ident is ti.name)
                                 if (oneMembers(ti.members, sym, ident) && sym is p)
-                                    show = false;
+                                    return;
 
                     if (auto td = p.parent.isTemplateDeclaration())
                         if (td.onemember is p)
-                            show = false;
+                            return;
+                    
                 }
-
-                addQualifiers(p.parent);
-
+                else
+                {
                 bool isOneMember(T)(T t)
                 {
                     import dmd.dsymbolsem;
@@ -751,6 +753,7 @@ extern (C++) class Dsymbol : ASTNode
                         isOneMember(p.parent.isTemplateDeclaration()))
                         return;
 
+                }
                 buf.writeByte('.');
             }
             if (show)
